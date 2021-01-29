@@ -532,26 +532,20 @@ where
 
         let base_key = Key::Account(deploy_item.address);
 
-        let account_public_key = match base_key.into_account() {
-            Some(account_addr) => account_addr,
-            None => {
-                return Ok(ExecutionResult::precondition_failure(
-                    error::Error::Authorization,
-                ));
-            }
-        };
+        // Get addr bytes from `address` (which is actually a Key)
+        // validation_spec_3: account validity
+        let account_hash = fail_precondition!(base_key.into_account(), error::Error::Authorization);
 
         let authorization_keys = deploy_item.authorization_keys;
 
-        let account = match self.get_authorized_account(
+        // Get account from tracking copy
+        // validation_spec_3: account validity
+        let account = fail_precondition!(self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
-        ) {
-            Ok(account) => account,
-            Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-        };
+        ));
 
         let mint_contract = get_contract!(tracking_copy, protocol_data.mint(), correlation_id);
 
@@ -679,17 +673,12 @@ where
                 protocol_data.system_config().wasmless_transfer_cost(),
             ));
 
-            let wasmless_transfer_cost =
-                match Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price) {
-                    Some(motes) => motes,
-                    None => {
-                        // TODO: Add a specific error variant to represent gas to motes conversion
-                        // overflow.
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::InsufficientPayment,
-                        ));
-                    }
-                };
+            // TODO: Add a specific error variant to represent gas to motes conversion
+            // overflow.
+            let wasmless_transfer_cost = fail_precondition!(
+                Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price),
+                Error::InsufficientPayment
+            );
 
             let transfer_amount_motes = Motes::new(transfer_args.amount());
 
@@ -858,16 +847,12 @@ where
             // (a) payment purse should be empty before the payment operation
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
-            let payment_gas = match Gas::from_motes(payment_purse_balance, deploy_item.gas_price) {
-                Some(gas) => gas,
-                None => {
-                    // TODO: Add a specific error variant to represent motes to gas conversion
-                    // underflow.
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
-                }
-            };
+            // TODO: Add a specific error variant to represent motes to gas conversion
+            // underflow.
+            let payment_gas = fail_precondition!(
+                Gas::from_motes(payment_purse_balance, deploy_item.gas_price),
+                Error::InsufficientPayment
+            );
 
             debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
 
@@ -928,31 +913,20 @@ where
 
         let finalize_result = {
             let proposer_purse = {
-                let proposer_account: Account = match tracking_copy
+                let proposer_account: Account = fail_precondition!(tracking_copy
                     .borrow_mut()
-                    .get_account(correlation_id, AccountHash::from(&proposer))
-                {
-                    Ok(account) => account,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error.into()));
-                    }
-                };
+                    .get_account(correlation_id, AccountHash::from(&proposer)));
                 proposer_account.main_purse()
             };
 
             let proof_of_stake_args = {
                 // Gas spent during payment code execution
-                let finalize_cost_motes =
-                    match Motes::from_gas(payment_result.cost(), deploy_item.gas_price) {
-                        Some(motes) => motes,
-                        None => {
-                            // TODO: Add a specific error variant to represent gas to motes
-                            // conversion overflow.
-                            return Ok(ExecutionResult::precondition_failure(
-                                Error::InsufficientPayment,
-                            ));
-                        }
-                    };
+                // TODO: Add a specific error variant to represent gas to motes
+                // conversion overflow.
+                let finalize_cost_motes = fail_precondition!(
+                    Motes::from_gas(payment_result.cost(), deploy_item.gas_price),
+                    Error::InsufficientPayment
+                );
 
                 let account = deploy_item.address;
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
@@ -960,15 +934,10 @@ where
                     args.insert(proof_of_stake::ARG_ACCOUNT, account)?;
                     args.insert(proof_of_stake::ARG_TARGET, proposer_purse)?;
                     Ok(())
-                });
+                })
+                .map_err(ExecError::from);
 
-                match maybe_runtime_args {
-                    Ok(runtime_args) => runtime_args,
-                    Err(error) => {
-                        let exec_error = ExecError::from(error);
-                        return Ok(ExecutionResult::precondition_failure(exec_error.into()));
-                    }
-                }
+                fail_precondition!(maybe_runtime_args)
             };
 
             let system_account = Account::new(
@@ -1073,28 +1042,18 @@ where
 
         // Get addr bytes from `address` (which is actually a Key)
         // validation_spec_3: account validity
-        let account_hash = match base_key.into_account() {
-            Some(account_addr) => account_addr,
-            None => {
-                return Ok(ExecutionResult::precondition_failure(
-                    error::Error::Authorization,
-                ));
-            }
-        };
+        let account_hash = fail_precondition!(base_key.into_account(), error::Error::Authorization);
 
         let authorization_keys = deploy_item.authorization_keys;
 
         // Get account from tracking copy
         // validation_spec_3: account validity
-        let account = match self.get_authorized_account(
+        let account = fail_precondition!(self.get_authorized_account(
             correlation_id,
             account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
-        ) {
-            Ok(account) => account,
-            Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-        };
+        ));
 
         let session = deploy_item.session;
         let payment = deploy_item.payment;
@@ -1103,7 +1062,7 @@ where
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
-        let session_metadata = match session.get_deploy_metadata(
+        let session_metadata = fail_precondition!(session.get_deploy_metadata(
             Rc::clone(&tracking_copy),
             &account,
             correlation_id,
@@ -1111,37 +1070,22 @@ where
             &protocol_version,
             &protocol_data,
             Phase::Session,
-        ) {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-        };
+        ));
 
         // Get account main purse balance key
         // validation_spec_5: account main purse minimum balance
         let account_main_purse_balance_key: Key = {
             let account_key = Key::URef(account.main_purse());
-            match tracking_copy
+            fail_precondition!(tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, account_key)
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
+                .get_purse_balance_key(correlation_id, account_key))
         };
 
         // Get account main purse balance to enforce precondition and in case of forced
         // transfer validation_spec_5: account main purse minimum balance
-        let account_main_purse_balance: Motes = match tracking_copy
+        let account_main_purse_balance: Motes = fail_precondition!(tracking_copy
             .borrow_mut()
-            .get_purse_balance(correlation_id, account_main_purse_balance_key)
-        {
-            Ok(balance) => balance,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
-        };
+            .get_purse_balance(correlation_id, account_main_purse_balance_key));
 
         let max_payment_cost = Motes::new(*MAX_PAYMENT);
 
@@ -1170,21 +1114,17 @@ where
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
             // gas_price)
-            let payment_gas_limit = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
-                Some(gas) => gas,
-                None => {
-                    // TODO: Add a specific error variant to represent motes to gas conversion
-                    // underflow
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
-                }
-            };
+            // TODO: Add a specific error variant to represent motes to gas conversion
+            // underflow
+            let payment_gas_limit = fail_precondition!(
+                Gas::from_motes(max_payment_cost, deploy_item.gas_price),
+                Error::InsufficientPayment
+            );
 
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
             let phase = Phase::Payment;
-            let payment_metadata = match payment.get_deploy_metadata(
+            let payment_metadata = fail_precondition!(payment.get_deploy_metadata(
                 Rc::clone(&tracking_copy),
                 &account,
                 correlation_id,
@@ -1192,12 +1132,7 @@ where
                 &protocol_version,
                 &protocol_data,
                 phase,
-            ) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error));
-                }
-            };
+            ));
 
             // payment_code_spec_2: execute payment code
             let (
@@ -1308,44 +1243,28 @@ where
 
             // Get payment purse Key from proof of stake contract
             // payment_code_spec_6: system contract validity
-            let payment_purse_key: Key =
-                match proof_of_stake_contract.named_keys().get(POS_PAYMENT_PURSE) {
-                    Some(key) => *key,
-                    None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-                };
+            let payment_purse_key: &Key = fail_precondition!(
+                proof_of_stake_contract.named_keys().get(POS_PAYMENT_PURSE),
+                Error::Deploy
+            );
 
-            let purse_balance_key = match tracking_copy
+            let purse_balance_key = fail_precondition!(tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, payment_purse_key)
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
+                .get_purse_balance_key(correlation_id, *payment_purse_key));
 
-            match tracking_copy
+            let balance = fail_precondition!(tracking_copy
                 .borrow_mut()
-                .get_purse_balance(correlation_id, purse_balance_key)
-            {
-                Ok(balance) => balance,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
+                .get_purse_balance(correlation_id, purse_balance_key));
+
+            balance
         };
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
-            let proposer_account: Account = match tracking_copy
+            let proposer_account: Account = fail_precondition!(tracking_copy
                 .borrow_mut()
-                .get_account(correlation_id, AccountHash::from(&proposer))
-            {
-                Ok(account) => account,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
+                .get_account(correlation_id, AccountHash::from(&proposer)));
+
             proposer_account.main_purse()
         };
 
@@ -1357,15 +1276,9 @@ where
             let proposer_main_purse_balance_key = {
                 // Get reward purse Key from proof of stake contract
                 // payment_code_spec_6: system contract validity
-                match tracking_copy
+                fail_precondition!(tracking_copy
                     .borrow_mut()
-                    .get_purse_balance_key(correlation_id, proposer_purse.into())
-                {
-                    Ok(key) => key,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error.into()));
-                    }
-                }
+                    .get_purse_balance_key(correlation_id, proposer_purse.into()))
             };
 
             let error = match forced_transfer {
@@ -1375,16 +1288,12 @@ where
                     .unwrap_or(Error::InsufficientPayment),
             };
 
-            let gas_cost = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
-                Some(gas) => gas,
-                None => {
-                    // TODO: Add a specific error variant to represent motes to gas conversion
-                    // underflow
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
-                }
-            };
+            // TODO: Add a specific error variant to represent motes to gas conversion
+            // underflow
+            let gas_cost = fail_precondition!(
+                Gas::from_motes(max_payment_cost, deploy_item.gas_price),
+                Error::InsufficientPayment
+            );
 
             match ExecutionResult::new_payment_code_error(
                 error,
@@ -1463,19 +1372,14 @@ where
             // payment code execution) * gas_price, yes session
             // session_code_spec_1: gas limit = ((balance of PoS payment purse) / gas_price)
             // - (gas spent during payment execution)
-            let session_gas_limit: Gas =
-                match Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
-                    .and_then(|gas| gas.checked_sub(payment_result_cost))
-                {
-                    Some(gas) => gas,
-                    None => {
-                        // TODO: Add a specific error variant to represent motes to gas conversion
-                        // underflow
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::InsufficientPayment,
-                        ));
-                    }
-                };
+            // TODO: Add a specific error variant to represent motes to gas conversion
+            // underflow
+            let session_gas_limit: Gas = fail_precondition!(
+                Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
+                    .and_then(|gas| gas.checked_sub(payment_result_cost)),
+                Error::InsufficientPayment
+            );
+
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
@@ -1550,14 +1454,10 @@ where
                     args.insert(proof_of_stake::ARG_ACCOUNT, account_hash)?;
                     args.insert(proof_of_stake::ARG_TARGET, proposer_purse)?;
                     Ok(())
-                });
-                match maybe_runtime_args {
-                    Ok(runtime_args) => runtime_args,
-                    Err(error) => {
-                        let exec_error = ExecError::from(error);
-                        return Ok(ExecutionResult::precondition_failure(exec_error.into()));
-                    }
-                }
+                })
+                .map_err(ExecError::from);
+
+                fail_precondition!(maybe_runtime_args)
             };
 
             // The PoS keys may have changed because of effects during payment and/or

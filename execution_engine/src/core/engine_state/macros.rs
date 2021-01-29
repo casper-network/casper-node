@@ -28,6 +28,7 @@ macro_rules! tracking_copy {
 }
 
 /// Returns system module for the given TrackingCopy and Preprocessor instances.
+/// If not present, returns precondition failure.
 macro_rules! system_module {
     ($tracking_copy: ident, $preprocessor: expr) => {{
         match $tracking_copy.borrow_mut().get_system_module($preprocessor) {
@@ -53,3 +54,18 @@ macro_rules! get_contract {
     }};
 }
 
+/// Matches on the result and returns early with en error if it's not valid.
+macro_rules! fail_precondition {
+    ($result: expr) => {{
+        match $result {
+            Ok(value) => value,
+            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
+        }
+    }};
+    ($maybe: expr, $cause: expr) => {{
+        match $maybe {
+            Some(value) => value,
+            None => return Ok(ExecutionResult::precondition_failure($cause)),
+        }
+    }};
+}
