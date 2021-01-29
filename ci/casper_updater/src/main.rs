@@ -191,9 +191,6 @@ fn main() {
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 
-    let grpc_server = Package::cargo("grpc/server", &*regex_data::grpc_server::DEPENDENT_FILES);
-    grpc_server.update();
-
     let client = Package::cargo("client", &*regex_data::client::DEPENDENT_FILES);
     client.update();
 
@@ -209,17 +206,17 @@ fn main() {
     );
     smart_contracts_contract_as.update();
 
-    let grpc_test_support = Package::cargo(
-        "grpc/test_support",
-        &*regex_data::grpc_test_support::DEPENDENT_FILES,
+    let execution_engine_testing_test_support = Package::cargo(
+        "execution_engine_testing/test_support",
+        &*regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
     );
-    grpc_test_support.update();
+    execution_engine_testing_test_support.update();
 
-    let grpc_cargo_casper = Package::cargo(
-        "grpc/cargo_casper",
-        &*regex_data::grpc_cargo_casper::DEPENDENT_FILES,
+    let execution_engine_testing_cargo_casper = Package::cargo(
+        "execution_engine_testing/cargo_casper",
+        &*regex_data::execution_engine_testing_cargo_casper::DEPENDENT_FILES,
     );
-    grpc_cargo_casper.update();
+    execution_engine_testing_cargo_casper.update();
 
     // Update Cargo.lock if this isn't a dry run.
     if !is_dry_run() {

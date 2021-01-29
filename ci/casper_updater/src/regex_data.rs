@@ -38,17 +38,12 @@ pub mod types {
                 replacement,
             ),
             DependentFile::new(
-                "grpc/cargo_casper/src/common.rs",
+                "execution_engine_testing/cargo_casper/src/common.rs",
                 Regex::new(r#"(?m)("casper-types",\s*)"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
             DependentFile::new(
-                "grpc/server/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
-                "grpc/test_support/Cargo.toml",
+                "execution_engine_testing/test_support/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
@@ -91,13 +86,7 @@ pub mod execution_engine {
                     replacement,
                 ),
                 DependentFile::new(
-                    "grpc/server/Cargo.toml",
-                    Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#)
-                        .unwrap(),
-                    replacement,
-                ),
-                DependentFile::new(
-                    "grpc/test_support/Cargo.toml",
+                    "execution_engine_testing/test_support/Cargo.toml",
                     Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#)
                         .unwrap(),
                     replacement,
@@ -176,26 +165,6 @@ pub mod node {
     });
 }
 
-pub mod grpc_server {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "grpc/server/Cargo.toml",
-                MANIFEST_VERSION_REGEX.clone(),
-                replacement,
-            ),
-            DependentFile::new(
-                "grpc/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-engine-grpc-server = \{[^\}]*version = )"(?:[^"]+)"#)
-                    .unwrap(),
-                replacement,
-            ),
-        ]
-    });
-}
-
 pub mod client {
     use super::*;
 
@@ -214,12 +183,12 @@ pub mod smart_contracts_contract {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "grpc/cargo_casper/src/common.rs",
+                "execution_engine_testing/cargo_casper/src/common.rs",
                 Regex::new(r#"(?m)("casper-contract",\s*)"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
             DependentFile::new(
-                "grpc/test_support/Cargo.toml",
+                "execution_engine_testing/test_support/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-contract = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
@@ -259,23 +228,23 @@ pub mod smart_contracts_contract_as {
     });
 }
 
-pub mod grpc_test_support {
+pub mod execution_engine_testing_test_support {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
                 DependentFile::new(
-                    "grpc/cargo_casper/src/tests_package.rs",
+                    "execution_engine_testing/cargo_casper/src/tests_package.rs",
                     Regex::new(r#"(?m)("casper-engine-test-support",\s*)"(?:[^"]+)"#).unwrap(),
                     cargo_casper_src_test_package_rs_replacement,
                 ),
                 DependentFile::new(
-                    "grpc/test_support/Cargo.toml",
+                    "execution_engine_testing/test_support/Cargo.toml",
                     MANIFEST_VERSION_REGEX.clone(),
                     replacement,
                 ),
                 DependentFile::new(
-                    "grpc/test_support/src/lib.rs",
+                    "execution_engine_testing/test_support/src/lib.rs",
                     Regex::new(r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-engine-test-support)/(?:[^"]+)"#).unwrap(),
                     replacement_with_slash,
                 ),
@@ -287,12 +256,12 @@ pub mod grpc_test_support {
     }
 }
 
-pub mod grpc_cargo_casper {
+pub mod execution_engine_testing_cargo_casper {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![DependentFile::new(
-            "grpc/cargo_casper/Cargo.toml",
+            "execution_engine_testing/cargo_casper/Cargo.toml",
             MANIFEST_VERSION_REGEX.clone(),
             replacement,
         )]
