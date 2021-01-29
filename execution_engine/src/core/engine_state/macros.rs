@@ -26,3 +26,15 @@ macro_rules! tracking_copy {
         }
     }};
 }
+
+/// Returns system module for the given TrackingCopy and Preprocessor instances.
+macro_rules! system_module {
+    ($tracking_copy: ident, $preprocessor: expr) => {{
+        match $tracking_copy.borrow_mut().get_system_module($preprocessor) {
+            Ok(module) => module,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        }
+    }};
+}

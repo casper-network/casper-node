@@ -532,14 +532,7 @@ where
         // do this second; as there is no reason to proceed if the prestate hash is invalid
         let tracking_copy = tracking_copy!(self, prestate_hash);
 
-        let system_module = {
-            match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
-                Ok(module) => module,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
+        let system_module = system_module!(tracking_copy, &preprocessor);
 
         let base_key = Key::Account(deploy_item.address);
 
@@ -1089,14 +1082,7 @@ where
         // do this second; as there is no reason to proceed if the prestate hash is invalid
         let tracking_copy = tracking_copy!(self, prestate_hash);
 
-        let system_module = {
-            match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
-                Ok(module) => module,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
+        let system_module = system_module!(tracking_copy, &preprocessor);
 
         // vestigial system_contract_cache
         self.system_contract_cache
