@@ -2,6 +2,7 @@ use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use casper_execution_engine::{
     core::{
+        engine_state,
         engine_state::{
             executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
             EngineConfig,
@@ -21,7 +22,6 @@ use casper_types::{
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
 
 use super::DEFAULT_SYSTEM_CONFIG;
-use casper_execution_engine::core::engine_state;
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
