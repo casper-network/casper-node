@@ -12,7 +12,7 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{error, info, warn, debug};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{PublicKey, U512};
 
