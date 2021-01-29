@@ -3,7 +3,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auction::{types::DelegationRate, Delegator, EraId},
+    auction::{types::DelegationRate, Delegator},
     bytesrepr::{self, FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     CLType, CLTyped, PublicKey, URef, U512,
@@ -18,11 +18,9 @@ pub struct Bid {
     staked_amount: U512,
     /// Delegation rate
     delegation_rate: DelegationRate,
-    /// A flag that represents a winning entry.
-    ///
-    /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
-    /// means that funds are unlocked and autowin status is removed.
-    release_era: Option<EraId>,
+    /// Timestamp (in milliseconds since epoch format) at which a given bid is unlocked.  If
+    /// `None`, bid is unlocked.
+    release_timestamp_millis: Option<u64>,
     /// This validator's delegators, indexed by their public keys
     delegators: BTreeMap<PublicKey, Delegator>,
     /// This validator's seigniorage reward
@@ -31,16 +29,16 @@ pub struct Bid {
 
 impl Bid {
     /// Creates new instance of a bid with locked funds.
-    pub fn locked(bonding_purse: URef, staked_amount: U512, release_era: EraId) -> Self {
+    pub fn locked(bonding_purse: URef, staked_amount: U512, release_timestamp_millis: u64) -> Self {
         let delegation_rate = 0;
-        let release_era = Some(release_era);
+        let release_timestamp_millis = Some(release_timestamp_millis);
         let delegators = BTreeMap::new();
         let reward = U512::zero();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
-            release_era,
+            release_timestamp_millis,
             delegators,
             reward,
         }
@@ -52,14 +50,14 @@ impl Bid {
         staked_amount: U512,
         delegation_rate: DelegationRate,
     ) -> Self {
-        let release_era = None;
+        let release_timestamp_millis = None;
         let delegators = BTreeMap::new();
         let reward = U512::zero();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
-            release_era,
+            release_timestamp_millis,
             delegators,
             reward,
         }
@@ -82,12 +80,13 @@ impl Bid {
 
     /// Returns `true` if the provided bid is locked.
     pub fn is_locked(&self) -> bool {
-        self.release_era.is_some()
+        self.release_timestamp_millis.is_some()
     }
 
-    /// Returns the release era of the provided bid, if it is locked.
-    pub fn release_era(&self) -> Option<EraId> {
-        self.release_era
+    /// Returns the timestamp (in milliseconds since epoch format) at which a given bid is unlocked.
+    /// If `None`, bid is unlocked.
+    pub fn release_timestamp_millis(&self) -> Option<u64> {
+        self.release_timestamp_millis
     }
 
     /// Returns a reference to the delegators of the provided bid
@@ -156,18 +155,20 @@ impl Bid {
         self
     }
 
-    /// Unlocks the provided bid if the provided era is greater than the bid's release era.
+    /// Unlocks the provided bid if the provided timestamp is greater than or equal to the bid's
+    /// release timestamp.
     ///
     /// Returns `true` if the provided bid was unlocked.
-    pub fn unlock(&mut self, era: EraId) -> bool {
-        match self.release_era {
-            Some(release_era) if era >= release_era => {
-                self.release_era = None;
-                true
-            }
-            Some(_) => false,
-            None => false,
+    pub fn unlock(&mut self, era_end_timestamp_millis: u64) -> bool {
+        let release_timestamp_millis = match self.release_timestamp_millis {
+            Some(release_timestamp_millis) => release_timestamp_millis,
+            None => return false,
+        };
+        if era_end_timestamp_millis < release_timestamp_millis {
+            return false;
         }
+        self.release_timestamp_millis = None;
+        true
     }
 
     /// Returns the total staked amount of validator + all delegators
@@ -194,7 +195,7 @@ impl ToBytes for Bid {
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.release_era.to_bytes()?);
+        result.extend(self.release_timestamp_millis.to_bytes()?);
         result.extend(self.delegators.to_bytes()?);
         result.extend(self.reward.to_bytes()?);
         Ok(result)
@@ -204,7 +205,7 @@ impl ToBytes for Bid {
         self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
-            + self.release_era.serialized_length()
+            + self.release_timestamp_millis.serialized_length()
             + self.delegators.serialized_length()
             + self.reward.serialized_length()
     }
@@ -215,7 +216,7 @@ impl FromBytes for Bid {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
-        let (release_era, bytes) = FromBytes::from_bytes(bytes)?;
+        let (release_timestamp_millis, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegators, bytes) = FromBytes::from_bytes(bytes)?;
         let (reward, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
@@ -223,7 +224,7 @@ impl FromBytes for Bid {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                release_era,
+                release_timestamp_millis,
                 delegators,
                 reward,
             },
@@ -237,7 +238,7 @@ mod tests {
     use alloc::collections::BTreeMap;
 
     use crate::{
-        auction::{Bid, DelegationRate, EraId},
+        auction::{Bid, DelegationRate},
         bytesrepr, AccessRights, URef, U512,
     };
 
@@ -247,7 +248,7 @@ mod tests {
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
-            release_era: Some(EraId::max_value() - 1),
+            release_timestamp_millis: Some(u64::max_value() - 1),
             delegators: BTreeMap::default(),
             reward: U512::one(),
         };

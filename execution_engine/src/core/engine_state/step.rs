@@ -54,15 +54,16 @@ impl EvictItem {
 pub struct StepRequest {
     pub pre_state_hash: Blake2bHash,
     pub protocol_version: ProtocolVersion,
-
     pub slash_items: Vec<SlashItem>,
     pub reward_items: Vec<RewardItem>,
     pub evict_items: Vec<EvictItem>,
     pub run_auction: bool,
     pub next_era_id: EraId,
+    pub era_end_timestamp_millis: u64,
 }
 
 impl StepRequest {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pre_state_hash: Blake2bHash,
         protocol_version: ProtocolVersion,
@@ -71,6 +72,7 @@ impl StepRequest {
         evict_items: Vec<EvictItem>,
         run_auction: bool,
         next_era_id: EraId,
+        era_end_timestamp_millis: u64,
     ) -> Self {
         Self {
             pre_state_hash,
@@ -80,6 +82,7 @@ impl StepRequest {
             evict_items,
             run_auction,
             next_era_id,
+            era_end_timestamp_millis,
         }
     }
 

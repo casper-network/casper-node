@@ -5,9 +5,9 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, proof_of_stake,
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
-    Phase, ProtocolVersion, RuntimeArgs,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, mint,
+    proof_of_stake, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
+    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -656,12 +656,12 @@ pub enum DirectSystemContractCall {
 impl DirectSystemContractCall {
     fn entry_point_name(&self) -> &str {
         match self {
-            DirectSystemContractCall::Slash => "slash",
-            DirectSystemContractCall::RunAuction => "run_auction",
-            DirectSystemContractCall::DistributeRewards => "distribute",
-            DirectSystemContractCall::FinalizePayment => "finalize_payment",
-            DirectSystemContractCall::CreatePurse => "create",
-            DirectSystemContractCall::Transfer => "transfer",
+            DirectSystemContractCall::Slash => auction::METHOD_SLASH,
+            DirectSystemContractCall::RunAuction => auction::METHOD_RUN_AUCTION,
+            DirectSystemContractCall::DistributeRewards => auction::METHOD_DISTRIBUTE,
+            DirectSystemContractCall::FinalizePayment => proof_of_stake::METHOD_FINALIZE_PAYMENT,
+            DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
+            DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
             DirectSystemContractCall::GetPaymentPurse => proof_of_stake::METHOD_GET_PAYMENT_PURSE,
         }
