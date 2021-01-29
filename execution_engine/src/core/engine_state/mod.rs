@@ -8,6 +8,8 @@ pub mod execute_request;
 pub mod execution_effect;
 pub mod execution_result;
 pub mod genesis;
+#[macro_use]
+mod macros;
 pub mod op;
 pub mod query;
 pub mod run_genesis_request;
@@ -518,17 +520,11 @@ where
         deploy_item: DeployItem,
         proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
-        let protocol_data = match self.state.get_protocol_data(protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => {
-                let error = Error::InvalidProtocolVersion(protocol_version);
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(Error::Exec(
-                    error.into(),
-                )));
-            }
+        let protocol_data: ProtocolData = protocol_data!(self.state, protocol_version);
+
+        let preprocessor = {
+            let wasm_config = protocol_data.wasm_config();
+            Preprocessor::new(*wasm_config)
         };
 
         let tracking_copy = match self.tracking_copy(prestate_hash) {
@@ -1087,18 +1083,7 @@ where
 
         // Obtain current protocol data for given version
         // do this first, as there is no reason to proceed if protocol version is invalid
-        let protocol_data = match self.state.get_protocol_data(protocol_version) {
-            Ok(Some(protocol_data)) => protocol_data,
-            Ok(None) => {
-                let error = Error::InvalidProtocolVersion(protocol_version);
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(Error::Exec(
-                    error.into(),
-                )));
-            }
-        };
+        let protocol_data: ProtocolData = protocol_data!(self.state, protocol_version);
 
         let preprocessor = {
             let wasm_config = protocol_data.wasm_config();
