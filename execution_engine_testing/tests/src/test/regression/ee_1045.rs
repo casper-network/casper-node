@@ -3,23 +3,22 @@ use std::collections::BTreeSet;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_AUCTION_DELAY,
+        DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH},
+    auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
     runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
-const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 
 const ARG_AMOUNT: &str = "amount";
-const ARG_ENTRY_POINT: &str = "entry_point";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
@@ -88,6 +87,9 @@ fn should_run_ee_1045_squash_validators() {
         tmp
     };
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
@@ -142,24 +144,6 @@ fn should_run_ee_1045_squash_validators() {
         .build()
     };
 
-    let run_auction_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_RUN_AUCTION
-        },
-    )
-    .build();
-
-    let run_auction_request_2 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_RUN_AUCTION
-        },
-    )
-    .build();
-
     //
     // ROUND 1
     //
@@ -169,10 +153,8 @@ fn should_run_ee_1045_squash_validators() {
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
-    builder
-        .exec(run_auction_request_1)
-        .commit()
-        .expect_success();
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     let post_round_1_auction_weights = builder
         .get_validator_weights(new_era_id)
@@ -195,10 +177,7 @@ fn should_run_ee_1045_squash_validators() {
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
-    builder
-        .exec(run_auction_request_2)
-        .commit()
-        .expect_success();
+    builder.run_auction(timestamp_millis);
 
     let post_round_2_auction_weights = builder
         .get_validator_weights(new_era_id)

@@ -23,7 +23,7 @@ use casper_types::Key;
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 
@@ -137,24 +137,26 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let system_config = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
-    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
+    let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+    let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
     ExecConfig::new(
         accounts,
         wasm_config,
         system_config,
         validator_slots,
         auction_delay,
-        locked_funds_period,
+        locked_funds_period_millis,
         round_seigniorage_rate,
         unbonding_delay,
+        genesis_timestamp_millis,
     )
 }
 
 pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let name = DEFAULT_CHAIN_NAME.to_string();
-    let timestamp = DEFAULT_GENESIS_TIMESTAMP;
+    let timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
     let protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let exec_config = create_exec_config(accounts);
 

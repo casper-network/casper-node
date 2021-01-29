@@ -37,7 +37,8 @@ pub use wasm_test_builder::{
 
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
-pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
+/// Default lock-in period of 90 days
+pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: EraId = 14;
 
@@ -51,12 +52,14 @@ pub const DEFAULT_UNBONDING_DELAY: EraId = 14;
 pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
-pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 0;
+pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 pub const DEFAULT_GAS_PRICE: u64 = 1;
 pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 
 pub const ARG_AMOUNT: &str = "amount";
+
+pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
 
 // NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
 // `*FOO` into `FOO` back and forth.
@@ -101,15 +104,16 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         *DEFAULT_SYSTEM_CONFIG,
         DEFAULT_VALIDATOR_SLOTS,
         DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     )
 });
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
     GenesisConfig::new(
         DEFAULT_CHAIN_NAME.to_string(),
-        DEFAULT_GENESIS_TIMESTAMP,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
     )

@@ -6,7 +6,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
+        TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -228,6 +230,9 @@ fn should_distribute_delegation_rate_zero() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -242,7 +247,8 @@ fn should_distribute_delegation_rate_zero() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -453,6 +459,9 @@ fn should_distribute_delegation_rate_half() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -467,7 +476,8 @@ fn should_distribute_delegation_rate_half() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -642,6 +652,9 @@ fn should_distribute_delegation_rate_full() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -656,7 +669,8 @@ fn should_distribute_delegation_rate_full() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -836,6 +850,9 @@ fn should_distribute_uneven_delegation_rate_zero() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -850,7 +867,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1030,6 +1048,9 @@ fn should_distribute_by_factor() {
         validator_3_add_bid_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1044,7 +1065,8 @@ fn should_distribute_by_factor() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1221,6 +1243,9 @@ fn should_distribute_by_factor_regardless_of_stake() {
         validator_3_add_bid_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1235,7 +1260,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1413,6 +1439,9 @@ fn should_distribute_by_factor_uneven() {
         validator_3_add_bid_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1427,7 +1456,8 @@ fn should_distribute_by_factor_uneven() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1674,6 +1704,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         delegator_3_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1688,7 +1721,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -1984,6 +2018,9 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         delegator_1_validator_3_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1998,7 +2035,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -2247,6 +2285,9 @@ fn should_prevent_theft_of_validator_reward() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -2256,7 +2297,8 @@ fn should_prevent_theft_of_validator_reward() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -2373,6 +2415,9 @@ fn should_prevent_theft_of_delegator_reward() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -2382,7 +2427,8 @@ fn should_prevent_theft_of_delegator_reward() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -2579,6 +2625,9 @@ fn should_increase_total_supply_after_distribute() {
         delegator_1_validator_3_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -2599,7 +2648,8 @@ fn should_increase_total_supply_after_distribute() {
 
     // run auction
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let post_auction_supply = builder.total_supply(None);
@@ -2727,6 +2777,9 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         delegator_2_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -2741,7 +2794,8 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -2824,10 +2878,8 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..5 {
-        let run_request = super::make_run_auction_request()
-            .with_protocol_version(new_protocol_version)
-            .build();
-        builder.exec(run_request).commit().expect_success();
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {

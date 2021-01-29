@@ -3,7 +3,8 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -12,7 +13,7 @@ use casper_types::{
     account::AccountHash,
     auction::{
         Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
-        METHOD_RUN_AUCTION, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     mint::TOTAL_SUPPLY_KEY,
     runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
@@ -108,18 +109,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     //
     // Unlock funds of genesis validators
     //
-
-    for _ in 0..=DEFAULT_LOCKED_FUNDS_PERIOD {
-        let run_auction_request = ExecuteRequestBuilder::contract_call_by_hash(
-            SYSTEM_ADDR,
-            auction,
-            METHOD_RUN_AUCTION,
-            runtime_args! {},
-        )
-        .build();
-
-        builder.exec(run_auction_request).expect_success().commit();
-    }
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
 
     //
     // Partial unbond through undelegate on other genesis validator

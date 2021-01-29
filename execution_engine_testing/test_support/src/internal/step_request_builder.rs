@@ -16,6 +16,7 @@ pub struct StepRequestBuilder {
     evict_items: Vec<EvictItem>,
     run_auction: bool,
     next_era_id: u64,
+    era_end_timestamp_millis: u64,
 }
 
 impl StepRequestBuilder {
@@ -58,6 +59,11 @@ impl StepRequestBuilder {
         self
     }
 
+    pub fn with_era_end_timestamp_millis(mut self, era_end_timestamp_millis: u64) -> Self {
+        self.era_end_timestamp_millis = era_end_timestamp_millis;
+        self
+    }
+
     pub fn build(self) -> StepRequest {
         StepRequest::new(
             self.parent_state_hash,
@@ -67,6 +73,7 @@ impl StepRequestBuilder {
             self.evict_items,
             self.run_auction,
             self.next_era_id,
+            self.era_end_timestamp_millis,
         )
     }
 }
@@ -80,6 +87,7 @@ impl Default for StepRequestBuilder {
             reward_items: Default::default(),
             evict_items: Default::default(),
             next_era_id: Default::default(),
+            era_end_timestamp_millis: Default::default(),
             run_auction: true, //<-- run_auction by default
         }
     }
