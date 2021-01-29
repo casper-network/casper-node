@@ -7,7 +7,7 @@ use tracing::{trace, warn};
 
 use crate::{
     components::consensus::{
-        consensus_protocol::FinalizedBlock,
+        consensus_protocol::{FinalizedBlock, TerminalBlockData},
         highway_core::{
             highway::Highway,
             state::{Observation, State, Weight},
@@ -61,10 +61,15 @@ impl<C: Context> FinalityDetector<C> {
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let unit = state.unit(bhash);
-            let rewards = if state.is_terminal_block(bhash) {
+            let terminal_block_data = if state.is_terminal_block(bhash) {
                 let rewards = rewards::compute_rewards(state, bhash);
                 let rewards_iter = rewards.enumerate();
-                Some(rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect())
+                let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
+                let inactive_validators = unit.panorama.iter_none().map(to_id).collect();
+                Some(TerminalBlockData {
+                    rewards,
+                    inactive_validators,
+                })
             } else {
                 None
             };
@@ -72,7 +77,7 @@ impl<C: Context> FinalityDetector<C> {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
                 height: block.height,
-                rewards,
+                terminal_block_data,
                 equivocators: unit.panorama.iter_faulty().map(to_id).collect(),
                 proposer: to_id(unit.creator),
             };
