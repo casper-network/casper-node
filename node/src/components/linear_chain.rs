@@ -337,13 +337,13 @@ where
                 }),
             Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
                 effect_builder
-                    .get_block_at_height(height)
+                    .get_block_at_height_from_storage(height)
                     .event(move |block| {
                         Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder)
                     })
             }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => effect_builder
-                .get_block_at_height(height)
+                .get_block_at_height_from_storage(height)
                 .event(move |maybe_block| {
                     Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender)
                 }),
@@ -527,7 +527,13 @@ where
                 if signature_known {
                     Effects::new()
                 } else {
-                    let mut effects = broadcast_new_fs(effect_builder, fs.clone());
+                    let message = Message::FinalitySignature(fs.clone());
+                    let mut effects = effect_builder.broadcast_message(message).ignore();
+                    effects.extend(
+                        effect_builder
+                            .announce_finality_signature(fs.clone())
+                            .ignore(),
+                    );
                     block.append_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
@@ -560,22 +566,4 @@ where
             }
         }
     }
-}
-
-// Constructs a network message and gossips the finality signature.
-fn broadcast_new_fs<I, REv>(
-    effect_builder: EffectBuilder<REv>,
-    fs: Box<FinalitySignature>,
-) -> Effects<Event<I>>
-where
-    REv: From<StorageRequest>
-        + From<ConsensusRequest>
-        + From<NetworkRequest<I, Message>>
-        + From<LinearChainAnnouncement>
-        + From<ContractRuntimeRequest>
-        + Send,
-    I: Display + Send + 'static,
-{
-    let message = Message::FinalitySignature(fs);
-    effect_builder.broadcast_message(message).ignore()
 }

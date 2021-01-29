@@ -43,6 +43,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
@@ -59,6 +60,21 @@ use crate::{
 };
 use quanta::Clock;
 pub use queue_kind::QueueKind;
+
+/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
+const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
+static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
+    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
+        .map(|threshold_str| {
+            u64::from_str(&threshold_str).unwrap_or_else(|error| {
+                panic!(
+                    "can't parse env var {}={} as a u64: {}",
+                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
+                )
+            })
+        })
+        .ok()
+});
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -191,6 +207,14 @@ pub trait Finalize: Sized {
     }
 }
 
+/// Represents memory statistics in bytes.
+struct AllocatedMem {
+    /// Total allocated memory in bytes.
+    allocated: u64,
+    /// Total system memory in bytes.
+    total: u64,
+}
+
 /// A runner for a reactor.
 ///
 /// The runner manages a reactors event queue and reactor itself and can run it either continuously
@@ -223,6 +247,9 @@ where
 
     /// An accurate, possible TSC-supporting clock.
     clock: Clock,
+
+    /// Last queue dump timestamp
+    last_queue_dump: Option<Timestamp>,
 }
 
 /// Metric data for the Runner
@@ -348,6 +375,7 @@ where
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
             clock: Clock::new(),
+            last_queue_dump: None,
         })
     }
 
@@ -391,6 +419,22 @@ where
             {
                 self.reactor.update_metrics(event_queue);
                 self.last_metrics = now;
+            }
+
+            if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
+                debug!(%allocated, %total, "memory allocated");
+                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
+                    let threshold_bytes = threshold_mb * 1024 * 1024;
+                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
+                        info!(
+                            %allocated,
+                            %total,
+                            %threshold_bytes,
+                            "node has allocated enough memory to trigger queue dump"
+                        );
+                        self.dump_queues().await;
+                    }
+                }
             }
         }
 
@@ -443,20 +487,64 @@ where
         self.event_count += 1;
     }
 
-    // Handles dumping queue contents to files in /tmp.
-    async fn dump_queues(&self) {
+    /// Gets both the allocated and total memory from sys-info + jemalloc
+    fn get_allocated_memory() -> Option<AllocatedMem> {
+        let mem_info = match sys_info::mem_info() {
+            Ok(mem_info) => mem_info,
+            Err(error) => {
+                warn!(%error, "unable to get mem_info using sys-info");
+                return None;
+            }
+        };
+
+        // mem_info gives us kB
+        let total = mem_info.total * 1024;
+
+        // whereas jemalloc_ctl gives us the numbers in bytes
+        match jemalloc_epoch::mib() {
+            Ok(mib) => {
+                // jemalloc_ctl requires you to advance the epoch to update its stats
+                if let Err(advance_error) = mib.advance() {
+                    warn!(%advance_error, "unable to advance jemalloc epoch");
+                }
+            }
+            Err(error) => {
+                warn!(%error, "unable to get epoch::mib from jemalloc");
+                return None;
+            }
+        }
+        let allocated = match jemalloc_allocated::mib() {
+            Ok(allocated_mib) => match allocated_mib.read() {
+                Ok(value) => value as u64,
+                Err(error) => {
+                    warn!(%error, "unable to read allocated mib using jemalloc");
+                    return None;
+                }
+            },
+            Err(error) => {
+                warn!(%error, "unable to get allocated mib using jemalloc");
+                return None;
+            }
+        };
+
+        Some(AllocatedMem { allocated, total })
+    }
+
+    /// Handles dumping queue contents to files in /tmp.
+    async fn dump_queues(&mut self) {
         let timestamp = Timestamp::now();
+        self.last_queue_dump = Some(timestamp);
         let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
         let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
             Ok(file) => file,
             Err(error) => {
-                tracing::error!(%error, "could not create output file ({}) for queue snapshot", output_fn);
+                warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
                 return;
             }
         });
 
         if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
-            tracing::error!(%error, "could not serialize snapshot to {}", output_fn);
+            warn!(%error, "could not serialize snapshot to {}", output_fn);
             return;
         }
 
@@ -464,12 +552,12 @@ where
         let mut file = match File::create(&debug_dump_filename) {
             Ok(file) => file,
             Err(error) => {
-                tracing::error!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
+                warn!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
                 return;
             }
         };
         if let Err(error) = self.scheduler.debug_dump(&mut file).await {
-            tracing::error!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
+            warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
             return;
         }
     }

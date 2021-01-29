@@ -198,7 +198,7 @@ where
                 maybe_id: Some(BlockIdentifier::Height(height)),
                 responder,
             }) => effect_builder
-                .get_block_at_height(height)
+                .get_block_at_height_from_storage(height)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Height(height)),
                     result: Box::new(result),
@@ -208,7 +208,7 @@ where
                 maybe_id: None,
                 responder,
             }) => effect_builder
-                .get_highest_block()
+                .get_highest_block_from_storage()
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: None,
                     result: Box::new(result),
@@ -264,7 +264,7 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
                 let (last_added_block, peers, chainspec_info) = join!(
-                    effect_builder.get_highest_block(),
+                    effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info()
                 );

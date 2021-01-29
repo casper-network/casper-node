@@ -39,7 +39,7 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         account_key: Key,
-        verified: bool,
+        verified: Option<bool>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
 }
@@ -90,7 +90,7 @@ impl Display for Event {
                 verified,
                 ..
             } => {
-                let prefix = if *verified { "" } else { "in" };
+                let prefix = if verified.unwrap_or(false) { "" } else { "in" };
                 write!(
                     formatter,
                     "{}valid deploy {} from account {}",

@@ -105,7 +105,7 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
-        deploy_acceptor::Error,
+        deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -598,7 +598,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_deploy_received(
         self,
         deploy: Box<Deploy>,
-        responder: Option<Responder<Result<(), Error>>>,
+        responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     ) where
         REv: From<RpcServerAnnouncement>,
     {
@@ -704,8 +704,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests block at height.
-    pub(crate) async fn get_block_at_height(self, height: u64) -> Option<Block>
+    /// Requests the block at the given height.
+    pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
@@ -717,12 +717,43 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the highest block.
-    pub(crate) async fn get_highest_block(self) -> Option<Block>
+    pub(crate) async fn get_highest_block_from_storage(self) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the switch block at the given era ID.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn get_switch_block_at_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockAtEraId { era_id, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest switch block.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn get_highest_switch_block_from_storage(self) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestSwitchBlock { responder },
             QueueKind::Regular,
         )
         .await
@@ -1202,12 +1233,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> bool
+    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
     where
         REv: From<ContractRuntimeRequest>,
         REv: From<StorageRequest>,
     {
-        if let Some(block) = self.get_highest_block().await {
+        if let Some(block) = self.get_highest_block_from_storage().await {
             let state_hash = (*block.state_root_hash()).into();
             let query_request = QueryRequest::new(state_hash, account_key, vec![]);
             if let Ok(QueryResult::Success { value, .. }) =
@@ -1218,13 +1249,13 @@ impl<REv> EffectBuilder<REv> {
                     let balance_request = BalanceRequest::new(state_hash, purse_uref);
                     if let Ok(balance_result) = self.get_balance(balance_request).await {
                         if let Some(motes) = balance_result.motes() {
-                            return motes >= &*MAX_PAYMENT;
+                            return Some(motes >= &*MAX_PAYMENT);
                         }
                     }
                 }
             }
         }
-        false
+        None
     }
 
     /// Requests a query be executed on the Contract Runtime component.
@@ -1332,8 +1363,8 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
         let future_validators = self.get_validator_weights_by_era_id(request);
-        let future_booking_block = self.get_block_at_height(booking_block_height);
-        let future_key_block = self.get_block_at_height(key_block_height);
+        let future_booking_block = self.get_block_at_height_from_storage(booking_block_height);
+        let future_key_block = self.get_block_at_height_from_storage(key_block_height);
         join!(future_validators, future_booking_block, future_key_block)
     }
 

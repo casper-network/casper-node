@@ -64,8 +64,6 @@ fn withdraw_validator_reward(
     validator: PublicKey,
     protocol_version: Option<ProtocolVersion>,
 ) -> U512 {
-    const REWARD_PURSE: &str = "reward_purse"; // used in auction-bids contract
-
     let withdraw_request = {
         let mut builder = ExecuteRequestBuilder::standard(
             sender,
@@ -83,18 +81,19 @@ fn withdraw_validator_reward(
         builder.build()
     };
 
+    let account = builder.get_account(sender).expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(withdraw_request).commit().expect_success();
 
-    let validator_reward_purse = builder
-        .get_account(sender)
-        .expect("should have account")
-        .named_keys()
-        .get(REWARD_PURSE)
-        .expect("should have key")
-        .into_uref()
-        .expect("should be uref");
+    let balance_after = builder.get_purse_balance(account.main_purse());
 
-    builder.get_purse_balance(validator_reward_purse)
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
+    balance_after + transaction_fee - balance_before
 }
 
 fn withdraw_delegator_reward(
@@ -104,8 +103,6 @@ fn withdraw_delegator_reward(
     delegator: PublicKey,
     protocol_version: Option<ProtocolVersion>,
 ) -> U512 {
-    const REWARD_PURSE: &str = "reward_purse"; // used in auction-bids contract
-
     let withdraw_request = {
         let mut builder = ExecuteRequestBuilder::standard(
             sender,
@@ -122,18 +119,19 @@ fn withdraw_delegator_reward(
         builder.build()
     };
 
+    let account = builder.get_account(sender).expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(withdraw_request).commit().expect_success();
 
-    let validator_reward_purse = builder
-        .get_account(sender)
-        .expect("should have account")
-        .named_keys()
-        .get(REWARD_PURSE)
-        .expect("should have key")
-        .into_uref()
-        .expect("should be uref");
+    let balance_after = builder.get_purse_balance(account.main_purse());
 
-    builder.get_purse_balance(validator_reward_purse)
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
+    balance_after + transaction_fee - balance_before
 }
 #[ignore]
 #[test]

@@ -453,8 +453,11 @@ impl DocExample for FinalizedBlock {
 
 impl From<BlockHeader> for FinalizedBlock {
     fn from(header: BlockHeader) -> Self {
-        let proto_block =
-            ProtoBlock::new(header.deploy_hashes().clone(), vec![], header.random_bit);
+        let proto_block = ProtoBlock::new(
+            header.deploy_hashes().clone(),
+            header.transfer_hashes().clone(),
+            header.random_bit,
+        );
 
         FinalizedBlock {
             proto_block,
@@ -1040,7 +1043,10 @@ impl BlockLike for Block {
 
 impl BlockLike for BlockHeader {
     fn deploys(&self) -> Vec<&DeployHash> {
-        self.deploy_hashes().iter().collect()
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+            .collect()
     }
 }
 
