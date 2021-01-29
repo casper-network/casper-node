@@ -52,7 +52,6 @@ pub use components::{
     deploy_acceptor::Config as DeployAcceptorConfig,
     event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
-    gossiper::{Config as GossipConfig, Error as GossipError},
     rest_server::Config as RestServerConfig,
     rpc_server::{rpcs, Config as RpcServerConfig},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},

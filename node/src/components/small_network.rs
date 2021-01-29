@@ -1,3 +1,4 @@
+#![allow(dead_code)] // TODO: Remove small_network entirely.
 //! Fully connected overlay network
 //!
 //! The *small network* is an overlay network where each node participating is connected to every
@@ -37,8 +38,6 @@ mod error;
 mod event;
 mod gossiped_address;
 mod message;
-#[cfg(test)]
-mod tests;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -79,7 +78,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
 use self::error::Result;
-pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
+pub(crate) use self::{event::Event, message::Message};
 use crate::{
     components::{network::ENABLE_SMALL_NET_ENV_VAR, Component},
     crypto::hash::Digest,
@@ -324,7 +323,8 @@ where
             ));
         } else {
             // Start broadcasting our public listening address.
-            effects.extend(model.gossip_our_address(effect_builder));
+            // XXX Gossiper removed. Small network is no longer functional.
+            // effects.extend(model.gossip_our_address(effect_builder));
         }
 
         Ok((model, effects))
@@ -587,20 +587,6 @@ where
             }
         }
         self.terminate_if_isolated(effect_builder)
-    }
-
-    /// Gossips our public listening address, and schedules the next such gossip round.
-    fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        let our_address = GossipedAddress::new(self.public_address);
-        let mut effects = effect_builder
-            .announce_gossip_our_address(our_address)
-            .ignore();
-        effects.extend(
-            effect_builder
-                .set_timeout(self.gossip_interval)
-                .event(|_| Event::GossipOurAddress),
-        );
-        effects
     }
 
     /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they
@@ -903,14 +889,6 @@ where
             Event::NetworkInfoRequest {
                 req: NetworkInfoRequest::GetPeers { responder },
             } => responder.respond(self.peers()).ignore(),
-            Event::GossipOurAddress => {
-                let mut effects = self.gossip_our_address(effect_builder);
-                effects.extend(self.enforce_symmetric_connections(effect_builder));
-                effects
-            }
-            Event::PeerAddressReceived(gossiped_address) => {
-                self.connect_to_peer_if_required(gossiped_address.into())
-            }
         }
     }
 }

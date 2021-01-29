@@ -16,8 +16,6 @@ pub struct MemoryMetrics {
     mem_network: IntGauge,
     /// Estimated heap memory usage of small_network component.
     mem_small_network: IntGauge,
-    /// Estimated heap memory usage of address_gossiper component.
-    mem_address_gossiper: IntGauge,
     /// Estimated heap memory usage of the configuration for the validator node.
     mem_config: IntGauge,
     /// Estimated heap memory usage for the chainspec loader component.
@@ -57,10 +55,6 @@ impl MemoryMetrics {
         let mem_small_network = IntGauge::new(
             "joiner_mem_small_network",
             "small network memory usage in bytes",
-        )?;
-        let mem_address_gossiper = IntGauge::new(
-            "joiner_mem_address_gossiper",
-            "address_gossiper memory usage in bytes",
         )?;
         let mem_config = IntGauge::new("joiner_mem_config", "config memory usage in bytes")?;
         let mem_chainspec_loader = IntGauge::new(
@@ -109,7 +103,6 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_metrics.clone()))?;
         registry.register(Box::new(mem_network.clone()))?;
         registry.register(Box::new(mem_small_network.clone()))?;
-        registry.register(Box::new(mem_address_gossiper.clone()))?;
         registry.register(Box::new(mem_config.clone()))?;
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_storage.clone()))?;
@@ -127,7 +120,6 @@ impl MemoryMetrics {
             mem_metrics,
             mem_network,
             mem_small_network,
-            mem_address_gossiper,
             mem_config,
             mem_chainspec_loader,
             mem_storage,
@@ -151,7 +143,6 @@ impl MemoryMetrics {
         let metrics = reactor.metrics.estimate_heap_size() as i64;
         let network = reactor.network.estimate_heap_size() as i64;
         let small_network = reactor.small_network.estimate_heap_size() as i64;
-        let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let config = reactor.config.estimate_heap_size() as i64;
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
@@ -167,7 +158,6 @@ impl MemoryMetrics {
         let total = metrics
             + network
             + small_network
-            + address_gossiper
             + config
             + chainspec_loader
             + storage
@@ -184,7 +174,6 @@ impl MemoryMetrics {
         self.mem_metrics.set(metrics);
         self.mem_network.set(network);
         self.mem_small_network.set(small_network);
-        self.mem_address_gossiper.set(address_gossiper);
         self.mem_config.set(config);
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_storage.set(storage);
@@ -206,7 +195,6 @@ impl MemoryMetrics {
         %metrics,
         %network,
         %small_network,
-        %address_gossiper,
         %config ,
         %chainspec_loader,
         %storage ,
@@ -242,9 +230,6 @@ impl Drop for MemoryMetrics {
             .unwrap_or_else(
                 |err| warn!(%err, "did not expect deregistering joiner_mem_small_network to fail"),
             );
-        self.registry
-            .unregister(Box::new(self.mem_address_gossiper.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_address_gossiper to fail"));
         self.registry
             .unregister(Box::new(self.mem_config.clone()))
             .unwrap_or_else(

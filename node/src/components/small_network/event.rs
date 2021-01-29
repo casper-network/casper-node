@@ -8,7 +8,7 @@ use derive_more::From;
 use serde::Serialize;
 use tokio::net::TcpStream;
 
-use super::{Error, GossipedAddress, Message, NodeId, Transport};
+use super::{Error, Message, NodeId, Transport};
 use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 
 #[derive(Debug, From, Serialize)]
@@ -66,11 +66,6 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         req: NetworkInfoRequest<NodeId>,
     },
-
-    /// The node should gossip its own public listening address.
-    GossipOurAddress,
-    /// We received a peer's public listening address via gossip.
-    PeerAddressReceived(GossipedAddress),
 }
 
 impl<P: Display> Display for Event<P> {
@@ -129,10 +124,6 @@ impl<P: Display> Display for Event<P> {
             ),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
-            Event::GossipOurAddress => write!(f, "gossip our address"),
-            Event::PeerAddressReceived(gossiped_address) => {
-                write!(f, "received gossiped peer address {}", gossiped_address)
-            }
         }
     }
 }

@@ -13,7 +13,6 @@ pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
 pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
-pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
 pub(crate) mod linear_chain_fast_sync;
 pub(crate) mod linear_chain_sync;

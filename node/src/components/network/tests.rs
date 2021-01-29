@@ -103,11 +103,6 @@ impl Reactor for TestReactor {
             }) => {
                 todo!("{} -- {}", sender, payload);
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
-                _gossiped_address,
-            )) => {
-                unreachable!();
-            }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
                 // We do not care about the announcement of new peers in this test.
                 Effects::new()

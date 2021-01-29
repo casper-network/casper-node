@@ -8,8 +8,8 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus, gossiper, small_network::GossipedAddress},
-    types::{Deploy, FinalitySignature, Item, Tag},
+    components::consensus,
+    types::{FinalitySignature, Item, Tag},
 };
 
 /// Reactor message.
@@ -18,12 +18,6 @@ pub enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
-    /// Deploy gossiper component message.
-    #[from]
-    DeployGossiper(gossiper::Message<Deploy>),
-    /// Address gossiper component message.
-    #[from]
-    AddressGossiper(gossiper::Message<GossipedAddress>),
     /// Request to get an item from a peer.
     GetRequest {
         /// The type tag of the requested item.
@@ -63,8 +57,6 @@ impl Debug for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
-            Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
-            Message::AddressGossiper(ga) => f.debug_tuple("AddressGossiper").field(&ga).finish(),
             Message::GetRequest { tag, serialized_id } => f
                 .debug_struct("GetRequest")
                 .field("tag", tag)
@@ -89,10 +81,6 @@ impl Display for Message {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
-            Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
-            Message::AddressGossiper(gossiped_address) => {
-                write!(f, "AddressGossiper::({})", gossiped_address)
-            }
             Message::GetRequest { tag, serialized_id } => {
                 write!(f, "GetRequest({}-{:10})", tag, HexFmt(serialized_id))
             }

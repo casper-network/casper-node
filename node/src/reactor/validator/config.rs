@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, ConsensusConfig, ContractRuntimeConfig,
-    DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig,
+    DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig, RestServerConfig,
     RpcServerConfig, SmallNetworkConfig, StorageConfig,
 };
 
@@ -28,8 +28,6 @@ pub struct Config {
     pub rpc_server: RpcServerConfig,
     /// On-disk storage configuration.
     pub storage: StorageConfig,
-    /// Gossip protocol configuration.
-    pub gossip: GossipConfig,
     /// Fetcher configuration.
     pub fetcher: FetcherConfig,
     /// Contract runtime configuration.

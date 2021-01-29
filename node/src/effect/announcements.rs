@@ -13,7 +13,7 @@ use serde::Serialize;
 use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
-    components::{consensus::EraId, deploy_acceptor::Error, small_network::GossipedAddress},
+    components::{consensus::EraId, deploy_acceptor::Error},
     effect::Responder,
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
@@ -33,8 +33,6 @@ pub enum NetworkAnnouncement<I, P> {
         /// The message payload
         payload: P,
     },
-    /// Our public listening address should be gossiped across the network.
-    GossipOurAddress(GossipedAddress),
     /// A new peer connection was established.
     ///
     /// IMPORTANT NOTE: This announcement is a work-around for some short-term functionality. Do
@@ -53,7 +51,6 @@ where
             NetworkAnnouncement::MessageReceived { sender, payload } => {
                 write!(formatter, "received from {}: {}", sender, payload)
             }
-            NetworkAnnouncement::GossipOurAddress(_) => write!(formatter, "gossip our address"),
             NetworkAnnouncement::NewPeer(id) => {
                 write!(formatter, "new peer connection established to {}", id)
             }

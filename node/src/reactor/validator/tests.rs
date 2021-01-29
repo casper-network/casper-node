@@ -13,7 +13,7 @@ use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, share
 use casper_types::{PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, gossiper, gossiper::Gossiper, small_network, storage},
+    components::{consensus::EraId, small_network, storage},
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
@@ -91,7 +91,6 @@ impl TestChain {
             } else {
                 small_network::Config::default_local_net(first_node_port)
             },
-            gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
 
