@@ -1,6 +1,6 @@
 #![cfg(test)]
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::BTreeSet,
     fmt::{self, Debug, Display, Formatter},
     iter,
     sync::Arc,
@@ -34,10 +34,10 @@ use crate::{
         Responder,
     },
     protocol::Message as NodeMessage,
-    reactor::{self, EventQueueHandle, Runner},
+    reactor::{self, EventQueueHandle},
     testing::{
-        network::{Network, NetworkedReactor},
-        ConditionCheckReactor, TestRng,
+        network::{Network, NetworkedReactor, Nodes},
+        TestRng,
     },
     types::{Deploy, NodeId, Tag},
     utils::{Loadable, WithDir},
@@ -377,7 +377,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     }
 
     // Check every node has every deploy stored locally.
-    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let all_deploys_held = |nodes: &Nodes<Reactor>| {
         nodes.values().all(|runner| {
             let hashes = runner.reactor().inner().storage.get_all_deploy_hashes();
             all_deploy_hashes == hashes
@@ -466,7 +466,7 @@ async fn should_get_from_alternate_source() {
     debug!("advanced time by {} secs", secs_to_advance);
 
     // Check node 0 has the deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let deploy_held = |nodes: &Nodes<Reactor>| {
         let runner = nodes.get(&node_ids[2]).unwrap();
         runner
             .reactor()
@@ -538,7 +538,7 @@ async fn should_timeout_gossip_response() {
     debug!("advanced time by {} secs", secs_to_advance);
 
     // Check every node has every deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let deploy_held = |nodes: &Nodes<Reactor>| {
         nodes.values().all(|runner| {
             runner
                 .reactor()

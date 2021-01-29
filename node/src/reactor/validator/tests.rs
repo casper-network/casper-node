@@ -251,3 +251,20 @@ async fn run_equivocator_network() {
     net.settle_on(&mut rng, is_in_era(5), Duration::from_secs(90))
         .await;
 }
+
+#[tokio::test]
+async fn test_gossiping() {
+    let mut rng = crate::new_rng();
+
+    const NETWORK_SIZE: usize = 5;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // There currently is no clean interface to begin gossiping an item. Instead the ill-named
+    // `ItemReceived` event needs to be manually injected to begin the gossiping process.
+    net.node_mut(0);
+}

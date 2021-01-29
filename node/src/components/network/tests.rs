@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     env,
     fmt::{self, Debug, Display, Formatter},
     time::{Duration, Instant},
@@ -9,6 +9,7 @@ use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
 use serde::Serialize;
+use testing::network::Nodes;
 use tracing::{debug, info};
 
 use super::{Config, Event as NetworkEvent, Network as NetworkComponent, ENABLE_SMALL_NET_ENV_VAR};
@@ -18,11 +19,10 @@ use crate::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
     },
     protocol,
-    reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
+    reactor::{self, EventQueueHandle, Finalize, Reactor},
     testing::{
         self, init_logging,
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
     },
     types::NodeId,
     NodeRng,
@@ -131,10 +131,7 @@ impl Finalize for TestReactor {
 }
 
 /// Checks whether or not a given network with a unhealthy node is completely connected.
-fn network_is_complete(
-    blocklist: &HashSet<NodeId>,
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
-) -> bool {
+fn network_is_complete(blocklist: &HashSet<NodeId>, nodes: &Nodes<TestReactor>) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;

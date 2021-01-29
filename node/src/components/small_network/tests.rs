@@ -4,7 +4,7 @@
 //! instances of `small_net` arranged in a network.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     env,
     fmt::{self, Debug, Display, Formatter},
     time::{Duration, Instant},
@@ -14,6 +14,7 @@ use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
+use testing::network::Nodes;
 use tracing::{debug, info};
 
 use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
@@ -30,11 +31,10 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol,
-    reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
+    reactor::{self, EventQueueHandle, Finalize, Reactor},
     testing::{
         self, init_logging,
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
     },
     types::NodeId,
     utils::Source,
@@ -194,10 +194,7 @@ impl Finalize for TestReactor {
 }
 
 /// Checks whether or not a given network with a unhealthy node is completely connected.
-fn network_is_complete(
-    blocklist: &HashSet<NodeId>,
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
-) -> bool {
+fn network_is_complete(blocklist: &HashSet<NodeId>, nodes: &Nodes<TestReactor>) -> bool {
     // We need at least one node.
     if nodes.is_empty() {
         return false;
