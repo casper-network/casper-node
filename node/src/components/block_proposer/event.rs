@@ -72,7 +72,7 @@ impl DeployType {
     }
 
     /// Asks if the variant is Wasm.
-    pub fn is_wasm(&self) -> bool {
+    pub fn is_other(&self) -> bool {
         matches!(self, DeployType::Other { .. })
     }
 }
