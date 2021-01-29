@@ -553,29 +553,17 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
-        let mint_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, protocol_data.mint())
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
+        let mint_contract = get_contract!(tracking_copy, protocol_data.mint(), correlation_id);
 
         let mut mint_named_keys = mint_contract.named_keys().to_owned();
         let mut mint_extra_keys: Vec<Key> = vec![];
         let mint_base_key = Key::from(protocol_data.mint());
 
-        let pos_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, protocol_data.proof_of_stake())
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
+        let pos_contract = get_contract!(
+            tracking_copy,
+            protocol_data.proof_of_stake(),
+            correlation_id
+        );
 
         let mut pos_named_keys = pos_contract.named_keys().to_owned();
         let pos_extra_keys: Vec<Key> = vec![];
@@ -1312,15 +1300,11 @@ where
         let payment_purse_balance: Motes = {
             // Get proof of stake system contract details
             // payment_code_spec_6: system contract validity
-            let proof_of_stake_contract = match tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, protocol_data.proof_of_stake())
-            {
-                Ok(contract) => contract,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
+            let proof_of_stake_contract = get_contract!(
+                tracking_copy,
+                protocol_data.proof_of_stake(),
+                correlation_id
+            );
 
             // Get payment purse Key from proof of stake contract
             // payment_code_spec_6: system contract validity
@@ -1578,13 +1562,11 @@ where
 
             // The PoS keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let proof_of_stake_contract = match finalization_tc
-                .borrow_mut()
-                .get_contract(correlation_id, protocol_data.proof_of_stake())
-            {
-                Ok(info) => info,
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
-            };
+            let proof_of_stake_contract = get_contract!(
+                finalization_tc,
+                protocol_data.proof_of_stake(),
+                correlation_id
+            );
 
             let mut proof_of_stake_keys = proof_of_stake_contract.named_keys().to_owned();
 

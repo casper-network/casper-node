@@ -38,3 +38,18 @@ macro_rules! system_module {
         }
     }};
 }
+
+/// Returns a contract under specified hash.
+/// If not present, returns precondition failure.
+macro_rules! get_contract {
+    ($tracking_copy: ident, $contract_hash: expr, $correlation_id: ident) => {{
+        match $tracking_copy
+            .borrow_mut()
+            .get_contract($correlation_id, $contract_hash)
+        {
+            Ok(contract) => contract,
+            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
+        }
+    }};
+}
+
