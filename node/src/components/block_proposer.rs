@@ -223,7 +223,7 @@ impl BlockProposerReady {
         match event {
             Event::Request(BlockProposerRequest::RequestProtoBlock(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
-                    warn!(
+                    debug!(
                         request_next_finalized = %request.next_finalized,
                         self_next_finalized = %self.sets.next_finalized,
                         "received request before finalization announcement"
@@ -280,7 +280,7 @@ impl BlockProposerReady {
                 deploys.extend(transfers);
 
                 if height > self.sets.next_finalized {
-                    warn!(
+                    debug!(
                         %height,
                         next_finalized = %self.sets.next_finalized,
                         "received finalized blocks out of order; queueing"
