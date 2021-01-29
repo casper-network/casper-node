@@ -30,7 +30,6 @@ static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DELEGATOR_1
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
-// Taken from nctl's default which will be the same as w
 const VALIDATOR_STAKE: u64 = 1_000_000_000;
 const DELEGATE_AMOUNT: u64 = 1_234_567;
 
