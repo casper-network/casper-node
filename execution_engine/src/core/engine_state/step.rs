@@ -63,6 +63,7 @@ pub struct StepRequest {
 }
 
 impl StepRequest {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pre_state_hash: Blake2bHash,
         protocol_version: ProtocolVersion,
