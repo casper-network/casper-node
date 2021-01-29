@@ -127,7 +127,7 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2020-0123
 
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
@@ -152,6 +152,7 @@ check: \
 	build \
 	check-format \
 	lint \
+	audit \
 	test \
 	test-contracts
 
