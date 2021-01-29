@@ -256,7 +256,7 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
         peer: NodeId,
     ) -> Effects<Event<BlockByHeight>> {
         effect_builder
-            .get_block_at_height(id)
+            .get_block_at_height_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,

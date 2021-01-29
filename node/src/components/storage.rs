@@ -40,15 +40,15 @@ mod lmdb_ext;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+use std::{collections::BTreeSet, convert::TryFrom};
 use std::{
-    collections::BTreeMap,
+    collections::{btree_map::Entry, BTreeMap},
     fmt::{self, Display, Formatter},
     fs, io,
     path::PathBuf,
     sync::Arc,
 };
-#[cfg(test)]
-use std::{collections::BTreeSet, convert::TryFrom};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -65,6 +65,7 @@ use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
+    components::consensus::EraId,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -127,11 +128,21 @@ pub enum Error {
     /// Found a duplicate block-at-height index entry.
     #[error("duplicate entries for block at height {height}: {first} / {second}")]
     DuplicateBlockIndex {
-        /// Height at which duplication was found.
+        /// Height at which duplicate was found.
         height: u64,
         /// First block hash encountered at `height`.
         first: BlockHash,
         /// Second block hash encountered at `height`.
+        second: BlockHash,
+    },
+    /// Found a duplicate switch-block-at-era-id index entry.
+    #[error("duplicate entries for switch block at era id {era_id}: {first} / {second}")]
+    DuplicateEraIdIndex {
+        /// Era ID at which duplicate was found.
+        era_id: EraId,
+        /// First block hash encountered at `era_id`.
+        first: BlockHash,
+        /// Second block hash encountered at `era_id`.
         second: BlockHash,
     },
     /// Attempted to store a duplicate execution result.
@@ -179,8 +190,10 @@ pub struct Storage {
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
-    /// Block height index.
+    /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
+    /// A map of era ID to switch block ID.
+    switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// Chainspec cache.
     chainspec_cache: Option<Arc<Chainspec>>,
 }
@@ -254,6 +267,7 @@ impl Storage {
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
+        let mut switch_block_era_id_index = BTreeMap::new();
         let block_txn = env.begin_ro_txn()?;
         let mut cursor = block_txn.open_ro_cursor(block_db)?;
 
@@ -267,15 +281,11 @@ impl Storage {
                 block.hash().as_ref(),
                 "found corrupt block in database"
             );
-            let header = block.header();
-            if let Some(duplicate) = block_height_index.insert(header.height(), *block.hash()) {
-                // A duplicated block in our backing store causes us to exit early.
-                return Err(Error::DuplicateBlockIndex {
-                    height: header.height(),
-                    first: header.hash(),
-                    second: duplicate,
-                });
-            }
+            insert_to_block_indices(
+                &mut block_height_index,
+                &mut switch_block_era_id_index,
+                &block,
+            )?;
         }
         info!("block store reindexing complete");
         drop(cursor);
@@ -291,6 +301,7 @@ impl Storage {
             transfer_db,
             state_store_db,
             block_height_index,
+            switch_block_era_id_index,
             chainspec_cache: None,
         })
     }
@@ -342,23 +353,11 @@ impl Storage {
                 let mut txn = self.env.begin_rw_txn()?;
                 let outcome = txn.put_value(self.block_db, block.hash(), &block, true)?;
                 txn.commit()?;
-
-                if outcome {
-                    // If we are attempting to insert a duplicate block, return with error.
-                    if let Some(first) = self.block_height_index.get(&block.height()) {
-                        if first != block.hash() {
-                            return Err(Error::DuplicateBlockIndex {
-                                height: block.height(),
-                                first: *first,
-                                second: *block.hash(),
-                            });
-                        }
-                    }
-                }
-
-                self.block_height_index
-                    .insert(block.height(), *block.hash());
-
+                insert_to_block_indices(
+                    &mut self.block_height_index,
+                    &mut self.switch_block_era_id_index,
+                    block.as_ref(),
+                )?;
                 responder.respond(outcome).ignore()
             }
             StorageRequest::GetBlock {
@@ -379,6 +378,24 @@ impl Storage {
                             .last()
                             .and_then(|&height| {
                                 self.get_block_by_height(&mut txn, height).transpose()
+                            })
+                            .transpose()?,
+                    )
+                    .ignore()
+            }
+            StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
+                .respond(self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?)
+                .ignore(),
+            StorageRequest::GetHighestSwitchBlock { responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                responder
+                    .respond(
+                        self.switch_block_era_id_index
+                            .keys()
+                            .last()
+                            .and_then(|&era_id| {
+                                self.get_switch_block_by_era_id(&mut txn, era_id)
+                                    .transpose()
                             })
                             .transpose()?,
                     )
@@ -620,6 +637,18 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
+    fn get_switch_block_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<Block>, LmdbExtError> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
+
     /// Retrieves a single block in a separate transaction from storage.
     fn get_single_block<Tx: Transaction>(
         &self,
@@ -673,6 +702,45 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
     }
+}
+
+/// Inserts the relevant entries to the two indices.
+///
+/// If a duplicate entry is encountered, neither index is updated and an error is returned.
+fn insert_to_block_indices(
+    block_height_index: &mut BTreeMap<u64, BlockHash>,
+    switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
+    block: &Block,
+) -> Result<(), Error> {
+    if let Some(first) = block_height_index.get(&block.height()) {
+        if first != block.hash() {
+            return Err(Error::DuplicateBlockIndex {
+                height: block.height(),
+                first: *first,
+                second: *block.hash(),
+            });
+        }
+    }
+
+    if block.header().switch_block() {
+        match switch_block_era_id_index.entry(block.header().era_id()) {
+            Entry::Vacant(entry) => {
+                let _ = entry.insert(*block.hash());
+            }
+            Entry::Occupied(entry) => {
+                if entry.get() != block.hash() {
+                    return Err(Error::DuplicateEraIdIndex {
+                        era_id: block.header().era_id(),
+                        first: *entry.get(),
+                        second: *block.hash(),
+                    });
+                }
+            }
+        }
+    }
+
+    let _ = block_height_index.insert(block.height(), *block.hash());
+    Ok(())
 }
 
 /// On-disk storage configuration.

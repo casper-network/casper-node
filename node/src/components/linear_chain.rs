@@ -336,13 +336,13 @@ where
                 }),
             Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
                 effect_builder
-                    .get_block_at_height(height)
+                    .get_block_at_height_from_storage(height)
                     .event(move |block| {
                         Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder)
                     })
             }
             Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => effect_builder
-                .get_block_at_height(height)
+                .get_block_at_height_from_storage(height)
                 .event(move |maybe_block| {
                     Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender)
                 }),

@@ -84,6 +84,16 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         error: io::Error,
     },
+    /// A new entry was added/updated in the Kademlia routing table.
+    RoutingTableUpdated {
+        /// New peer.
+        #[serde(skip_serializing)]
+        peer: libp2p::PeerId,
+        // Note: `addresses` is omitted, as we are not interested in this information currently.
+        /// Potentially evicted peer (to make room in the routing table).
+        #[serde(skip_serializing)]
+        old_peer: Option<libp2p::PeerId>,
+    },
 
     // ========== Other events ==========
     /// A network request made by a different component.
@@ -159,6 +169,14 @@ impl<P: Display> Display for Event<P> {
                 reason: Err(error),
             } => write!(f, "closed listener {:?}: {}", addresses, error),
             Event::ListenerError { error } => write!(f, "non-fatal listener error: {}", error),
+            Event::RoutingTableUpdated { peer, old_peer } => {
+                write!(f, "added {} to routing table", peer)?;
+                if let Some(old_peer_id) = old_peer {
+                    write!(f, " (replaces {})", old_peer_id)?;
+                }
+                Ok(())
+            }
+
             Event::NetworkRequest { request } => write!(f, "request: {}", request),
             Event::NetworkInfoRequest { info_request } => {
                 write!(f, "info request: {}", info_request)
