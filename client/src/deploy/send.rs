@@ -25,15 +25,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     fn run(matches: &ArgMatches<'_>) {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let verbose = common::verbose::get(matches);
+        let mut verbosity_level = common::verbose::get(matches);
         let input_path = creation_common::input::get(matches);
 
-        let response =
-            casper_client::send_deploy_file(maybe_rpc_id, node_address, verbose, &input_path)
-                .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+        let response = casper_client::send_deploy_file(
+            maybe_rpc_id,
+            node_address,
+            verbosity_level,
+            &input_path,
+        )
+        .unwrap_or_else(|error| panic!("response error: {}", error));
+
+        if verbosity_level == 0 {
+            verbosity_level += 1
+        }
+        casper_client::pretty_print_at_level(&response, verbosity_level);
     }
 }

@@ -329,7 +329,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
         if cdef.has_effects() {
             component_instantiations.push(quote!(
-                let (#field_ident, effects) = #component_type::new::<#event_ident>(#(#constructor_args),*)
+                let (#field_ident, effects) = #component_type::new(#(#constructor_args),*)
                     #suffix;
                 let wrapped_effects: crate::effect::Effects<#event_ident> = crate::reactor::wrap_effects(#event_ident::#variant_ident, effects);
 

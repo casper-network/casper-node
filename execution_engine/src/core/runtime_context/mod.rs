@@ -362,36 +362,20 @@ where
         Ok(())
     }
 
-    pub fn read_ls(&mut self, key_bytes: &[u8]) -> Result<Option<CLValue>, Error> {
-        let actual_length = key_bytes.len();
-        let hash: [u8; KEY_HASH_LENGTH] =
-            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
-                actual: actual_length,
-                expected: KEY_HASH_LENGTH,
-            })?;
-        let key: Key = hash.into();
-        let maybe_stored_value = self
+    pub fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
+        match self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &key)
-            .map_err(Into::into)?;
-
-        if let Some(stored_value) = maybe_stored_value {
-            Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?))
-        } else {
-            Ok(None)
+            .read(self.correlation_id, &Key::Hash(purse_uref.addr()))
+            .map_err(Into::into)?
+        {
+            Some(stored_value) => Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?)),
+            None => Ok(None),
         }
     }
 
-    pub fn write_ls(&mut self, key_bytes: &[u8], cl_value: CLValue) -> Result<(), Error> {
-        let actual_length = key_bytes.len();
-        let hash: [u8; KEY_HASH_LENGTH] =
-            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
-                actual: actual_length,
-                expected: KEY_HASH_LENGTH,
-            })?;
-        self.metered_write_gs_unsafe(hash, cl_value)?;
-        Ok(())
+    pub fn write_purse_uref(&mut self, purse_uref: URef, cl_value: CLValue) -> Result<(), Error> {
+        self.metered_write_gs_unsafe(Key::Hash(purse_uref.addr()), cl_value)
     }
 
     pub fn read_gs(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {

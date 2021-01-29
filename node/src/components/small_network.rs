@@ -81,7 +81,7 @@ use tracing::{debug, error, info, trace, warn};
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
-    components::{network::ENABLE_LIBP2P_ENV_VAR, Component},
+    components::{network::ENABLE_SMALL_NET_ENV_VAR, Component},
     crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
@@ -197,8 +197,9 @@ where
         let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
         let our_id = NodeId::from(certificate.public_key_fingerprint());
 
-        // If the env var "CASPER_ENABLE_LIBP2P" is defined, exit without starting the server.
-        if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+        // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without starting the
+        // server.
+        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
             let model = SmallNetwork {
                 certificate,
                 secret_key: Arc::new(secret_key),
@@ -788,7 +789,7 @@ where
                     Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
                     Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
                 }
-            } else if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
+            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
         }

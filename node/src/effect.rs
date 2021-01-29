@@ -96,16 +96,15 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
-        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
-        deploy_acceptor::Error,
+        contract_runtime::EraValidatorsRequest,
+        deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -407,7 +406,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Run and end effect immediately.
     ///
-    /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
+    /// Can be used to trigger events from effects when combined with `.event`. Do not use this to
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
     #[allow(clippy::manual_async_fn)]
@@ -598,7 +597,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_deploy_received(
         self,
         deploy: Box<Deploy>,
-        responder: Option<Responder<Result<(), Error>>>,
+        responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     ) where
         REv: From<RpcServerAnnouncement>,
     {
@@ -704,8 +703,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests block at height.
-    pub(crate) async fn get_block_at_height(self, height: u64) -> Option<Block>
+    /// Requests the block at the given height.
+    pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
@@ -717,12 +716,43 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the highest block.
-    pub(crate) async fn get_highest_block(self) -> Option<Block>
+    pub(crate) async fn get_highest_block_from_storage(self) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the switch block at the given era ID.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn get_switch_block_at_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockAtEraId { era_id, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest switch block.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn get_highest_switch_block_from_storage(self) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestSwitchBlock { responder },
             QueueKind::Regular,
         )
         .await
@@ -1106,8 +1136,10 @@ impl<REv> EffectBuilder<REv> {
         .transpose()
         .unwrap_or_else(|err| {
             let type_name = type_name::<T>();
-            warn!(%type_name, %err, "could not deserialize state from storage");
-            None
+            panic!(
+                "could not deserialize state from storage type name {:?} err {:?}",
+                type_name, err
+            );
         })
     }
 
@@ -1200,12 +1232,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> bool
+    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
     where
         REv: From<ContractRuntimeRequest>,
         REv: From<StorageRequest>,
     {
-        if let Some(block) = self.get_highest_block().await {
+        if let Some(block) = self.get_highest_block_from_storage().await {
             let state_hash = (*block.state_root_hash()).into();
             let query_request = QueryRequest::new(state_hash, account_key, vec![]);
             if let Ok(QueryResult::Success { value, .. }) =
@@ -1216,13 +1248,13 @@ impl<REv> EffectBuilder<REv> {
                     let balance_request = BalanceRequest::new(state_hash, purse_uref);
                     if let Ok(balance_result) = self.get_balance(balance_request).await {
                         if let Some(motes) = balance_result.motes() {
-                            return motes >= &*MAX_PAYMENT;
+                            return Some(motes >= &*MAX_PAYMENT);
                         }
                     }
                 }
             }
         }
-        false
+        None
     }
 
     /// Requests a query be executed on the Contract Runtime component.
@@ -1280,23 +1312,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_validator_weights_by_era_id(
-        self,
-        request: ValidatorWeightsByEraIdRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Runs the end of era step using the system smart contract.
     pub(crate) async fn run_step(
         self,
@@ -1318,21 +1333,15 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the set of validators, the booking block and the key block for a new era
     pub(crate) async fn create_new_era(
         self,
-        request: ValidatorWeightsByEraIdRequest,
         booking_block_height: u64,
         key_block_height: u64,
-    ) -> (
-        Result<Option<ValidatorWeights>, GetEraValidatorsError>,
-        Option<Block>,
-        Option<Block>,
-    )
+    ) -> (Option<Block>, Option<Block>)
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        let future_validators = self.get_validator_weights_by_era_id(request);
-        let future_booking_block = self.get_block_at_height(booking_block_height);
-        let future_key_block = self.get_block_at_height(key_block_height);
-        join!(future_validators, future_booking_block, future_key_block)
+        let future_booking_block = self.get_block_at_height_from_storage(booking_block_height);
+        let future_key_block = self.get_block_at_height_from_storage(key_block_height);
+        join!(future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.

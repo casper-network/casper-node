@@ -8,10 +8,11 @@ mod peer_discovery;
 mod protocol_id;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_bulk_gossip;
 
 use std::{
     collections::{HashMap, HashSet},
-    convert::Infallible,
     env,
     fmt::{self, Debug, Display, Formatter},
     io,
@@ -29,11 +30,12 @@ use libp2p::{
     gossipsub::GossipsubEvent,
     identify::IdentifyEvent,
     identity::Keypair,
+    kad::KademliaEvent,
     noise::{self, NoiseConfig, X25519Spec},
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    yamux::Config as YamuxConfig,
+    yamux::{Config as YamuxConfig, WindowUpdateMode},
     Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::seq::IteratorRandom;
@@ -67,8 +69,8 @@ use crate::{
     NodeRng,
 };
 
-/// Env var which, if it's defined at runtime, enables the libp2p server.
-pub(crate) const ENABLE_LIBP2P_ENV_VAR: &str = "CASPER_ENABLE_LIBP2P";
+/// Env var which, if it's defined at runtime, enables the small_network component.
+pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
 
 /// A helper trait whose bounds represent the requirements for a payload that `Network` can
 /// work with.
@@ -104,10 +106,16 @@ enum ConnectionState {
 }
 
 #[derive(DataSize)]
-pub(crate) struct Network<REv, P> {
+pub struct Network<REv, P> {
     our_id: NodeId,
+    /// The set of peers which are current connected to our node. Kept in sync with libp2p
+    /// internals.
     #[data_size(skip)]
     peers: HashMap<NodeId, ConnectedPoint>,
+    /// The set of peers whose address we currently know. Kept in sync with the internal Kademlia
+    /// routing table.
+    #[data_size(skip)]
+    seen_peers: HashSet<PeerId>,
     #[data_size(skip)]
     listening_addresses: Vec<Multiaddr>,
     /// The addresses of known peers to be used for bootstrapping, and their connection states.
@@ -167,11 +175,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let (gossip_message_sender, gossip_message_receiver) = mpsc::unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
-        // If the env var "CASPER_ENABLE_LIBP2P" is not defined, exit without starting the server.
-        if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
+        // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without starting the server.
+        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
             let network = Network {
                 our_id,
                 peers: HashMap::new(),
+                seen_peers: HashSet::new(),
                 listening_addresses: vec![],
                 known_addresses,
                 is_bootstrap_node: config.is_bootstrap_node,
@@ -195,13 +204,38 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .into_authentic(&our_id_keys)
             .map_err(Error::StaticKeypairSigning)?;
 
+        let mut yamux_config = YamuxConfig::default();
+
+        // The are two `WindowUpdateMode`s available in yamux, both of which control how a receiver
+        // communicates its available receive capacity to a sender.
+        //
+        // With `OnReceive`, as soon as the yamux module has received bytes, it considers them
+        // handled. `OnRead` requires the data to be removed from yamuxs internal buffer instead,
+        // which happens via `AsyncRead`.
+        //
+        // If a lot of data is sent and at the same time there is not enough time allocated to the
+        // task that reads from the buffer, a `WindowUpdateMode` of `OnReceive` will cause the
+        // internal buffer to overflow. For this reason, we set it `OnRead`.
+        //
+        // `OnRead`, according to the docs (see below), is in danger of deadlocking under certain
+        // conditions. In our networking design, sending and receiving are independent and we have
+        // infinite send- and receive buffers on a message, so we should not run into this issue.
+        //
+        // Note that this comment is based on some logs from a failed test network, as the exact
+        // conditions for these errors are hard to reproduce reliably. We rely on reasoning alone
+        // here, so evidence to the contrary of the above assumptions should be examined closely.
+        //
+        // Please read https://docs.rs/yamux/0.8.0/yamux/enum.WindowUpdateMode.html for more
+        // information.
+        yamux_config.set_window_update_mode(WindowUpdateMode::OnRead);
+
         // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `yamux`
         // for multiplexing of substreams on a TCP stream.
         let transport = TokioTcpConfig::new()
             .nodelay(true)
             .upgrade(upgrade::Version::V1)
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(YamuxConfig::default())
+            .multiplex(yamux_config)
             .timeout(config.connection_setup_timeout.into())
             .boxed();
 
@@ -242,6 +276,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let network = Network {
             our_id,
             peers: HashMap::new(),
+            seen_peers: HashSet::new(),
             listening_addresses: vec![],
             known_addresses,
             is_bootstrap_node: config.is_bootstrap_node,
@@ -390,6 +425,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     pub(crate) fn node_id(&self) -> NodeId {
         self.our_id.clone()
     }
+
+    /// Returns the set of known addresses.
+    #[cfg(test)]
+    pub(crate) fn seen_peers(&self) -> &HashSet<PeerId> {
+        &self.seen_peers
+    }
 }
 
 fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
@@ -532,6 +573,11 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Gossiper(event)) => {
             return handle_gossip_event(swarm, event_queue, event).await;
         }
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::Kademlia(KademliaEvent::RoutingUpdated {
+            peer,
+            old_peer,
+            ..
+        })) => Event::RoutingTableUpdated { peer, old_peer },
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Kademlia(event)) => {
             debug!(?event, "{}: new kademlia event", our_id(swarm));
             return;
@@ -742,7 +788,7 @@ impl<REv: Send + 'static, P: Send + 'static> Finalize for Network<REv, P> {
                     Ok(_) => debug!("{}: server exited cleanly", self.our_id),
                     Err(err) => error!(%err, "{}: could not join server task cleanly", self.our_id),
                 }
-            } else if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
                 warn!("{}: server shutdown while already shut down", self.our_id)
             }
         }
@@ -763,7 +809,7 @@ impl<REv, P> Debug for Network<REv, P> {
 
 impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
     type Event = Event<P>;
-    type ConstructionError = Infallible;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
@@ -839,6 +885,22 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 debug!(%error, "{}: non-fatal listener error", self.our_id);
                 Effects::new()
             }
+            Event::RoutingTableUpdated { peer, old_peer } => {
+                if let Some(ref old_peer_id) = old_peer {
+                    self.seen_peers.remove(old_peer_id);
+                }
+                self.seen_peers.insert(peer.clone());
+
+                debug!(
+                    inserted = ?peer,
+                    removed = ?old_peer,
+                    new_size = self.seen_peers.len(),
+                    "kademlia routing table updated"
+                );
+
+                Effects::new()
+            }
+
             Event::NetworkRequest {
                 request:
                     NetworkRequest::SendMessage {

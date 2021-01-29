@@ -4,7 +4,11 @@ use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::consensus::traits::Context, types::Timestamp, NodeRng};
+use crate::{
+    components::consensus::{traits::Context, ActionId, TimerId},
+    types::Timestamp,
+    NodeRng,
+};
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -39,6 +43,16 @@ pub struct EraEnd<VID> {
     /// This is a measure of the value of each validator's contribution to consensus, in
     /// fractions of the configured maximum block reward.
     pub(crate) rewards: BTreeMap<VID, u64>,
+    /// Validators that haven't produced any unit during the era.
+    pub(crate) inactive_validators: Vec<VID>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TerminalBlockData<C: Context> {
+    /// The rewards for participating in consensus.
+    pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
+    /// The list of validators that haven't produced any units.
+    pub(crate) inactive_validators: Vec<C::ValidatorId>,
 }
 
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
@@ -52,10 +66,11 @@ pub(crate) struct FinalizedBlock<C: Context> {
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
-    /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
-    pub(crate) rewards: Option<BTreeMap<C::ValidatorId, u64>>,
     /// The validators known to be faulty as seen by this block.
     pub(crate) equivocators: Vec<C::ValidatorId>,
+    /// If this is a terminal block, i.e. the last one to be finalized, this contains additional
+    /// data like rewards and inactive validators.
+    pub(crate) terminal_block_data: Option<TerminalBlockData<C>>,
     /// Proposer of this value
     pub(crate) proposer: C::ValidatorId,
 }
@@ -66,7 +81,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
     InvalidIncomingMessage(Vec<u8>, I, Error),
-    ScheduleTimer(Timestamp),
+    ScheduleTimer(Timestamp, TimerId),
+    QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
     CreateNewBlock {
         block_context: BlockContext,
@@ -116,6 +132,14 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
+        timer_id: TimerId,
+        rng: &mut NodeRng,
+    ) -> Vec<ProtocolOutcome<I, C>>;
+
+    /// Triggers a queued action.
+    fn handle_action(
+        &mut self,
+        action_id: ActionId,
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
 

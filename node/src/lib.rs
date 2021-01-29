@@ -25,7 +25,9 @@
 extern crate test;
 
 pub mod components;
+mod config_migration;
 pub mod crypto;
+mod data_migration;
 pub mod effect;
 pub mod logging;
 pub mod protocol;
@@ -56,6 +58,8 @@ pub use components::{
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
+pub use config_migration::{migrate_config, Error as ConfigMigrationError};
+pub use data_migration::{migrate_data, Error as DataMigrationError};
 pub use types::NodeRng;
 pub use utils::OS_PAGE_SIZE;
 
