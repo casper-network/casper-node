@@ -483,7 +483,7 @@ where
                 height
             );
             if let Some(t) = terminal_block_data {
-                warn!(?t.rewards, "rewards are not verified yet");
+                warn!(?t.rewards, "rewards and inactive validators are not verified yet");
             }
             recipient.push_finalized(value);
         }

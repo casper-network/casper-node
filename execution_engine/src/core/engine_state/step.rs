@@ -40,11 +40,11 @@ impl RewardItem {
 }
 
 #[derive(Debug)]
-pub struct DisableItem {
+pub struct EvictItem {
     pub validator_id: PublicKey,
 }
 
-impl DisableItem {
+impl EvictItem {
     pub fn new(validator_id: PublicKey) -> Self {
         Self { validator_id }
     }
@@ -57,7 +57,7 @@ pub struct StepRequest {
 
     pub slash_items: Vec<SlashItem>,
     pub reward_items: Vec<RewardItem>,
-    pub disable_items: Vec<DisableItem>,
+    pub evict_items: Vec<EvictItem>,
     pub run_auction: bool,
     pub next_era_id: EraId,
 }
@@ -68,7 +68,7 @@ impl StepRequest {
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
-        disable_items: Vec<DisableItem>,
+        evict_items: Vec<EvictItem>,
         run_auction: bool,
         next_era_id: EraId,
     ) -> Self {
@@ -77,7 +77,7 @@ impl StepRequest {
             protocol_version,
             slash_items,
             reward_items,
-            disable_items,
+            evict_items,
             run_auction,
             next_era_id,
         }

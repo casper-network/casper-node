@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_execution_engine::core::engine_state::step::{
-    DisableItem, RewardItem, SlashItem, StepRequest,
+    EvictItem, RewardItem, SlashItem, StepRequest,
 };
 use casper_types::{bytesrepr, bytesrepr::ToBytes, PublicKey};
 
@@ -13,7 +13,7 @@ use crate::engine_server::{
 const PARENT_STATE_HASH: &str = "parent_state_hash";
 const REWARD_ITEMS: &str = "reward_items";
 const SLASH_ITEMS: &str = "slash_items";
-const DISABLE_ITEMS: &str = "disable_items";
+const DISABLE_ITEMS: &str = "evict_items";
 const VALIDATOR_ID: &str = "validator_id";
 
 impl TryFrom<ipc::SlashItem> for SlashItem {
@@ -71,11 +71,11 @@ impl TryFrom<RewardItem> for ipc::RewardItem {
     }
 }
 
-impl TryFrom<ipc::DisableItem> for DisableItem {
+impl TryFrom<ipc::EvictItem> for EvictItem {
     type Error = MappingError;
 
-    fn try_from(pb_disable_item: ipc::DisableItem) -> Result<Self, Self::Error> {
-        let bytes: Vec<u8> = pb_disable_item
+    fn try_from(pb_evict_item: ipc::EvictItem) -> Result<Self, Self::Error> {
+        let bytes: Vec<u8> = pb_evict_item
             .get_validator_id()
             .try_into()
             .map_err(|_| MappingError::Parsing(ParsingError(VALIDATOR_ID.to_string())))?;
@@ -83,16 +83,16 @@ impl TryFrom<ipc::DisableItem> for DisableItem {
         let validator_id: PublicKey =
             bytesrepr::deserialize(bytes).map_err(MappingError::Serialization)?;
 
-        Ok(DisableItem::new(validator_id))
+        Ok(EvictItem::new(validator_id))
     }
 }
 
-impl TryFrom<DisableItem> for ipc::DisableItem {
+impl TryFrom<EvictItem> for ipc::EvictItem {
     type Error = bytesrepr::Error;
 
-    fn try_from(disable_item: DisableItem) -> Result<Self, Self::Error> {
-        let mut result = ipc::DisableItem::new();
-        let bytes = disable_item.validator_id.to_bytes()?;
+    fn try_from(evict_item: EvictItem) -> Result<Self, Self::Error> {
+        let mut result = ipc::EvictItem::new();
+        let bytes = evict_item.validator_id.to_bytes()?;
         result.set_validator_id(bytes);
         Ok(result)
     }
@@ -131,13 +131,13 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             ret
         };
 
-        let disable_items = {
-            let mut ret: Vec<DisableItem> = vec![];
-            for item in pb_step_request.take_disable_items().into_iter() {
-                let disable_item: DisableItem = item
+        let evict_items = {
+            let mut ret: Vec<EvictItem> = vec![];
+            for item in pb_step_request.take_evict_items().into_iter() {
+                let evict_item: EvictItem = item
                     .try_into()
                     .map_err(|_| MappingError::Parsing(ParsingError(DISABLE_ITEMS.to_string())))?;
-                ret.push(disable_item);
+                ret.push(evict_item);
             }
             ret
         };
@@ -151,7 +151,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             protocol_version,
             slash_items,
             reward_items,
-            disable_items,
+            evict_items,
             run_auction,
             next_era_id,
         ))
@@ -186,15 +186,15 @@ impl TryFrom<StepRequest> for ipc::StepRequest {
         };
         result.set_reward_items(reward_items.into());
 
-        let disable_items = {
-            let mut ret: Vec<ipc::DisableItem> = vec![];
-            for item in step_request.disable_items.into_iter() {
+        let evict_items = {
+            let mut ret: Vec<ipc::EvictItem> = vec![];
+            for item in step_request.evict_items.into_iter() {
                 let ipc = item.try_into()?;
                 ret.push(ipc);
             }
             ret
         };
-        result.set_disable_items(disable_items.into());
+        result.set_evict_items(evict_items.into());
 
         Ok(result)
     }

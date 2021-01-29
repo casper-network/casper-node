@@ -19,7 +19,7 @@ use casper_execution_engine::{
         deploy_item::DeployItem,
         execute_request::ExecuteRequest,
         execution_result::{ExecutionResult as EngineExecutionResult, ExecutionResults},
-        step::{DisableItem, RewardItem, SlashItem, StepRequest, StepResult},
+        step::{EvictItem, RewardItem, SlashItem, StepRequest, StepResult},
     },
     storage::global_state::CommitResult,
 };
@@ -235,17 +235,17 @@ impl BlockExecutor {
                     .iter()
                     .map(|&vid| SlashItem::new(vid))
                     .collect();
-                let disable_items = era_end
+                let evict_items = era_end
                     .inactive_validators
                     .iter()
-                    .map(|&vid| DisableItem::new(vid))
+                    .map(|&vid| EvictItem::new(vid))
                     .collect();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
                     protocol_version: ProtocolVersion::V1_0_0,
                     reward_items,
                     slash_items,
-                    disable_items,
+                    evict_items,
                     run_auction: true,
                     next_era_id: state.finalized_block.era_id().successor().into(),
                 };
