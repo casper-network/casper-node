@@ -7,8 +7,7 @@ use crate::{
 };
 
 /// The seigniorage recipient details.
-#[cfg_attr(test, derive(Debug))]
-#[derive(Default, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
     stake: U512,
