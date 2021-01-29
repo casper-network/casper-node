@@ -527,16 +527,10 @@ where
             Preprocessor::new(*wasm_config)
         };
 
-        let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            Ok(None) => return Err(RootNotFound::new(prestate_hash)),
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-        };
-
-        let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
-            Preprocessor::new(*wasm_config)
-        };
+        // Create tracking copy (which functions as a deploy context)
+        // validation_spec_2: prestate_hash check
+        // do this second; as there is no reason to proceed if the prestate hash is invalid
+        let tracking_copy = tracking_copy!(self, prestate_hash);
 
         let system_module = {
             match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
@@ -1093,11 +1087,7 @@ where
         // Create tracking copy (which functions as a deploy context)
         // validation_spec_2: prestate_hash check
         // do this second; as there is no reason to proceed if the prestate hash is invalid
-        let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            Ok(None) => return Err(RootNotFound::new(prestate_hash)),
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-        };
+        let tracking_copy = tracking_copy!(self, prestate_hash);
 
         let system_module = {
             match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
