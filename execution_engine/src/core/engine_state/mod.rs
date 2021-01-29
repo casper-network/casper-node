@@ -1794,17 +1794,10 @@ where
 
         let preprocessor = Preprocessor::new(*protocol_data.wasm_config());
 
-        let auction_hash = protocol_data.auction();
-
-        let auction_contract = match tracking_copy
+        let auction_contract = tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, auction_hash)
-        {
-            Ok(contract) => contract,
-            Err(_) => {
-                return Ok(StepResult::PreconditionError);
-            }
-        };
+            .get_contract(correlation_id, protocol_data.auction())
+            .map_err(Error::from)?;
 
         let system_module = match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
             Ok(module) => module,
