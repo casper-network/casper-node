@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
@@ -12,11 +11,14 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
-    components::collector::Collectable, effect::EffectExt, reactor::Runner, testing,
-    testing::TestRng, types::NodeId, Chainspec,
+    components::collector::Collectable, effect::EffectExt, testing, testing::TestRng,
+    types::NodeId, Chainspec,
 };
 use casper_node_macros::reactor;
-use testing::{init_logging, network::NetworkedReactor, ConditionCheckReactor};
+use testing::{
+    init_logging,
+    network::{NetworkedReactor, Nodes},
+};
 
 use super::ENABLE_SMALL_NET_ENV_VAR;
 
@@ -195,9 +197,7 @@ async fn send_large_message_across_network() {
 }
 
 /// Checks if all nodes are connected to at least one other node.
-fn network_online(
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>,
-) -> bool {
+fn network_online(nodes: &Nodes<LoadTestingReactor>) -> bool {
     assert!(
         nodes.len() >= 2,
         "cannot check for an online network with less than 3 nodes"
@@ -226,7 +226,7 @@ fn network_online(
 fn others_received(
     payload_id: DummyPayloadId,
     sender: NodeId,
-) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool {
+) -> impl Fn(&Nodes<LoadTestingReactor>) -> bool {
     move |nodes| {
         nodes
             .values()

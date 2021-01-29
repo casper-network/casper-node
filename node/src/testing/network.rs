@@ -45,7 +45,11 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub struct Network<R: Reactor + NetworkedReactor> {
+pub struct Network<R>
+where
+    R: Reactor + NetworkedReactor,
+    R::NodeId: Ord,
+{
     /// Current network.
     nodes: Nodes<R>,
 }
@@ -300,7 +304,7 @@ impl<R> Finalize for Network<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::Event: Serialize,
-    R::NodeId: Send,
+    R::NodeId: Ord + Send,
     R::Error: From<prometheus::Error>,
 {
     fn finalize(self) -> BoxFuture<'static, ()> {
