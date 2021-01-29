@@ -6,9 +6,11 @@ mod item;
 pub mod json_compatibility;
 mod node_config;
 mod node_id;
+mod object;
 mod peers_map;
 mod status_feed;
 mod timestamp;
+mod unverified;
 
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]

@@ -13,7 +13,7 @@ use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, share
 use casper_types::{PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, gossiper, small_network, storage},
+    components::{consensus::EraId, gossiper, gossiper::Gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
@@ -266,5 +266,13 @@ async fn test_gossiping() {
 
     // There currently is no clean interface to begin gossiping an item. Instead the ill-named
     // `ItemReceived` event needs to be manually injected to begin the gossiping process.
-    net.node_mut(0);
+
+    // net.nth_node_mut(0).process_injected_effects(|eb| eb.gossip_deply(...))
+
+    // net.nth_node_mut(0).inject_event(
+    //     super::Event::DeployGossiper(Gossiper::Event::ItemReceived(todo!())),
+    //     crate::reactor::QueueKind::Regular,
+    // );
+
+    unimplemented!()
 }
