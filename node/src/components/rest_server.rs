@@ -115,7 +115,7 @@ where
         match event {
             Event::RestRequest(RestRequest::GetStatus { responder }) => async move {
                 let (last_added_block, peers, chainspec_info) = join!(
-                    effect_builder.get_highest_block(),
+                    effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info()
                 );

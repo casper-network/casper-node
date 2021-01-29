@@ -234,7 +234,6 @@ fn should_verify_isolated_auction_storage_is_free() {
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_SOURCE_PURSE => account.main_purse(),
             auction::ARG_AMOUNT => bond_amount,
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
