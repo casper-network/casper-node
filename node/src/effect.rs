@@ -96,15 +96,14 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
-        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
@@ -1313,23 +1312,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_validator_weights_by_era_id(
-        self,
-        request: ValidatorWeightsByEraIdRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Runs the end of era step using the system smart contract.
     pub(crate) async fn run_step(
         self,
@@ -1351,21 +1333,15 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the set of validators, the booking block and the key block for a new era
     pub(crate) async fn create_new_era(
         self,
-        request: ValidatorWeightsByEraIdRequest,
         booking_block_height: u64,
         key_block_height: u64,
-    ) -> (
-        Result<Option<ValidatorWeights>, GetEraValidatorsError>,
-        Option<Block>,
-        Option<Block>,
-    )
+    ) -> (Option<Block>, Option<Block>)
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        let future_validators = self.get_validator_weights_by_era_id(request);
         let future_booking_block = self.get_block_at_height_from_storage(booking_block_height);
         let future_key_block = self.get_block_at_height_from_storage(key_block_height);
-        join!(future_validators, future_booking_block, future_key_block)
+        join!(future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
