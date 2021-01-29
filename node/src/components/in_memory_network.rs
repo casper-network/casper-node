@@ -282,13 +282,12 @@
 use std::{
     any::Any,
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     convert::Infallible,
     fmt::{self, Display, Formatter},
     sync::{Arc, RwLock},
 };
 
-use rand::seq::IteratorRandom;
 use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
@@ -534,7 +533,7 @@ where
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
         Event(event): Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -565,30 +564,6 @@ where
                 };
 
                 responder.respond(()).ignore()
-            }
-            NetworkRequest::Gossip {
-                payload,
-                count,
-                exclude,
-                responder,
-            } => {
-                if let Ok(guard) = self.nodes.read() {
-                    let chosen: HashSet<_> = guard
-                        .keys()
-                        .filter(|&node_id| !exclude.contains(node_id) && node_id != &self.node_id)
-                        .cloned()
-                        .choose_multiple(rng, count)
-                        .into_iter()
-                        .collect();
-                    // Not terribly efficient, but will always get us the maximum amount of nodes.
-                    for dest in chosen.iter() {
-                        self.send(&guard, dest.clone(), payload.clone());
-                    }
-                    responder.respond(chosen).ignore()
-                } else {
-                    error!("network lock has been poisoned");
-                    responder.respond(Default::default()).ignore()
-                }
             }
         }
     }

@@ -113,14 +113,14 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        DeployMetadata, FinalitySignature, FinalizedBlock, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
 };
 use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+    LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -494,35 +494,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gossips a network message.
-    ///
-    /// A low-level "gossip" function, selects `count` randomly chosen nodes on the network,
-    /// excluding the indicated ones, and sends each a copy of the message.
-    ///
-    /// Returns the IDs of the chosen nodes.
-    pub async fn gossip_message<I, P>(
-        self,
-        payload: P,
-        count: usize,
-        exclude: HashSet<I>,
-    ) -> HashSet<I>
-    where
-        REv: From<NetworkRequest<I, P>>,
-        I: Send + 'static,
-        P: Send,
-    {
-        self.make_request(
-            |responder| NetworkRequest::Gossip {
-                payload,
-                count,
-                exclude,
-                responder,
-            },
-            QueueKind::Network,
-        )
-        .await
-    }
-
     /// Gets connected network peers.
     pub async fn network_peers<I>(self) -> BTreeMap<I, String>
     where
@@ -558,24 +529,6 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 NetworkAnnouncement::NewPeer(peer_id),
                 QueueKind::NetworkIncoming,
-            )
-            .await;
-    }
-
-    /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
-    pub(crate) async fn announce_complete_item_received_via_gossip<T: Item>(self, item: T::Id)
-    where
-        REv: From<GossiperAnnouncement<T>>,
-    {
-        assert!(
-            T::ID_IS_COMPLETE_ITEM,
-            "{} must be an item where the ID _is_ the complete item",
-            item
-        );
-        self.0
-            .schedule(
-                GossiperAnnouncement::NewCompleteItem(item),
-                QueueKind::Regular,
             )
             .await;
     }

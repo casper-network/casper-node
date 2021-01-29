@@ -100,19 +100,6 @@ pub enum NetworkRequest<I, P> {
         #[serde(skip_serializing)]
         responder: Responder<()>,
     },
-    /// Gossip a message to a random subset of peers.
-    Gossip {
-        /// Payload to gossip.
-        payload: P,
-        /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
-        count: usize,
-        /// Node IDs of nodes to exclude from gossiping to.
-        #[serde(skip_serializing)]
-        exclude: HashSet<I>,
-        /// Responder to be called when all messages are queued.
-        #[serde(skip_serializing)]
-        responder: Responder<HashSet<I>>,
-    },
 }
 
 impl<I, P> NetworkRequest<I, P> {
@@ -137,17 +124,6 @@ impl<I, P> NetworkRequest<I, P> {
                 payload: wrap_payload(payload),
                 responder,
             },
-            NetworkRequest::Gossip {
-                payload,
-                count,
-                exclude,
-                responder,
-            } => NetworkRequest::Gossip {
-                payload: wrap_payload(payload),
-                count,
-                exclude,
-                responder,
-            },
         }
     }
 }
@@ -165,7 +141,6 @@ where
             NetworkRequest::Broadcast { payload, .. } => {
                 write!(formatter, "broadcast: {}", payload)
             }
-            NetworkRequest::Gossip { payload, .. } => write!(formatter, "gossip: {}", payload),
         }
     }
 }

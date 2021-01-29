@@ -270,16 +270,6 @@ impl<I> Source<I> {
     }
 }
 
-impl<I: Clone> Source<I> {
-    /// If `self` represents a peer, returns its ID, otherwise returns `None`.
-    pub(crate) fn node_id(&self) -> Option<I> {
-        match self {
-            Source::Peer(node_id) => Some(node_id.clone()),
-            Source::Client => None,
-        }
-    }
-}
-
 impl<I: Display> Display for Source<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {

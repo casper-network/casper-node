@@ -62,7 +62,6 @@ use futures::{
 };
 use openssl::pkey;
 use pkey::{PKey, Private};
-use rand::seq::IteratorRandom;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::TcpStream,
@@ -335,39 +334,6 @@ where
         for peer_id in self.outgoing.keys() {
             self.send_message(peer_id.clone(), msg.clone());
         }
-    }
-
-    /// Queues a message to `count` random nodes on the network.
-    fn gossip_message(
-        &self,
-        rng: &mut NodeRng,
-        msg: Message<P>,
-        count: usize,
-        exclude: HashSet<NodeId>,
-    ) -> HashSet<NodeId> {
-        let peer_ids = self
-            .outgoing
-            .keys()
-            .filter(|&peer_id| !exclude.contains(peer_id))
-            .choose_multiple(rng, count);
-
-        if peer_ids.len() != count {
-            // TODO - set this to `warn!` once we are normally testing with networks large enough to
-            //        make it a meaningful and infrequent log message.
-            trace!(
-                our_id=%self.our_id,
-                wanted = count,
-                selected = peer_ids.len(),
-                "could not select enough random nodes for gossiping, not enough non-excluded \
-                outgoing connections"
-            );
-        }
-
-        for &peer_id in &peer_ids {
-            self.send_message(peer_id.clone(), msg.clone());
-        }
-
-        peer_ids.into_iter().cloned().collect()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -794,7 +760,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -872,19 +838,6 @@ where
                 // We're given a message to broadcast.
                 self.broadcast_message(Message::Payload(payload));
                 responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                req:
-                    NetworkRequest::Gossip {
-                        payload,
-                        count,
-                        exclude,
-                        responder,
-                    },
-            } => {
-                // We're given a message to gossip.
-                let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
-                responder.respond(sent_to).ignore()
             }
             Event::NetworkInfoRequest {
                 req: NetworkInfoRequest::GetPeers { responder },

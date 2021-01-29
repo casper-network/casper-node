@@ -38,7 +38,6 @@ use libp2p::{
     yamux::{Config as YamuxConfig, WindowUpdateMode},
     Multiaddr, PeerId, Swarm, Transport,
 };
-use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use tokio::{
     select,
@@ -373,39 +372,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         if let Err(error) = self.gossip_message_sender.send(gossip_message) {
             warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
         }
-    }
-
-    /// Queues a message to `count` random nodes on the network.
-    fn send_message_to_n_peers(
-        &self,
-        rng: &mut NodeRng,
-        payload: P,
-        count: usize,
-        exclude: HashSet<NodeId>,
-    ) -> HashSet<NodeId> {
-        let peer_ids = self
-            .peers
-            .keys()
-            .filter(|&peer_id| !exclude.contains(peer_id))
-            .choose_multiple(rng, count);
-
-        if peer_ids.len() != count {
-            // TODO - set this to `warn!` once we are normally testing with networks large enough to
-            //        make it a meaningful and infrequent log message.
-            trace!(
-                wanted = count,
-                selected = peer_ids.len(),
-                "{}: could not select enough random nodes for gossiping, not enough non-excluded \
-                outgoing connections",
-                self.our_id
-            );
-        }
-
-        for &peer_id in &peer_ids {
-            self.send_message(peer_id.clone(), payload.clone());
-        }
-
-        peer_ids.into_iter().cloned().collect()
     }
 
     /// Returns whether or not this node has been isolated.
@@ -812,7 +778,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         trace!("{}: {:?}", self.our_id, event);
@@ -915,18 +881,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             } => {
                 self.gossip_message(payload);
                 responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                request:
-                    NetworkRequest::Gossip {
-                        payload,
-                        count,
-                        exclude,
-                        responder,
-                    },
-            } => {
-                let sent_to = self.send_message_to_n_peers(rng, payload, count, exclude);
-                responder.respond(sent_to).ignore()
             }
             Event::NetworkInfoRequest {
                 info_request: NetworkInfoRequest::GetPeers { responder },
