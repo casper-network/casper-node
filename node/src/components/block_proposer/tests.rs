@@ -487,7 +487,6 @@ fn should_not_propose_deploy_if_block_size_limit_passed() {
         proposed_count: 4,
         remaining_pending_count: 1,
         max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
-        ..Default::default()
     });
 }
 
