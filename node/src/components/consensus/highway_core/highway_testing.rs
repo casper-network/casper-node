@@ -467,19 +467,23 @@ where
             value,
             timestamp: _,
             height,
-            rewards,
+            terminal_block_data,
             equivocators: _,
             proposer: _,
         } in finalized_values
         {
             trace!(
                 "{}consensus value finalized: {:?}, height: {:?}",
-                if rewards.is_some() { "last " } else { "" },
+                if terminal_block_data.is_some() {
+                    "last "
+                } else {
+                    ""
+                },
                 value,
                 height
             );
-            if let Some(r) = rewards {
-                warn!(?r, "rewards are not verified yet");
+            if let Some(t) = terminal_block_data {
+                warn!(?t.rewards, "rewards and inactive validators are not verified yet");
             }
             recipient.push_finalized(value);
         }

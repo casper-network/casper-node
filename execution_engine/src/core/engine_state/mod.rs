@@ -25,8 +25,8 @@ use tracing::{debug, error};
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraValidators, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-        LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -49,6 +49,7 @@ pub use self::{
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
     query::{QueryRequest, QueryResult},
+    step::{RewardItem, SlashItem, StepRequest, StepResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeResult},
@@ -56,11 +57,8 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
-            executable_deploy_item::DeployMetadata,
-            execution_result::ExecutionResultBuilder,
-            genesis::GenesisInstaller,
-            step::{StepRequest, StepResult},
-            upgrade::SystemUpgrader,
+            executable_deploy_item::DeployMetadata, execution_result::ExecutionResultBuilder,
+            genesis::GenesisInstaller, upgrade::SystemUpgrader,
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -1976,7 +1974,20 @@ where
         }
 
         if step_request.run_auction {
-            let run_auction_args = RuntimeArgs::new();
+            let run_auction_args = {
+                let maybe_runtime_args = RuntimeArgs::try_new(|args| {
+                    args.insert(
+                        ARG_ERA_END_TIMESTAMP_MILLIS,
+                        step_request.era_end_timestamp_millis,
+                    )?;
+                    Ok(())
+                });
+
+                match maybe_runtime_args {
+                    Ok(runtime_args) => runtime_args,
+                    Err(error) => return Ok(StepResult::CLValueError(error)),
+                }
+            };
 
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(

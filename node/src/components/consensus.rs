@@ -24,8 +24,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
-use casper_types::{auction::ValidatorWeights, PublicKey};
+use casper_types::PublicKey;
 
 use crate::{
     components::Component,
@@ -113,7 +112,6 @@ pub enum Event<I> {
         booking_block_hash: Result<BlockHash, u64>,
         /// Ok(seed) if the key block was found, Err(height) if not
         key_block_seed: Result<Digest, u64>,
-        get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
@@ -205,13 +203,11 @@ impl<I: Debug> Display for Event<I> {
             Event::CreateNewEra {
                 booking_block_hash,
                 key_block_seed,
-                get_validators_result,
                 ..
             } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, key block seed: {:?}, \
-                response to get_validators from the contract runtime: {:?}",
-                booking_block_hash, key_block_seed, get_validators_result
+                "New era should be created; booking block hash: {:?}, key block seed: {:?}",
+                booking_block_hash, key_block_seed
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
@@ -297,7 +293,6 @@ where
                 block_header,
                 booking_block_hash,
                 key_block_seed,
-                get_validators_result,
             } => {
                 let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
@@ -315,24 +310,7 @@ where
                     );
                     panic!("couldn't get the seed from the key block");
                 });
-                let validators = match get_validators_result {
-                    Ok(Some(validator_weights)) => validator_weights,
-                    result => {
-                        error!(
-                            ?result,
-                            "get_validators in era {} returned an error: {:?}",
-                            block_header.era_id(),
-                            result
-                        );
-                        panic!("couldn't get validators");
-                    }
-                };
-                handling_es.handle_create_new_era(
-                    *block_header,
-                    booking_block_hash,
-                    key_block_seed,
-                    validators,
-                )
+                handling_es.handle_create_new_era(*block_header, booking_block_hash, key_block_seed)
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
