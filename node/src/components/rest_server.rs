@@ -89,8 +89,12 @@ impl RestServer {
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let builder = utils::start_listening(&config.address)?;
-        let server_join_handle =
-            tokio::spawn(http_server::run(builder, effect_builder, shutdown_receiver));
+        let server_join_handle = tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            shutdown_receiver,
+            config.qps_limit,
+        ));
 
         Ok(RestServer {
             shutdown_sender,

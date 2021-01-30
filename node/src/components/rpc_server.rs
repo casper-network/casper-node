@@ -96,7 +96,7 @@ impl RpcServer {
         REv: ReactorEventT,
     {
         let builder = utils::start_listening(&config.address)?;
-        tokio::spawn(http_server::run(builder, effect_builder));
+        tokio::spawn(http_server::run(builder, effect_builder, config.qps_limit));
 
         Ok(RpcServer {})
     }

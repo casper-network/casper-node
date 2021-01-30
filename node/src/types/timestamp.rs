@@ -300,7 +300,6 @@ impl FromBytes for TimeDiff {
     }
 }
 
-#[cfg(test)]
 impl From<Duration> for TimeDiff {
     fn from(duration: Duration) -> TimeDiff {
         TimeDiff(duration.as_millis() as u64)

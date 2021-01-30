@@ -86,6 +86,7 @@ tokio-openssl = "0.4.0"
 tokio-serde = { version = "0.6.1", features = ["messagepack"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
 toml = "0.5.6"
+tower = "0.3.1"
 tracing = "0.1.18"
 tracing-futures = "0.2.4"
 tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }

@@ -4,8 +4,14 @@ use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
+use tower::builder::ServiceBuilder;
 use warp::{Filter, Rejection};
 use warp_json_rpc::Builder;
+
+use casper_node::crypto::Error::*;
+use hex::FromHexError::*;
+use std::time::Duration;
+use Error::*;
 
 use casper_client::{DeployStrParams, Error, PaymentStrParams, SessionStrParams};
 use casper_node::rpcs::{
@@ -15,11 +21,16 @@ use casper_node::rpcs::{
     state::{GetBalance, GetBalanceParams},
     RpcWithOptionalParams, RpcWithParams,
 };
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 const VALID_PURSE_UREF: &str =
     "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
 const VALID_STATE_ROOT_HASH: &str =
     "55db08058acb54c295b115cbd9b282eb2862e76d5bb8493bb80c0598a50a12a5";
+
+const DEFAULT_RATE_LIMIT: u64 = 1;
+const DEFAULT_RATE_PER: Duration = Duration::from_secs(1);
 
 fn test_filter<P>(
     method: &'static str,
@@ -41,11 +52,16 @@ fn test_filter_without_params(
         .map(|builder: Builder| builder.success(()).unwrap())
 }
 
+type ServerJoiner = Option<Arc<Mutex<JoinHandle<Result<(), hyper::error::Error>>>>>;
+
 struct MockServerHandle {
     graceful_shutdown: Option<oneshot::Sender<()>>,
-    server_joiner: Option<JoinHandle<Result<(), hyper::error::Error>>>,
+    server_joiner: ServerJoiner,
     address: SocketAddr,
 }
+
+trait Captures<'a> {}
+impl<'a, T: ?Sized> Captures<'a> for T {}
 
 impl MockServerHandle {
     fn url(&self) -> String {
@@ -59,22 +75,36 @@ impl MockServerHandle {
         P: 'static,
         for<'de> P: Deserialize<'de> + Send,
     {
-        Self::spawn_with_filter(test_filter::<P>(method))
+        Self::spawn_with_filter(
+            test_filter::<P>(method),
+            DEFAULT_RATE_LIMIT,
+            DEFAULT_RATE_PER,
+        )
     }
 
     /// Will spawn a server on localhost and respond to JSON-RPC requests that don't take
     /// parameters.
     fn spawn_without_params(method: &'static str) -> Self {
-        Self::spawn_with_filter(test_filter_without_params(method))
+        Self::spawn_with_filter(
+            test_filter_without_params(method),
+            DEFAULT_RATE_LIMIT,
+            DEFAULT_RATE_PER,
+        )
     }
 
-    fn spawn_with_filter<F>(filter: F) -> Self
+    fn spawn_with_filter<F>(filter: F, rate: u64, per: Duration) -> Self
     where
         F: Filter<Extract = (Response<Body>,), Error = Rejection> + Send + Sync + 'static + Copy,
     {
         let service = warp_json_rpc::service(filter);
+
         let make_svc =
             hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
+
+        let make_svc = ServiceBuilder::new()
+            .rate_limit(rate, per)
+            .service(make_svc);
+
         let builder = Server::try_bind(&([127, 0, 0, 1], 0).into()).unwrap();
         let (graceful_shutdown, shutdown_receiver) = oneshot::channel::<()>();
         let graceful_shutdown = Some(graceful_shutdown);
@@ -84,7 +114,7 @@ impl MockServerHandle {
             shutdown_receiver.await.ok();
         });
         let server_joiner = tokio::spawn(server_with_shutdown);
-        let server_joiner = Some(server_joiner);
+        let server_joiner = Some(Arc::new(Mutex::new(server_joiner)));
         MockServerHandle {
             graceful_shutdown,
             server_joiner,
@@ -126,8 +156,8 @@ impl MockServerHandle {
         &self,
         amount: &str,
         maybe_target_account: &str,
-        deploy_params: DeployStrParams<'static>,
-        payment_params: PaymentStrParams<'static>,
+        deploy_params: DeployStrParams,
+        payment_params: PaymentStrParams,
     ) -> Result<(), ErrWrapper> {
         casper_client::transfer(
             "1",
@@ -145,9 +175,9 @@ impl MockServerHandle {
 
     fn put_deploy(
         &self,
-        deploy_params: DeployStrParams<'static>,
-        session_params: SessionStrParams<'static>,
-        payment_params: PaymentStrParams<'static>,
+        deploy_params: DeployStrParams,
+        session_params: SessionStrParams,
+        payment_params: PaymentStrParams,
     ) -> Result<(), ErrWrapper> {
         casper_client::put_deploy(
             "1",
@@ -179,7 +209,8 @@ impl Drop for MockServerHandle {
         let _ = self.graceful_shutdown.take().unwrap().send(());
         let joiner = self.server_joiner.take().unwrap();
         futures::executor::block_on(async {
-            let _ = joiner.await;
+            let join = &mut *joiner.lock().await;
+            let _ = join.await;
         });
     }
 }
@@ -245,10 +276,6 @@ mod session_params {
         SessionStrParams::with_package_hash(PKG_HASH, VERSION, ENTRYPOINT, args_simple(), "")
     }
 }
-
-use casper_node::crypto::Error::*;
-use hex::FromHexError::*;
-use Error::*;
 
 mod get_balance {
     use super::*;
@@ -743,6 +770,48 @@ mod put_deploy {
                 payment_params::test_data_with_name()
             ),
             Ok(())
+        );
+    }
+}
+
+mod rate_limit {
+    use super::*;
+    use casper_node::types::Timestamp;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn client_should_should_be_rate_limited_to_approx_1_qps() {
+        // Transfer uses PutDeployParams + PutDeploy
+        let server_handle = Arc::new(MockServerHandle::spawn::<PutDeployParams>(
+            PutDeploy::METHOD,
+        ));
+
+        let now = Timestamp::now();
+        // Our default is 100 req/min, so this will time out
+        for i in 0..10u32 {
+            println!("request {}", i);
+            let amount = "100";
+            let maybe_target_account =
+                "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
+
+            // block_in_place is needed to prevent deadlock on the futures::executor::block_on
+            // call inside transfer
+            let server_handle = server_handle.clone();
+            let join_handle = tokio::task::spawn_blocking(move || {
+                server_handle.transfer(
+                    amount,
+                    maybe_target_account,
+                    deploy_params::test_data_valid(),
+                    payment_params::test_data_with_name(),
+                )
+            });
+            assert_eq!(join_handle.await.unwrap(), Ok(()));
+        }
+
+        let diff = Timestamp::now() - now;
+        assert!(
+            diff < Duration::from_secs(11).into(),
+            "Rate limiting of 1 qps for 10 sec took too long at {}ms",
+            diff.millis()
         );
     }
 }
