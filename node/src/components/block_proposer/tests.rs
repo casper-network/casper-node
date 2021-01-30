@@ -490,6 +490,21 @@ fn should_not_propose_deploy_if_block_size_limit_passed() {
     });
 }
 
+#[test]
+fn should_allow_transfers_to_exceed_block_size_limit() {
+    test_proposer_with(TestArgs {
+        deploy_count: 3,
+        transfer_count: 60,
+        payment_amount: default_gas_payment(),
+        block_gas_limit: 100,
+        max_transfer_count: 40,
+        max_deploy_count: 5,
+        proposed_count: 42,
+        remaining_pending_count: 21,
+        max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
+    });
+}
+
 #[derive(Default)]
 struct TestArgs {
     /// Number of deploys to create.

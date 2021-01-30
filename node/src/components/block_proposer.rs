@@ -429,7 +429,7 @@ impl BlockProposerReady {
         for (hash, deploy_type) in self.sets.pending.iter() {
             let at_max_transfers = transfers.len() == max_transfers;
             let at_max_deploys = wasm_deploys.len() == max_deploys
-                || (deploy_type.is_other()
+                || (deploy_type.is_wasm()
                     && block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes);
 
             if at_max_deploys && at_max_transfers {
@@ -450,7 +450,7 @@ impl BlockProposerReady {
             // always include wasm-less transfers if we are under the max for them
             if deploy_type.is_transfer() && !at_max_transfers {
                 transfers.push(*hash);
-            } else if deploy_type.is_other() && !at_max_deploys {
+            } else if deploy_type.is_wasm() && !at_max_deploys {
                 if block_size_running_total + deploy_type.size() > max_block_size_bytes {
                     continue;
                 }
