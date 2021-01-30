@@ -637,7 +637,6 @@ name = "casper-client"
 version = "0.7.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "base64 0.13.0",
  "casper-execution-engine",
  "casper-node",

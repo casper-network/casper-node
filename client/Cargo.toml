@@ -21,7 +21,6 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-async-trait = "0.1.42"
 base64 = "0.13.0"
 casper-execution-engine = { version = "0.7.0", path = "../execution_engine" }
 casper-node = { version = "0.7.0", path = "../node" }
