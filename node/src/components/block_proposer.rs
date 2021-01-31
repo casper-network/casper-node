@@ -428,14 +428,11 @@ impl BlockProposerReady {
 
         for (hash, deploy_type) in self.sets.pending.iter() {
             let at_max_transfers = transfers.len() == max_transfers;
-            let at_max_deploys = wasm_deploys.len() == max_deploys;
+            let at_max_deploys = wasm_deploys.len() == max_deploys
+                || (deploy_type.is_wasm()
+                    && block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes);
 
-            // Early exit if block limits are met.
-            // TODO: break early if gas total is met, but only once we have a constant for the cost
-            // of wasm-less transfers. if block_gas_running_total >= block_gas_limit
-            if block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
-                || (at_max_deploys && at_max_transfers)
-            {
+            if at_max_deploys && at_max_transfers {
                 break;
             }
 
@@ -446,42 +443,43 @@ impl BlockProposerReady {
                 &past_deploys,
             ) || past_deploys.contains(hash)
                 || self.sets.finalized_deploys.contains_key(hash)
-                || block_size_running_total + deploy_type.size() > max_block_size_bytes
             {
                 continue;
             }
 
-            let payment_amount_gas = match Gas::from_motes(
-                deploy_type.payment_amount(),
-                deploy_type.header().gas_price(),
-            ) {
-                Some(value) => value,
-                None => {
-                    error!("payment_amount couldn't be converted from motes to gas");
-                    continue;
-                }
-            };
-
-            let gas_running_total = if let Some(gas_running_total) =
-                block_gas_running_total.checked_add(payment_amount_gas)
-            {
-                gas_running_total
-            } else {
-                warn!("block gas would overflow");
-                continue;
-            };
-
-            if gas_running_total > block_gas_limit {
-                continue;
-            }
+            // always include wasm-less transfers if we are under the max for them
             if deploy_type.is_transfer() && !at_max_transfers {
                 transfers.push(*hash);
-            } else if !at_max_deploys {
-                wasm_deploys.push(*hash);
-            }
-            block_gas_running_total = gas_running_total;
+            } else if deploy_type.is_wasm() && !at_max_deploys {
+                if block_size_running_total + deploy_type.size() > max_block_size_bytes {
+                    continue;
+                }
+                let payment_amount_gas = match Gas::from_motes(
+                    deploy_type.payment_amount(),
+                    deploy_type.header().gas_price(),
+                ) {
+                    Some(value) => value,
+                    None => {
+                        error!("payment_amount couldn't be converted from motes to gas");
+                        continue;
+                    }
+                };
+                let gas_running_total = if let Some(gas_running_total) =
+                    block_gas_running_total.checked_add(payment_amount_gas)
+                {
+                    gas_running_total
+                } else {
+                    warn!("block gas would overflow");
+                    continue;
+                };
 
-            block_size_running_total += deploy_type.size();
+                if gas_running_total > block_gas_limit {
+                    continue;
+                }
+                wasm_deploys.push(*hash);
+                block_gas_running_total = gas_running_total;
+                block_size_running_total += deploy_type.size();
+            }
         }
 
         ProtoBlock::new(wasm_deploys, transfers, random_bit)
