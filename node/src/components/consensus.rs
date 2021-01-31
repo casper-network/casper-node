@@ -28,7 +28,6 @@ use casper_types::PublicKey;
 
 use crate::{
     components::Component,
-    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -110,8 +109,6 @@ pub enum Event<I> {
         block_header: Box<BlockHeader>,
         /// Ok(block_hash) if the booking block was found, Err(height) if not
         booking_block_hash: Result<BlockHash, u64>,
-        /// Ok(seed) if the key block was found, Err(height) if not
-        key_block_seed: Result<Digest, u64>,
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
@@ -202,12 +199,11 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                key_block_seed,
-                ..
+                block_header,
             } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, key block seed: {:?}",
-                booking_block_hash, key_block_seed
+                "New era should be created; booking block hash: {:?}, switch block header: {:?}",
+                booking_block_hash, block_header
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
@@ -292,7 +288,6 @@ where
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,
-                key_block_seed,
             } => {
                 let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
@@ -302,15 +297,7 @@ where
                     );
                     panic!("couldn't get the booking block hash");
                 });
-                let key_block_seed = key_block_seed.unwrap_or_else(|height| {
-                    error!(
-                        "could not find the key block at height {} for era {}",
-                        height,
-                        block_header.era_id().successor()
-                    );
-                    panic!("couldn't get the seed from the key block");
-                });
-                handling_es.handle_create_new_era(*block_header, booking_block_hash, key_block_seed)
+                handling_es.handle_create_new_era(*block_header, booking_block_hash)
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
