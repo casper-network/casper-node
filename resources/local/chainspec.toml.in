@@ -11,7 +11,7 @@ timestamp = '${TIMESTAMP}'
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
-accounts_path = '${BASEDIR}/resources/local/accounts.csv'
+accounts_path = './accounts.csv'
 # Number of slots available in validator auction.
 validator_slots = 5
 # Number of eras before an auction actually defines the set of validators. If you bond with a sufficient bid in era N, you will be a validator in era N + auction_delay + 1
