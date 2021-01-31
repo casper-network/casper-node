@@ -4,8 +4,8 @@ use crate::shared::newtypes::Blake2bHash;
 ///
 /// - The trie key the inserted [Trie][storage::trie::Trie] (which is its [Blake2bHash])
 ///
-/// - The missing descendant keys of that trie transitively refers to. Found using
-///   [storage::global_state::StateProvider::missing_trie_keys].
+/// - The missing transitively referred to descendant keys of the [Trie][storage::trie::Trie] that
+///   was just inserted. Found using [storage::global_state::StateProvider::missing_trie_keys].
 #[derive(Debug)]
 pub struct InsertedTrieKeyAndMissingDescendants {
     inserted_trie_key: Blake2bHash,
