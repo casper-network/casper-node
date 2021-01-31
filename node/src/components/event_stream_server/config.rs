@@ -13,7 +13,7 @@ const DEFAULT_EVENT_STREAM_BUFFER_LENGTH: u32 = 100;
 const DEFAULT_BROADCAST_CHANNEL_SIZE: usize = 100;
 
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: u64 = 10_000;
+const DEFAULT_QPS_LIMIT: u64 = 100;
 
 /// SSE HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
