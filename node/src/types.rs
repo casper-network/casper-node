@@ -20,6 +20,7 @@ pub use block::{
     FinalitySignature,
 };
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
+pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,

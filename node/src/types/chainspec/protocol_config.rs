@@ -12,7 +12,7 @@ use crate::testing::TestRng;
 
 /// The era whose end will trigger the upgrade process.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub(crate) struct ActivationPoint {
+pub struct ActivationPoint {
     pub(crate) era_id: EraId,
 }
 

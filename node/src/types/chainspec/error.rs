@@ -1,3 +1,5 @@
+use std::{io, path::PathBuf};
+
 use thiserror::Error;
 use uint::FromDecStrErr;
 
@@ -5,7 +7,7 @@ use casper_types::account::ACCOUNT_HASH_LENGTH;
 
 use crate::utils::ReadFileError;
 
-/// Error while encoding or decoding the chainspec.
+/// Error returned by the ChainspecLoader.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error while decoding the chainspec from TOML format.
@@ -27,6 +29,22 @@ pub enum Error {
     /// Error loading the chainspec accounts.
     #[error("could not load chainspec accounts: {0}")]
     LoadChainspecAccounts(ChainspecAccountsLoadError),
+
+    /// Failed to read the given directory.
+    #[error("failed to read dir {}: {error}", dir.display())]
+    ReadDir {
+        /// The directory which could not be read.
+        dir: PathBuf,
+        /// The underlying error.
+        error: io::Error,
+    },
+
+    /// No subdirectory representing a semver version was found in the given directory.
+    #[error("failed to get a valid version from subdirs in {}", dir.display())]
+    NoVersionSubdirFound {
+        /// The searched directory.
+        dir: PathBuf,
+    },
 }
 
 /// Error loading chainspec accounts file.

@@ -23,12 +23,12 @@ use casper_execution_engine::{
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-pub use self::error::Error;
 use self::network_config::parse_accounts_csv;
 pub(crate) use self::{
     core_config::CoreConfig, deploy_config::DeployConfig, highway_config::HighwayConfig,
     network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
+pub use self::{error::Error, protocol_config::ActivationPoint};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{

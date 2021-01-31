@@ -11,6 +11,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use semver::Version;
 use serde::Serialize;
 
@@ -33,7 +34,6 @@ use casper_types::{
     auction::{EraValidators, ValidatorWeights},
     ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
-use hex_fmt::HexFmt;
 
 use super::{Multiple, Responder};
 use crate::{
@@ -47,9 +47,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock,
-        StatusFeed, Timestamp,
+        ActivationPoint, Block as LinearBlock, Block, BlockHash, BlockHeader, Chainspec, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -915,17 +915,23 @@ pub enum ConsensusRequest {
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }
 
-/// ChainspecLoader componenent requests.
+/// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
+    /// Request to check config dir to see if a new upgrade point is available, and if so, return
+    /// its activation point.
+    NextUpgradeActivationPoint(Responder<Option<ActivationPoint>>),
 }
 
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
+            ChainspecLoaderRequest::NextUpgradeActivationPoint(_) => {
+                write!(f, "get activation point")
+            }
         }
     }
 }
