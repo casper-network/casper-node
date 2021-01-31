@@ -24,8 +24,6 @@ pub const ARG_PUBLIC_KEY: &str = "public_key";
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
 pub const ARG_DELEGATOR: &str = "delegator";
-/// Named constant for `source_purse`.
-pub const ARG_SOURCE_PURSE: &str = "source_purse";
 /// Named constant for `validator_purse`.
 pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 /// Named constant for `validator_keys`.
@@ -40,10 +38,6 @@ pub const ARG_REWARD_FACTORS: &str = "reward_factors";
 pub const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
 /// Named constant for `delegator_public_key`.
 pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
-/// Named constant for `target_purse`.
-pub const ARG_TARGET_PURSE: &str = "target_purse";
-/// Named constant for `unbond_purse`.
-pub const ARG_UNBOND_PURSE: &str = "unbond_purse";
 /// Named constant for `validator_slots` argument.
 pub const ARG_VALIDATOR_SLOTS: &str = VALIDATOR_SLOTS_KEY;
 /// Named constant for `mint_contract_package_hash`
@@ -56,6 +50,9 @@ pub const ARG_AUCTION_DELAY: &str = "auction_delay";
 pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 /// Named constant for `unbonding_delay`
 pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
+/// Named constant for `era_end_timestamp_millis`;
+pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
+
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.

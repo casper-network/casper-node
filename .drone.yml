@@ -34,7 +34,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit --ignore RUSTSEC-2021-0013
+      - cargo audit --ignore RUSTSEC-2020-0123
 
 trigger:
   branch:
