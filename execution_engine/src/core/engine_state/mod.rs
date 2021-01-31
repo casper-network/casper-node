@@ -1645,14 +1645,10 @@ where
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self
-            .state
-            .put_trie(correlation_id, trie)
-            .map_err(Error::from)?;
+        let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
         let missing_descendant_trie_keys = self
             .state
-            .missing_trie_keys(correlation_id, inserted_trie_key)
-            .map_err(Error::from)?;
+            .missing_trie_keys(correlation_id, inserted_trie_key)?;
         Ok(InsertedTrieKeyAndMissingDescendants::new(
             inserted_trie_key,
             missing_descendant_trie_keys,
