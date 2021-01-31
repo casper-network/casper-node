@@ -22,7 +22,10 @@ const DEFAULT_CHAIN_NAME: &str = "casper-devnet";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 const DEFAULT_AUCTION_DELAY: u64 = 3;
-const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
+
+/// Default lock-in period of 90 days
+const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
+
 /// Round seigniorage rate represented as a fractional number
 ///
 /// Annual issuance: 2%
@@ -39,7 +42,7 @@ struct Genesis {
     timestamp: Timestamp,
     validator_slots: u32,
     auction_delay: u64,
-    locked_funds_period: EraId,
+    locked_funds_period_millis: u64,
     protocol_version: Version,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
@@ -53,7 +56,7 @@ impl Default for Genesis {
             timestamp: Timestamp::zero(),
             validator_slots: DEFAULT_VALIDATOR_SLOTS,
             auction_delay: DEFAULT_AUCTION_DELAY,
-            locked_funds_period: DEFAULT_LOCKED_FUNDS_PERIOD,
+            locked_funds_period_millis: DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
             protocol_version: Version::from((1, 0, 0)),
             round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             unbonding_delay: DEFAULT_UNBONDING_DELAY,
@@ -118,7 +121,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             timestamp: chainspec.genesis.timestamp,
             validator_slots: chainspec.genesis.validator_slots,
             auction_delay: chainspec.genesis.auction_delay,
-            locked_funds_period: chainspec.genesis.locked_funds_period,
+            locked_funds_period_millis: chainspec.genesis.locked_funds_period_millis,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             unbonding_delay: chainspec.genesis.unbonding_delay,
@@ -172,7 +175,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         timestamp: chainspec.genesis.timestamp,
         validator_slots: chainspec.genesis.validator_slots,
         auction_delay: chainspec.genesis.auction_delay,
-        locked_funds_period: chainspec.genesis.locked_funds_period,
+        locked_funds_period_millis: chainspec.genesis.locked_funds_period_millis,
         round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
         unbonding_delay: chainspec.genesis.unbonding_delay,
         protocol_version: chainspec.genesis.protocol_version,

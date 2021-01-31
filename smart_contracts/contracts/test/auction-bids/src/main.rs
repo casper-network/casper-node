@@ -9,10 +9,10 @@ use casper_contract::contract_api::{runtime, storage, system};
 
 use casper_types::{
     auction::{
-        SeigniorageRecipients, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        SeigniorageRecipients, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY,
+        ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY,
+        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     runtime_args, ApiError, PublicKey, RuntimeArgs, U512,
 };
@@ -80,7 +80,8 @@ fn undelegate() -> U512 {
 
 fn run_auction() {
     let auction = system::get_auction();
-    let args = runtime_args! {};
+    let era_end_timestamp_millis: u64 = runtime::get_named_arg(ARG_ERA_END_TIMESTAMP_MILLIS);
+    let args = runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis };
     runtime::call_contract::<()>(auction, METHOD_RUN_AUCTION, args);
 }
 

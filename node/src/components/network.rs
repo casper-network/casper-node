@@ -107,9 +107,11 @@ enum ConnectionState {
 #[derive(DataSize)]
 pub struct Network<REv, P> {
     our_id: NodeId,
+    /// The set of peers which are current connected to our node. Kept in sync with libp2p
+    /// internals.
     #[data_size(skip)]
     peers: HashMap<NodeId, ConnectedPoint>,
-    /// A set of peers whose address we currently know. Kept in-sync with the internal Kademlia
+    /// The set of peers whose address we currently know. Kept in sync with the internal Kademlia
     /// routing table.
     #[data_size(skip)]
     seen_peers: HashSet<PeerId>,

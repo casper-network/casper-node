@@ -1,0 +1,66 @@
+[package]
+name = "casper-engine-tests"
+version = "0.1.0"
+authors = ["Ed Hastings <ed@casperlabs.io>, Henry Till <henrytill@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+base16 = "0.2.1"
+casper-contract = { path = "../../smart_contracts/contract" }
+casper-engine-test-support = { path = "../test_support" }
+casper-execution-engine = { path = "../../execution_engine" }
+casper-types = { path = "../../types", features = ["std"] }
+clap = "2"
+crossbeam-channel = "0.5.0"
+env_logger = "0.8.1"
+log = "0.4.8"
+rand = "0.7.3"
+serde_json = "1"
+parity-wasm = "0.41.0"
+
+[dev-dependencies]
+assert_matches = "1.3.0"
+criterion = "0.3.0"
+num-rational = "0.3.0"
+num-traits = "0.2.10"
+once_cell = "1.5.2"
+serde_json = "1"
+tempfile = "3"
+
+[features]
+default = [
+    "casper-contract/std",
+    "casper-contract/test-support",
+    "casper-execution-engine/test-support",
+    "casper-engine-test-support/test-support"
+]
+use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
+
+[lib]
+bench = false
+
+[[bench]]
+name = "transfer_bench"
+harness = false
+
+[[bin]]
+name = "state-initializer"
+path = "src/profiling/state_initializer.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "simple-transfer"
+path = "src/profiling/simple_transfer.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "host-function-metrics"
+path = "src/profiling/host_function_metrics.rs"
+test = false
+bench = false
+
+[[test]]
+name = "metrics"
+path = "src/logging/metrics.rs"

@@ -11,8 +11,12 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
-    components::collector::Collectable, effect::EffectExt, testing, testing::TestRng,
-    types::NodeId, Chainspec,
+    components::{collector::Collectable, network::Config as NetworkComponentConfig},
+    effect::EffectExt,
+    testing,
+    testing::{network::Network as TestingNetwork, TestRng},
+    types::NodeId,
+    Chainspec,
 };
 use casper_node_macros::reactor;
 use testing::{
@@ -61,7 +65,7 @@ pub struct TestReactorConfig {
     /// The fixed chainspec used in testing.
     chainspec: Chainspec,
     /// Network configuration used in testing.
-    network_config: crate::components::network::Config,
+    network_config: NetworkComponentConfig,
 }
 
 /// A dummy payload.
@@ -143,15 +147,13 @@ async fn send_large_message_across_network() {
     // Port for first node, other will connect to it.
     let first_node_port = testing::unused_port_on_localhost() + 1;
 
-    let mut net = testing::network::Network::<LoadTestingReactor>::new();
+    let mut net = TestingNetwork::<LoadTestingReactor>::new();
     let chainspec = Chainspec::random(&mut rng);
 
     // Create the root node.
     let cfg = TestReactorConfig {
         chainspec: chainspec.clone(),
-        network_config: crate::components::network::Config::default_local_net_first_node(
-            first_node_port,
-        ),
+        network_config: NetworkComponentConfig::default_local_net_first_node(first_node_port),
     };
 
     net.add_node_with_config(cfg, &mut rng).await.unwrap();
@@ -160,7 +162,7 @@ async fn send_large_message_across_network() {
     for _ in 1..node_count {
         let cfg = TestReactorConfig {
             chainspec: chainspec.clone(),
-            network_config: crate::components::network::Config::default_local_net(first_node_port),
+            network_config: NetworkComponentConfig::default_local_net(first_node_port),
         };
 
         net.add_node_with_config(cfg, &mut rng).await.unwrap();
