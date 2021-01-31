@@ -43,7 +43,8 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
-        BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock, ProtoBlock, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
+        ProtoBlock, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -103,6 +104,12 @@ pub struct EraSupervisor<I> {
     finished_joining: bool,
     /// The path to the folder where unit hash files will be stored.
     unit_hashes_folder: PathBuf,
+    /// The next upgrade activation point.  When the era immediately before the activation point is
+    /// deactivated, the era supervisor indicates that the node should stop running to allow an
+    /// upgrade.
+    next_upgrade_activation_point: Option<ActivationPoint>,
+    /// If true, the process should stop execution to allow an upgrade to proceed.
+    stop_for_upgrade: bool,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -153,6 +160,8 @@ where
             metrics,
             finished_joining: false,
             unit_hashes_folder,
+            next_upgrade_activation_point: None,
+            stop_for_upgrade: false,
         };
 
         let results = era_supervisor.new_era(
@@ -357,6 +366,10 @@ where
             })
             .unwrap_or_default()
     }
+
+    pub(crate) fn stop_for_upgrade(&self) -> bool {
+        self.stop_for_upgrade
+    }
 }
 
 /// A mutable `EraSupervisor` reference, together with an `EffectBuilder`.
@@ -482,6 +495,16 @@ where
         block_header: BlockHeader,
         responder: Responder<Option<FinalitySignature>>,
     ) -> Effects<Event<I>> {
+        // Try to get the next upgrade activation point if we don't already know it.
+        let mut effects = Effects::new();
+        if self.era_supervisor.next_upgrade_activation_point.is_none() {
+            effects.extend(
+                self.effect_builder
+                    .next_upgrade_activation_point()
+                    .event(Event::GotUpgradeActivationPoint),
+            );
+        }
+
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block_header.era_id();
@@ -497,7 +520,7 @@ where
         } else {
             None
         };
-        let mut effects = responder.respond(maybe_fin_sig).ignore();
+        effects.extend(responder.respond(maybe_fin_sig).ignore());
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;
@@ -542,6 +565,16 @@ where
         let faulty_num = era.consensus.validators_with_evidence().len();
         if faulty_num == old_faulty_num {
             info!(era = era_id.0, "stop voting in era");
+            if let Some(upgrade_activation_point) =
+                self.era_supervisor.next_upgrade_activation_point
+            {
+                // If the next era is the at or after the upgrade activation point, stop the node.
+                if era_id.0 + 1 >= upgrade_activation_point.value().0 {
+                    info!(era = era_id.0, "shutting down for upgrade");
+                    self.era_supervisor.stop_for_upgrade = true;
+                    return Effects::new();
+                }
+            }
             era.consensus.deactivate_validator();
             Effects::new()
         } else {
@@ -863,6 +896,29 @@ where
     pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
         let results = self.era_supervisor.finished_joining(now);
         self.handle_consensus_results(self.era_supervisor.current_era, results)
+    }
+
+    /// Handles registering a new upgrade activation point.
+    pub(super) fn got_upgrade_activation_point(
+        &mut self,
+        maybe_activation_point: Option<ActivationPoint>,
+    ) -> Effects<Event<I>> {
+        match (
+            maybe_activation_point,
+            &self.era_supervisor.next_upgrade_activation_point,
+        ) {
+            (Some(new_point), Some(current_point)) => {
+                if new_point != *current_point {
+                    warn!(%new_point, %current_point, "unexpected mismatch in activation points");
+                }
+            }
+            (Some(new_point), None) => {
+                info!(activation_point=%new_point, "new upgrade activation point");
+                self.era_supervisor.next_upgrade_activation_point = Some(new_point);
+            }
+            _ => (),
+        }
+        Effects::new()
     }
 
     /// Returns whether validator is bonded in an era.

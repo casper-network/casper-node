@@ -827,7 +827,7 @@ impl reactor::Reactor for Reactor {
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                        // TODO: handle the announcement and acutally disconnect
+                        // TODO: handle the announcement and actually disconnect
                         warn!("Disconnecting from a given peer not yet implemented.");
                         Effects::new()
                     }
@@ -897,6 +897,10 @@ impl reactor::Reactor for Reactor {
         self.memory_metrics.estimate(&self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn is_stopped(&mut self) -> bool {
+        self.consensus.stop_for_upgrade()
     }
 }
 

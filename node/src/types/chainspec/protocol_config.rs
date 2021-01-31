@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
@@ -14,6 +16,19 @@ use crate::testing::TestRng;
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct ActivationPoint {
     pub(crate) era_id: EraId,
+}
+
+impl ActivationPoint {
+    /// Returns the wrapped era ID.
+    pub fn value(&self) -> EraId {
+        self.era_id
+    }
+}
+
+impl Display for ActivationPoint {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "upgrade activation point {}", self.era_id)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
