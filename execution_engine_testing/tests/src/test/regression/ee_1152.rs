@@ -2,7 +2,9 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+        DEFAULT_ACCOUNTS, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        TIMESTAMP_MILLIS_INCREMENT,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -106,12 +108,22 @@ fn should_run_ee_1152_regression_test() {
 
     builder.exec(delegate_request_1).expect_success().commit();
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     // In reality a step request is made, but to simplify the test I'm just calling the auction part
     // only.
-    builder.run_auction();
-    builder.run_auction();
-    builder.run_auction(); // At this point paying out rewards would fail
-    builder.run_auction();
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+
+    builder.run_auction(timestamp_millis); // At this point paying out rewards would fail
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     let era_validators = builder.get_era_validators();
 
@@ -139,5 +151,5 @@ fn should_run_ee_1152_regression_test() {
 
     builder.step(step_request.build());
 
-    builder.run_auction();
+    builder.run_auction(timestamp_millis);
 }
