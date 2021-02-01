@@ -50,8 +50,8 @@ use crate::{
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            RpcRequest, StateStoreRequest, StorageRequest,
+            GossipRequest, LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+            RestRequest, RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -120,6 +120,8 @@ pub enum Event {
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    #[from]
+    GossipDeployRequest(GossipRequest<Deploy>),
     /// Network info request.
     #[from]
     NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
@@ -226,6 +228,7 @@ impl Display for Event {
             Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
             Event::ProtoBlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
+            Event::GossipDeployRequest(req) => write!(f, "gossip deploy request: {}", req),
             Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
             Event::StorageRequest(req) => write!(f, "storage request: {}", req),
@@ -507,6 +510,9 @@ impl reactor::Reactor for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
+            Event::GossipDeployRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Network(req.into()))
+            }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
                     Event::Network(network::Event::from(req))
@@ -682,16 +688,8 @@ impl reactor::Reactor for Reactor {
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
 
-                // XXX Gossiper leftovers.
-                // let event = gossiper::Event::ItemReceived {
-                //     item_id: *deploy.id(),
-                //     source: source.clone(),
-                // };
-                // effects.extend(self.dispatch_event(
-                //     effect_builder,
-                //     rng,
-                //     Event::DeployGossiper(event),
-                // ));
+                // Once we have accept a new deploy, gossip it onward.
+                effects.extend(effect_builder.gossip_item(deploy.clone()).ignore());
 
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
