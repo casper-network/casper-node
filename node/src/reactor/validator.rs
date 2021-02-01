@@ -622,10 +622,6 @@ impl reactor::Reactor for Reactor {
                                 LinearChainRequest::BlockAtHeight(height, sender),
                             ))
                         }
-                        Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
-                            return Effects::new();
-                        }
                     },
                     Message::GetResponse {
                         tag,
@@ -647,10 +643,6 @@ impl reactor::Reactor for Reactor {
                         }
                         Tag::Block => todo!("Handle GET block response"),
                         Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
-                        Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
-                            return Effects::new();
-                        }
                     },
                     Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
                 };

@@ -31,13 +31,13 @@ use casper_types::{bytesrepr::ToBytes, Key};
 #[repr(u8)]
 pub enum Tag {
     /// A deploy.
-    Deploy,
+    Deploy = 0,
     /// A block.
-    Block,
-    /// A gossiped public listening address.
-    GossipedAddress,
+    Block = 1,
     /// A block requested by its height in the linear chain.
-    BlockByHeight,
+    // TODO: This is strange tag to have, it does not specify a value, but selects a function
+    // instead. This should be cleaned up.
+    BlockByHeight = 3,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and

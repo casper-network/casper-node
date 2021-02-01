@@ -36,7 +36,6 @@
 mod config;
 mod error;
 mod event;
-mod gossiped_address;
 mod message;
 
 use std::{
