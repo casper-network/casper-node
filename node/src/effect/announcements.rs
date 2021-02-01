@@ -189,22 +189,6 @@ impl Display for BlockExecutorAnnouncement {
         }
     }
 }
-
-/// A Gossiper announcement.
-#[derive(Debug)]
-pub enum GossiperAnnouncement<T: Item> {
-    /// A new item has been received, where the item's ID is the complete item.
-    NewCompleteItem(T::Id),
-}
-
-impl<T: Item> Display for GossiperAnnouncement<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
-        }
-    }
-}
-
 /// A linear chain announcement.
 #[derive(Debug)]
 pub enum LinearChainAnnouncement {
