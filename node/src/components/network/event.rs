@@ -102,11 +102,9 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         request: NetworkRequest<NodeId, P>,
     },
-
-    GossipDeployRequest {
-        #[serde(skip_serializing)]
-        request: GossipRequest<Deploy>,
-    },
+    /// A request to gossip a deploy.
+    #[from]
+    GossipDeployRequest { request: GossipRequest<Deploy> },
 
     /// A network info request made by a different component.
     #[from]
@@ -114,12 +112,6 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         info_request: NetworkInfoRequest<NodeId>,
     },
-}
-
-impl<P> From<GossipRequest<Deploy>> for Event<P> {
-    fn from(request: GossipRequest<Deploy>) -> Self {
-        Event::GossipDeployRequest { request }
-    }
 }
 
 impl<P: Display> Display for Event<P> {

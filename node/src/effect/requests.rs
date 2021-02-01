@@ -173,7 +173,7 @@ where
 /// An outgoing gossip request.
 ///
 /// Requests that an item be gossiped.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub struct GossipRequest<I>
 where
