@@ -957,7 +957,11 @@ pub struct NetworkIdentity {
 
 impl Debug for NetworkIdentity {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "NetworkIdentity(public key: {:?})", self.keypair.public())
+        write!(
+            f,
+            "NetworkIdentity(public key: {:?})",
+            self.keypair.public()
+        )
     }
 }
 
