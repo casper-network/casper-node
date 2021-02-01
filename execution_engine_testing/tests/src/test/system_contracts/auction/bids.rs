@@ -5,8 +5,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_RUN_GENESIS_REQUEST,
-        DEFAULT_UNBONDING_DELAY,
+        DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+        TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -17,8 +18,7 @@ use casper_types::{
     auction::{
         Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_VALIDATOR, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
-        UNBONDING_PURSES_KEY,
+        ARG_VALIDATOR, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -42,7 +42,6 @@ const BID_AMOUNT_2: u64 = 5_000;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 126;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
-const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 
 const DELEGATE_AMOUNT_1: u64 = 125_000;
@@ -446,20 +445,7 @@ fn should_calculate_era_validators() {
     let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(pre_era_id, 0);
 
-    // non-founding validator request
-    let run_auction_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-        },
-    )
-    .build();
-
-    builder
-        .exec(run_auction_request_1)
-        .commit()
-        .expect_success();
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
 
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, 1);
@@ -566,29 +552,20 @@ fn should_get_first_seigniorage_recipients() {
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
     assert_eq!(
-        founding_validator_1.release_era(),
-        Some(DEFAULT_LOCKED_FUNDS_PERIOD)
+        founding_validator_1.release_timestamp_millis(),
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
     );
 
     let founding_validator_2 = bids.get(&ACCOUNT_2_PK).expect("should have account 2 pk");
     assert_eq!(
-        founding_validator_2.release_era(),
-        Some(DEFAULT_LOCKED_FUNDS_PERIOD)
+        founding_validator_2.release_timestamp_millis(),
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
     );
 
     builder.exec(transfer_request_1).commit().expect_success();
 
     // run_auction should be executed first
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-        },
-    )
-    .build();
-
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
 
     // read seigniorage recipients
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -667,6 +644,9 @@ fn should_release_founder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
@@ -692,26 +672,19 @@ fn should_release_founder_stake() {
     let genesis_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(genesis_bids.len(), 1);
     let entry = genesis_bids.get(&ACCOUNT_1_PK).unwrap();
-    assert_eq!(entry.release_era(), Some(DEFAULT_LOCKED_FUNDS_PERIOD));
+    assert_eq!(
+        entry.release_timestamp_millis(),
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+    );
 
     builder.exec(transfer_request_1).commit().expect_success();
 
-    for _ in 0..=DEFAULT_LOCKED_FUNDS_PERIOD {
-        let run_auction_request = ExecuteRequestBuilder::standard(
-            SYSTEM_ADDR,
-            CONTRACT_AUCTION_BIDS,
-            runtime_args! {
-                ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-            },
-        )
-        .build();
-        builder.exec(run_auction_request).commit().expect_success();
-    }
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
-    assert_eq!(entry.release_era(), None);
     assert_eq!(
         builder.get_purse_balance(*entry.bonding_purse()),
         ACCOUNT_1_BOND.into()
@@ -758,19 +731,8 @@ fn should_release_founder_stake() {
     );
 
     // run auction to increase ERA ID
-    let run_auction_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-        },
-    )
-    .build();
-
-    builder
-        .exec(run_auction_request_1)
-        .commit()
-        .expect_success();
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     //
     // founder does withdraw request 2 in INITIAL_ERA_ID + 1
@@ -816,19 +778,8 @@ fn should_release_founder_stake() {
     let account_1_balance_before = builder.get_purse_balance(account_1.main_purse());
 
     for _ in 0..DEFAULT_UNBONDING_DELAY {
-        let run_auction_request_1 = ExecuteRequestBuilder::standard(
-            SYSTEM_ADDR,
-            CONTRACT_AUCTION_BIDS,
-            runtime_args! {
-                ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-            },
-        )
-        .build();
-
-        builder
-            .exec(run_auction_request_1)
-            .commit()
-            .expect_success();
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     // Should pay out withdraw_bid request from INITIAL_ERA_ID
@@ -847,19 +798,10 @@ fn should_release_founder_stake() {
         account_1_unlocked_funds_1,
     );
 
-    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! {},
-    )
-    .build();
-
     //
     // Pays out withdraw_bid request that happened in INITIAL_ERA_ID + 1
     //
-    builder.exec(exec_request_4).expect_success().commit();
-
+    builder.run_auction(timestamp_millis);
     let account_1_unlocked_funds_2 = account_1_unlocked_funds_1 + U512::from(ACCOUNT_1_WITHDRAW_2);
 
     assert_eq!(
@@ -1049,20 +991,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.exec(add_bid_request_2).commit().expect_success();
 
     // run auction and compute validators for new era
-    let run_auction_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-        },
-    )
-    .build();
-
-    builder
-        .exec(run_auction_request_1)
-        .commit()
-        .expect_success();
-
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
         .get_validator_weights(new_era)
@@ -1159,6 +1088,9 @@ fn undelegated_funds_should_be_released() {
         delegator_1_validator_1_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1168,7 +1100,8 @@ fn undelegated_funds_should_be_released() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let delegator_1_undelegate_purse = builder
@@ -1202,7 +1135,8 @@ fn undelegated_funds_should_be_released() {
             delegator_1_undelegate_purse_balance
         );
 
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let delegator_1_undelegate_purse_balance =
@@ -1278,6 +1212,9 @@ fn fully_undelegated_funds_should_be_released() {
         delegator_1_validator_1_delegate_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -1287,7 +1224,8 @@ fn fully_undelegated_funds_should_be_released() {
     }
 
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let delegator_1_undelegate_purse = builder
@@ -1320,7 +1258,8 @@ fn fully_undelegated_funds_should_be_released() {
             delegator_1_undelegate_purse_balance,
             delegator_1_purse_balance_before
         );
-        super::run_auction(&mut builder);
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let delegator_1_undelegate_purse_after =

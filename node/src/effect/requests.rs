@@ -54,6 +54,7 @@ use crate::{
     Chainspec,
 };
 use casper_execution_engine::{
+    core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants,
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
 };
@@ -718,7 +719,7 @@ pub enum ContractRuntimeRequest {
         /// The hash of the value to get from the `TrieStore`
         trie: Box<Trie<Key, StoredValue>>,
         /// Responder to call with the result.
-        responder: Responder<Result<(), engine_state::Error>>,
+        responder: Responder<Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>>,
     },
     /// Get the missing keys under a given trie key in global storage
     MissingTrieKeys {

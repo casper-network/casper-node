@@ -115,7 +115,7 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<Blake2bHash, Self::Error>;
 
     /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`
     fn missing_trie_keys(

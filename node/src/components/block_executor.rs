@@ -240,6 +240,7 @@ impl BlockExecutor {
                     .iter()
                     .map(|&vid| EvictItem::new(vid))
                     .collect();
+                let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
                     protocol_version: ProtocolVersion::V1_0_0,
@@ -248,6 +249,7 @@ impl BlockExecutor {
                     evict_items,
                     run_auction: true,
                     next_era_id: state.finalized_block.era_id().successor().into(),
+                    era_end_timestamp_millis,
                 };
                 return effect_builder
                     .run_step(request)

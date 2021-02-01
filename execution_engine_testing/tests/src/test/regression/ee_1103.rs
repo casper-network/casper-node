@@ -1,7 +1,11 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
+    internal::{
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        TIMESTAMP_MILLIS_INCREMENT,
+    },
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
@@ -141,6 +145,9 @@ fn validator_scores_should_reflect_delegates() {
         delegator_3_fund_request,
     ];
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
@@ -167,7 +174,8 @@ fn validator_scores_should_reflect_delegates() {
     // Check weights after auction_delay eras
     {
         for _ in 0..=auction_delay {
-            builder.run_auction();
+            builder.run_auction(timestamp_millis);
+            timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
         era = builder.get_era();
@@ -201,7 +209,8 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction();
+            builder.run_auction(timestamp_millis);
+            timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
         era = builder.get_era();
@@ -250,7 +259,8 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction();
+            builder.run_auction(timestamp_millis);
+            timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
         era = builder.get_era();
@@ -300,7 +310,8 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction();
+            builder.run_auction(timestamp_millis);
+            timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
         era = builder.get_era();
         assert_eq!(builder.get_auction_delay(), auction_delay);
