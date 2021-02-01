@@ -112,7 +112,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, ProtoBlock, Timestamp,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -124,9 +124,11 @@ use announcements::{
 use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, GossipRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
+
+use self::announcements::GossipAnnouncement;
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -494,6 +496,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gossip an item.
+    pub async fn gossip_item<I>(self, item: Box<I>)
+    where
+        REv: From<GossipRequest<I>>,
+        I: Item,
+    {
+        self.make_request(
+            |responder| GossipRequest { item, responder },
+            QueueKind::Network,
+        )
+        .await
+    }
+
     /// Gets connected network peers.
     pub async fn network_peers<I>(self) -> BTreeMap<I, String>
     where
@@ -518,6 +533,20 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::NetworkIncoming,
             )
             .await;
+    }
+
+    /// Announces that a new, unverified gossiped item has come in.
+    pub(crate) async fn announce_incoming_gossip<I>(self, unverified: Box<I>)
+    where
+        REv: From<GossipAnnouncement<I>>,
+        I: Item,
+    {
+        self.0
+            .schedule(
+                GossipAnnouncement { unverified },
+                QueueKind::NetworkIncoming,
+            )
+            .await
     }
 
     /// Announces that a new peer has connected.

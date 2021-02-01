@@ -4,6 +4,7 @@
 //! top-level module documentation for details.
 
 use std::{
+    any::type_name,
     borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
@@ -166,6 +167,30 @@ where
         match self {
             NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
         }
+    }
+}
+
+/// An outgoing gossip request.
+///
+/// Requests that an item be gossiped.
+#[derive(Debug)]
+#[must_use]
+pub struct GossipRequest<I>
+where
+    I: Item,
+{
+    /// The item to be gossiped.
+    pub item: Box<I>,
+    /// A responder, called once the item has been scheduled for gossiping.
+    pub responder: Responder<()>,
+}
+
+impl<I> Display for GossipRequest<I>
+where
+    I: Item,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "gossip {}: {}", type_name::<I>(), self.item.id())
     }
 }
 

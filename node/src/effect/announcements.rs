@@ -4,6 +4,7 @@
 //! module documentation for details.
 
 use std::{
+    any::type_name,
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
@@ -189,6 +190,31 @@ impl Display for BlockExecutorAnnouncement {
         }
     }
 }
+
+/// A gossip announcement.
+#[derive(Debug)]
+pub struct GossipAnnouncement<I>
+where
+    I: Item,
+{
+    /// The incoming item, which has not been validated for anything except that it is well-formed.
+    pub unverified: Box<I>,
+}
+
+impl<I> Display for GossipAnnouncement<I>
+where
+    I: Item,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "incoming gossip {}: {}",
+            type_name::<I>(),
+            self.unverified.id()
+        )
+    }
+}
+
 /// A linear chain announcement.
 #[derive(Debug)]
 pub enum LinearChainAnnouncement {
