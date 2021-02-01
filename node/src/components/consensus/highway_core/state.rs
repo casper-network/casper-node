@@ -864,6 +864,12 @@ impl<C: Context> State<C> {
         self.units.is_empty()
     }
 
+    /// Returns the number of units received.
+    #[cfg(test)]
+    pub(crate) fn unit_count(&self) -> usize {
+        self.units.len()
+    }
+
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
     pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
         // First we collect all units that were already seen as endorsed by earlier units.

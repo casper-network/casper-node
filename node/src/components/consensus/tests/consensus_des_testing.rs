@@ -62,7 +62,7 @@ impl Display for ValidatorId {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Fault {
-    Mute,
+    Mute(Timestamp, Timestamp),
     Equivocate,
 }
 
@@ -210,6 +210,12 @@ where
     /// It's a message with the earliest delivery time.
     pub(crate) fn pop_message(&mut self) -> Option<QueueEntry<M>> {
         self.msg_queue.pop()
+    }
+
+    /// Returns a reference to the next message from the queue without removing it.
+    /// It's a message with the earliest delivery time.
+    pub(crate) fn peek_message(&self) -> Option<&QueueEntry<M>> {
+        self.msg_queue.peek()
     }
 
     pub(crate) fn validators_ids(&self) -> impl Iterator<Item = &ValidatorId> {

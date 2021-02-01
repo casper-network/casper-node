@@ -105,6 +105,12 @@ where
         self.0.pop()
     }
 
+    /// Returns a reference to next message without removing it.
+    /// Returns `None` if there aren't any.
+    pub(crate) fn peek(&self) -> Option<&QueueEntry<M>> {
+        self.0.peek()
+    }
+
     /// Pushes new message to the queue.
     pub(crate) fn push(&mut self, item: QueueEntry<M>) {
         self.0.push(item)
