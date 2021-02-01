@@ -27,7 +27,7 @@ use libp2p::{
         connection::{ConnectedPoint, PendingConnectionError},
         upgrade,
     },
-    gossipsub::GossipsubEvent,
+    gossipsub::{GossipsubEvent, Topic},
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
@@ -49,7 +49,7 @@ use tracing::{debug, error, info, trace, warn};
 pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
-    gossip::GossipMessage,
+    gossip::{GossipMessage, BROADCAST_TOPIC, GOSSIP_DEPLOY_TOPIC},
     one_way_messaging::{Codec as OneWayCodec, Outgoing as OneWayOutgoingMessage},
     protocol_id::ProtocolId,
 };
@@ -58,7 +58,7 @@ use crate::{
     components::{chainspec_loader::Chainspec, Component},
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{NetworkInfoRequest, NetworkRequest},
+        requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -363,8 +363,9 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     }
 
     /// Queues a message to be sent to all nodes.
-    fn gossip_message(&self, payload: P) {
-        let gossip_message = match GossipMessage::new(&payload, self.max_gossip_message_size) {
+    fn gossip_message<T: Serialize + Display>(&self, topic: &'static Topic, payload: &T) {
+        let gossip_message = match GossipMessage::new(topic, payload, self.max_gossip_message_size)
+        {
             Ok(msg) => msg,
             Err(error) => {
                 warn!(%error, %payload, "{}: failed to construct new gossip message", self.our_id);
@@ -881,12 +882,14 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
-                self.gossip_message(payload);
+                self.gossip_message(&*BROADCAST_TOPIC, &payload);
                 responder.respond(()).ignore()
             }
-            Event::GossipDeployRequest { request } => {
-                // XXX: Actually gossip deploy
-                todo!()
+            Event::GossipDeployRequest {
+                request: GossipRequest { item, responder },
+            } => {
+                self.gossip_message(&*GOSSIP_DEPLOY_TOPIC, &item);
+                responder.respond(()).ignore()
             }
             Event::NetworkInfoRequest {
                 info_request: NetworkInfoRequest::GetPeers { responder },

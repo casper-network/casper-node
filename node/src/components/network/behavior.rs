@@ -16,7 +16,7 @@ use libp2p::{
 use tracing::{debug, trace, warn};
 
 use super::{
-    gossip::{self, TOPIC},
+    gossip::{self},
     one_way_messaging, peer_discovery, Config, GossipMessage, OneWayCodec, OneWayOutgoingMessage,
 };
 use crate::{components::chainspec_loader::Chainspec, types::NodeId};
@@ -123,7 +123,7 @@ impl Behavior {
 
     /// Initiates gossiping the given message.
     pub(super) fn gossip(&mut self, message: GossipMessage) {
-        if let Err(error) = self.gossip_behavior.publish(&*TOPIC, message) {
+        if let Err(error) = self.gossip_behavior.publish(message.topic, message.data) {
             warn!(?error, "{}: failed to gossip new message", self.our_id);
         }
     }

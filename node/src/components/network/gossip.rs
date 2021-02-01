@@ -7,37 +7,50 @@ use libp2p::{
     PeerId,
 };
 use once_cell::sync::Lazy;
+use serde::Serialize;
 
-use super::{Config, Error, PayloadT, ProtocolId};
+use super::{Config, Error, ProtocolId};
 use crate::components::chainspec_loader::Chainspec;
 
 /// The inner portion of the `ProtocolId` for the gossip behavior.  A standard prefix and suffix
 /// will be applied to create the full protocol name.
 const PROTOCOL_NAME_INNER: &str = "validator/gossip";
 
-pub(super) static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("all".into()));
+/// Gossiping topic used by `broadcast` functionality.
+pub(super) static BROADCAST_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
 
-pub(super) struct GossipMessage(pub Vec<u8>);
+/// Gossiping topic used by `GossipRequest<Deploy>` functionality.
+pub(super) static GOSSIP_DEPLOY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
+
+pub(super) struct GossipMessage {
+    /// Topic to gossip to.
+    pub topic: &'static Topic,
+    /// Serialized data to be gossiped.
+    pub data: Vec<u8>,
+}
 
 impl GossipMessage {
-    pub(super) fn new<P: PayloadT>(payload: &P, max_size: u32) -> Result<Self, Error> {
-        let serialized_message =
-            bincode::serialize(payload).map_err(|error| Error::Serialization(*error))?;
+    pub(super) fn new<I: Serialize>(
+        topic: &'static Topic,
+        item: &I,
+        max_size: u32,
+    ) -> Result<Self, Error> {
+        let data = bincode::serialize(item).map_err(|error| Error::Serialization(*error))?;
 
-        if serialized_message.len() > max_size as usize {
+        if data.len() > max_size as usize {
             return Err(Error::MessageTooLarge {
                 max_size,
-                actual_size: serialized_message.len() as u64,
+                actual_size: data.len() as u64,
             });
         }
 
-        Ok(GossipMessage(serialized_message))
+        Ok(GossipMessage { topic, data })
     }
 }
 
 impl From<GossipMessage> for Vec<u8> {
     fn from(message: GossipMessage) -> Self {
-        message.0
+        message.data
     }
 }
 
@@ -53,10 +66,11 @@ pub(super) fn new_behavior(
         .heartbeat_interval(config.gossip_heartbeat_interval.into())
         .max_transmit_size(config.max_gossip_message_size as usize)
         .duplicate_cache_time(config.gossip_duplicate_cache_timeout.into())
-        .validation_mode(ValidationMode::Permissive)
+        .validation_mode(ValidationMode::Permissive) // TODO: Re-add deploy verification
         .build();
     let our_peer_id = PeerId::from(our_public_key);
     let mut gossipsub = Gossipsub::new(MessageAuthenticity::Author(our_peer_id), gossipsub_config);
-    gossipsub.subscribe(TOPIC.clone());
+    gossipsub.subscribe(BROADCAST_TOPIC.clone());
+    gossipsub.subscribe(GOSSIP_DEPLOY_TOPIC.clone());
     gossipsub
 }

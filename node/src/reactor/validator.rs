@@ -120,6 +120,7 @@ pub enum Event {
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    /// Gossip deploy request.
     #[from]
     GossipDeployRequest(GossipRequest<Deploy>),
     /// Network info request.
