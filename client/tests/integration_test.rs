@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr};
+use std::{convert::Infallible, net::SocketAddr, time::Duration};
 
 use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
@@ -8,10 +8,8 @@ use tower::builder::ServiceBuilder;
 use warp::{Filter, Rejection};
 use warp_json_rpc::Builder;
 
-use casper_node::crypto::Error::*;
-use hex::FromHexError::*;
-use std::time::Duration;
-use Error::*;
+use casper_node::crypto::Error as CryptoError;
+use hex::FromHexError;
 
 use casper_client::{DeployStrParams, Error, PaymentStrParams, SessionStrParams};
 use casper_node::rpcs::{
@@ -292,7 +290,9 @@ mod get_balance {
             // is outside the scope of this test.
             // The MockServerHandle could support a pre-baked response, which should successfully
             // validate
-            Err(InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into())
+            Err(
+                Error::InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into()
+            )
         );
     }
 
@@ -301,9 +301,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", ""),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -314,9 +314,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", VALID_PURSE_UREF),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -327,7 +327,7 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance(VALID_STATE_ROOT_HASH, ""),
-            Err(FailedToParseURef("purse_uref", URefFromStrError::InvalidPrefix).into())
+            Err(Error::FailedToParseURef("purse_uref", URefFromStrError::InvalidPrefix).into())
         );
     }
 
@@ -336,9 +336,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("deadbeef", VALID_PURSE_UREF),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -398,7 +398,7 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block(VALID_STATE_ROOT_HASH),
-            Err(ErrWrapper(InvalidResponse(
+            Err(ErrWrapper(Error::InvalidResponse(
                 ValidateResponseError::NoBlockInResponse
             )))
         );
@@ -409,7 +409,7 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block("1"),
-            Err(ErrWrapper(InvalidResponse(
+            Err(ErrWrapper(Error::InvalidResponse(
                 ValidateResponseError::NoBlockInResponse
             )))
         );
@@ -420,7 +420,7 @@ mod get_block {
         let server_handle = MockServerHandle::spawn_without_params(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block(""),
-            Err(ErrWrapper(InvalidResponse(
+            Err(ErrWrapper(Error::InvalidResponse(
                 ValidateResponseError::NoBlockInResponse
             )))
         );
@@ -462,9 +462,9 @@ mod get_item {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item("<invalid state root hash>", VALID_PURSE_UREF, ""),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(OddLength)
+                error: CryptoError::FromHex(FromHexError::OddLength)
             }
             .into())
         );
@@ -475,7 +475,7 @@ mod get_item {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item(VALID_STATE_ROOT_HASH, "invalid key", ""),
-            Err(FailedToParseKey.into())
+            Err(Error::FailedToParseKey.into())
         );
     }
 
@@ -484,9 +484,9 @@ mod get_item {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item("<invalid state root hash>", "", ""),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(OddLength)
+                error: CryptoError::FromHex(FromHexError::OddLength)
             }
             .into())
         );
@@ -511,9 +511,9 @@ mod get_deploy {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle.get_deploy("012345",),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "deploy_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -713,7 +713,7 @@ mod keygen_generate_files {
                 .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(FileAlreadyExists(
+            Err(Error::FileAlreadyExists(
                 current_dir()
                     .expect("does exist")
                     .parent()
@@ -736,7 +736,7 @@ mod keygen_generate_files {
             .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
+            Err(Error::UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
         );
     }
 
@@ -748,7 +748,7 @@ mod keygen_generate_files {
                 .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(InvalidArgument(
+            Err(Error::InvalidArgument(
                 "generate_files",
                 "empty output_dir provided, must be a valid path".to_string()
             )
@@ -786,9 +786,8 @@ mod rate_limit {
         ));
 
         let now = Timestamp::now();
-        // Our default is 100 req/min, so this will time out
-        for i in 0..10u32 {
-            println!("request {}", i);
+        // Our default is 10 req/s, so this will hit the threshold
+        for _ in 0..11u32 {
             let amount = "100";
             let maybe_target_account =
                 "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
@@ -809,8 +808,13 @@ mod rate_limit {
 
         let diff = Timestamp::now() - now;
         assert!(
-            diff < Duration::from_secs(11).into(),
+            diff < Duration::from_millis(11_000).into(),
             "Rate limiting of 1 qps for 10 sec took too long at {}ms",
+            diff.millis()
+        );
+        assert!(
+            diff > Duration::from_millis(10_000).into(),
+            "Rate limiting of 1 qps for 10 sec too fast took {}ms",
             diff.millis()
         );
     }

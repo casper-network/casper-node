@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, time::Duration};
 
 use futures::future::{self};
 use hyper::server::{conn::AddrIncoming, Builder};
@@ -12,7 +12,6 @@ use super::{
     ReactorEventT,
 };
 use crate::effect::EffectBuilder;
-use std::time::Duration;
 
 /// Run the JSON-RPC server.
 pub(super) async fn run<REv: ReactorEventT>(
