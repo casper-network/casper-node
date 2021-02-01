@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// Uses a fixed port per node, but binds on any interface.
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: u64 = 10_000;
+const DEFAULT_QPS_LIMIT: u64 = 100;
 
 /// REST HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]

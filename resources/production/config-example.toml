@@ -90,7 +90,7 @@ systemd_support = false
 address = '0.0.0.0:7777'
 
 # The max rate of requests (per second) before they are limited.
-qps_limit = 1000
+qps_limit = 100
 
 # =============================================
 # Configuration options for the REST HTTP server
@@ -106,7 +106,7 @@ qps_limit = 1000
 address = '0.0.0.0:8888'
 
 # The max rate of requests (per second) before they are limited.
-qps_limit = 1000
+qps_limit = 100
 
 # =============================================
 # Configuration options for the SSE HTTP event stream server
@@ -128,7 +128,7 @@ event_stream_buffer_length = 100
 broadcast_channel_size = 100
 
 # The max rate of requests (per second) before they are limited.
-qps_limit = 1000
+qps_limit = 100
 
 # ===============================================
 # Configuration options for the storage component
