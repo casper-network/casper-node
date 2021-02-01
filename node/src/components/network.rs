@@ -884,6 +884,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 self.gossip_message(payload);
                 responder.respond(()).ignore()
             }
+            Event::GossipDeployRequest { request } => {
+                // XXX: Actually gossip deploy
+                todo!()
+            }
             Event::NetworkInfoRequest {
                 info_request: NetworkInfoRequest::GetPeers { responder },
             } => {

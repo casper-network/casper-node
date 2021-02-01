@@ -12,8 +12,8 @@ use libp2p::{
 use serde::Serialize;
 
 use crate::{
-    effect::requests::{NetworkInfoRequest, NetworkRequest},
-    types::NodeId,
+    effect::requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
+    types::{Deploy, NodeId},
 };
 
 #[derive(Debug, From, Serialize)]
@@ -103,12 +103,23 @@ pub enum Event<P> {
         request: NetworkRequest<NodeId, P>,
     },
 
+    GossipDeployRequest {
+        #[serde(skip_serializing)]
+        request: GossipRequest<Deploy>,
+    },
+
     /// A network info request made by a different component.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]
         info_request: NetworkInfoRequest<NodeId>,
     },
+}
+
+impl<P> From<GossipRequest<Deploy>> for Event<P> {
+    fn from(request: GossipRequest<Deploy>) -> Self {
+        Event::GossipDeployRequest { request }
+    }
 }
 
 impl<P: Display> Display for Event<P> {
@@ -176,8 +187,10 @@ impl<P: Display> Display for Event<P> {
                 }
                 Ok(())
             }
-
             Event::NetworkRequest { request } => write!(f, "request: {}", request),
+            Event::GossipDeployRequest { request } => {
+                write!(f, "gossip deploy request: {}", request.item.id())
+            }
             Event::NetworkInfoRequest { info_request } => {
                 write!(f, "info request: {}", info_request)
             }
