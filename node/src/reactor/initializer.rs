@@ -12,6 +12,8 @@ use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
+        network::NetworkIdentity,
+        small_network::{SmallNetworkIdentity, SmallNetworkIdentityError},
         storage::{self, Storage},
         Component,
     },
@@ -93,6 +95,10 @@ pub enum Error {
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
+
+    /// An error that occurred when creating a [SmallNetworkIdentity]
+    #[error(transparent)]
+    SmallNetworkIdentityError(#[from] SmallNetworkIdentityError),
 }
 
 /// Initializer node reactor.
@@ -102,6 +108,9 @@ pub struct Reactor {
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
+    pub(super) small_network_identity: SmallNetworkIdentity,
+    #[data_size(skip)]
+    pub(super) network_identity: NetworkIdentity,
 }
 
 impl Reactor {
@@ -143,12 +152,18 @@ impl reactor::Reactor for Reactor {
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
+        let small_network_identity = SmallNetworkIdentity::new()?;
+
+        let network_identity = NetworkIdentity::new();
+
         Ok((
             Reactor {
                 config,
                 chainspec_loader,
                 storage,
                 contract_runtime,
+                small_network_identity,
+                network_identity,
             },
             effects,
         ))

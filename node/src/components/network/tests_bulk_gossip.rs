@@ -12,7 +12,10 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
-    components::{collector::Collectable, network::Config as NetworkComponentConfig},
+    components::{
+        collector::Collectable,
+        network::{Config as NetworkComponentConfig, NetworkIdentity},
+    },
     effect::EffectExt,
     reactor::Runner,
     testing,
@@ -31,7 +34,7 @@ reactor!(LoadTestingReactor {
 
   components: {
       net = has_effects Network::<LoadTestingReactorEvent, DummyPayload>(
-        event_queue, cfg.network_config, &cfg.chainspec, false
+        event_queue, cfg.network_config, NetworkIdentity::new(), &cfg.chainspec, false
       );
       collector = infallible Collector::<DummyPayload>();
   }
