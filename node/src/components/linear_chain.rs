@@ -461,7 +461,7 @@ where
                     // Populate cache
                     self.signature_cache.insert(*signatures.clone());
                 }
-                // Check if the validator is bonded.
+                // Check if the validator is bonded in the era in which the block was created.
                 effect_builder
                     .is_bonded_validator(fs.era_id, fs.public_key)
                     .map(|is_bonded| {
@@ -473,15 +473,17 @@ where
                     })
             }
             .result(
-                |(maybe_signature, fs, is_bonded)| Event::IsBonded(maybe_signature, fs, is_bonded),
-                |(maybe_signature, fs)| Event::IsBondedFutureEra(maybe_signature, fs),
+                |(maybe_signatures, fs, is_bonded)| {
+                    Event::IsBonded(maybe_signatures, fs, is_bonded)
+                },
+                |(maybe_signatures, fs)| Event::IsBondedFutureEra(maybe_signatures, fs),
             ),
-            Event::IsBondedFutureEra(maybe_signature, fs) => {
+            Event::IsBondedFutureEra(maybe_signatures, fs) => {
                 match self.latest_block.as_ref() {
                     // If we don't have any block yet, we cannot determine who is bonded or not.
                     None => effect_builder
                         .immediately()
-                        .event(move |_| Event::IsBonded(maybe_signature, fs, false)),
+                        .event(move |_| Event::IsBonded(maybe_signatures, fs, false)),
                     Some(block) => {
                         let latest_header = block.header();
                         let state_root_hash = latest_header.state_root_hash();
@@ -504,7 +506,7 @@ where
                                 }
                             })
                             .result(
-                                |is_bonded| Event::IsBonded(maybe_signature, fs, is_bonded),
+                                |is_bonded| Event::IsBonded(maybe_signatures, fs, is_bonded),
                                 |error| {
                                     error!(%error, "is_bonded_in_future_era returned an error.");
                                     panic!("couldn't check if validator is bonded")
@@ -536,7 +538,7 @@ where
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
                     self.signature_cache.insert(*signature.clone());
-                    info!(hash=%signature.block_hash, "storing finality signatures");
+                    debug!(hash=%signature.block_hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
                             .put_signatures_to_storage(*signature)
@@ -550,16 +552,12 @@ where
                 // We should finalize the same block eventually. Either in this or in the
                 // next era.
                 // Store the signatures.
-                let mut effects = Effects::new();
                 let mut signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
                 signatures.append_proof(fs.public_key, fs.signature);
-                effects.extend(
-                    effect_builder
-                        .put_signatures_to_storage(signatures.clone())
-                        .ignore(),
-                );
-                self.signature_cache.insert(signatures);
-                effects
+                self.signature_cache.insert(signatures.clone());
+                effect_builder
+                    .put_signatures_to_storage(signatures)
+                    .ignore()
             }
             Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
                 self.remove_from_pending_fs(&fs);

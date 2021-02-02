@@ -687,7 +687,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested signatures for a give block hash.
+    /// Gets the requested signatures for a given block hash.
     pub(crate) async fn get_signatures_from_storage(
         self,
         block_hash: BlockHash,
@@ -705,7 +705,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Store the requested finality signatures into storage.
+    /// Puts the requested finality signatures into storage.
     pub(crate) async fn put_signatures_to_storage(self, signatures: BlockSignatures) -> bool
     where
         REv: From<StorageRequest>,
@@ -877,7 +877,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block and its associated metadata.
-    pub(crate) async fn get_block_at_height_with_metadata(
+    pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
     ) -> Option<(Block, BlockSignatures)>
@@ -895,7 +895,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block by hash with its associated metadata.
-    pub(crate) async fn get_block_with_metadata(
+    pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
     ) -> Option<(Block, BlockSignatures)>
@@ -913,7 +913,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Get the highest block with its associated metadata.
-    pub(crate) async fn get_highest_block_with_metadata(self) -> Option<(Block, BlockSignatures)>
+    pub(crate) async fn get_highest_block_with_metadata_from_storage(
+        self,
+    ) -> Option<(Block, BlockSignatures)>
     where
         REv: From<StorageRequest>,
     {

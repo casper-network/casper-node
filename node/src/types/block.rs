@@ -22,6 +22,7 @@ use hex_fmt::{HexFmt, HexList};
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
+use rand::SeedableRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -44,7 +45,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, NodeRng},
+    types::{Deploy, DeployHash, JsonBlock, NodeRng},
     utils::DisplayIter,
 };
 
@@ -112,6 +113,19 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         finalized_block,
         next_era_validator_weights,
     )
+});
+static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
+    let block = Block::doc_example().clone();
+    let mut block_signature = BlockSignatures::new(*block.hash(), block.header().era_id);
+
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
+
+    let mut rng = NodeRng::seed_from_u64(0);
+    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+    block_signature.append_proof(public_key, signature);
+
+    JsonBlock::new(block, block_signature)
 });
 
 /// Error returned from constructing or validating a `Block`.
@@ -782,11 +796,11 @@ impl From<bytesrepr::Error> for BlockValidationError {
 #[derive(Debug, Serialize, Deserialize, Clone, DataSize)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
-    pub block_hash: BlockHash,
-    /// The era id for the given set of finality signatures
-    pub era_id: EraId,
+    pub(crate) block_hash: BlockHash,
+    /// The era id for the given set of finality signatures.
+    pub(crate) era_id: EraId,
     /// The signatures associated with the block hash.
-    pub proofs: BTreeMap<PublicKey, Signature>,
+    pub(crate) proofs: BTreeMap<PublicKey, Signature>,
 }
 
 impl BlockSignatures {
@@ -811,7 +825,7 @@ impl Display for BlockSignatures {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "Block signature for Hash: {} in era_id: {} with proofs of lenght: {}",
+            "block signatures for hash: {} in era_id: {} with {} proofs",
             self.block_hash,
             self.era_id,
             self.proofs.len()
@@ -1085,14 +1099,14 @@ impl Item for BlockByHeight {
 pub(crate) mod json_compatibility {
     use super::*;
 
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     struct Reward {
         validator: PublicKey,
         amount: u64,
     }
 
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     struct ValidatorWeight {
         validator: PublicKey,
@@ -1100,7 +1114,7 @@ pub(crate) mod json_compatibility {
     }
 
     /// Equivocation and reward information to be included in the terminal block.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     struct JsonEraEnd {
         equivocators: Vec<PublicKey>,
@@ -1135,7 +1149,7 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     struct JsonBlockHeader {
         parent_hash: BlockHash,
@@ -1210,7 +1224,7 @@ pub(crate) mod json_compatibility {
     }
 
     /// A JSON-friendly representation of `Block`.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlock {
         hash: BlockHash,
@@ -1222,13 +1236,16 @@ pub(crate) mod json_compatibility {
     impl JsonBlock {
         /// Create a new JSON Block with a Linear chain block and its associated signatures.
         pub fn new(block: Block, signatures: BlockSignatures) -> Self {
-            let mut proto_block = JsonBlock::from(block);
-            proto_block.proofs = signatures
-                .proofs
-                .iter()
-                .map(|(pub_key, signature)| JsonProof::new(*pub_key, *signature))
-                .collect();
-            proto_block
+            let hash = *block.hash();
+            let header = JsonBlockHeader::from(block.header.clone());
+            let proofs = signatures.proofs.into_iter().map(JsonProof::from).collect();
+
+            JsonBlock {
+                hash,
+                header,
+                body: block.body,
+                proofs,
+            }
         }
 
         /// Returns the hashes of the `Deploy`s included in the `Block`.
@@ -1242,14 +1259,9 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    impl From<Block> for JsonBlock {
-        fn from(block: Block) -> Self {
-            JsonBlock {
-                hash: block.hash,
-                header: JsonBlockHeader::from(block.header),
-                body: block.body,
-                proofs: vec![],
-            }
+    impl DocExample for JsonBlock {
+        fn doc_example() -> &'static Self {
+            &*JSON_BLOCK
         }
     }
 
@@ -1264,20 +1276,11 @@ pub(crate) mod json_compatibility {
     }
 
     /// A JSON-friendly representation of a proof, i.e. a block's finality signature.
-    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     pub struct JsonProof {
         public_key: PublicKey,
         signature: Signature,
-    }
-
-    impl JsonProof {
-        pub fn new(public_key: PublicKey, signature: Signature) -> Self {
-            JsonProof {
-                public_key,
-                signature,
-            }
-        }
     }
 
     impl From<(PublicKey, Signature)> for JsonProof {
@@ -1299,7 +1302,8 @@ pub(crate) mod json_compatibility {
     fn block_json_roundtrip() {
         let mut rng = TestRng::new();
         let block: Block = Block::random(&mut rng);
-        let json_block = JsonBlock::from(block.clone());
+        let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
+        let json_block = JsonBlock::new(block.clone(), empty_signatures);
         let block_deserialized = Block::from(json_block);
         assert_eq!(block, block_deserialized);
     }

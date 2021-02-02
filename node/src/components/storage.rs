@@ -539,10 +539,11 @@ impl Storage {
                 } else {
                     return Ok(responder.respond(None).ignore());
                 };
-                let hash = block.hash();
-                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                // Check that the hash of the block retrieved is correct.
+                assert_eq!(&block_hash, block.hash());
+                let signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.header().era_id()),
+                    None => BlockSignatures::new(block_hash, block.header().era_id()),
                 };
                 responder.respond(Some((block, signatures))).ignore()
             }
