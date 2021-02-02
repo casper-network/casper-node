@@ -222,7 +222,7 @@ impl HighwayValidator {
         msg: HighwayMessage,
     ) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
-            Some(DesFault::Mute { from, till })
+            Some(DesFault::TemporarilyMute { from, till })
                 if *from <= delivery_time && delivery_time <= *till =>
             {
                 // For mute validators we add it to the state but not gossip, if the delivery time
@@ -238,7 +238,7 @@ impl HighwayValidator {
                     }
                 }
             }
-            None | Some(DesFault::Mute { .. }) => {
+            None | Some(DesFault::TemporarilyMute { .. }) | Some(DesFault::PermanentlyMute) => {
                 // Honest validator.
                 match &msg {
                     HighwayMessage::NewVertex(_)
@@ -1172,7 +1172,7 @@ mod test_harness {
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
-            .fault_type(DesFault::always_mute())
+            .fault_type(DesFault::PermanentlyMute)
             .consensus_values_count(cv_count)
             .weight_limits(100, 120)
             .build(&mut rng)
@@ -1276,7 +1276,7 @@ mod test_harness {
         let mut test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(40) // Too many mute validators to be live...
-            .fault_type(DesFault::Mute {
+            .fault_type(DesFault::TemporarilyMute {
                 from: start_mute,
                 till: stop_mute,
             }) // ...but just temporarily mute.
