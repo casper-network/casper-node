@@ -27,6 +27,11 @@ impl BlockContext {
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
+
+    #[cfg(test)]
+    pub(crate) fn height(&self) -> u64 {
+        self.height
+    }
 }
 
 /// Equivocation and reward information to be included in the terminal finalized block.

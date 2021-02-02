@@ -162,6 +162,11 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn last_finalized(&self) -> Option<&C::Hash> {
         self.last_finalized.as_ref()
     }
+
+    /// Returns the configured fault tolerance threshold of this detector.
+    pub(crate) fn fault_tolerance_threshold(&self) -> Weight {
+        self.ftt
+    }
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
