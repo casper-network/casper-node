@@ -569,7 +569,7 @@ where
             if let Some(upgrade_activation_point) =
                 self.era_supervisor.next_upgrade_activation_point
             {
-                // If the next era is the at or after the upgrade activation point, stop the node.
+                // If the next era is at or after the upgrade activation point, stop the node.
                 if upgrade_activation_point.should_upgrade(&era_id) {
                     info!(era = era_id.0, "shutting down for upgrade");
                     self.era_supervisor.stop_for_upgrade = true;
