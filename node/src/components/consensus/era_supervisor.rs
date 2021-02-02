@@ -565,17 +565,16 @@ where
         let faulty_num = era.consensus.validators_with_evidence().len();
         if faulty_num == old_faulty_num {
             info!(era = era_id.0, "stop voting in era");
+            era.consensus.deactivate_validator();
             if let Some(upgrade_activation_point) =
                 self.era_supervisor.next_upgrade_activation_point
             {
                 // If the next era is the at or after the upgrade activation point, stop the node.
-                if era_id.0 + 1 >= upgrade_activation_point.value().0 {
+                if upgrade_activation_point.should_upgrade(&era_id) {
                     info!(era = era_id.0, "shutting down for upgrade");
                     self.era_supervisor.stop_for_upgrade = true;
-                    return Effects::new();
                 }
             }
-            era.consensus.deactivate_validator();
             Effects::new()
         } else {
             let deactivate_era = move |_| Event::DeactivateEra {
@@ -916,7 +915,7 @@ where
                 info!(activation_point=%new_point, "new upgrade activation point");
                 self.era_supervisor.next_upgrade_activation_point = Some(new_point);
             }
-            _ => (),
+            (None, Some(_)) | (None, None) => (),
         }
         Effects::new()
     }

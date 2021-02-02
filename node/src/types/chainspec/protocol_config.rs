@@ -19,9 +19,10 @@ pub struct ActivationPoint {
 }
 
 impl ActivationPoint {
-    /// Returns the wrapped era ID.
-    pub fn value(&self) -> EraId {
-        self.era_id
+    /// Returns whether we should upgrade the node due to the next era being at or after the upgrade
+    /// activation point.
+    pub(crate) fn should_upgrade(&self, era_being_deactivated: &EraId) -> bool {
+        era_being_deactivated.0 + 1 >= self.era_id.0
     }
 }
 
