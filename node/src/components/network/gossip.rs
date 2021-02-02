@@ -1,6 +1,8 @@
 //! This module is home to types/functions related to using libp2p's `GossipSub` behavior, used for
 //! gossiping data to subscribed peers.
 
+use std::fmt::{self, Display, Formatter};
+
 use libp2p::{
     core::{ProtocolName, PublicKey},
     gossipsub::{Gossipsub, GossipsubConfigBuilder, MessageAuthenticity, Topic, ValidationMode},
@@ -25,9 +27,28 @@ pub(super) static GOSSIP_DEPLOY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("br
 #[derive(Debug, Deserialize, Serialize)]
 pub(super) enum GossipMessage {
     /// Twice-encoded legacy payload, used for broadcasting. To be removed soon.
+    ///
+    /// The payload is encoded twice to avoid the need for a type parameter on `GossipMessage`.
     LegacyPayload(Vec<u8>),
     /// An encoded deploy.
     Deploy(Box<Deploy>),
+}
+
+impl Display for GossipMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            GossipMessage::LegacyPayload(inner) => {
+                write!(
+                    f,
+                    "gossip message [legacy/broadcast]: {} bytes long",
+                    inner.len()
+                )
+            }
+            GossipMessage::Deploy(inner) => {
+                write!(f, "gossip message [deploy]: {}", inner)
+            }
+        }
+    }
 }
 
 impl GossipMessage {

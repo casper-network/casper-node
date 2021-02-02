@@ -640,15 +640,34 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                     return;
                 }
             };
-            match bincode::deserialize::<P>(&message.data) {
-                Ok(payload) => {
-                    debug!(%sender, %payload, "{}: libp2p gossiped message received", our_id(swarm));
-                    event_queue
-                        .schedule(
-                            NetworkAnnouncement::MessageReceived { sender, payload },
-                            QueueKind::NetworkIncoming,
-                        )
-                        .await;
+            match bincode::deserialize::<GossipMessage>(&message.data) {
+                Ok(gossip_message) => {
+                    debug!(%sender, %gossip_message, "{}: libp2p gossiped message received", our_id(swarm));
+
+                    match gossip_message {
+                        GossipMessage::LegacyPayload(ref payload_bytes) => {
+                            match bincode::deserialize::<P>(payload_bytes) {
+                                Ok(payload) => {
+                                    event_queue
+                                        .schedule(
+                                            NetworkAnnouncement::MessageReceived {
+                                                sender,
+                                                payload,
+                                            },
+                                            QueueKind::NetworkIncoming,
+                                        )
+                                        .await;
+                                }
+                                Err(_) => {
+                                    warn!("Received broadcast-via-gossip payload, but failed to deserialize");
+                                }
+                            }
+                        }
+                        GossipMessage::Deploy(_) => {
+                            // Received a gossiped deploy.
+                            todo!()
+                        }
+                    }
                 }
                 Err(error) => {
                     warn!(
