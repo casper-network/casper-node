@@ -131,7 +131,6 @@ pub struct Network<REv, P> {
     /// The channel through which to send new messages for gossiping.
     #[data_size(skip)]
     gossip_message_sender: mpsc::UnboundedSender<GossipMessage>,
-    max_gossip_message_size: u32,
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
@@ -188,7 +187,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 one_way_message_sender,
                 max_one_way_message_size: 0,
                 gossip_message_sender,
-                max_gossip_message_size: 0,
                 shutdown_sender: Some(server_shutdown_sender),
                 server_join_handle: None,
                 _phantom: PhantomData,
@@ -268,6 +266,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // Start the server task.
         let server_join_handle = Some(tokio::spawn(server_task(
             event_queue,
+            config.max_gossip_message_size,
             one_way_message_receiver,
             gossip_message_receiver,
             server_shutdown_receiver,
@@ -285,7 +284,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             one_way_message_sender,
             max_one_way_message_size: config.max_one_way_message_size,
             gossip_message_sender,
-            max_gossip_message_size: config.max_gossip_message_size,
             shutdown_sender: Some(server_shutdown_sender),
             server_join_handle,
             _phantom: PhantomData,
@@ -401,6 +399,7 @@ fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
 
 async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     event_queue: EventQueueHandle<REv>,
+    max_gossip_message_size: u32,
     // Receives outgoing one-way messages to be sent out via libp2p.
     mut one_way_outgoing_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
     // Receives new gossip messages to be sent out via libp2p.
@@ -443,7 +442,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                     match maybe_gossip_message {
                         Some(gossip_message) => {
                             // We've received a new message to be gossiped.
-                            swarm.gossip(gossip_message);
+                            swarm.gossip(gossip_message, max_gossip_message_size);
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.
