@@ -16,8 +16,6 @@ use crate::{components::chainspec_loader::Chainspec, types::Deploy};
 /// will be applied to create the full protocol name.
 const PROTOCOL_NAME_INNER: &str = "validator/gossip";
 
-const ASSUMED_SERIALIZATION_OVERHEAD: usize = 8;
-
 /// Gossiping topic used by `broadcast` functionality.
 pub(super) static BROADCAST_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
 
@@ -29,31 +27,19 @@ pub(super) enum GossipMessage {
     /// Twice-encoded legacy payload, used for broadcasting. To be removed soon.
     LegacyPayload(Vec<u8>),
     /// An encoded deploy.
-    Deploy(Deploy),
-}
-
-fn serialize_gossip_message<T: Serialize>(item: &T, max_size: u32) -> Result<Vec<u8>, Error> {
-    let data = bincode::serialize(item).map_err(|error| Error::Serialization(*error))?;
-
-    // We add 8 bytes of potential tag serialization overhead.
-    if data.len() + ASSUMED_SERIALIZATION_OVERHEAD > max_size as usize {
-        return Err(Error::MessageTooLarge {
-            max_size: max_size - ASSUMED_SERIALIZATION_OVERHEAD as u32,
-            actual_size: data.len(),
-        });
-    }
-    Ok(data)
+    Deploy(Box<Deploy>),
 }
 
 impl GossipMessage {
-    pub(super) fn new_from_payload<I: Serialize>(
-        payload: &I,
-        max_size: u32,
-    ) -> Result<Self, Error> {
-        serialize_gossip_message(payload, max_size).map(GossipMessage::LegacyPayload)
+    /// Constructs a new gossip message from a payload.
+    pub(super) fn new_from_payload<I: Serialize>(payload: &I) -> Result<Self, Error> {
+        let data = bincode::serialize(payload).map_err(|error| Error::Serialization(*error))?;
+
+        Ok(GossipMessage::LegacyPayload(data))
     }
 
-    pub(super) fn new_from_deploy(deploy: Deploy) -> Self {
+    /// Constructs a new gossip message from a deploy.
+    pub(super) fn new_from_deploy(deploy: Box<Deploy>) -> Self {
         GossipMessage::Deploy(deploy)
     }
 

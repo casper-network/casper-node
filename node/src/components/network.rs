@@ -27,7 +27,7 @@ use libp2p::{
         connection::{ConnectedPoint, PendingConnectionError},
         upgrade,
     },
-    gossipsub::{GossipsubEvent, Topic},
+    gossipsub::GossipsubEvent,
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
@@ -49,7 +49,7 @@ use tracing::{debug, error, info, trace, warn};
 pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
-    gossip::{GossipMessage, BROADCAST_TOPIC, GOSSIP_DEPLOY_TOPIC},
+    gossip::GossipMessage,
     one_way_messaging::{Codec as OneWayCodec, Outgoing as OneWayOutgoingMessage},
     protocol_id::ProtocolId,
 };
@@ -63,7 +63,7 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    types::{Deploy, NodeId},
+    types::NodeId,
     utils::DisplayIter,
     NodeRng,
 };
@@ -365,27 +365,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
     }
 
-    /// Queues a message to be sent to all nodes.
-    fn gossip_message<T: Serialize + Display>(&self, topic: &'static Topic, payload: &T) {
-        // TODO: Remove this function entirely and construct `GossipMessage` one step up the stack.
-        let gossip_message = match GossipMessage::new_from_payload(
-            payload,
-            self.max_gossip_message_size,
-        ) {
-            Ok(msg) => msg,
-            Err(error) => {
-                warn!(%error, %payload, "{}: failed to construct new gossip message", self.our_id);
-                return;
-            }
-        };
-        if let Err(error) = self.gossip_message_sender.send(gossip_message) {
-            warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
-        }
-    }
-
-    /// Queues a deploy to be gossipped to all nodes.
-    fn gossip_deploy(&self, deploy: Deploy) {
-        let gossip_message = GossipMessage::new_from_deploy(deploy);
+    /// Queues a message to be gossiped by the background thread.
+    fn queue_outgoing_gossip_message(&self, gossip_message: GossipMessage) {
         if let Err(error) = self.gossip_message_sender.send(gossip_message) {
             warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
         }
@@ -896,13 +877,21 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
-                self.gossip_message(&*BROADCAST_TOPIC, &payload);
+                match GossipMessage::new_from_payload(&payload) {
+                    Ok(gossip_message) => {
+                        self.queue_outgoing_gossip_message(gossip_message);
+                    }
+                    Err(err) => {
+                        warn!(%err, "could not serialize legacy gossip payload");
+                    }
+                };
                 responder.respond(()).ignore()
             }
             Event::GossipDeployRequest {
                 request: GossipRequest { item, responder },
             } => {
-                self.gossip_message(&*GOSSIP_DEPLOY_TOPIC, &item);
+                let gossip_message = GossipMessage::new_from_deploy(item);
+                self.queue_outgoing_gossip_message(gossip_message);
                 responder.respond(()).ignore()
             }
             Event::NetworkInfoRequest {
