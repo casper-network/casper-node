@@ -52,7 +52,7 @@ impl Outgoing {
         if serialized_message.len() > max_size as usize {
             return Err(Error::MessageTooLarge {
                 max_size,
-                actual_size: serialized_message.len() as u64,
+                actual_size: serialized_message.len(),
             });
         }
 

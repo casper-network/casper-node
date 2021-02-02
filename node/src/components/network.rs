@@ -63,7 +63,7 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    types::NodeId,
+    types::{Deploy, NodeId},
     utils::DisplayIter,
     NodeRng,
 };
@@ -364,14 +364,25 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 
     /// Queues a message to be sent to all nodes.
     fn gossip_message<T: Serialize + Display>(&self, topic: &'static Topic, payload: &T) {
-        let gossip_message = match GossipMessage::new(topic, payload, self.max_gossip_message_size)
-        {
+        // TODO: Remove this function entirely and construct `GossipMessage` one step up the stack.
+        let gossip_message = match GossipMessage::new_from_payload(
+            payload,
+            self.max_gossip_message_size,
+        ) {
             Ok(msg) => msg,
             Err(error) => {
                 warn!(%error, %payload, "{}: failed to construct new gossip message", self.our_id);
                 return;
             }
         };
+        if let Err(error) = self.gossip_message_sender.send(gossip_message) {
+            warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
+        }
+    }
+
+    /// Queues a deploy to be gossipped to all nodes.
+    fn gossip_deploy(&self, deploy: Deploy) {
+        let gossip_message = GossipMessage::new_from_deploy(deploy);
         if let Err(error) = self.gossip_message_sender.send(gossip_message) {
             warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
         }

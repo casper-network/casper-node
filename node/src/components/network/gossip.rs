@@ -7,14 +7,16 @@ use libp2p::{
     PeerId,
 };
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{Config, Error, ProtocolId};
-use crate::components::chainspec_loader::Chainspec;
+use crate::{components::chainspec_loader::Chainspec, types::Deploy};
 
 /// The inner portion of the `ProtocolId` for the gossip behavior.  A standard prefix and suffix
 /// will be applied to create the full protocol name.
 const PROTOCOL_NAME_INNER: &str = "validator/gossip";
+
+const ASSUMED_SERIALIZATION_OVERHEAD: usize = 8;
 
 /// Gossiping topic used by `broadcast` functionality.
 pub(super) static BROADCAST_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
@@ -22,35 +24,45 @@ pub(super) static BROADCAST_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadc
 /// Gossiping topic used by `GossipRequest<Deploy>` functionality.
 pub(super) static GOSSIP_DEPLOY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
 
-pub(super) struct GossipMessage {
-    /// Topic to gossip to.
-    pub topic: &'static Topic,
-    /// Serialized data to be gossiped.
-    pub data: Vec<u8>,
+#[derive(Debug, Deserialize, Serialize)]
+pub(super) enum GossipMessage {
+    /// Twice-encoded legacy payload, used for broadcasting. To be removed soon.
+    LegacyPayload(Vec<u8>),
+    /// An encoded deploy.
+    Deploy(Deploy),
+}
+
+fn serialize_gossip_message<T: Serialize>(item: &T, max_size: u32) -> Result<Vec<u8>, Error> {
+    let data = bincode::serialize(item).map_err(|error| Error::Serialization(*error))?;
+
+    // We add 8 bytes of potential tag serialization overhead.
+    if data.len() + ASSUMED_SERIALIZATION_OVERHEAD > max_size as usize {
+        return Err(Error::MessageTooLarge {
+            max_size: max_size - ASSUMED_SERIALIZATION_OVERHEAD as u32,
+            actual_size: data.len(),
+        });
+    }
+    Ok(data)
 }
 
 impl GossipMessage {
-    pub(super) fn new<I: Serialize>(
-        topic: &'static Topic,
-        item: &I,
+    pub(super) fn new_from_payload<I: Serialize>(
+        payload: &I,
         max_size: u32,
     ) -> Result<Self, Error> {
-        let data = bincode::serialize(item).map_err(|error| Error::Serialization(*error))?;
-
-        if data.len() > max_size as usize {
-            return Err(Error::MessageTooLarge {
-                max_size,
-                actual_size: data.len() as u64,
-            });
-        }
-
-        Ok(GossipMessage { topic, data })
+        serialize_gossip_message(payload, max_size).map(GossipMessage::LegacyPayload)
     }
-}
 
-impl From<GossipMessage> for Vec<u8> {
-    fn from(message: GossipMessage) -> Self {
-        message.data
+    pub(super) fn new_from_deploy(deploy: Deploy) -> Self {
+        GossipMessage::Deploy(deploy)
+    }
+
+    /// Returns the topic the message should be sent out on.
+    pub(super) fn topic(&self) -> &'static Topic {
+        match self {
+            GossipMessage::LegacyPayload(_) => &*BROADCAST_TOPIC,
+            GossipMessage::Deploy(_) => &*GOSSIP_DEPLOY_TOPIC,
+        }
     }
 }
 
