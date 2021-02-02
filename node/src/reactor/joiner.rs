@@ -12,7 +12,7 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{PublicKey, U512};
 
@@ -622,11 +622,11 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, event)
                 }
                 Message::FinalitySignature(_) => {
-                    warn!("finality signatures not handled in joiner reactor");
+                    debug!("finality signatures not handled in joiner reactor");
                     Effects::new()
                 }
                 other => {
-                    warn!(?other, "network announcement ignored.");
+                    debug!(?other, "network announcement ignored.");
                     Effects::new()
                 }
             },
