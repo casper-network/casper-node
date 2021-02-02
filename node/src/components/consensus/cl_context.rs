@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use tracing::info;
 
@@ -17,12 +17,12 @@ use crate::{
 };
 
 pub(crate) struct Keypair {
-    secret_key: Rc<SecretKey>,
+    secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
 
 impl Keypair {
-    pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
+    pub(crate) fn new(secret_key: Arc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
             public_key,
@@ -30,8 +30,8 @@ impl Keypair {
     }
 }
 
-impl From<Rc<SecretKey>> for Keypair {
-    fn from(secret_key: Rc<SecretKey>) -> Self {
+impl From<Arc<SecretKey>> for Keypair {
+    fn from(secret_key: Arc<SecretKey>) -> Self {
         let public_key: PublicKey = secret_key.as_ref().into();
         Self::new(secret_key, public_key)
     }

@@ -10,7 +10,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::PathBuf,
-    rc::Rc,
+    sync::Arc,
     time::Duration,
 };
 
@@ -66,7 +66,7 @@ type ConsensusConstructor<I> = dyn Fn(
 ) -> (
     Box<dyn ConsensusProtocol<I, ClContext>>,
     Vec<ProtocolOutcome<I, ClContext>>,
-);
+) + Send;
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -76,7 +76,7 @@ pub struct EraSupervisor<I> {
     /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
-    secret_signing_key: Rc<SecretKey>,
+    secret_signing_key: Arc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
@@ -131,7 +131,7 @@ where
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
-        let secret_signing_key = Rc::new(config.secret_key_path.clone().load(root)?);
+        let secret_signing_key = Arc::new(config.secret_key_path.clone().load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let bonded_eras: u64 = protocol_config.unbonding_delay - protocol_config.auction_delay;
@@ -279,7 +279,7 @@ where
         );
 
         if should_activate {
-            let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
+            let secret = Keypair::new(self.secret_signing_key.clone(), our_id);
             let unit_hash_file = self.unit_hashes_folder.join(format!(
                 "unit_hash_{:?}_{}.dat",
                 instance_id,
@@ -336,7 +336,7 @@ where
         now: Timestamp,
     ) -> Vec<ProtocolOutcome<I, ClContext>> {
         self.finished_joining = true;
-        let secret = Keypair::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
+        let secret = Keypair::new(self.secret_signing_key.clone(), self.public_signing_key);
         let public_key = self.public_signing_key;
         let unit_hashes_folder = self.unit_hashes_folder.clone();
         self.active_eras
