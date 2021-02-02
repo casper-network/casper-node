@@ -115,7 +115,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: Context> {
+pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Upcasts consensus protocol into `dyn Any`.
     ///
     /// Typically called on a boxed trait object for downcasting afterwards.
