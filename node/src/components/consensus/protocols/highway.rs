@@ -220,9 +220,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             results.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(v);
-        results.push(ProtocolOutcome::CreatedGossipMessage(
-            bincode::serialize(&msg).expect("should serialize message"),
-        ));
+        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
         results.extend(self.detect_finality());
         results
     }
@@ -250,8 +248,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             let sender = pending_vertex.sender().clone();
             self.synchronizer
                 .add_missing_dependency(dep.clone(), pending_vertex);
-            let msg = HighwayMessage::RequestDependency(dep);
-            let ser_msg = bincode::serialize(&msg).expect("should serialize message");
+            let ser_msg = HighwayMessage::RequestDependency(dep).serialize();
             outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
             return outcomes;
         }
@@ -344,9 +341,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
-        results.push(ProtocolOutcome::CreatedGossipMessage(
-            bincode::serialize(&msg).expect("should serialize message"),
-        ));
+        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
         results
     }
 
@@ -385,6 +380,12 @@ enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
     LatestStateRequest(Panorama<C>),
+}
+
+impl<C: Context> HighwayMessage<C> {
+    fn serialize(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("should serialize message")
+    }
 }
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
@@ -482,16 +483,11 @@ where
                     GetDepOutcome::Evidence(vid) => {
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
-                    GetDepOutcome::Vertex(vv) => {
-                        let msg = HighwayMessage::NewVertex(vv.into());
-                        let serialized_msg =
-                            bincode::serialize(&msg).expect("should serialize message");
-                        // TODO: Should this be done via a gossip service?
-                        vec![ProtocolOutcome::CreatedTargetedMessage(
-                            serialized_msg,
-                            sender,
-                        )]
-                    }
+                    // TODO: Should this be done via a gossip service?
+                    GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
+                        HighwayMessage::NewVertex(vv.into()).serialize(),
+                        sender,
+                    )],
                 }
             }
             Ok(HighwayMessage::LatestStateRequest(panorama)) => {
@@ -547,9 +543,7 @@ where
                     .zip(&panorama)
                     .filter_map(create_message)
                     .map(|msg| {
-                        let serialized_msg =
-                            bincode::serialize(&msg).expect("should serialize message");
-                        ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
+                        ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender.clone())
                     })
                     .collect()
             }
@@ -559,9 +553,8 @@ where
     fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C> {
         trace!(?peer_id, "connected to a new peer");
         let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-        let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
         vec![ProtocolOutcome::CreatedTargetedMessage(
-            serialized_msg,
+            msg.serialize(),
             peer_id,
         )]
     }
@@ -685,10 +678,8 @@ where
                     GetDepOutcome::None | GetDepOutcome::Evidence(_) => None,
                     GetDepOutcome::Vertex(vv) => {
                         let msg = HighwayMessage::NewVertex(vv.into());
-                        let serialized_msg =
-                            bincode::serialize(&msg).expect("should serialize message");
                         Some(ProtocolOutcome::CreatedTargetedMessage(
-                            serialized_msg,
+                            msg.serialize(),
                             sender,
                         ))
                     }
