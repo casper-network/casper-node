@@ -789,6 +789,25 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets missing descendant trie keys for an ancestral trie key.
+    #[allow(unused)]
+    pub(crate) async fn missing_trie_keys(
+        self,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::MissingTrieKeys {
+                trie_key,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
     where
