@@ -2,7 +2,7 @@ mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{
-    Dependency, Endorsements, HashedWireUnit, SignedWireUnit, Vertex, WireUnit,
+    Dependency, Endorsements, HashedWireUnit, Ping, SignedWireUnit, Vertex, WireUnit,
 };
 
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{Fault, State, UnitError},
+            state::{Fault, State, UnitError, Weight},
             validators::{Validator, Validators},
         },
         traits::Context,
@@ -35,10 +35,21 @@ use super::{
 pub(crate) enum VertexError {
     #[error("The vertex contains an invalid unit: `{0}`")]
     Unit(#[from] UnitError),
-    #[error("The vertex contains invalid evidence.")]
+    #[error("The vertex contains invalid evidence: `{0}`")]
     Evidence(#[from] EvidenceError),
-    #[error("The endorsements contains invalid entry.")]
+    #[error("The endorsements contains invalid entry: `{0}`")]
     Endorsement(#[from] EndorsementError),
+    #[error("Invalid ping: `{0}`")]
+    Ping(#[from] PingError),
+}
+
+/// An error due to an invalid ping.
+#[derive(Debug, Error, PartialEq)]
+pub(crate) enum PingError {
+    #[error("The creator is not a validator.")]
+    Creator,
+    #[error("The signature is invalid.")]
+    Signature,
 }
 
 /// A vertex that has passed initial validation.
@@ -102,7 +113,7 @@ impl<C: Context> ValidVertex<C> {
     pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
         match &self.0 {
             Vertex::Endorsements(endorsements) => Some(endorsements),
-            Vertex::Evidence(_) | Vertex::Unit(_) => None,
+            Vertex::Evidence(_) | Vertex::Unit(_) | Vertex::Ping(_) => None,
         }
     }
 }
@@ -171,6 +182,7 @@ impl<C: Context> Highway<C> {
         secret: C::ValidatorSecret,
         current_time: Timestamp,
         unit_hash_file: Option<PathBuf>,
+        target_ftt: Weight,
     ) -> Vec<Effect<C>> {
         assert!(
             self.active_validator.is_none(),
@@ -181,8 +193,14 @@ impl<C: Context> Highway<C> {
             .get_index(&id)
             .expect("missing own validator ID");
         let start_time = current_time.max(self.state.params().start_timestamp());
-        let (av, effects) =
-            ActiveValidator::new(idx, secret, start_time, &self.state, unit_hash_file);
+        let (av, effects) = ActiveValidator::new(
+            idx,
+            secret,
+            start_time,
+            &self.state,
+            unit_hash_file,
+            target_ftt,
+        );
         self.active_validator = Some(av);
         effects
     }
@@ -215,7 +233,7 @@ impl<C: Context> Highway<C> {
     /// If this returns `None`, `validate_vertex` can be called.
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
-            Vertex::Evidence(_) => None,
+            Vertex::Evidence(_) | Vertex::Ping(_) => None,
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();
                 if !self.state.has_unit(&unit) {
@@ -265,6 +283,7 @@ impl<C: Context> Highway<C> {
                 Vertex::Unit(unit) => self.add_valid_unit(unit, now, rng),
                 Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
                 Vertex::Endorsements(endorsements) => self.add_endorsements(endorsements),
+                Vertex::Ping(ping) => self.add_ping(ping),
             }
         } else {
             vec![]
@@ -281,6 +300,7 @@ impl<C: Context> Highway<C> {
                 self.state
                     .has_all_endorsements(unit, endorsements.validator_ids())
             }
+            Vertex::Ping(ping) => self.state.has_ping(ping.creator(), ping.timestamp()),
         }
     }
 
@@ -304,6 +324,7 @@ impl<C: Context> Highway<C> {
             Dependency::Unit(hash) => self.state.has_unit(hash),
             Dependency::Evidence(idx) => self.state.is_faulty(*idx),
             Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
+            Dependency::Ping(_, _) => false, // We don't store signatures; nothing depends on pings.
         }
     }
 
@@ -333,6 +354,7 @@ impl<C: Context> Highway<C> {
                     GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
                 }
             },
+            Dependency::Ping(_, _) => GetDepOutcome::None, // We don't store ping signatures.
         }
     }
 
@@ -522,6 +544,7 @@ impl<C: Context> Highway<C> {
                 }
                 Ok(())
             }
+            Vertex::Ping(ping) => ping.validate(&self.validators),
         }
     }
 
@@ -530,7 +553,7 @@ impl<C: Context> Highway<C> {
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => Ok(self.state.validate_unit(unit)?),
-            Vertex::Evidence(_) | Vertex::Endorsements(_) => Ok(()),
+            Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => Ok(()),
         }
     }
 
@@ -586,6 +609,12 @@ impl<C: Context> Highway<C> {
             Effect::NewVertex(ValidVertex(Vertex::Evidence(ev)))
         };
         evidence.into_iter().map(add_and_create_effect).collect()
+    }
+
+    /// Adds a ping to the state.
+    fn add_ping(&mut self, ping: Ping<C>) -> Vec<Effect<C>> {
+        self.state.add_ping(ping.creator(), ping.timestamp());
+        vec![]
     }
 
     /// Checks whether the unit was created by a doppelganger.

@@ -236,12 +236,12 @@ where
     let delegators = bid.delegators_mut();
 
     for (delegator_key, delegator_reward) in rewards {
-        let delegator_reward_trunc = delegator_reward.to_integer();
-
         let delegator = match delegators.get_mut(&delegator_key) {
             Some(delegator) => delegator,
-            None => return Err(Error::DelegatorNotFound),
+            None => continue,
         };
+
+        let delegator_reward_trunc = delegator_reward.to_integer();
 
         delegator.increase_reward(delegator_reward_trunc)?;
 

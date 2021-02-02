@@ -38,9 +38,9 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, ENABLE_SMALL_NET_ENV_VAR},
+        network::{self, Network, NetworkIdentity, ENABLE_SMALL_NET_ENV_VAR},
         rest_server::{self, RestServer},
-        small_network::{self, GossipedAddress, SmallNetwork},
+        small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
         Component,
     },
@@ -377,6 +377,8 @@ impl reactor::Reactor for Reactor {
             chainspec_loader,
             storage,
             contract_runtime,
+            small_network_identity,
+            network_identity,
         } = initializer;
 
         // TODO: Remove wrapper around Reactor::Config instead.
@@ -392,6 +394,7 @@ impl reactor::Reactor for Reactor {
         let (network, network_effects) = Network::new(
             event_queue,
             network_config,
+            network_identity,
             chainspec_loader.chainspec(),
             false,
         )?;
@@ -399,6 +402,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
+            small_network_identity,
             genesis_config_hash,
             false,
         )?;
@@ -870,24 +874,21 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
-        let (network, small_network, rest_server, config) = (
-            self.network,
-            self.small_network,
-            self.rest_server,
-            ValidatorInitConfig {
-                chainspec_loader: self.chainspec_loader,
-                config: self.config,
-                contract_runtime: self.contract_runtime,
-                storage: self.storage,
-                consensus: self.consensus,
-                init_consensus_effects: self.init_consensus_effects,
-                latest_block: self.linear_chain.latest_block().clone(),
-                event_stream_server: self.event_stream_server,
-            },
-        );
-        network.finalize().await;
-        small_network.finalize().await;
-        rest_server.finalize().await;
+        let config = ValidatorInitConfig {
+            chainspec_loader: self.chainspec_loader,
+            config: self.config,
+            contract_runtime: self.contract_runtime,
+            storage: self.storage,
+            consensus: self.consensus,
+            init_consensus_effects: self.init_consensus_effects,
+            latest_block: self.linear_chain.latest_block().clone(),
+            event_stream_server: self.event_stream_server,
+            small_network_identity: SmallNetworkIdentity::from(&self.small_network),
+            network_identity: NetworkIdentity::from(&self.network),
+        };
+        self.network.finalize().await;
+        self.small_network.finalize().await;
+        self.rest_server.finalize().await;
         config
     }
 }

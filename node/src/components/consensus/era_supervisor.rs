@@ -198,12 +198,6 @@ where
             .saturating_sub(1)
     }
 
-    fn key_block_height(&self, _era_id: EraId, start_height: u64) -> u64 {
-        // the switch block of the previous era
-        // TODO: consider defining the key block as a block further in the past
-        start_height.saturating_sub(1)
-    }
-
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let mut result = [0; Digest::LENGTH];
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
@@ -512,21 +506,14 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
-            let key_block_height = self
-                .era_supervisor
-                .key_block_height(new_era_id, block_header.height() + 1);
             let booking_block_height = self.era_supervisor.booking_block_height(new_era_id);
             let effect = self
                 .effect_builder
-                .create_new_era(booking_block_height, key_block_height)
-                .event(move |(booking_block, key_block)| Event::CreateNewEra {
+                .get_block_at_height_from_storage(booking_block_height)
+                .event(move |booking_block| Event::CreateNewEra {
                     block_header: Box::new(block_header),
                     booking_block_hash: booking_block
                         .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
-                    key_block_seed: key_block.map_or_else(
-                        || Err(key_block_height),
-                        |block| Ok(block.header().accumulated_seed()),
-                    ),
                 });
             effects.extend(effect);
         } else {
@@ -571,7 +558,6 @@ where
         &mut self,
         block_header: BlockHeader,
         booking_block_hash: BlockHash,
-        key_block_seed: Digest,
     ) -> Effects<Event<I>> {
         let (era_end, next_era_validators_weights) = match (
             block_header.era_end(),
@@ -591,7 +577,8 @@ where
         let newly_slashed = era_end.equivocators.clone();
         let era_id = block_header.era_id().successor();
         info!(era = era_id.0, "era created");
-        let seed = EraSupervisor::<I>::era_seed(booking_block_hash, key_block_seed);
+        let seed =
+            EraSupervisor::<I>::era_seed(booking_block_hash, block_header.accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let results = self.era_supervisor.new_era(
             era_id,

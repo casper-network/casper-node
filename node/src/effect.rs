@@ -76,7 +76,6 @@ use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
-use tokio::join;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
@@ -122,6 +121,7 @@ use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
+use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -773,6 +773,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
+    #[allow(unused)]
+    pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
+        self,
+        trie: Box<Trie<Key, StoredValue>>,
+    ) -> Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::PutTrie { trie, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
     where
@@ -1328,20 +1344,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
-    }
-
-    /// Gets the set of validators, the booking block and the key block for a new era
-    pub(crate) async fn create_new_era(
-        self,
-        booking_block_height: u64,
-        key_block_height: u64,
-    ) -> (Option<Block>, Option<Block>)
-    where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
-    {
-        let future_booking_block = self.get_block_at_height_from_storage(booking_block_height);
-        let future_key_block = self.get_block_at_height_from_storage(key_block_height);
-        join!(future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.

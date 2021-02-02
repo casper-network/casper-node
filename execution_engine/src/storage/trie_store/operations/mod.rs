@@ -730,7 +730,7 @@ pub fn put_trie<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     trie: &Trie<K, V>,
-) -> Result<(), E>
+) -> Result<Blake2bHash, E>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
@@ -744,7 +744,7 @@ where
         Blake2bHash::new(&node_bytes)
     };
     store.put(txn, &trie_hash, trie)?;
-    Ok(())
+    Ok(trie_hash)
 }
 
 enum KeysIteratorState<K, V, S: TrieStore<K, V>> {
