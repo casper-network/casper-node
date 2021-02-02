@@ -1,13 +1,19 @@
-# `cargo casper`
+# `cargo-casper`
 
-[![LOGO](../../images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
+[![LOGO](https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
 
 [![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casper-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/casper-node)
 [![Crates.io](https://img.shields.io/crates/v/cargo-casper)](https://crates.io/crates/cargo-casper)
 [![Documentation](https://docs.rs/cargo-casper/badge.svg)](https://docs.rs/cargo-casper)
-[![License](https://img.shields.io/badge/license-COSL-blue.svg)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-COSL-blue.svg)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
 
 A command line tool for creating a Wasm smart contract and tests for use on the Casper network.
+
+## License
+
+Licensed under the [CasperLabs Open Source License (COSL)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE).
+
+---
 
 ## Installation
 
