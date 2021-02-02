@@ -505,20 +505,11 @@ impl<C: Context> State<C> {
         self.pings[creator] + max_round_len > timestamp
     }
 
-    /// Returns whether the validator is honest and the latest unit or ping is at most
-    /// `PING_TIMEOUT` maximum round lengths old.
-    pub(crate) fn is_online_and_honest(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
+    /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
+    /// lengths old.
+    pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
         let max_round_len = round_len(self.params.max_round_exp());
-        !self.is_faulty(vidx) && self.pings[vidx] + max_round_len * PING_TIMEOUT >= now
-    }
-
-    /// Returns the total weight of all honest and online validators.
-    pub(crate) fn online_and_honest_weight(&self, now: Timestamp) -> Weight {
-        self.weights
-            .enumerate()
-            .filter(|(vidx, _)| self.is_online_and_honest(*vidx, now))
-            .map(|(_, w)| *w)
-            .sum()
+        self.pings[vidx] + max_round_len * PING_TIMEOUT >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing

@@ -222,10 +222,11 @@ impl HighwayValidator {
         msg: HighwayMessage,
     ) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
-            Some(DesFault::Mute(from, till))
+            Some(DesFault::Mute { from, till })
                 if *from <= delivery_time && delivery_time <= *till =>
             {
-                // For mute validators we add it to the state but not gossip.
+                // For mute validators we add it to the state but not gossip, if the delivery time
+                // is in the interval in which they are muted.
                 match msg {
                     HighwayMessage::NewVertex(_) => {
                         warn!("Validator is mute – won't gossip vertices in response");
@@ -237,7 +238,7 @@ impl HighwayValidator {
                     }
                 }
             }
-            None | Some(DesFault::Mute(_, _)) => {
+            None | Some(DesFault::Mute { .. }) => {
                 // Honest validator.
                 match &msg {
                     HighwayMessage::NewVertex(_)
@@ -1171,7 +1172,7 @@ mod test_harness {
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
-            .fault_type(DesFault::Mute(Timestamp::zero(), u64::MAX.into()))
+            .fault_type(DesFault::always_mute())
             .consensus_values_count(cv_count)
             .weight_limits(100, 120)
             .build(&mut rng)
@@ -1275,7 +1276,10 @@ mod test_harness {
         let mut test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(40) // Too many mute validators to be live...
-            .fault_type(DesFault::Mute(start_mute, stop_mute)) // ...but just temporarily mute.
+            .fault_type(DesFault::Mute {
+                from: start_mute,
+                till: stop_mute,
+            }) // ...but just temporarily mute.
             .consensus_values_count(cv_count)
             .weight_limits(100, 120)
             .params(params)

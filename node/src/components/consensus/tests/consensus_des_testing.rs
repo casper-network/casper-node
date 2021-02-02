@@ -62,8 +62,20 @@ impl Display for ValidatorId {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Fault {
-    Mute(Timestamp, Timestamp),
+    /// The validator does not send any messages within the interval between the timestamps.
+    Mute { from: Timestamp, till: Timestamp },
+    /// The validator is actively malicious.
     Equivocate,
+}
+
+impl Fault {
+    /// Returns a `Fault::Mute` that is always mute, not only within a limited interval.
+    pub(crate) fn always_mute() -> Fault {
+        Fault::Mute {
+            from: Timestamp::zero(),
+            till: u64::MAX.into(),
+        }
+    }
 }
 
 /// A validator in the test network.

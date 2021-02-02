@@ -79,7 +79,7 @@ impl<C: Context> Vertex<C> {
         matches!(self, Vertex::Evidence(_))
     }
 
-    /// Returns a `Timestamp` provided the vertex is a `Vertex::Unit`
+    /// Returns a `Timestamp` provided the vertex is a `Vertex::Unit` or `Vertex::Ping`.
     pub(crate) fn timestamp(&self) -> Option<Timestamp> {
         match self {
             Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().timestamp),

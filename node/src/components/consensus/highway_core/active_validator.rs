@@ -213,13 +213,17 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns whether enough validators are online to finalize values with the target fault
     /// tolerance threshold, always counting this validator as online.
-    fn enough_validators_online(&self, state: &State<C>, timestamp: Timestamp) -> bool {
+    fn enough_validators_online(&self, state: &State<C>, now: Timestamp) -> bool {
         let target_quorum = (state.total_weight() + self.target_ftt) / 2;
-        let mut weight = state.online_and_honest_weight(timestamp);
-        if !state.is_online_and_honest(self.vidx, timestamp) {
-            weight += state.weight(self.vidx); // We know we are online.
-        }
-        weight > target_quorum
+        let online_weight: Weight = state
+            .weights()
+            .enumerate()
+            .filter(|(vidx, _)| {
+                self.vidx == *vidx || (!state.is_faulty(*vidx) && state.is_online(*vidx, now))
+            })
+            .map(|(_, w)| *w)
+            .sum();
+        online_weight > target_quorum
     }
 
     /// Returns actions a validator needs to take upon receiving a new unit.
