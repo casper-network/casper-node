@@ -106,6 +106,8 @@ enum ConnectionState {
 
 #[derive(DataSize)]
 pub struct Network<REv, P> {
+    #[data_size(skip)]
+    network_identity: NetworkIdentity,
     our_id: NodeId,
     /// The set of peers which are current connected to our node. Kept in sync with libp2p
     /// internals.
@@ -146,13 +148,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         config: Config,
+        network_identity: NetworkIdentity,
         chainspec: &Chainspec,
         notify: bool,
     ) -> Result<(Network<REv, P>, Effects<Event<P>>), Error> {
-        // Create a new Ed25519 keypair for this session.
-        let our_id_keys = Keypair::generate_ed25519();
-        let our_peer_id = PeerId::from(our_id_keys.public());
-        let our_id = NodeId::from(our_peer_id.clone());
+        let our_peer_id = PeerId::from(&network_identity);
+        let our_id = NodeId::from(&network_identity);
 
         // Convert the known addresses to multiaddr format and prepare the shutdown signal.
         let known_addresses = config
@@ -177,6 +178,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without starting the server.
         if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
             let network = Network {
+                network_identity,
                 our_id,
                 peers: HashMap::new(),
                 seen_peers: HashSet::new(),
@@ -200,7 +202,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 
         // Create a keypair for authenticated encryption of the transport.
         let noise_keys = noise::Keypair::<X25519Spec>::new()
-            .into_authentic(&our_id_keys)
+            .into_authentic(&network_identity.keypair)
             .map_err(Error::StaticKeypairSigning)?;
 
         let mut yamux_config = YamuxConfig::default();
@@ -239,7 +241,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .boxed();
 
         // Create a Swarm to manage peers and events.
-        let behavior = Behavior::new(&config, chainspec, our_id_keys.public());
+        let behavior = Behavior::new(&config, chainspec, network_identity.keypair.public());
         let mut swarm = SwarmBuilder::new(transport, behavior, our_peer_id)
             .executor(Box::new(|future| {
                 tokio::spawn(future);
@@ -273,6 +275,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         )));
 
         let network = Network {
+            network_identity,
             our_id,
             peers: HashMap::new(),
             seen_peers: HashSet::new(),
@@ -915,5 +918,47 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 responder.respond(peers).ignore()
             }
         }
+    }
+}
+
+/// An ephemeral [libp2p::identity::Keypair] which uniquely identifies this node
+#[derive(Clone)]
+pub struct NetworkIdentity {
+    keypair: Keypair,
+}
+
+impl Debug for NetworkIdentity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "NetworkIdentity(public key: {:?})",
+            self.keypair.public()
+        )
+    }
+}
+
+impl NetworkIdentity {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let keypair = Keypair::generate_ed25519();
+        NetworkIdentity { keypair }
+    }
+}
+
+impl<REv, P> From<&Network<REv, P>> for NetworkIdentity {
+    fn from(network: &Network<REv, P>) -> Self {
+        network.network_identity.clone()
+    }
+}
+
+impl From<&NetworkIdentity> for PeerId {
+    fn from(network_identity: &NetworkIdentity) -> Self {
+        PeerId::from(network_identity.keypair.public())
+    }
+}
+
+impl From<&NetworkIdentity> for NodeId {
+    fn from(network_identity: &NetworkIdentity) -> Self {
+        NodeId::from(PeerId::from(network_identity))
     }
 }

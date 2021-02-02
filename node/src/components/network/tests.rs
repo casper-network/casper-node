@@ -14,7 +14,7 @@ use tracing::{debug, info};
 
 use super::{Config, Event as NetworkEvent, Network as NetworkComponent, ENABLE_SMALL_NET_ENV_VAR};
 use crate::{
-    components::{chainspec_loader::Chainspec, Component},
+    components::{chainspec_loader::Chainspec, network::NetworkIdentity, Component},
     effect::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
     },
@@ -71,8 +71,9 @@ impl Reactor for TestReactor {
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let chainspec = Chainspec::random(rng);
+        let network_identity = NetworkIdentity::new();
         let (network_component, effects) =
-            NetworkComponent::new(event_queue, config, &chainspec, false)?;
+            NetworkComponent::new(event_queue, config, network_identity, &chainspec, false)?;
 
         Ok((
             TestReactor { network_component },

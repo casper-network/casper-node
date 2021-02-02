@@ -35,10 +35,10 @@ use crate::{
         fetcher::{self, Fetcher},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, ENABLE_SMALL_NET_ENV_VAR},
+        network::{self, Network, NetworkIdentity, ENABLE_SMALL_NET_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
-        small_network::{self, SmallNetwork},
+        small_network::{self, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
         Component,
     },
@@ -263,6 +263,8 @@ pub struct ValidatorInitConfig {
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
+    pub(super) small_network_identity: SmallNetworkIdentity,
+    pub(super) network_identity: NetworkIdentity,
 }
 
 /// Validator node reactor.
@@ -327,6 +329,8 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
             latest_block,
             event_stream_server,
+            small_network_identity,
+            network_identity,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -340,12 +344,18 @@ impl reactor::Reactor for Reactor {
         let (network, network_effects) = Network::new(
             event_queue,
             network_config,
+            network_identity,
             chainspec_loader.chainspec(),
             true,
         )?;
         let genesis_config_hash = chainspec_loader.chainspec().hash();
-        let (small_network, small_network_effects) =
-            SmallNetwork::new(event_queue, config.network, genesis_config_hash, true)?;
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network,
+            small_network_identity,
+            genesis_config_hash,
+            true,
+        )?;
 
         let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder)?;
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
