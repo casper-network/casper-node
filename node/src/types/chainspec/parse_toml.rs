@@ -76,6 +76,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
         .parent()
         .unwrap_or_else(|| Path::new(""));
 
+    // accounts.csv must live in the same directory as chainspec.toml.
     let accounts: Vec<GenesisAccount> =
         super::parse_accounts_csv(root).map_err(Error::LoadChainspecAccounts)?;
 
