@@ -18,7 +18,7 @@ use crate::{
     effect::Responder,
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalizedBlock, Item, Timestamp,
+        FinalizedBlock, Item, NodeId, Timestamp,
     },
     utils::Source,
 };
@@ -199,6 +199,8 @@ where
 {
     /// The incoming item, which has not been validated for anything except that it is well-formed.
     pub unverified: Box<I>,
+    /// Node that forwarded the gossiped data.
+    pub sender: NodeId,
 }
 
 impl<I> Display for GossipAnnouncement<I>

@@ -6,7 +6,10 @@ use serde::Serialize;
 use super::{DeployAcceptorChainspec, Source};
 use crate::{
     components::deploy_acceptor::Error,
-    effect::{announcements::RpcServerAnnouncement, Responder},
+    effect::{
+        announcements::{GossipAnnouncement, RpcServerAnnouncement},
+        Responder,
+    },
     types::{Deploy, NodeId},
 };
 use casper_types::Key;
@@ -52,6 +55,16 @@ impl From<RpcServerAnnouncement> for Event {
                 source: Source::<NodeId>::Client,
                 responder,
             },
+        }
+    }
+}
+
+impl From<GossipAnnouncement<Deploy>> for Event {
+    fn from(announcement: GossipAnnouncement<Deploy>) -> Self {
+        Event::Accept {
+            deploy: announcement.unverified,
+            source: Source::Peer(announcement.sender),
+            responder: None,
         }
     }
 }

@@ -810,10 +810,11 @@ impl reactor::Reactor for Reactor {
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::GossipDeployAnnouncement(ann) => {
-                // XXX Handle incoming gossip announcement here.
-                todo!()
-            }
+            Event::GossipDeployAnnouncement(ann) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.deploy_acceptor
+                    .handle_event(effect_builder, rng, ann.into()),
+            ),
         }
     }
 

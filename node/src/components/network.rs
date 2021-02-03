@@ -638,13 +638,13 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
     event: GossipsubEvent,
 ) {
     match event {
-        GossipsubEvent::Message(_sender, _message_id, message) => {
+        GossipsubEvent::Message(sender, _message_id, message) => {
             // We've received a gossiped message: announce it via the reactor on the
             // `NetworkIncoming` queue.
             let sender = match message.source {
                 Some(source) => NodeId::from(source),
                 None => {
-                    warn!(%_sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
+                    warn!(%sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
                     return;
                 }
             };
@@ -675,7 +675,10 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                             // Received a gossiped deploy, now announce it.
                             event_queue
                                 .schedule(
-                                    GossipAnnouncement { unverified: deploy },
+                                    GossipAnnouncement {
+                                        unverified: deploy,
+                                        sender,
+                                    },
                                     QueueKind::NetworkIncoming,
                                 )
                                 .await
