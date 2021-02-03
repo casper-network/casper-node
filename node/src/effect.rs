@@ -127,8 +127,6 @@ use requests::{
     NetworkInfoRequest, NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
-use self::announcements::GossipAnnouncement;
-
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
 
@@ -532,20 +530,6 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::NetworkIncoming,
             )
             .await;
-    }
-
-    /// Announces that a new, unverified gossiped item has come in.
-    pub(crate) async fn announce_incoming_gossip<I>(self, unverified: Box<I>)
-    where
-        REv: From<GossipAnnouncement<I>>,
-        I: Item,
-    {
-        self.0
-            .schedule(
-                GossipAnnouncement { unverified },
-                QueueKind::NetworkIncoming,
-            )
-            .await
     }
 
     /// Announces that a new peer has connected.

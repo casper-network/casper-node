@@ -673,7 +673,6 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                         }
                         GossipMessage::Deploy(deploy) => {
                             // Received a gossiped deploy, now announce it.
-                            // TODO: Do we want the effect builder for this?
                             event_queue
                                 .schedule(
                                     GossipAnnouncement { unverified: deploy },
