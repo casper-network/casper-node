@@ -7,7 +7,7 @@ use derive_more::From;
 use gossip::MessageValidationResult;
 use libp2p::{
     core::PublicKey,
-    gossipsub::{Gossipsub, GossipsubEvent},
+    gossipsub::{Gossipsub, GossipsubEvent, MessageId},
     identify::{Identify, IdentifyEvent},
     kad::{record::store::MemoryStore, Kademlia, KademliaEvent},
     request_response::{RequestResponse, RequestResponseEvent},
@@ -18,7 +18,8 @@ use tracing::{debug, trace, warn};
 
 use super::{
     gossip::{self},
-    one_way_messaging, peer_discovery, Config, GossipMessage, OneWayCodec, OneWayOutgoingMessage,
+    one_way_messaging, peer_discovery, Config, GossipLogTable, GossipMessage, OneWayCodec,
+    OneWayOutgoingMessage,
 };
 use crate::{components::chainspec_loader::Chainspec, types::NodeId};
 
@@ -138,16 +139,36 @@ impl Behavior {
     }
 
     /// Handles the result of validating a gossiped message, forwarding it to libp2p.
-    pub(super) fn handle_validation_result(&mut self, validation_result: MessageValidationResult) {
-        if validation_result.is_valid {
-            self.gossip_behavior.validate_message(
-                &validation_result.msg_id,
-                &validation_result.propagation_source,
-            );
-        } else {
-            // Note: Our current version of libp2p does not support negative
-            // validation. Once upgraded, peer can appropriately be punished
-            // instead.
+    pub(super) fn handle_validation_result(
+        &mut self,
+        gossip_log_table: &mut GossipLogTable,
+        validation_result: MessageValidationResult,
+    ) {
+        match gossip_log_table.remove(&validation_result.message_hash()) {
+            Some(propagation_sources) => {
+                if validation_result.is_valid() {
+                    // Reconstruct the message id.
+                    let message_id = MessageId::from(validation_result.message_hash().to_vec());
+                    for propagation_source in propagation_sources {
+                        if !self
+                            .gossip_behavior
+                            .validate_message(&message_id, &propagation_source)
+                        {
+                            debug!(message_hash=%validation_result.message_hash(), "tried to inform libp2p of validity, but no entry found");
+                        }
+                    }
+                } else {
+                    // TODO: Our current version of libp2p does not support negative
+                    // validation. Once upgraded, peer can appropriately be punished
+                    // instead.
+                }
+            }
+            None => {
+                debug!(message_hash=%validation_result.message_hash(),
+                      is_valid=%validation_result.is_valid(),
+                      "no outstanding peers for message validation, likely already verified"
+                );
+            }
         }
     }
 

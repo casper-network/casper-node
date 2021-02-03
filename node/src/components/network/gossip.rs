@@ -128,15 +128,33 @@ impl GossipMessage {
     }
 }
 
-/// libp2p result of a gossip message validation.
+/// Result of a gossip object validation, to be forwarded to libp2p.
 #[derive(Debug)]
-pub(super) struct MessageValidationResult {
-    /// The ID of the message being validated.
-    pub(super) msg_id: MessageId,
-    /// Propagating sender of the message.
-    pub(super) propagation_source: PeerId,
+pub(super) struct ObjectValidationResult {
+    /// The hash of the object being validated.
+    message_hash: Digest,
     /// Indicates the result of the validation.
-    pub(super) is_valid: bool,
+    is_valid: bool,
+}
+
+impl ObjectValidationResult {
+    /// Creates a new outcome of a object validation.
+    pub(super) fn new(message_hash: Digest, is_valid: bool) -> Self {
+        Self {
+            message_hash,
+            is_valid,
+        }
+    }
+
+    /// Returns the hash of the object.
+    pub(super) fn message_hash(&self) -> Digest {
+        self.message_hash
+    }
+
+    /// Returns whether or not the validation came out positive.
+    pub(super) fn is_valid(&self) -> bool {
+        self.is_valid
+    }
 }
 
 /// Grants read-only access to the `MessageId` internal bytes.

@@ -29,7 +29,7 @@ use libp2p::{
         connection::{ConnectedPoint, PendingConnectionError},
         upgrade,
     },
-    gossipsub::{GossipsubEvent, MessageId},
+    gossipsub::GossipsubEvent,
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
@@ -41,6 +41,7 @@ use libp2p::{
     Multiaddr, PeerId, Swarm, Transport,
 };
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use tokio::{
     select,
     sync::{mpsc, watch},
@@ -288,6 +289,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 gossip_message_receiver,
                 message_validation_receiver,
                 server_shutdown_receiver,
+                gossip_log_table: Default::default(),
                 swarm,
                 _phantom: Default::default(),
             }
@@ -392,6 +394,15 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
     }
 
+    /// Forwards the validation result down the channel to the server task.
+    fn forward_validation_result(&mut self, validation_result: MessageValidationResult) {
+        if let Err(err) = self.message_validation_sender.send(validation_result) {
+            // `err` likely just be channel closed. This is usually not a case for concern, most
+            // likely happening during shutdown.
+            debug!(%err,"failed to send validation result down channel, likely due to server shutting down?");
+        }
+    }
+
     /// Returns whether or not this node has been isolated.
     ///
     /// An isolated node has no chance of recovering a connection to the network and is not
@@ -419,6 +430,8 @@ fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
     NodeId::P2p(Swarm::local_peer_id(swarm).clone())
 }
 
+type GossipLogTable = HashMap<Digest, SmallVec<[PeerId; 1]>>;
+
 struct ServerTask<REv: 'static, P> {
     // Even queue where incoming messages are forwarded.
     event_queue: EventQueueHandle<REv>,
@@ -434,6 +447,9 @@ struct ServerTask<REv: 'static, P> {
     server_shutdown_receiver: watch::Receiver<()>,
     // libp2p swarm.
     swarm: Swarm<Behavior>,
+    /// The gossip log table stores a list of peers that have sent a particular object via gossip
+    /// and are awaiting validation.
+    gossip_log_table: GossipLogTable,
     // Required to use `P`.
     _phantom: PhantomData<P>,
 }
@@ -452,7 +468,7 @@ where
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = self.swarm.next_event() => {
                     trace!("{}: {:?}", our_id(&self.swarm), swarm_event);
-                    handle_swarm_event(&mut self.swarm, self.event_queue, swarm_event).await;
+                    handle_swarm_event(&mut self.swarm, &mut self.gossip_log_table, self.event_queue, swarm_event).await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
@@ -488,7 +504,7 @@ where
                 maybe_message_validation_result = self.message_validation_receiver.recv() => {
                     match maybe_message_validation_result {
                         Some(validation_result) => {
-                            self.swarm.handle_validation_result(validation_result)
+                            self.swarm.handle_validation_result(&mut self.gossip_log_table, validation_result)
                         }
                         None => {
                             break;
@@ -515,6 +531,7 @@ where
 
 async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
     swarm: &mut Swarm<Behavior>,
+    gossip_log_table: &mut GossipLogTable,
     event_queue: EventQueueHandle<REv>,
     swarm_event: SwarmEvent<SwarmBehaviorEvent, E>,
 ) {
@@ -576,7 +593,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             return handle_one_way_messaging_event(swarm, event_queue, event).await;
         }
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Gossiper(event)) => {
-            return handle_gossip_event(swarm, event_queue, event).await;
+            return handle_gossip_event(swarm, gossip_log_table, event_queue, event).await;
         }
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Kademlia(KademliaEvent::RoutingUpdated {
             peer,
@@ -670,6 +687,7 @@ async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
 
 async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
     swarm: &mut Swarm<Behavior>,
+    gossip_log_table: &mut GossipLogTable,
     event_queue: EventQueueHandle<REv>,
     event: GossipsubEvent,
 ) {
@@ -677,13 +695,6 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
         GossipsubEvent::Message(sender, message_id, message) => {
             // We've received a gossiped message: announce it via the reactor on the
             // `NetworkIncoming` queue.
-            let sender = match message.source {
-                Some(source) => NodeId::from(source),
-                None => {
-                    warn!(%sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
-                    return;
-                }
-            };
             match GossipMessage::deserialize(&message.data) {
                 Ok(gossip_message) => {
                     debug!(%sender, %gossip_message, "{}: libp2p gossiped message received", our_id(swarm));
@@ -712,12 +723,21 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                                     event_queue
                                         .schedule(
                                             NetworkAnnouncement::MessageReceived {
-                                                sender,
+                                                sender: NodeId::from(sender.clone()),
                                                 payload,
                                             },
                                             QueueKind::NetworkIncoming,
                                         )
                                         .await;
+
+                                    // We immediately confirm it, as this part of the gossiping
+                                    // functionality is duplicated in the consensus components.
+                                    //
+                                    // We're also short-circuiting the `gossip_log` this way.
+                                    swarm.handle_validation_result(
+                                        gossip_log_table,
+                                        MessageValidationResult::new(message_id_hash, true),
+                                    );
                                 }
                                 Err(err) => {
                                     warn!(%err, "Received broadcast-via-gossip payload, but failed to deserialize");
@@ -725,12 +745,18 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                             }
                         }
                         GossipMessage::Deploy(deploy) => {
+                            // Record that we received a deploy, awaiting verification.
+                            gossip_log_table
+                                .entry(message_id_hash)
+                                .or_default()
+                                .push(sender.clone());
+
                             // Received a gossiped deploy, now announce it.
                             event_queue
                                 .schedule(
                                     GossipAnnouncement {
                                         unverified: deploy,
-                                        sender,
+                                        sender: NodeId::from(sender),
                                     },
                                     QueueKind::NetworkIncoming,
                                 )
@@ -994,32 +1020,20 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 responder.respond(peers).ignore()
             }
             Event::DeployAcceptorAnnouncement(ann) => {
-                // We reconstruct the message IDs from the deploy acceptor announcement and let
-                // libp2p know.
-                let validation_result = match ann {
+                match ann {
                     DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source: _ } => {
-                        let message_id = MessageId::from(deploy.id().into_inner().to_vec());
-                        MessageValidationResult {
-                            msg_id: message_id,
-                            propagation_source: todo!(),
-                            is_valid: true,
-                        }
+                        self.forward_validation_result(MessageValidationResult::new(
+                            deploy.id().inner().clone(),
+                            true,
+                        ));
                     }
                     DeployAcceptorAnnouncement::InvalidDeploy { deploy, source: _ } => {
-                        let message_id = MessageId::from(deploy.id().into_inner().to_vec());
-                        MessageValidationResult {
-                            msg_id: message_id,
-                            propagation_source: todo!(),
-                            is_valid: false,
-                        }
+                        self.forward_validation_result(MessageValidationResult::new(
+                            deploy.id().inner().clone(),
+                            false,
+                        ));
                     }
                 };
-
-                if let Err(err) = self.message_validation_sender.send(validation_result) {
-                    // `err` likely just be channel closed. This is usually not a case for concern,
-                    // most likely happening during shutdown.
-                    debug!(%err, "failed to send validation result down channel, likely due to server shutting down?")
-                }
 
                 Effects::new()
             }
