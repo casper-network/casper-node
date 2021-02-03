@@ -1023,13 +1023,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 match ann {
                     DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source: _ } => {
                         self.forward_validation_result(ObjectValidationResult::new(
-                            deploy.id().inner().clone(),
+                            *deploy.id().inner(),
                             true,
                         ));
                     }
                     DeployAcceptorAnnouncement::InvalidDeploy { deploy, source: _ } => {
                         self.forward_validation_result(ObjectValidationResult::new(
-                            deploy.id().inner().clone(),
+                            *deploy.id().inner(),
                             false,
                         ));
                     }

@@ -161,7 +161,7 @@ impl ObjectValidationResult {
 ///
 /// This function is necessary until libp2p is updated to a version (0.34.0 or higher) that allows
 /// access to the internal bytes of `MessageId`.
-pub(super) fn bytes_of_message_id<'a>(message_id: &'a MessageId) -> &'a Vec<u8> {
+pub(super) fn bytes_of_message_id(message_id: &MessageId) -> &Vec<u8> {
     // From https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html:
     //
     // > Single-field structs
