@@ -57,13 +57,13 @@ pub use self::{config::Config, error::Error};
 use crate::{
     components::{chainspec_loader::Chainspec, Component},
     effect::{
-        announcements::NetworkAnnouncement,
+        announcements::{GossipAnnouncement, NetworkAnnouncement},
         requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    types::NodeId,
+    types::{Deploy, NodeId},
     utils::DisplayIter,
     NodeRng,
 };
@@ -86,14 +86,22 @@ impl<P> PayloadT for P where
 /// A helper trait whose bounds represent the requirements for a reactor event that `Network` can
 /// work with.
 pub trait ReactorEventT<P: PayloadT>:
-    From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
+    From<Event<P>>
+    + From<NetworkAnnouncement<NodeId, P>>
+    + From<GossipAnnouncement<Deploy>>
+    + Send
+    + 'static
 {
 }
 
 impl<REv, P> ReactorEventT<P> for REv
 where
     P: PayloadT,
-    REv: From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static,
+    REv: From<Event<P>>
+        + From<NetworkAnnouncement<NodeId, P>>
+        + From<GossipAnnouncement<Deploy>>
+        + Send
+        + 'static,
 {
 }
 
@@ -658,14 +666,20 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                                         )
                                         .await;
                                 }
-                                Err(_) => {
-                                    warn!("Received broadcast-via-gossip payload, but failed to deserialize");
+                                Err(err) => {
+                                    warn!(%err, "Received broadcast-via-gossip payload, but failed to deserialize");
                                 }
                             }
                         }
-                        GossipMessage::Deploy(_) => {
-                            // Received a gossiped deploy.
-                            todo!()
+                        GossipMessage::Deploy(deploy) => {
+                            // Received a gossiped deploy, now announce it.
+                            // TODO: Do we want the effect builder for this?
+                            event_queue
+                                .schedule(
+                                    GossipAnnouncement { unverified: deploy },
+                                    QueueKind::NetworkIncoming,
+                                )
+                                .await
                         }
                     }
                 }

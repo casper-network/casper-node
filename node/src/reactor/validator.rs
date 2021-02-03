@@ -45,7 +45,8 @@ use crate::{
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            GossipAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -172,6 +173,9 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+    /// Incoming gossiped deploy announcement.
+    #[from]
+    GossipDeployAnnouncement(GossipAnnouncement<Deploy>),
 }
 
 impl From<RpcRequest<NodeId>> for Event {
@@ -249,6 +253,9 @@ impl Display for Event {
                 write!(f, "block-executor announcement: {}", ann)
             }
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
+            Event::GossipDeployAnnouncement(ann) => {
+                write!(f, "gossip deploy announcement: {}", ann)
+            }
         }
     }
 }
@@ -802,6 +809,10 @@ impl reactor::Reactor for Reactor {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::GossipDeployAnnouncement(ann) => {
+                // XXX Handle incoming gossip announcement here.
+                todo!()
             }
         }
     }

@@ -18,7 +18,7 @@ use crate::{
     effect::EffectExt,
     testing,
     testing::{network::Network as TestingNetwork, TestRng},
-    types::NodeId,
+    types::{Deploy, NodeId},
     Chainspec,
 };
 use casper_node_macros::reactor;
@@ -51,6 +51,7 @@ reactor!(LoadTestingReactor {
 
   announcements: {
       NetworkAnnouncement<NodeId, DummyPayload> -> [collector];
+      GossipAnnouncement<Deploy> -> [];
   }
 });
 

@@ -16,7 +16,9 @@ use super::{Config, Event as NetworkEvent, Network as NetworkComponent, ENABLE_S
 use crate::{
     components::{chainspec_loader::Chainspec, network::NetworkIdentity, Component},
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
+        announcements::{GossipAnnouncement, NetworkAnnouncement},
+        requests::NetworkRequest,
+        EffectBuilder, Effects,
     },
     protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor},
@@ -24,7 +26,7 @@ use crate::{
         self, init_logging,
         network::{Network, NetworkedReactor},
     },
-    types::NodeId,
+    types::{Deploy, NodeId},
     NodeRng,
 };
 
@@ -37,6 +39,8 @@ enum Event {
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, String>),
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
+    #[from]
+    GossipDeployAnnouncement(GossipAnnouncement<Deploy>),
 }
 
 impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
@@ -107,6 +111,10 @@ impl Reactor for TestReactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
                 // We do not care about the announcement of new peers in this test.
                 Effects::new()
+            }
+            Event::GossipDeployAnnouncement(_) => {
+                // We're not gossiping anything in our tests, so this should never happen.
+                unreachable!()
             }
         }
     }

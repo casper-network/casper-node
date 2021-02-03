@@ -192,7 +192,7 @@ impl Display for BlockExecutorAnnouncement {
 }
 
 /// A gossip announcement.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct GossipAnnouncement<I>
 where
     I: Item,

@@ -12,16 +12,19 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{PublicKey, U512};
 
-#[cfg(not(feature = "fast-sync"))]
-use crate::components::linear_chain_sync::{self, LinearChainSync};
 #[cfg(feature = "fast-sync")]
 use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
+};
+#[cfg(not(feature = "fast-sync"))]
+use crate::{
+    components::linear_chain_sync::{self, LinearChainSync},
+    effect::announcements::GossipAnnouncement,
 };
 
 use crate::{
@@ -202,6 +205,10 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+
+    /// Incoming gossiped deploy announcement.
+    #[from]
+    GossipDeployAnnouncement(GossipAnnouncement<Deploy>),
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
@@ -292,6 +299,9 @@ impl Display for Event {
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
+            Event::GossipDeployAnnouncement(ann) => {
+                write!(f, "gossip deploy announcement: {}", ann)
+            }
         }
     }
 }
@@ -801,6 +811,10 @@ impl reactor::Reactor for Reactor {
                     Event::SmallNetwork(small_network::Event::from(req))
                 };
                 self.dispatch_event(effect_builder, rng, event)
+            }
+            Event::GossipDeployAnnouncement(ann) => {
+                debug!(%ann, "ignored gossip announcement in joiner");
+                Effects::new()
             }
         }
     }
