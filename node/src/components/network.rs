@@ -23,7 +23,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use gossip::{bytes_of_message_id, MessageValidationResult};
+use gossip::{bytes_of_message_id, ObjectValidationResult};
 use libp2p::{
     core::{
         connection::{ConnectedPoint, PendingConnectionError},
@@ -52,7 +52,7 @@ use tracing::{debug, error, info, trace, warn};
 pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
-    gossip::GossipMessage,
+    gossip::GossipObject,
     one_way_messaging::{Codec as OneWayCodec, Outgoing as OneWayOutgoingMessage},
     protocol_id::ProtocolId,
 };
@@ -142,10 +142,10 @@ pub struct Network<REv, P> {
     max_one_way_message_size: u32,
     /// The channel through which to send new messages for gossiping.
     #[data_size(skip)]
-    gossip_message_sender: mpsc::UnboundedSender<GossipMessage>,
+    gossip_message_sender: mpsc::UnboundedSender<GossipObject>,
     /// The channel through which we send the result of gossip message validation.
     #[data_size(skip)]
-    message_validation_sender: mpsc::UnboundedSender<MessageValidationResult>,
+    message_validation_sender: mpsc::UnboundedSender<ObjectValidationResult>,
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
@@ -388,14 +388,14 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     }
 
     /// Queues a message to be gossiped by the background thread.
-    fn queue_outgoing_gossip_message(&self, gossip_message: GossipMessage) {
+    fn queue_outgoing_gossip_message(&self, gossip_message: GossipObject) {
         if let Err(error) = self.gossip_message_sender.send(gossip_message) {
             warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
         }
     }
 
     /// Forwards the validation result down the channel to the server task.
-    fn forward_validation_result(&mut self, validation_result: MessageValidationResult) {
+    fn forward_validation_result(&mut self, validation_result: ObjectValidationResult) {
         if let Err(err) = self.message_validation_sender.send(validation_result) {
             // `err` likely just be channel closed. This is usually not a case for concern, most
             // likely happening during shutdown.
@@ -440,9 +440,9 @@ struct ServerTask<REv: 'static, P> {
     // Receives outgoing one-way messages to be sent out via libp2p.
     one_way_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
     // Receives new gossip messages to be sent out via libp2p.
-    gossip_message_receiver: mpsc::UnboundedReceiver<GossipMessage>,
+    gossip_message_receiver: mpsc::UnboundedReceiver<GossipObject>,
     // // Receives updates of acceptance/rejection of gossiped messages.
-    message_validation_receiver: mpsc::UnboundedReceiver<MessageValidationResult>,
+    message_validation_receiver: mpsc::UnboundedReceiver<ObjectValidationResult>,
     // Receives notification to shut down the server loop.
     server_shutdown_receiver: watch::Receiver<()>,
     // libp2p swarm.
@@ -695,7 +695,7 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
         GossipsubEvent::Message(sender, message_id, message) => {
             // We've received a gossiped message: announce it via the reactor on the
             // `NetworkIncoming` queue.
-            match GossipMessage::deserialize(&message.data) {
+            match GossipObject::deserialize(&message.data) {
                 Ok(gossip_message) => {
                     debug!(%sender, %gossip_message, "{}: libp2p gossiped message received", our_id(swarm));
 
@@ -717,7 +717,7 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                     }
 
                     match gossip_message {
-                        GossipMessage::LegacyPayload(ref payload_bytes) => {
+                        GossipObject::LegacyPayload(ref payload_bytes) => {
                             match bincode::deserialize::<P>(payload_bytes) {
                                 Ok(payload) => {
                                     event_queue
@@ -736,7 +736,7 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                                     // We're also short-circuiting the `gossip_log` this way.
                                     swarm.handle_validation_result(
                                         gossip_log_table,
-                                        MessageValidationResult::new(message_id_hash, true),
+                                        ObjectValidationResult::new(message_id_hash, true),
                                     );
                                 }
                                 Err(err) => {
@@ -744,7 +744,7 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                                 }
                             }
                         }
-                        GossipMessage::Deploy(deploy) => {
+                        GossipObject::Deploy(deploy) => {
                             // Record that we received a deploy, awaiting verification.
                             gossip_log_table
                                 .entry(message_id_hash)
@@ -990,7 +990,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
-                match GossipMessage::new_from_payload(&payload) {
+                match GossipObject::new_from_payload(&payload) {
                     Ok(gossip_message) => {
                         self.queue_outgoing_gossip_message(gossip_message);
                     }
@@ -1003,7 +1003,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::GossipDeployRequest {
                 request: GossipRequest { item, responder },
             } => {
-                let gossip_message = GossipMessage::new_from_deploy(item);
+                let gossip_message = GossipObject::new_from_deploy(item);
                 self.queue_outgoing_gossip_message(gossip_message);
                 responder.respond(()).ignore()
             }
@@ -1022,13 +1022,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::DeployAcceptorAnnouncement(ann) => {
                 match ann {
                     DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source: _ } => {
-                        self.forward_validation_result(MessageValidationResult::new(
+                        self.forward_validation_result(ObjectValidationResult::new(
                             deploy.id().inner().clone(),
                             true,
                         ));
                     }
                     DeployAcceptorAnnouncement::InvalidDeploy { deploy, source: _ } => {
-                        self.forward_validation_result(MessageValidationResult::new(
+                        self.forward_validation_result(ObjectValidationResult::new(
                             deploy.id().inner().clone(),
                             false,
                         ));

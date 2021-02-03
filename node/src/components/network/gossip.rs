@@ -30,12 +30,12 @@ pub(super) static BROADCAST_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadc
 /// Gossiping topic used by `GossipRequest<Deploy>` functionality.
 pub(super) static GOSSIP_DEPLOY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
 
-/// A gossip message that can be serialized into/deserialized from a wire format.
+/// A gossip object that can be serialized into/deserialized from a wire format.
 ///
 /// The wireformat itself based on bincode serialization of this type, prefixed with its object hash
 /// (the hash of the wrapped, deserialized type, **not** the hash of the serialized bytes).
 #[derive(Debug, Deserialize, Serialize)]
-pub(super) enum GossipMessage {
+pub(super) enum GossipObject {
     /// Twice-encoded legacy payload, used for broadcasting. To be removed soon.
     ///
     /// The payload is encoded twice to avoid the need for a type parameter on `GossipMessage`.
@@ -44,41 +44,41 @@ pub(super) enum GossipMessage {
     Deploy(Box<Deploy>),
 }
 
-impl Display for GossipMessage {
+impl Display for GossipObject {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            GossipMessage::LegacyPayload(inner) => {
+            GossipObject::LegacyPayload(inner) => {
                 write!(
                     f,
                     "gossip message [legacy/broadcast]: {} bytes long",
                     inner.len()
                 )
             }
-            GossipMessage::Deploy(inner) => {
+            GossipObject::Deploy(inner) => {
                 write!(f, "gossip message [deploy]: {}", inner)
             }
         }
     }
 }
 
-impl GossipMessage {
+impl GossipObject {
     /// Constructs a new gossip message from a payload.
     pub(super) fn new_from_payload<I: Serialize>(payload: &I) -> Result<Self, Error> {
         let data = bincode::serialize(payload).map_err(|error| Error::Serialization(*error))?;
 
-        Ok(GossipMessage::LegacyPayload(data))
+        Ok(GossipObject::LegacyPayload(data))
     }
 
     /// Constructs a new gossip message from a deploy.
     pub(super) fn new_from_deploy(deploy: Box<Deploy>) -> Self {
-        GossipMessage::Deploy(deploy)
+        GossipObject::Deploy(deploy)
     }
 
     /// Returns the topic the message should be sent out on.
     pub(super) fn topic(&self) -> &'static Topic {
         match self {
-            GossipMessage::LegacyPayload(_) => &*BROADCAST_TOPIC,
-            GossipMessage::Deploy(_) => &*GOSSIP_DEPLOY_TOPIC,
+            GossipObject::LegacyPayload(_) => &*BROADCAST_TOPIC,
+            GossipObject::Deploy(_) => &*GOSSIP_DEPLOY_TOPIC,
         }
     }
 
@@ -87,12 +87,12 @@ impl GossipMessage {
     /// The resulting message ID is equivalent to the hash of the gossiped object.
     pub(super) fn hash(&self) -> Digest {
         match self {
-            GossipMessage::LegacyPayload(bytes) => {
+            GossipObject::LegacyPayload(bytes) => {
                 // TODO: This is not very efficient and should be replace by making the actual type
                 // available.
                 hash(bytes)
             }
-            GossipMessage::Deploy(deploy) => deploy.id().into_inner(),
+            GossipObject::Deploy(deploy) => deploy.id().into_inner(),
         }
     }
 

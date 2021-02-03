@@ -4,7 +4,7 @@ use std::{
 };
 
 use derive_more::From;
-use gossip::MessageValidationResult;
+use gossip::ObjectValidationResult;
 use libp2p::{
     core::PublicKey,
     gossipsub::{Gossipsub, GossipsubEvent, MessageId},
@@ -18,7 +18,7 @@ use tracing::{debug, trace, warn};
 
 use super::{
     gossip::{self},
-    one_way_messaging, peer_discovery, Config, GossipLogTable, GossipMessage, OneWayCodec,
+    one_way_messaging, peer_discovery, Config, GossipLogTable, GossipObject, OneWayCodec,
     OneWayOutgoingMessage,
 };
 use crate::{components::chainspec_loader::Chainspec, types::NodeId};
@@ -124,7 +124,7 @@ impl Behavior {
     }
 
     /// Initiates gossiping the given message.
-    pub(super) fn gossip(&mut self, message: GossipMessage, max_gossip_message_size: u32) {
+    pub(super) fn gossip(&mut self, message: GossipObject, max_gossip_message_size: u32) {
         let data = match message.serialize(max_gossip_message_size as usize) {
             Ok(encoded) => encoded,
             Err(err) => {
@@ -142,7 +142,7 @@ impl Behavior {
     pub(super) fn handle_validation_result(
         &mut self,
         gossip_log_table: &mut GossipLogTable,
-        validation_result: MessageValidationResult,
+        validation_result: ObjectValidationResult,
     ) {
         match gossip_log_table.remove(&validation_result.message_hash()) {
             Some(propagation_sources) => {
