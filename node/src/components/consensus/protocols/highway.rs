@@ -37,10 +37,7 @@ use crate::{
     NodeRng,
 };
 
-use self::{
-    round_success_meter::RoundSuccessMeter,
-    synchronizer::{PendingVertex, Synchronizer},
-};
+use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
@@ -236,22 +233,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
     fn add_vertex(&mut self, rng: &mut NodeRng) -> ProtocolOutcomes<I, C> {
-        let (pending_vertex, mut outcomes) =
-            match self.synchronizer.pop_vertex_to_add(&self.highway) {
-                None => return vec![],
-                Some((pending_vertex, outcomes)) => (pending_vertex, outcomes),
-            };
-
-        // If we are still missing a dependency, store the vertex in the map and request the
-        // dependency from the sender.
-        if let Some(dep) = self.highway.missing_dependency(pending_vertex.pvv()) {
-            let sender = pending_vertex.sender().clone();
-            self.synchronizer
-                .add_missing_dependency(dep.clone(), pending_vertex);
-            let ser_msg = HighwayMessage::RequestDependency(dep).serialize();
-            outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
-            return outcomes;
-        }
+        let (maybe_pending_vertex, mut outcomes) =
+            self.synchronizer.pop_vertex_to_add(&self.highway);
+        let pending_vertex = match maybe_pending_vertex {
+            None => return outcomes,
+            Some(pending_vertex) => pending_vertex,
+        };
 
         // If unit is sent by a doppelganger, deactivate this instance of an active
         // validator. Continue processing the unit so that it can be added to the state.
@@ -468,8 +455,7 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         trace!("received a valid vertex");
-                        let pv = PendingVertex::new(sender, pvv, now);
-                        self.synchronizer.schedule_add_vertices(iter::once(pv))
+                        self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
             }

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::Debug,
+    iter,
 };
 
 use datasize::DataSize;
@@ -15,7 +16,10 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 
-use super::{ProtocolOutcomes, ACTION_ID_VERTEX};
+use super::{HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
+
+#[cfg(test)]
+mod tests;
 
 /// An incoming pre-validated vertex that we haven't added to the protocol state yet.
 #[derive(DataSize, Debug)]
@@ -143,18 +147,15 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         results
     }
 
-    /// Schedules vertices to be added to the protocol state.
-    pub(crate) fn schedule_add_vertices<T>(&mut self, pending_vertices: T) -> ProtocolOutcomes<I, C>
-    where
-        T: IntoIterator<Item = PendingVertex<I, C>>,
-    {
-        let was_empty = self.vertices_to_be_added.is_empty();
-        self.vertices_to_be_added.extend(pending_vertices);
-        if was_empty && !self.vertices_to_be_added.is_empty() {
-            vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
-        } else {
-            Vec::new()
-        }
+    /// Schedules a vertex to be added to the protocol state.
+    pub(crate) fn schedule_add_vertex(
+        &mut self,
+        sender: I,
+        pvv: PreValidatedVertex<C>,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<I, C> {
+        let pv = PendingVertex::new(sender, pvv, now);
+        self.schedule_add_vertices(iter::once(pv))
     }
 
     /// Moves all vertices whose known missing dependency is now satisfied into the
@@ -175,25 +176,35 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     /// Pops and returns the next entry from `vertices_to_be_added` that is not yet in the protocol
     /// state. Also returns a `ProtocolOutcome` that schedules the next action to add a vertex,
-    /// unless the queue is empty.
+    /// unless the queue is empty, and `ProtocolOutcome`s to request missing dependencies.
     pub(crate) fn pop_vertex_to_add(
         &mut self,
         highway: &Highway<C>,
-    ) -> Option<(PendingVertex<I, C>, ProtocolOutcomes<I, C>)> {
-        // Get the next vertex to be added; skip the ones that are already in the protocol state.
-        let pv = loop {
-            let pv = self.vertices_to_be_added.pop()?;
-            if highway.has_vertex(pv.vertex()) {
-                continue; // This vertex was already added. Try the next one.
+    ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
+        let mut outcomes = Vec::new();
+        // Get the next vertex to be added; skip the ones that are already in the protocol state,
+        // and the ones that are still missing dependencies.
+        loop {
+            let pv = match self.vertices_to_be_added.pop() {
+                None => return (None, outcomes),
+                Some(pv) if highway.has_vertex(pv.vertex()) => continue,
+                Some(pv) => pv,
+            };
+            if let Some(dep) = highway.missing_dependency(pv.pvv()) {
+                // We are still missing a dependency. Store the vertex in the map and request
+                // the dependency from the sender.
+                let sender = pv.sender().clone();
+                self.add_missing_dependency(dep.clone(), pv);
+                let ser_msg = HighwayMessage::RequestDependency(dep).serialize();
+                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
+                continue;
             }
-            break pv;
-        };
-        if self.vertices_to_be_added.is_empty() {
-            // Found next vertex, but the queue is empty: No need to schedule another call.
-            Some((pv, Vec::new()))
-        } else {
-            // There are still vertices in the queue: schedule next call.
-            Some((pv, vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]))
+            // We found the next vertex to add.
+            if !self.vertices_to_be_added.is_empty() {
+                // There are still vertices in the queue: schedule next call.
+                outcomes.push(ProtocolOutcome::QueueAction(ACTION_ID_VERTEX));
+            }
+            return (Some(pv), outcomes);
         }
     }
 
@@ -233,6 +244,20 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             senders.extend(new_senders);
         }
         senders
+    }
+
+    /// Schedules vertices to be added to the protocol state.
+    fn schedule_add_vertices<T>(&mut self, pending_vertices: T) -> ProtocolOutcomes<I, C>
+    where
+        T: IntoIterator<Item = PendingVertex<I, C>>,
+    {
+        let was_empty = self.vertices_to_be_added.is_empty();
+        self.vertices_to_be_added.extend(pending_vertices);
+        if was_empty && !self.vertices_to_be_added.is_empty() {
+            vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+        } else {
+            Vec::new()
+        }
     }
 
     /// Drops all vertices that have the specified direct dependencies, and returns their IDs and
