@@ -275,14 +275,18 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         // Start the server task.
-        let server_join_handle = Some(tokio::spawn(server_task(
-            event_queue,
-            config.max_gossip_message_size,
-            one_way_message_receiver,
-            gossip_message_receiver,
-            server_shutdown_receiver,
-            swarm,
-        )));
+        let server_join_handle = Some(tokio::spawn(
+            ServerTask {
+                event_queue,
+                max_gossip_message_size: config.max_gossip_message_size,
+                one_way_message_receiver,
+                gossip_message_receiver,
+                server_shutdown_receiver,
+                swarm,
+                _phantom: Default::default(),
+            }
+            .run(),
+        ));
 
         let network = Network {
             network_identity,
@@ -408,40 +412,49 @@ fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
     NodeId::P2p(Swarm::local_peer_id(swarm).clone())
 }
 
-async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
+struct ServerTask<REv: 'static, P> {
     event_queue: EventQueueHandle<REv>,
     max_gossip_message_size: u32,
     // Receives outgoing one-way messages to be sent out via libp2p.
-    mut one_way_outgoing_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
+    one_way_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
     // Receives new gossip messages to be sent out via libp2p.
-    mut gossip_message_receiver: mpsc::UnboundedReceiver<GossipMessage>,
+    gossip_message_receiver: mpsc::UnboundedReceiver<GossipMessage>,
+    // // Receives updates of acceptance/rejection of gossiped messages.
+    // mut gossip_notification_receiver: mpsc::UnboundedReceiver<GossipMessage>,
     // Receives notification to shut down the server loop.
-    mut shutdown_receiver: watch::Receiver<()>,
-    mut swarm: Swarm<Behavior>,
-) {
-    async move {
+    server_shutdown_receiver: watch::Receiver<()>,
+    swarm: Swarm<Behavior>,
+    _phantom: PhantomData<P>,
+}
+
+impl<REv, P> ServerTask<REv, P>
+where
+    REv: ReactorEventT<P>,
+    P: PayloadT,
+{
+    async fn run(mut self) {
         loop {
             // Note that `select!` will cancel all futures on branches not eventually selected by
             // dropping them.  Each future inside this macro must be cancellation-safe.
             select! {
                 // `swarm.next_event()` is cancellation-safe - see
                 // https://github.com/libp2p/rust-libp2p/issues/1876
-                swarm_event = swarm.next_event() => {
-                    trace!("{}: {:?}", our_id(&swarm), swarm_event);
-                    handle_swarm_event(&mut swarm, event_queue, swarm_event).await;
+                swarm_event = self.swarm.next_event() => {
+                    trace!("{}: {:?}", our_id(&self.swarm), swarm_event);
+                    handle_swarm_event(&mut self.swarm, self.event_queue, swarm_event).await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
                 // https://tokio.rs/tokio/tutorial/select#cancellation
-                maybe_outgoing_message = one_way_outgoing_message_receiver.recv() => {
+                maybe_outgoing_message = self.one_way_message_receiver.recv() => {
                     match maybe_outgoing_message {
                         Some(outgoing_message) => {
                             // We've received a one-way request to send to a peer.
-                            swarm.send_one_way_message(outgoing_message);
+                            self.swarm.send_one_way_message(outgoing_message);
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.
-                            info!("{}: exiting network server task", our_id(&swarm));
+                            info!("{}: exiting network server task", our_id(&self.swarm));
                             break;
                         }
                     }
@@ -449,35 +462,34 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
                 // https://tokio.rs/tokio/tutorial/select#cancellation
-                maybe_gossip_message = gossip_message_receiver.recv() => {
+                maybe_gossip_message = self.gossip_message_receiver.recv() => {
                     match maybe_gossip_message {
                         Some(gossip_message) => {
                             // We've received a new message to be gossiped.
-                            swarm.gossip(gossip_message, max_gossip_message_size);
+                            self.swarm.gossip(gossip_message, self.max_gossip_message_size);
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.
-                            info!("{}: exiting network server task", our_id(&swarm));
+                            info!("{}: exiting network server task", our_id(&self.swarm));
                             break;
                         }
                     }
                 }
 
-                maybe_shutdown = shutdown_receiver.recv() => {
+                maybe_shutdown = self.server_shutdown_receiver.recv() => {
                     // Since a `watch` channel is always constructed with an initial value enqueued,
                     // ignore this (and any others) from the `shutdown_receiver`.
                     //
                     // When the receiver yields a `None`, the sender has been dropped, indicating we
                     // should exit this loop.
                     if maybe_shutdown.is_none() {
-                        info!("{}: shutting down libp2p", our_id(&swarm));
+                        info!("{}: shutting down libp2p", our_id(&self.swarm));
                         break;
                     }
                 }
             }
         }
     }
-    .await;
 }
 
 async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
