@@ -201,7 +201,7 @@ pub(super) fn new_behavior(
         .max_transmit_size(config.max_gossip_message_size as usize)
         .duplicate_cache_time(config.gossip_duplicate_cache_timeout.into())
         .message_id_fn(|gsm| MessageId::new(&gsm.data[0..Digest::LENGTH.min(gsm.data.len())]))
-        .validation_mode(ValidationMode::Permissive) // TODO: Re-add deploy verification
+        .validation_mode(ValidationMode::Strict) // TODO: Re-add deploy verification
         .build();
     let our_peer_id = PeerId::from(our_public_key);
     let mut gossipsub = Gossipsub::new(MessageAuthenticity::Author(our_peer_id), gossipsub_config);
