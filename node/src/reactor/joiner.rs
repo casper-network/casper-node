@@ -592,11 +592,11 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, event)
                 }
                 Message::FinalitySignature(_) => {
-                    warn!("finality signatures not handled in joiner reactor");
+                    debug!("finality signatures not handled in joiner reactor");
                     Effects::new()
                 }
                 other => {
-                    warn!(?other, "network announcement ignored.");
+                    debug!(?other, "network announcement ignored.");
                     Effects::new()
                 }
             },

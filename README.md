@@ -44,11 +44,10 @@ This is the core application for the Casper blockchain.
 
 ### Setup
 
-Before building a node, prepare your Rust build environment, and build the required system smart contracts:
+Before building a node, prepare your Rust build environment:
 
 ```
 make setup-rs
-make build-system-contracts -j
 ```
 
 The node software can be compiled afterwards:

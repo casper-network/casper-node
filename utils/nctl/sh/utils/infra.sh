@@ -137,7 +137,7 @@ function get_node_address_rpc_for_curl()
 }
 
 #######################################
-# Returns ordinal identifier of a validator node able to be used for deploy dispatch.
+# Returns ordinal identifier of a random validator node able to be used for deploy dispatch.
 # Arguments:
 #   Network ordinal identifier.
 #######################################
