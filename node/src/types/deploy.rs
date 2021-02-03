@@ -203,6 +203,11 @@ impl DeployHash {
         &self.0
     }
 
+    /// Deconstructs the deploy hash.
+    pub fn into_inner(self) -> Digest {
+        self.0
+    }
+
     /// Creates a random deploy hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {

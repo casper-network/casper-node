@@ -123,23 +123,13 @@ impl Behavior {
 
     /// Initiates gossiping the given message.
     pub(super) fn gossip(&mut self, message: GossipMessage, max_gossip_message_size: u32) {
-        let data = match bincode::serialize(&message) {
+        let data = match message.serialize(max_gossip_message_size as usize) {
             Ok(encoded) => encoded,
             Err(err) => {
                 warn!(?err, "{}: failed to serialize gossip message", self.our_id);
                 return;
             }
         };
-
-        if data.len() > max_gossip_message_size as usize {
-            warn!(
-                max_gossip_message_size,
-                actual_size = data.len(),
-                "{}: outgoing gossip message exceeded configured maximum size",
-                self.our_id,
-            );
-            return;
-        }
 
         if let Err(error) = self.gossip_behavior.publish(message.topic(), data) {
             warn!(?error, "{}: failed to gossip new message", self.our_id);

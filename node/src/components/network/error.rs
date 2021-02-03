@@ -39,4 +39,8 @@ pub enum Error {
     /// Message too large.
     #[error("message of {actual_size} bytes exceeds limit of {max_size} bytes")]
     MessageTooLarge { max_size: u32, actual_size: usize },
+
+    /// Message corrupt.
+    #[error("message of {actual_size} too small to contain hash header")]
+    MessageTooSmall { actual_size: usize },
 }

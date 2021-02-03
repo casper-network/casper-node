@@ -13,6 +13,7 @@ mod tests_bulk_gossip;
 
 use std::{
     collections::{HashMap, HashSet},
+    convert::TryFrom,
     env,
     fmt::{self, Debug, Display, Formatter},
     io,
@@ -22,6 +23,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use gossip::bytes_of_message_id;
 use libp2p::{
     core::{
         connection::{ConnectedPoint, PendingConnectionError},
@@ -56,6 +58,7 @@ use self::{
 pub use self::{config::Config, error::Error};
 use crate::{
     components::{chainspec_loader::Chainspec, Component},
+    crypto::hash::Digest,
     effect::{
         announcements::{GossipAnnouncement, NetworkAnnouncement},
         requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
@@ -638,7 +641,7 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
     event: GossipsubEvent,
 ) {
     match event {
-        GossipsubEvent::Message(sender, _message_id, message) => {
+        GossipsubEvent::Message(sender, message_id, message) => {
             // We've received a gossiped message: announce it via the reactor on the
             // `NetworkIncoming` queue.
             let sender = match message.source {
@@ -648,9 +651,26 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
                     return;
                 }
             };
-            match bincode::deserialize::<GossipMessage>(&message.data) {
+            match GossipMessage::deserialize(&message.data) {
                 Ok(gossip_message) => {
                     debug!(%sender, %gossip_message, "{}: libp2p gossiped message received", our_id(swarm));
+
+                    // Ensure that the prefix matches the message and is of proper length.
+                    let msg_id = bytes_of_message_id(&message_id);
+                    let prefix = &message.data[0..Digest::LENGTH.min(message.data.len())];
+                    if prefix.len() != Digest::LENGTH || prefix != msg_id {
+                        warn!(?msg_id, ?prefix, "malformed message id or prefix");
+                        return;
+                    }
+
+                    // Verify that the hash given as the message ID is actually correct (== the hash
+                    // of the gossiped object).
+                    let message_id_hash = Digest::try_from(msg_id.as_slice()).expect("did not expect `Digest::try_from` to fail after verifying input message length");
+
+                    if message_id_hash != gossip_message.hash() {
+                        warn!(%message_id_hash, actual_object_hash = %gossip_message.hash(), "hash mismatch on received object");
+                        return;
+                    }
 
                     match gossip_message {
                         GossipMessage::LegacyPayload(ref payload_bytes) => {

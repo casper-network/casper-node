@@ -5,14 +5,20 @@ use std::fmt::{self, Display, Formatter};
 
 use libp2p::{
     core::{ProtocolName, PublicKey},
-    gossipsub::{Gossipsub, GossipsubConfigBuilder, MessageAuthenticity, Topic, ValidationMode},
+    gossipsub::{
+        Gossipsub, GossipsubConfigBuilder, MessageAuthenticity, MessageId, Topic, ValidationMode,
+    },
     PeerId,
 };
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use super::{Config, Error, ProtocolId};
-use crate::{components::chainspec_loader::Chainspec, types::Deploy};
+use crate::{
+    components::chainspec_loader::Chainspec,
+    crypto::hash::{hash, Digest},
+    types::Deploy,
+};
 
 /// The inner portion of the `ProtocolId` for the gossip behavior.  A standard prefix and suffix
 /// will be applied to create the full protocol name.
@@ -24,6 +30,10 @@ pub(super) static BROADCAST_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadc
 /// Gossiping topic used by `GossipRequest<Deploy>` functionality.
 pub(super) static GOSSIP_DEPLOY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("broadcast".into()));
 
+/// A gossip message that can be serialized into/deserialized from a wire format.
+///
+/// The wireformat itself based on bincode serialization of this type, prefixed with its object hash
+/// (the hash of the wrapped, deserialized type, **not** the hash of the serialized bytes).
 #[derive(Debug, Deserialize, Serialize)]
 pub(super) enum GossipMessage {
     /// Twice-encoded legacy payload, used for broadcasting. To be removed soon.
@@ -71,6 +81,82 @@ impl GossipMessage {
             GossipMessage::Deploy(_) => &*GOSSIP_DEPLOY_TOPIC,
         }
     }
+
+    /// Create a message ID from gossip message.
+    ///
+    /// The resulting message ID is equivalent to the hash of the gossiped object.
+    pub(super) fn hash(&self) -> Digest {
+        match self {
+            GossipMessage::LegacyPayload(bytes) => {
+                // TODO: This is not very efficient and should be replace by making the actual type
+                // available.
+                hash(bytes)
+            }
+            GossipMessage::Deploy(deploy) => deploy.id().into_inner(),
+        }
+    }
+
+    /// Create the wire-serialized representation of the gossip message.
+    ///
+    /// Messages are prefixed with their hash, which doubles as the message id.
+    pub(super) fn serialize(&self, max_gossip_message_size: usize) -> Result<Vec<u8>, Error> {
+        let mut data = self.hash().to_vec();
+
+        bincode::serialize_into(&mut data, self).map_err(|e| Error::Serialization(*e))?;
+
+        if data.len() > max_gossip_message_size {
+            return Err(Error::MessageTooLarge {
+                max_size: max_gossip_message_size as u32,
+                actual_size: data.len(),
+            });
+        }
+
+        Ok(data)
+    }
+
+    /// Deserializes a message from wire-serialized representation.
+    ///
+    /// Skips the first `Digest::LENGTH` bytes, which are the hash.
+    pub(super) fn deserialize(data: &[u8]) -> Result<Self, Error> {
+        if data.len() < Digest::LENGTH {
+            return Err(Error::MessageTooSmall {
+                actual_size: data.len(),
+            });
+        }
+
+        bincode::deserialize(&data[Digest::LENGTH..]).map_err(|e| Error::Deserialization(*e))
+    }
+}
+
+/// Grants read-only access to the `MessageId` internal bytes.
+///
+/// This function is necessary until libp2p is updated to a version (0.34.0 or higher) that allows
+/// access to the internal bytes of `MessageId`.
+pub(super) fn bytes_of_message_id<'a>(message_id: &'a MessageId) -> &'a Vec<u8> {
+    // From https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html:
+    //
+    // > Single-field structs
+    // > A struct with only one field has the same layout as that field.
+
+    let ptr: *const MessageId = message_id;
+    unsafe { (ptr as *const Vec<u8>).as_ref() }
+        .expect("did not expect valid pointer to turn into NULL")
+}
+
+#[cfg(test)]
+mod unsafe_tests {
+    use libp2p::gossipsub::MessageId;
+
+    use super::bytes_of_message_id;
+
+    #[test]
+    fn does_not_blow_up() {
+        let sample_data = vec![1, 2, 3, 4, 5, 6];
+
+        let msg_id = MessageId::from(sample_data.clone());
+
+        assert_eq!(bytes_of_message_id(&msg_id), &sample_data);
+    }
 }
 
 /// Constructs a new libp2p behavior suitable for gossiping.
@@ -85,6 +171,7 @@ pub(super) fn new_behavior(
         .heartbeat_interval(config.gossip_heartbeat_interval.into())
         .max_transmit_size(config.max_gossip_message_size as usize)
         .duplicate_cache_time(config.gossip_duplicate_cache_timeout.into())
+        .message_id_fn(|gsm| MessageId::new(&gsm.data[0..Digest::LENGTH.min(gsm.data.len())]))
         .validation_mode(ValidationMode::Permissive) // TODO: Re-add deploy verification
         .build();
     let our_peer_id = PeerId::from(our_public_key);
