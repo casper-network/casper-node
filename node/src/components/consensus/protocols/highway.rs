@@ -460,7 +460,7 @@ where
                         // If it's not from an equivocator and from the future, add to queue
                         trace!("received a vertex from the future; storing for later");
                         self.synchronizer
-                            .store_vertex_for_addition_later(timestamp, sender, pvv);
+                            .store_vertex_for_addition_later(timestamp, now, sender, pvv);
                         let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
                         vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
                     }
@@ -468,7 +468,7 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         trace!("received a valid vertex");
-                        let pv = PendingVertex::new(sender, pvv);
+                        let pv = PendingVertex::new(sender, pvv, now);
                         self.synchronizer.schedule_add_vertices(iter::once(pv))
                     }
                 }
@@ -574,7 +574,7 @@ where
                 self.synchronizer.add_past_due_stored_vertices(timestamp)
             }
             TIMER_ID_PURGE_VERTICES => {
-                self.synchronizer.purge_vertices();
+                self.synchronizer.purge_vertices(timestamp);
                 let next_time = Timestamp::now() + self.synchronizer.pending_vertex_timeout();
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }

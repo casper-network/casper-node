@@ -33,11 +33,11 @@ where
 
 impl<I, C: Context> PendingVertex<I, C> {
     /// Returns a new pending vertex with the current timestamp.
-    pub(crate) fn new(sender: I, pvv: PreValidatedVertex<C>) -> Self {
+    pub(crate) fn new(sender: I, pvv: PreValidatedVertex<C>, time_received: Timestamp) -> Self {
         Self {
             sender,
             pvv,
-            time_received: Timestamp::now(),
+            time_received,
         }
     }
 
@@ -56,9 +56,9 @@ impl<I, C: Context> PendingVertex<I, C> {
         &self.pvv
     }
 
-    /// Returns `true` if this vertex was received longer than `timeout` ago.
-    fn expired(&self, timeout: TimeDiff) -> bool {
-        self.time_received + timeout < Timestamp::now()
+    /// Returns `true` if this vertex was received earlier than at the `oldest` timestamp.
+    fn expired(&self, oldest: Timestamp) -> bool {
+        self.time_received < oldest
     }
 }
 
@@ -97,11 +97,11 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     /// Removes expired pending vertices from the queues, and schedules the next purge.
-    pub(crate) fn purge_vertices(&mut self) {
-        let timeout = self.pending_vertex_timeout;
-        self.vertices_to_be_added.retain(|pv| !pv.expired(timeout));
-        Self::remove_expired(&mut self.vertices_to_be_added_later, timeout);
-        Self::remove_expired(&mut self.vertex_deps, timeout);
+    pub(crate) fn purge_vertices(&mut self, now: Timestamp) {
+        let oldest = now.saturating_sub(self.pending_vertex_timeout);
+        self.vertices_to_be_added.retain(|pv| !pv.expired(oldest));
+        Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
+        Self::remove_expired(&mut self.vertex_deps, oldest);
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
@@ -109,13 +109,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn store_vertex_for_addition_later(
         &mut self,
         future_timestamp: Timestamp,
+        now: Timestamp,
         sender: I,
         pvv: PreValidatedVertex<C>,
     ) {
         self.vertices_to_be_added_later
             .entry(future_timestamp)
             .or_default()
-            .push(PendingVertex::new(sender, pvv));
+            .push(PendingVertex::new(sender, pvv, now));
     }
 
     /// Schedules calls to `add_vertex` on any vertices in `vertices_to_be_added_later` which are
@@ -256,10 +257,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Removes all expired entries from a `BTreeMap` of `Vec`s.
     fn remove_expired<T: Ord + Clone>(
         map: &mut BTreeMap<T, Vec<PendingVertex<I, C>>>,
-        timeout: TimeDiff,
+        oldest: Timestamp,
     ) {
         for pvs in map.values_mut() {
-            pvs.retain(|pv| !pv.expired(timeout));
+            pvs.retain(|pv| !pv.expired(oldest));
         }
         let keys = map
             .iter()
