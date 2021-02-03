@@ -128,6 +128,17 @@ impl GossipMessage {
     }
 }
 
+/// libp2p result of a gossip message validation.
+#[derive(Debug)]
+pub(super) struct MessageValidationResult {
+    /// The ID of the message being validated.
+    pub(super) msg_id: MessageId,
+    /// Propagating sender of the message.
+    pub(super) propagation_source: PeerId,
+    /// Indicates the result of the validation.
+    pub(super) is_valid: bool,
+}
+
 /// Grants read-only access to the `MessageId` internal bytes.
 ///
 /// This function is necessary until libp2p is updated to a version (0.34.0 or higher) that allows

@@ -23,13 +23,13 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use gossip::bytes_of_message_id;
+use gossip::{bytes_of_message_id, MessageValidationResult};
 use libp2p::{
     core::{
         connection::{ConnectedPoint, PendingConnectionError},
         upgrade,
     },
-    gossipsub::GossipsubEvent,
+    gossipsub::{GossipsubEvent, MessageId},
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
@@ -60,7 +60,7 @@ use crate::{
     components::{chainspec_loader::Chainspec, Component},
     crypto::hash::Digest,
     effect::{
-        announcements::{GossipAnnouncement, NetworkAnnouncement},
+        announcements::{DeployAcceptorAnnouncement, GossipAnnouncement, NetworkAnnouncement},
         requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -142,6 +142,9 @@ pub struct Network<REv, P> {
     /// The channel through which to send new messages for gossiping.
     #[data_size(skip)]
     gossip_message_sender: mpsc::UnboundedSender<GossipMessage>,
+    /// The channel through which we send the result of gossip message validation.
+    #[data_size(skip)]
+    message_validation_sender: mpsc::UnboundedSender<MessageValidationResult>,
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
@@ -183,6 +186,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 
         let (one_way_message_sender, one_way_message_receiver) = mpsc::unbounded_channel();
         let (gossip_message_sender, gossip_message_receiver) = mpsc::unbounded_channel();
+        let (message_validation_sender, message_validation_receiver) = mpsc::unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
         // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without starting the server.
@@ -198,6 +202,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 one_way_message_sender,
                 max_one_way_message_size: 0,
                 gossip_message_sender,
+                message_validation_sender,
                 shutdown_sender: Some(server_shutdown_sender),
                 server_join_handle: None,
                 _phantom: PhantomData,
@@ -281,6 +286,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 max_gossip_message_size: config.max_gossip_message_size,
                 one_way_message_receiver,
                 gossip_message_receiver,
+                message_validation_receiver,
                 server_shutdown_receiver,
                 swarm,
                 _phantom: Default::default(),
@@ -299,6 +305,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             one_way_message_sender,
             max_one_way_message_size: config.max_one_way_message_size,
             gossip_message_sender,
+            message_validation_sender,
             shutdown_sender: Some(server_shutdown_sender),
             server_join_handle,
             _phantom: PhantomData,
@@ -413,17 +420,21 @@ fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
 }
 
 struct ServerTask<REv: 'static, P> {
+    // Even queue where incoming messages are forwarded.
     event_queue: EventQueueHandle<REv>,
+    // The maximum acceptable message for gossip messages (checked going out).
     max_gossip_message_size: u32,
     // Receives outgoing one-way messages to be sent out via libp2p.
     one_way_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
     // Receives new gossip messages to be sent out via libp2p.
     gossip_message_receiver: mpsc::UnboundedReceiver<GossipMessage>,
     // // Receives updates of acceptance/rejection of gossiped messages.
-    // mut gossip_notification_receiver: mpsc::UnboundedReceiver<GossipMessage>,
+    message_validation_receiver: mpsc::UnboundedReceiver<MessageValidationResult>,
     // Receives notification to shut down the server loop.
     server_shutdown_receiver: watch::Receiver<()>,
+    // libp2p swarm.
     swarm: Swarm<Behavior>,
+    // Required to use `P`.
     _phantom: PhantomData<P>,
 }
 
@@ -453,8 +464,6 @@ where
                             self.swarm.send_one_way_message(outgoing_message);
                         }
                         None => {
-                            // The data sender has been dropped - exit the loop.
-                            info!("{}: exiting network server task", our_id(&self.swarm));
                             break;
                         }
                     }
@@ -469,8 +478,19 @@ where
                             self.swarm.gossip(gossip_message, self.max_gossip_message_size);
                         }
                         None => {
-                            // The data sender has been dropped - exit the loop.
-                            info!("{}: exiting network server task", our_id(&self.swarm));
+                            break;
+                        }
+                    }
+                }
+
+                // `UnboundedReceiver::recv()` is cancellation safe - see
+                // https://tokio.rs/tokio/tutorial/select#cancellation
+                maybe_message_validation_result = self.message_validation_receiver.recv() => {
+                    match maybe_message_validation_result {
+                        Some(validation_result) => {
+                            self.swarm.handle_validation_result(validation_result)
+                        }
+                        None => {
                             break;
                         }
                     }
@@ -489,6 +509,7 @@ where
                 }
             }
         }
+        info!("{}: exiting network server task", our_id(&self.swarm));
     }
 }
 
@@ -971,6 +992,36 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     })
                     .collect();
                 responder.respond(peers).ignore()
+            }
+            Event::DeployAcceptorAnnouncement(ann) => {
+                // We reconstruct the message IDs from the deploy acceptor announcement and let
+                // libp2p know.
+                let validation_result = match ann {
+                    DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source: _ } => {
+                        let message_id = MessageId::from(deploy.id().into_inner().to_vec());
+                        MessageValidationResult {
+                            msg_id: message_id,
+                            propagation_source: todo!(),
+                            is_valid: true,
+                        }
+                    }
+                    DeployAcceptorAnnouncement::InvalidDeploy { deploy, source: _ } => {
+                        let message_id = MessageId::from(deploy.id().into_inner().to_vec());
+                        MessageValidationResult {
+                            msg_id: message_id,
+                            propagation_source: todo!(),
+                            is_valid: false,
+                        }
+                    }
+                };
+
+                if let Err(err) = self.message_validation_sender.send(validation_result) {
+                    // `err` likely just be channel closed. This is usually not a case for concern,
+                    // most likely happening during shutdown.
+                    debug!(%err, "failed to send validation result down channel, likely due to server shutting down?")
+                }
+
+                Effects::new()
             }
         }
     }

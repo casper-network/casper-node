@@ -687,10 +687,12 @@ impl reactor::Reactor for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
+
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::AcceptedNewDeploy {
                 deploy,
                 source,
             }) => {
+                // TODO: Why is this not part of the deploy acceptor??
                 let deploy_type = match deploy.deploy_type() {
                     Ok(deploy_type) => deploy_type,
                     Err(error) => {
@@ -710,8 +712,8 @@ impl reactor::Reactor for Reactor {
                 effects.extend(effect_builder.gossip_item(deploy.clone()).ignore());
 
                 let event = fetcher::Event::GotRemotely {
-                    item: deploy,
-                    source,
+                    item: deploy.clone(),
+                    source: source.clone(),
                 };
                 effects.extend(self.dispatch_event(
                     effect_builder,
@@ -719,12 +721,29 @@ impl reactor::Reactor for Reactor {
                     Event::DeployFetcher(event),
                 ));
 
+                // Also let the gossiper know.
+                //
+                // Note: This is bad spaghetti code currently, due to this whole routing section
+                // being a mess.
+                let reconstructed_event =
+                    DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source };
+
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::Network(reconstructed_event.into()),
+                ));
+
                 effects
             }
-            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                deploy: _,
-                source: _,
-            }) => Effects::new(),
+            Event::DeployAcceptorAnnouncement(ann) => {
+                // Only the network component currently cares about deploy acceptor announcements
+                // currently.
+                reactor::wrap_effects(
+                    Event::Network,
+                    self.network.handle_event(effect_builder, rng, ann.into()),
+                )
+            }
             Event::ConsensusAnnouncement(consensus_announcement) => {
                 let mut reactor_event_dispatch = |dbe: block_proposer::Event| {
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(dbe))

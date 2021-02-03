@@ -4,6 +4,7 @@ use std::{
 };
 
 use derive_more::From;
+use gossip::MessageValidationResult;
 use libp2p::{
     core::PublicKey,
     gossipsub::{Gossipsub, GossipsubEvent},
@@ -133,6 +134,20 @@ impl Behavior {
 
         if let Err(error) = self.gossip_behavior.publish(message.topic(), data) {
             warn!(?error, "{}: failed to gossip new message", self.our_id);
+        }
+    }
+
+    /// Handles the result of validating a gossiped message, forwarding it to libp2p.
+    pub(super) fn handle_validation_result(&mut self, validation_result: MessageValidationResult) {
+        if validation_result.is_valid {
+            self.gossip_behavior.validate_message(
+                &validation_result.msg_id,
+                &validation_result.propagation_source,
+            );
+        } else {
+            // Note: Our current version of libp2p does not support negative
+            // validation. Once upgraded, peer can appropriately be punished
+            // instead.
         }
     }
 

@@ -12,7 +12,10 @@ use libp2p::{
 use serde::Serialize;
 
 use crate::{
-    effect::requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
+    effect::{
+        announcements::DeployAcceptorAnnouncement,
+        requests::{GossipRequest, NetworkInfoRequest, NetworkRequest},
+    },
     types::{Deploy, NodeId},
 };
 
@@ -112,6 +115,10 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         info_request: NetworkInfoRequest<NodeId>,
     },
+
+    /// An announcement from the deploy acceptor (used to accept or reject gossiped data).
+    #[from]
+    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
 }
 
 impl<P: Display> Display for Event<P> {
@@ -185,6 +192,9 @@ impl<P: Display> Display for Event<P> {
             }
             Event::NetworkInfoRequest { info_request } => {
                 write!(f, "info request: {}", info_request)
+            }
+            Event::DeployAcceptorAnnouncement(ann) => {
+                write!(f, "deploy acceptor announcement: {}", ann)
             }
         }
     }
