@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error, ExecuteRequest},
+        engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
         execution,
     },
     shared::{gas::Gas, motes::Motes},
@@ -24,13 +24,13 @@ fn setup() -> InMemoryWasmTestBuilder {
     builder
 }
 
-fn expect_charge_for_error(
+fn should_charge_for_user_error(
     builder: &mut InMemoryWasmTestBuilder,
     request: ExecuteRequest,
 ) -> Error {
     let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
     let transfer_cost_motes =
-        Motes::from_gas(transfer_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+        Motes::from_gas(transfer_cost, WASMLESS_TRANSFER_FIXED_GAS_PRICE).expect("gas overflow");
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -77,10 +77,10 @@ fn expect_charge_for_error(
 
 #[ignore]
 #[test]
-fn should_varify_nondefault_gas_price_precondition() {
+fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
     let id: Option<u64> = None;
 
-    let create_account_request_1 = {
+    let create_account_request = {
         let transfer_amount = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST) + U512::one());
 
         let transfer_args = runtime_args! {
@@ -115,28 +115,19 @@ fn should_varify_nondefault_gas_price_precondition() {
 
     let mut builder = setup();
     builder
-        .exec(create_account_request_1)
+        .exec(create_account_request)
         .expect_success()
         .commit();
-    builder.exec(transfer_request).commit();
-
-    let response = builder
-        .get_exec_result(1)
-        .expect("should have result")
-        .get(0)
-        .expect("should have first result");
-
-    assert_eq!(response.cost(), Gas::new(U512::zero()));
-    let error = response.as_error().expect("should have error");
-    assert!(matches!(error, Error::InsufficientPayment));
+    builder.exec(transfer_request).expect_success().commit();
 }
 
 #[ignore]
 #[test]
-fn should_properly_charge_with_nondefault_gas_price() {
+fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
-    let transfer_cost_motes =
-        Motes::from_gas(transfer_cost, PRIORITIZED_GAS_PRICE).expect("gas overflow");
+    // implies 1:1 gas/motes conversion rate regardless of gas price
+    let transfer_cost_motes = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+
     let transfer_amount = Motes::new(U512::one());
 
     let id: Option<u64> = None;
@@ -195,7 +186,7 @@ fn should_charge_for_wasmless_transfer_missing_args() {
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
 
     let mut builder = setup();
-    let error = expect_charge_for_error(&mut builder, transfer_request);
+    let error = should_charge_for_user_error(&mut builder, transfer_request);
 
     assert!(matches!(
         error,
@@ -223,7 +214,7 @@ fn should_charge_for_wasmless_transfer_invalid_purse() {
     let transfer_request =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
 
-    let error = expect_charge_for_error(&mut builder, transfer_request);
+    let error = should_charge_for_user_error(&mut builder, transfer_request);
     assert!(matches!(
         error,
         Error::Exec(execution::Error::Revert(ApiError::InvalidPurse))

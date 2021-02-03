@@ -86,6 +86,10 @@ pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000u64));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
+/// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
+/// pay.
+pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
+
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
@@ -617,17 +621,19 @@ where
             protocol_data.system_config().wasmless_transfer_cost(),
         ));
 
-        let wasmless_transfer_cost =
-            match Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price) {
-                Some(motes) => motes,
-                None => {
-                    // TODO: Add a specific error variant to represent gas to motes conversion
-                    // overflow.
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
-                }
-            };
+        let wasmless_transfer_cost = match Motes::from_gas(
+            wasmless_transfer_gas_cost,
+            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+        ) {
+            Some(motes) => motes,
+            None => {
+                // TODO: Add a specific error variant to represent gas to motes conversion
+                // overflow.
+                return Ok(ExecutionResult::precondition_failure(
+                    Error::InsufficientPayment,
+                ));
+            }
+        };
 
         let proposer_main_purse_balance_key = {
             let proposer_main_purse = proposer_account.main_purse();
@@ -901,14 +907,15 @@ where
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
 
-            let payment_gas = match Gas::from_motes(payment_purse_balance, deploy_item.gas_price) {
-                Some(gas) => gas,
-                None => {
-                    // TODO: Add a specific error variant to represent motes to gas conversion
-                    // underflow.
-                    return Ok(make_charged_execution_failure(Error::InsufficientPayment));
-                }
-            };
+            let payment_gas =
+                match Gas::from_motes(payment_purse_balance, WASMLESS_TRANSFER_FIXED_GAS_PRICE) {
+                    Some(gas) => gas,
+                    None => {
+                        // TODO: Add a specific error variant to represent motes to gas conversion
+                        // underflow.
+                        return Ok(make_charged_execution_failure(Error::InsufficientPayment));
+                    }
+                };
 
             debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
 
@@ -1016,7 +1023,7 @@ where
         // Create + persist deploy info.
         {
             let transfers = session_result.transfers();
-            let cost = payment_result.cost().value() + session_result.cost().value();
+            let cost = wasmless_transfer_gas_cost.value();
             let deploy_info = DeployInfo::new(
                 deploy_item.deploy_hash,
                 &transfers,

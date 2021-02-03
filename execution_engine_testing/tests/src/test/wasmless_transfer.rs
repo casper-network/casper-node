@@ -1,13 +1,15 @@
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{upgrade::ActivationPoint, Error as CoreError},
+        engine_state::{
+            upgrade::ActivationPoint, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+        },
         execution::Error as ExecError,
     },
     shared::{
@@ -148,8 +150,11 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         .commit();
 
     let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
-    let wasmless_transfer_cost =
-        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
 
     assert_eq!(
         account_1_starting_balance - transfer_amount - wasmless_transfer_cost.value(),
@@ -527,8 +532,11 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 #[test]
 fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
-    let wasmless_transfer_cost =
-        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
 
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
@@ -646,8 +654,11 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
 #[test]
 fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
-    let wasmless_transfer_cost =
-        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
 
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
@@ -740,8 +751,11 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 #[test]
 fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
-    let wasmless_transfer_cost =
-        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
 
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
@@ -889,8 +903,11 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
-    let new_wasmless_transfer_cost =
-        Motes::from_gas(new_wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+    let new_wasmless_transfer_cost = Motes::from_gas(
+        new_wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
 
     let transfer_amount = U512::one();
     const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
