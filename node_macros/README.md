@@ -1,4 +1,17 @@
-# casper-node-macros
+# `casper-node-macros`
+
+[![LOGO](https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
+
+[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casper-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/casper-node)
+[![Crates.io](https://img.shields.io/crates/v/casper-node-macros)](https://crates.io/crates/casper-node-macros)
+[![Documentation](https://docs.rs/casper-node-macros/badge.svg)](https://docs.rs/casper-node-macros)
+[![License](https://img.shields.io/badge/license-COSL-blue.svg)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
+
+## License
+
+Licensed under the [CasperLabs Open Source License (COSL)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE).
+
+---
 
 The `casper-node-macros` crate offers an easy-to-use macro to create reactor implementations for the component system. It enforces a set of convention and allows generating a large amount of otherwise boilerplate heavy setup code comfortably.
 
