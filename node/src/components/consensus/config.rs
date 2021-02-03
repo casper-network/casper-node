@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use datasize::DataSize;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_types::SecretKey;
@@ -44,6 +45,9 @@ pub(crate) struct ProtocolConfig {
     /// auction_delay + 1
     pub(crate) auction_delay: u64,
     pub(crate) unbonding_delay: u64,
+    /// The network protocol version.
+    #[data_size(skip)]
+    pub(crate) protocol_version: Version,
     /// Name of the network.
     pub(crate) name: String,
     /// Genesis timestamp.
@@ -58,6 +62,7 @@ impl From<&Chainspec> for ProtocolConfig {
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,
             unbonding_delay: chainspec.core_config.unbonding_delay.into(),
+            protocol_version: chainspec.protocol_config.version.clone(),
             name: chainspec.network_config.name.clone(),
             timestamp: chainspec.network_config.timestamp,
         }

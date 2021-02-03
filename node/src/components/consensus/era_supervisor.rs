@@ -495,15 +495,11 @@ where
         block_header: BlockHeader,
         responder: Responder<Option<FinalitySignature>>,
     ) -> Effects<Event<I>> {
-        // Try to get the next upgrade activation point if we don't already know it.
-        let mut effects = Effects::new();
-        if self.era_supervisor.next_upgrade_activation_point.is_none() {
-            effects.extend(
-                self.effect_builder
-                    .next_upgrade_activation_point()
-                    .event(Event::GotUpgradeActivationPoint),
-            );
-        }
+        // Try to get the next upgrade activation point.
+        let mut effects = self
+            .effect_builder
+            .next_upgrade_activation_point()
+            .event(Event::GotUpgradeActivationPoint);
 
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
@@ -908,8 +904,9 @@ where
         ) {
             (Some(new_point), Some(current_point)) => {
                 if new_point != *current_point {
-                    warn!(%new_point, %current_point, "unexpected mismatch in activation points");
+                    info!(%new_point, %current_point, "changing upgrade activation point");
                 }
+                self.era_supervisor.next_upgrade_activation_point = Some(new_point);
             }
             (Some(new_point), None) => {
                 info!(activation_point=%new_point, "new upgrade activation point");
@@ -950,6 +947,7 @@ fn instance_id(protocol_config: &ProtocolConfig, state_root_hash: Digest) -> Dig
     hasher.update(&protocol_config.name);
     hasher.update(protocol_config.timestamp.millis().to_le_bytes());
     hasher.update(state_root_hash);
+    hasher.update(protocol_config.protocol_version.to_string().as_bytes());
 
     hasher.finalize_variable(|slice| {
         result.copy_from_slice(slice);
