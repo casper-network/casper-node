@@ -77,6 +77,62 @@ fn expect_charge_for_error(
 
 #[ignore]
 #[test]
+fn should_varify_nondefault_gas_price_precondition() {
+    let id: Option<u64> = None;
+
+    let create_account_request_1 = {
+        let transfer_amount = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST) + U512::one());
+
+        let transfer_args = runtime_args! {
+
+            mint::ARG_TARGET => ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => transfer_amount.value(),
+            mint::ARG_ID => id,
+        };
+
+        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
+    };
+
+    let transfer_request = {
+        let transfer_amount = Motes::new(U512::one());
+
+        let transfer_args = runtime_args! {
+            mint::ARG_TARGET => *DEFAULT_ACCOUNT_ADDR,
+            mint::ARG_AMOUNT => transfer_amount.value(),
+            mint::ARG_ID => id,
+        };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_1_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(transfer_args)
+            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .with_deploy_hash([42; 32])
+            .with_gas_price(PRIORITIZED_GAS_PRICE)
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    let mut builder = setup();
+    builder
+        .exec(create_account_request_1)
+        .expect_success()
+        .commit();
+    builder.exec(transfer_request).commit();
+
+    let response = builder
+        .get_exec_result(1)
+        .expect("should have result")
+        .get(0)
+        .expect("should have first result");
+
+    assert_eq!(response.cost(), Gas::new(U512::zero()));
+    let error = response.as_error().expect("should have error");
+    assert!(matches!(error, Error::InsufficientPayment));
+}
+
+#[ignore]
+#[test]
 fn should_properly_charge_with_nondefault_gas_price() {
     let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
     let transfer_cost_motes =

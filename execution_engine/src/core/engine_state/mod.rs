@@ -574,6 +574,15 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
+        let proposer_addr = proposer.to_account_hash();
+        let proposer_account = match tracking_copy
+            .borrow_mut()
+            .get_account(correlation_id, proposer_addr)
+        {
+            Ok(proposer) => proposer,
+            Err(e) => return Ok(ExecutionResult::precondition_failure(Error::Exec(e))),
+        };
+
         let mint_contract = match tracking_copy
             .borrow_mut()
             .get_contract(correlation_id, protocol_data.mint())
@@ -604,8 +613,96 @@ where
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
+        let wasmless_transfer_gas_cost = Gas::new(U512::from(
+            protocol_data.system_config().wasmless_transfer_cost(),
+        ));
+
+        let wasmless_transfer_cost =
+            match Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price) {
+                Some(motes) => motes,
+                None => {
+                    // TODO: Add a specific error variant to represent gas to motes conversion
+                    // overflow.
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ));
+                }
+            };
+
+        let proposer_main_purse_balance_key = {
+            let proposer_main_purse = proposer_account.main_purse();
+
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, proposer_main_purse.into())
+            {
+                Ok(balance_key) => balance_key,
+                Err(_) => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ))
+                }
+            }
+        };
+
+        let proposer_purse = proposer_account.main_purse();
+
+        let account_main_purse = account.main_purse();
+
+        let account_main_purse_balance_key = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance_key(correlation_id, account_main_purse.into())
+        {
+            Ok(balance_key) => balance_key,
+            Err(_) => {
+                return Ok(ExecutionResult::precondition_failure(
+                    Error::InsufficientPayment,
+                ))
+            }
+        };
+
+        let account_main_purse_balance = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance(correlation_id, account_main_purse_balance_key)
+        {
+            Ok(balance_key) => balance_key,
+            Err(_) => {
+                return Ok(ExecutionResult::precondition_failure(
+                    Error::InsufficientPayment,
+                ))
+            }
+        };
+
+        if account_main_purse_balance < wasmless_transfer_cost {
+            // We don't have minimum balance to operate and therefore we can't charge for user
+            // errors.
+            return Ok(ExecutionResult::precondition_failure(
+                Error::InsufficientPayment,
+            ));
+        }
+
+        // Function below creates an ExecutionResult with precomputed effects of "finalize_payment".
+        let make_charged_execution_failure = |error| match ExecutionResult::new_payment_code_error(
+            error,
+            wasmless_transfer_cost,
+            account_main_purse_balance,
+            wasmless_transfer_gas_cost,
+            account_main_purse_balance_key,
+            proposer_main_purse_balance_key,
+        ) {
+            Ok(execution_result) => execution_result,
+            Err(error) => {
+                let exec_error = ExecError::from(error);
+                ExecutionResult::precondition_failure(exec_error.into())
+            }
+        };
+
+        // All wasmless transfer preconditions are met.
+        // Any error that occurs in logic below this point would result in a charge for user error.
+
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
+
         match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
@@ -641,88 +738,43 @@ where
                                 .write(Key::Account(public_key), StoredValue::Account(new_account))
                         }
                         None => {
+                            // Implies that execution_result is a failure.
                             return Ok(execution_result);
                         }
                     }
                 }
             },
-            Err(error) => {
-                return Ok(ExecutionResult::Failure {
-                    error,
-                    effect: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                });
-            }
+            Err(error) => return Ok(make_charged_execution_failure(error)),
         }
+
+        let transfer_args =
+            match runtime_args_builder.build(&account, correlation_id, Rc::clone(&tracking_copy)) {
+                Ok(transfer_args) => transfer_args,
+                Err(error) => return Ok(make_charged_execution_failure(error)),
+            };
 
         // Construct a payment code that will put cost of wasmless payment into payment purse
         let payment_result = {
-            let transfer_args = match runtime_args_builder.clone().build(
-                &account,
-                correlation_id,
-                Rc::clone(&tracking_copy),
-            ) {
-                Ok(transfer_args) => transfer_args,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error,
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    });
-                }
-            };
-
             // Check source purses minimum balance
-
             let source_uref = transfer_args.source();
 
-            let source_purse_balance_key = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, Key::URef(source_uref))
-            {
-                Ok(purse_balance_args) => purse_balance_args,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error: Error::Exec(error),
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    });
-                }
-            };
-
-            let source_purse_balance = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance(correlation_id, source_purse_balance_key)
-            {
-                Ok(transfer_args) => transfer_args,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error: Error::Exec(error),
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    });
-                }
-            };
-
-            let wasmless_transfer_gas_cost = Gas::new(U512::from(
-                protocol_data.system_config().wasmless_transfer_cost(),
-            ));
-
-            let wasmless_transfer_cost =
-                match Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price) {
-                    Some(motes) => motes,
-                    None => {
-                        // TODO: Add a specific error variant to represent gas to motes conversion
-                        // overflow.
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::InsufficientPayment,
-                        ));
-                    }
+            let source_purse_balance = {
+                let source_purse_balance_key = match tracking_copy
+                    .borrow_mut()
+                    .get_purse_balance_key(correlation_id, Key::URef(source_uref))
+                {
+                    Ok(purse_balance_key) => purse_balance_key,
+                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
                 };
+
+                match tracking_copy
+                    .borrow_mut()
+                    .get_purse_balance(correlation_id, source_purse_balance_key)
+                {
+                    Ok(purse_balance) => purse_balance,
+                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
+                }
+            };
 
             let transfer_amount_motes = Motes::new(transfer_args.amount());
 
@@ -730,15 +782,11 @@ where
                 Some(total_amount) if source_purse_balance < total_amount => {
                     // We can't continue if the minimum funds in source purse are lower than the
                     // required cost.
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
+                    return Ok(make_charged_execution_failure(Error::InsufficientPayment));
                 }
                 None => {
                     // When trying to send too much that could cause an overflow.
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
+                    return Ok(make_charged_execution_failure(Error::InsufficientPayment));
                 }
                 Some(_) => {}
             }
@@ -766,23 +814,11 @@ where
 
             let payment_uref = match payment_uref {
                 Some(payment_uref) => payment_uref,
-                None => {
-                    return Ok(ExecutionResult::Failure {
-                        error: Error::InsufficientPayment,
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    })
-                }
+                None => return Ok(make_charged_execution_failure(Error::InsufficientPayment)),
             };
 
             if let Some(error) = get_payment_purse_result.take_error() {
-                return Ok(ExecutionResult::Failure {
-                    error,
-                    effect: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                });
+                return Ok(make_charged_execution_failure(error));
             }
 
             // Create a new arguments to transfer cost of wasmless transfer into the payment purse.
@@ -791,20 +827,13 @@ where
                 transfer_args.to(),
                 transfer_args.source(),
                 payment_uref,
-                wasmless_transfer_gas_cost.value(),
+                wasmless_transfer_cost.value(),
                 transfer_args.arg_id(),
             );
 
             let runtime_args = match RuntimeArgs::try_from(new_transfer_args) {
                 Ok(runtime_args) => runtime_args,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error: ExecError::from(error).into(),
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    })
-                }
+                Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error.into()))),
             };
 
             let (actual_result, payment_result): (Option<Result<(), u8>>, ExecutionResult) =
@@ -829,12 +858,7 @@ where
                 );
 
             if let Some(error) = payment_result.as_error().cloned() {
-                return Ok(ExecutionResult::Failure {
-                    error,
-                    effect: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                });
+                return Ok(make_charged_execution_failure(error));
             }
 
             let transfer_result = match actual_result {
@@ -849,41 +873,26 @@ where
             };
 
             if let Err(error) = transfer_result {
-                return Ok(ExecutionResult::Failure {
-                    error: Error::Exec(ExecError::Revert(error)),
-                    effect: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                });
+                return Ok(make_charged_execution_failure(Error::Exec(
+                    ExecError::Revert(error),
+                )));
             }
 
-            let payment_purse_balance_key = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, Key::URef(payment_uref))
-            {
-                Ok(payment_purse_balance_key) => payment_purse_balance_key,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error: Error::Exec(error),
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    })
-                }
-            };
+            let payment_purse_balance = {
+                let payment_purse_balance_key = match tracking_copy
+                    .borrow_mut()
+                    .get_purse_balance_key(correlation_id, Key::URef(payment_uref))
+                {
+                    Ok(payment_purse_balance_key) => payment_purse_balance_key,
+                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
+                };
 
-            let payment_purse_balance = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance(correlation_id, payment_purse_balance_key)
-            {
-                Ok(payment_purse_balance) => payment_purse_balance,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error: Error::Exec(error),
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    })
+                match tracking_copy
+                    .borrow_mut()
+                    .get_purse_balance(correlation_id, payment_purse_balance_key)
+                {
+                    Ok(payment_purse_balance) => payment_purse_balance,
+                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
                 }
             };
 
@@ -891,14 +900,13 @@ where
             // (a) payment purse should be empty before the payment operation
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
+
             let payment_gas = match Gas::from_motes(payment_purse_balance, deploy_item.gas_price) {
                 Some(gas) => gas,
                 None => {
                     // TODO: Add a specific error variant to represent motes to gas conversion
                     // underflow.
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ));
+                    return Ok(make_charged_execution_failure(Error::InsufficientPayment));
                 }
             };
 
@@ -909,28 +917,12 @@ where
             payment_result.with_cost(payment_gas)
         };
 
-        let transfer_args =
-            match runtime_args_builder.build(&account, correlation_id, Rc::clone(&tracking_copy)) {
-                Ok(runtime_args) => runtime_args,
-                Err(error) => {
-                    return Ok(ExecutionResult::Failure {
-                        error,
-                        effect: Default::default(),
-                        transfers: Vec::default(),
-                        cost: Gas::default(),
-                    });
-                }
-            };
-
         let runtime_args = match RuntimeArgs::try_from(transfer_args) {
             Ok(runtime_args) => runtime_args,
             Err(error) => {
-                return Ok(ExecutionResult::Failure {
-                    error: ExecError::from(error).into(),
-                    effect: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                })
+                return Ok(make_charged_execution_failure(
+                    ExecError::from(error).into(),
+                ))
             }
         };
 
@@ -960,32 +952,14 @@ where
         session_result = session_result.with_cost(Gas::default());
 
         let finalize_result = {
-            let proposer_purse = {
-                let proposer_account: Account = match tracking_copy
-                    .borrow_mut()
-                    .get_account(correlation_id, AccountHash::from(&proposer))
-                {
-                    Ok(account) => account,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error.into()));
-                    }
-                };
-                proposer_account.main_purse()
-            };
-
             let proof_of_stake_args = {
                 // Gas spent during payment code execution
-                let finalize_cost_motes =
-                    match Motes::from_gas(payment_result.cost(), deploy_item.gas_price) {
-                        Some(motes) => motes,
-                        None => {
-                            // TODO: Add a specific error variant to represent gas to motes
-                            // conversion overflow.
-                            return Ok(ExecutionResult::precondition_failure(
-                                Error::InsufficientPayment,
-                            ));
-                        }
-                    };
+                let finalize_cost_motes = {
+                    // A case where payment_result.cost() is different than wasmless transfer cost
+                    // is considered a programming error.
+                    debug_assert_eq!(payment_result.cost(), wasmless_transfer_gas_cost);
+                    wasmless_transfer_cost
+                };
 
                 let account = deploy_item.address;
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {

@@ -1,11 +1,14 @@
 use casper_engine_test_support::{
     internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_execution_engine::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
+use casper_execution_engine::{
+    shared::{gas::Gas, motes::Motes},
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
+};
 use casper_types::{mint, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
@@ -13,8 +16,12 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 #[ignore]
 #[test]
 fn ee_1160_wasmless_transfer_should_empty_account() {
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_cost =
+        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+
     let transfer_amount =
-        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - U512::from(DEFAULT_WASMLESS_TRANSFER_COST);
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - wasmless_transfer_cost.value();
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -98,10 +105,17 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 
-    assert_eq!(balance_after, balance_before,);
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_motes =
+        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
 
     let last_result = builder.get_exec_result(0).unwrap().clone();
     let last_result = &last_result[0];
+    assert_eq!(
+        balance_before - wasmless_transfer_motes.value(),
+        balance_after
+    );
+    assert_eq!(last_result.cost(), wasmless_transfer_gas_cost);
 
     assert!(
         last_result.as_error().is_some(),
@@ -148,10 +162,18 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 
-    assert_eq!(balance_after, balance_before,);
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_motes =
+        Motes::from_gas(wasmless_transfer_gas_cost, DEFAULT_GAS_PRICE).expect("gas overflow");
+
+    assert_eq!(
+        balance_before - wasmless_transfer_motes.value(),
+        balance_after
+    );
 
     let last_result = builder.get_exec_result(0).unwrap().clone();
     let last_result = &last_result[0];
+    assert_eq!(last_result.cost(), wasmless_transfer_gas_cost);
 
     assert!(
         last_result.as_error().is_some(),
