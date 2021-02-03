@@ -123,7 +123,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
 
     let mut rng = NodeRng::seed_from_u64(0);
     let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
-    block_signature.append_proof(public_key, signature);
+    block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, block_signature)
 });
@@ -812,7 +812,7 @@ impl BlockSignatures {
         }
     }
 
-    pub(crate) fn append_proof(
+    pub(crate) fn insert_proof(
         &mut self,
         public_key: PublicKey,
         signature: Signature,
