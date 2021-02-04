@@ -203,7 +203,10 @@ pub(super) fn new_behavior(
         .message_id_fn(|gsm| MessageId::new(&gsm.data[0..Digest::LENGTH.min(gsm.data.len())]))
         // We do not rely on validation functionality of libp2p, as we validate message individually
         // by hash. Furthermore we do not intend to explicitly disclose which nodes are validators.
-        .validation_mode(ValidationMode::Anonymous)
+        //
+        // Unfortunately, anonymous messages are not possible (?), so we fall back to `Permissive`,
+        // which will leak identity information about validators.
+        .validation_mode(ValidationMode::Permissive)
         // Turn on message validation via callback.
         .validate_messages()
         .build();
