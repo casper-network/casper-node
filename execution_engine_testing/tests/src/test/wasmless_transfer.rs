@@ -7,13 +7,19 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{upgrade::ActivationPoint, Error as CoreError},
+        engine_state::{
+            upgrade::ActivationPoint, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+        },
         execution::Error as ExecError,
     },
-    shared::system_config::{
-        auction_costs::AuctionCosts, mint_costs::MintCosts,
-        proof_of_stake_costs::ProofOfStakeCosts, standard_payment_costs::StandardPaymentCosts,
-        SystemConfig,
+    shared::{
+        gas::Gas,
+        motes::Motes,
+        system_config::{
+            auction_costs::AuctionCosts, mint_costs::MintCosts,
+            proof_of_stake_costs::ProofOfStakeCosts, standard_payment_costs::StandardPaymentCosts,
+            SystemConfig,
+        },
     },
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
@@ -143,8 +149,15 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         .expect_success()
         .commit();
 
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
+
     assert_eq!(
-        account_1_starting_balance - transfer_amount - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
+        account_1_starting_balance - transfer_amount - wasmless_transfer_cost.value(),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -518,6 +531,13 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 #[ignore]
 #[test]
 fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
+
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let transfer_amount: U512 = U512::from(1000);
@@ -563,7 +583,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance - transfer_amount - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
+        account_1_starting_balance - transfer_amount - wasmless_transfer_cost.value(),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -633,6 +653,13 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
 #[ignore]
 #[test]
 fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
+
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let account_1_to_account_2_amount: U512 =
@@ -680,9 +707,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance
-            - account_1_to_account_2_amount
-            - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
+        account_1_starting_balance - account_1_to_account_2_amount - wasmless_transfer_cost.value(),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -692,7 +717,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     );
 
     // Another transfer but this time created account tries to do a transfer
-    assert!(account_2_to_account_1_amount < U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+    assert!(account_2_to_account_1_amount < wasmless_transfer_cost.value());
     let runtime_args = runtime_args! {
        mint::ARG_TARGET => ACCOUNT_1_ADDR,
        mint::ARG_AMOUNT => account_2_to_account_1_amount,
@@ -725,10 +750,16 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
+    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_cost = Motes::from_gas(
+        wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
+
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
-    let account_1_to_account_2_amount: U512 =
-        U512::from(DEFAULT_WASMLESS_TRANSFER_COST) + U512::one();
+    let account_1_to_account_2_amount: U512 = wasmless_transfer_cost.value() + U512::one();
     // This transfer should succeed as after paying for execution of wasmless transfer account_2's
     // main purse would contain exactly 1 token.
     let account_2_to_account_1_amount: U512 = U512::one();
@@ -774,9 +805,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance
-            - account_1_to_account_2_amount
-            - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
+        account_1_starting_balance - account_1_to_account_2_amount - wasmless_transfer_cost.value(),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -786,7 +815,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     );
 
     // Another transfer but this time created account tries to do a transfer
-    assert!(account_2_to_account_1_amount <= U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+    assert!(account_2_to_account_1_amount <= wasmless_transfer_cost.value());
     let runtime_args = runtime_args! {
        mint::ARG_TARGET => ACCOUNT_1_ADDR,
        mint::ARG_AMOUNT => account_2_to_account_1_amount,
@@ -871,17 +900,25 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
+    let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+
+    let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
+    let new_wasmless_transfer_cost = Motes::from_gas(
+        new_wasmless_transfer_gas_cost,
+        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    )
+    .expect("gas overflow");
+
     let transfer_amount = U512::one();
     const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST * 2;
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
     let new_proof_of_stake_costs = ProofOfStakeCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
-        new_wasmless_transfer_cost,
+        new_wasmless_transfer_cost_value,
         new_auction_costs,
         new_mint_costs,
         new_proof_of_stake_costs,
@@ -941,7 +978,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
 
     assert_eq!(
-        default_account_balance_before - transfer_amount - new_wasmless_transfer_cost,
+        default_account_balance_before - transfer_amount - new_wasmless_transfer_cost.value(),
         default_account_balance_after,
         "expected wasmless transfer cost to be {} but it was {}",
         new_wasmless_transfer_cost,
