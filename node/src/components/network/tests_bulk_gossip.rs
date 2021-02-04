@@ -184,6 +184,10 @@ async fn send_large_message_across_network() {
 
     net.add_node_with_config(cfg, &mut rng).await.unwrap();
 
+    // Hack to get network component to connect. This gives the libp2p thread (which is independent
+    // of cranking) a little time to bind to the socket.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
     // Create `node_count-1` additional node instances.
     for _ in 1..node_count {
         let cfg = TestReactorConfig {
