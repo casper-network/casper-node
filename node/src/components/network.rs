@@ -31,7 +31,7 @@ use libp2p::{
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
-    mplex::MplexConfig,
+    mplex::{MaxBufferBehaviour, MplexConfig},
     noise::{self, NoiseConfig, X25519Spec},
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
@@ -205,6 +205,9 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let noise_keys = noise::Keypair::<X25519Spec>::new()
             .into_authentic(&network_identity.keypair)
             .map_err(Error::StaticKeypairSigning)?;
+
+        let mut mplex_config = MplexConfig::default();
+        mplex_config.max_buffer_len_behaviour(MaxBufferBehaviour::Block);
 
         // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `mplex`
         // for multiplexing of substreams on a TCP stream.
