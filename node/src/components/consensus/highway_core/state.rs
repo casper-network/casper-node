@@ -23,6 +23,7 @@ use std::{
     iter,
 };
 
+use datasize::DataSize;
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -111,8 +112,11 @@ pub(crate) enum UnitError {
 /// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) enum Fault<C: Context> {
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+pub(crate) enum Fault<C>
+where
+    C: Context,
+{
     /// The validator was known to be faulty from the beginning. All their messages are considered
     /// invalid in this Highway instance.
     Banned,
@@ -136,8 +140,11 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug, Clone)]
-pub(crate) struct State<C: Context> {
+#[derive(Debug, Clone, DataSize)]
+pub(crate) struct State<C>
+where
+    C: Context,
+{
     /// The fixed parameters.
     params: Params,
     /// The validator's voting weights.
@@ -169,6 +176,7 @@ pub(crate) struct State<C: Context> {
     /// Timestamp of the last ping or unit we received from each validator.
     pings: ValidatorMap<Timestamp>,
     /// Clock to measure time spent in fork choice computation.
+    #[data_size(skip)] // Not implemented for Clock; probably negligible.
     clock: Clock,
 }
 

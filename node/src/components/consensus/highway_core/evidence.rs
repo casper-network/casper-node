@@ -1,5 +1,6 @@
 use std::iter;
 
+use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -39,12 +40,15 @@ pub(crate) enum EvidenceError {
 }
 
 /// Evidence that a validator is faulty.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum Evidence<C: Context> {
+pub(crate) enum Evidence<C>
+where
+    C: Context,
+{
     /// The validator produced two units with the same sequence number.
     Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
     /// The validator endorsed two conflicting units.

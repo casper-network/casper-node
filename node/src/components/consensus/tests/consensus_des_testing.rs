@@ -4,6 +4,8 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
+
 use super::queue::{MessageT, Queue, QueueEntry};
 use crate::types::Timestamp;
 
@@ -51,7 +53,7 @@ impl<M: Clone + Debug> TargetedMessage<M> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, DataSize, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub(crate) struct ValidatorId(pub(crate) u64);
 
 impl Display for ValidatorId {

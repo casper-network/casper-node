@@ -1,7 +1,9 @@
+use datasize::DataSize;
+
 use super::Timestamp;
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone)]
+#[derive(Debug, DataSize, Clone)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,

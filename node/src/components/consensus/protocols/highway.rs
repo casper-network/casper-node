@@ -61,6 +61,7 @@ type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
+    I: DataSize,
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
