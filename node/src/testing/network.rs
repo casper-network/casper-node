@@ -249,7 +249,7 @@ where
     where
         F: Fn(&Nodes<R>) -> bool,
     {
-        time::timeout(within, self.settle_on_indefinitely(rng, condition))
+        self.try_settle_on(rng, condition, within)
             .await
             .unwrap_or_else(|_| {
                 panic!(format!(
@@ -257,6 +257,23 @@ where
                     within
                 ))
             })
+    }
+
+    /// Runs the main loop of every reactor until `condition` is true.
+    ///
+    /// # Panics
+    ///
+    /// If the `condition` is not reached inside of `within`, panics.
+    pub async fn try_settle_on<F>(
+        &mut self,
+        rng: &mut TestRng,
+        condition: F,
+        within: Duration,
+    ) -> Result<(), tokio::time::Elapsed>
+    where
+        F: Fn(&Nodes<R>) -> bool,
+    {
+        time::timeout(within, self.settle_on_indefinitely(rng, condition)).await
     }
 
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)
