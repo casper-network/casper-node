@@ -31,11 +31,11 @@ use libp2p::{
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
+    mplex::{MaxBufferBehaviour, MplexConfig},
     noise::{self, NoiseConfig, X25519Spec},
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    yamux::{Config as YamuxConfig, WindowUpdateMode},
     Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::seq::IteratorRandom;
@@ -206,38 +206,16 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .into_authentic(&network_identity.keypair)
             .map_err(Error::StaticKeypairSigning)?;
 
-        let mut yamux_config = YamuxConfig::default();
+        let mut mplex_config = MplexConfig::default();
+        mplex_config.max_buffer_len_behaviour(MaxBufferBehaviour::Block);
 
-        // The are two `WindowUpdateMode`s available in yamux, both of which control how a receiver
-        // communicates its available receive capacity to a sender.
-        //
-        // With `OnReceive`, as soon as the yamux module has received bytes, it considers them
-        // handled. `OnRead` requires the data to be removed from yamuxs internal buffer instead,
-        // which happens via `AsyncRead`.
-        //
-        // If a lot of data is sent and at the same time there is not enough time allocated to the
-        // task that reads from the buffer, a `WindowUpdateMode` of `OnReceive` will cause the
-        // internal buffer to overflow. For this reason, we set it `OnRead`.
-        //
-        // `OnRead`, according to the docs (see below), is in danger of deadlocking under certain
-        // conditions. In our networking design, sending and receiving are independent and we have
-        // infinite send- and receive buffers on a message, so we should not run into this issue.
-        //
-        // Note that this comment is based on some logs from a failed test network, as the exact
-        // conditions for these errors are hard to reproduce reliably. We rely on reasoning alone
-        // here, so evidence to the contrary of the above assumptions should be examined closely.
-        //
-        // Please read https://docs.rs/yamux/0.8.0/yamux/enum.WindowUpdateMode.html for more
-        // information.
-        yamux_config.set_window_update_mode(WindowUpdateMode::OnRead);
-
-        // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `yamux`
+        // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `mplex`
         // for multiplexing of substreams on a TCP stream.
         let transport = TokioTcpConfig::new()
             .nodelay(true)
             .upgrade(upgrade::Version::V1)
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(yamux_config)
+            .multiplex(MplexConfig::default())
             .timeout(config.connection_setup_timeout.into())
             .boxed();
 
