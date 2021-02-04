@@ -9,9 +9,7 @@ use tokio::time;
 
 use super::*;
 use crate::{
-    components::{
-        chainspec_loader::Chainspec, deploy_acceptor, in_memory_network::NetworkController, storage,
-    },
+    components::{deploy_acceptor, in_memory_network::NetworkController, storage},
     effect::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
         Responder,
@@ -23,7 +21,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, DeployHash, NodeId},
-    utils::{Loadable, WithDir},
+    utils::{WithDir, RESOURCES_PATH},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -65,8 +63,8 @@ reactor!(Reactor {
     type Config = FetcherTestConfig;
 
     components: {
-        chainspec_loader = has_effects infallible ChainspecLoader(
-            Chainspec::from_resources("local/chainspec.toml",),
+        chainspec_loader = has_effects ChainspecLoader(
+            &RESOURCES_PATH.join("local"),
             effect_builder
         );
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);

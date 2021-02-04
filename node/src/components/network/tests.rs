@@ -13,7 +13,7 @@ use tracing::{debug, info};
 
 use super::{Config, Event as NetworkEvent, Network as NetworkComponent, ENABLE_SMALL_NET_ENV_VAR};
 use crate::{
-    components::{chainspec_loader::Chainspec, network::NetworkIdentity, Component},
+    components::{network::NetworkIdentity, Component},
     effect::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
     },
@@ -24,7 +24,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::NodeId,
+    types::{Chainspec, NodeId},
     NodeRng,
 };
 

@@ -56,7 +56,7 @@ use self::{
 };
 pub use self::{config::Config, error::Error};
 use crate::{
-    components::{chainspec_loader::Chainspec, Component},
+    components::Component,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -64,7 +64,7 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    types::NodeId,
+    types::{Chainspec, NodeId},
     utils::DisplayIter,
     NodeRng,
 };

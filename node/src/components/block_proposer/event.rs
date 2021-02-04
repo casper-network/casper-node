@@ -11,8 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::{BlockHeight, BlockProposerDeploySets};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, ProtoBlock},
-    Chainspec,
+    types::{Chainspec, DeployHash, DeployHeader, ProtoBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 

@@ -232,16 +232,13 @@ def create_chainspec(template, network_name, genesis_in, contract_paths):
 
     # Update the chainspec.
     show_val("Genesis", "{} (in {} seconds)".format(genesis_timestamp, genesis_in))
-    chainspec["genesis"]["name"] = network_name
-    chainspec["genesis"]["timestamp"] = genesis_timestamp
+    chainspec["network"]["name"] = network_name
+    chainspec["network"]["timestamp"] = genesis_timestamp
 
     # Setup WASM contracts.
     for contract in CONTRACTS:
         key = "{}_installer_path".format(contract)
-        chainspec["genesis"][key] = contract_paths[contract]
-
-    # Use a relative path for accounts.csv
-    chainspec["genesis"]["accounts_path"] = "accounts.csv"
+        chainspec["network"][key] = contract_paths[contract]
 
     return chainspec
 

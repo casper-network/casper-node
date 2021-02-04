@@ -438,7 +438,7 @@ impl reactor::Reactor for Reactor {
         // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
         let now = Timestamp::now();
         let five_minutes = TimeDiff::from_str("5minutes").unwrap();
-        let later_timestamp = cmp::max(now, chainspec_loader.chainspec().genesis.timestamp);
+        let later_timestamp = cmp::max(now, chainspec_loader.chainspec().network_config.timestamp);
         let timer_duration = later_timestamp + five_minutes - now;
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
@@ -827,7 +827,7 @@ impl reactor::Reactor for Reactor {
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                        // TODO: handle the announcement and acutally disconnect
+                        // TODO: handle the announcement and actually disconnect
                         warn!("Disconnecting from a given peer not yet implemented.");
                         Effects::new()
                     }
@@ -897,6 +897,10 @@ impl reactor::Reactor for Reactor {
         self.memory_metrics.estimate(&self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn is_stopped(&mut self) -> bool {
+        self.consensus.stop_for_upgrade()
     }
 }
 

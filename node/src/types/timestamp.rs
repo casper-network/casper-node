@@ -188,10 +188,9 @@ impl FromBytes for Timestamp {
     }
 }
 
-#[cfg(test)]
 impl From<u64> for Timestamp {
-    fn from(arg: u64) -> Timestamp {
-        Timestamp(arg)
+    fn from(milliseconds_since_epoch: u64) -> Timestamp {
+        Timestamp(milliseconds_since_epoch)
     }
 }
 

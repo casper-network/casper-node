@@ -37,8 +37,9 @@ use casper_types::{auction::ValidatorWeights, ProtocolVersion};
 use crate::{
     components::Component,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
+    types::Chainspec,
     utils::WithDir,
-    Chainspec, NodeRng, StorageConfig,
+    NodeRng, StorageConfig,
 };
 
 /// The contract runtime components.
@@ -579,9 +580,9 @@ impl ContractRuntime {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = ProtocolVersion::from_parts(
-            chainspec.genesis.protocol_version.major as u32,
-            chainspec.genesis.protocol_version.minor as u32,
-            chainspec.genesis.protocol_version.patch as u32,
+            chainspec.protocol_config.version.major as u32,
+            chainspec.protocol_config.version.minor as u32,
+            chainspec.protocol_config.version.patch as u32,
         );
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = (*chainspec).into();

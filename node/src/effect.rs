@@ -111,11 +111,11 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Chainspec,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
-    Chainspec,
 };
 use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
@@ -1126,6 +1126,21 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
             .await
+    }
+
+    /// Requests to check config dir to see if a new upgrade point is available, and if so, returns
+    /// its activation point.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn next_upgrade_activation_point(self) -> Option<ActivationPoint>
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(
+            ChainspecLoaderRequest::NextUpgradeActivationPoint,
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Loads potentially previously stored state from storage.

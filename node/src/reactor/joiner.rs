@@ -424,9 +424,9 @@ impl reactor::Reactor for Reactor {
 
         match init_hash {
             None => {
-                let genesis = &chainspec_loader.chainspec().genesis;
-                let era_duration = genesis.highway_config.era_duration;
-                if Timestamp::now() > genesis.timestamp + era_duration {
+                let chainspec = chainspec_loader.chainspec();
+                let era_duration = chainspec.core_config.era_duration;
+                if Timestamp::now() > chainspec.network_config.timestamp + era_duration {
                     error!(
                         "Node started with no trusted hash after the expected end of \
                         the genesis era! Please specify a trusted hash and restart."
@@ -465,8 +465,8 @@ impl reactor::Reactor for Reactor {
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
-            .genesis
-            .genesis_validator_stakes()
+            .network_config
+            .chainspec_validator_stakes()
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();

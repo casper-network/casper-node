@@ -1,0 +1,137 @@
+[protocol]
+version = '1.0.0'
+
+[protocol.activation_point]
+era_id = 1
+
+[network]
+name = 'test-chain'
+timestamp = '2020-09-18T18:45:00Z'
+
+[core]
+era_duration = '3minutes'
+minimum_era_height = 9
+validator_slots = 5
+auction_delay = 3
+locked_funds_period = '90days'
+round_seigniorage_rate = [6_414, 623_437_335_209]
+unbonding_delay = 14
+
+[highway]
+finality_threshold_fraction = [2, 25]
+minimum_round_exponent = 14
+maximum_round_exponent = 19
+reduced_reward_multiplier = [1, 5]
+
+[deploys]
+max_payment_cost = '9'
+max_ttl = '10months'
+max_dependencies = 11
+max_block_size = 12
+block_max_deploy_count = 125
+block_max_transfer_count = 1000
+block_gas_limit = 13
+
+[wasm]
+max_memory = 17
+max_stack_height = 19
+
+[wasm.opcode_costs]
+bit = 13
+add = 14
+mul = 15
+div = 16
+load = 17
+store = 18
+const = 19
+local = 20
+global = 21
+control_flow = 22
+integer_comparsion = 23
+conversion = 24
+unreachable = 25
+nop = 26
+current_memory = 27
+grow_memory = 28
+regular = 29
+
+[wasm.storage_costs]
+gas_per_byte = 101
+
+[wasm.host_function_costs]
+add = { cost = 100, arguments = [0, 1, 2, 3] }
+add_associated_key = { cost = 101, arguments = [0, 1, 2] }
+add_contract_version = { cost = 102, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
+blake2b = { cost = 133, arguments = [0, 1, 2, 3] }
+call_contract = { cost = 104, arguments = [0, 1, 2, 3, 4, 5, 6] }
+call_versioned_contract = { cost = 105, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] }
+create_contract_package_at_hash = { cost = 106, arguments = [0, 1] }
+create_contract_user_group = { cost = 107, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
+create_purse = { cost = 108, arguments = [0, 1] }
+disable_contract_version = { cost = 109, arguments = [0, 1, 2, 3] }
+get_balance = { cost = 110, arguments = [0, 1, 2] }
+get_blocktime = { cost = 111, arguments = [0] }
+get_caller = { cost = 112, arguments = [0] }
+get_key = { cost = 113, arguments = [0, 1, 2, 3, 4] }
+get_main_purse = { cost = 114, arguments = [0] }
+get_named_arg = { cost = 115, arguments = [0, 1, 2, 3] }
+get_named_arg_size = { cost = 116, arguments = [0, 1, 2] }
+get_phase = { cost = 117, arguments = [0] }
+get_system_contract = { cost = 118, arguments = [0, 1, 2] }
+has_key = { cost = 119, arguments = [0, 1] }
+is_valid_uref = { cost = 120, arguments = [0, 1] }
+load_named_keys = { cost = 121, arguments = [0, 1] }
+new_uref = { cost = 122, arguments = [0, 1, 2] }
+print = { cost = 123, arguments = [0, 1] }
+provision_contract_user_group_uref = { cost = 124, arguments = [0,1,2,3,4] }
+put_key = { cost = 125, arguments = [0, 1, 2, 3] }
+read_host_buffer = { cost = 126, arguments = [0, 1, 2] }
+read_value = { cost = 127, arguments = [0, 1, 0] }
+read_value_local = { cost = 128,  arguments = [0, 1, 0] }
+remove_associated_key = { cost = 129, arguments = [0, 1] }
+remove_contract_user_group = { cost = 130, arguments = [0, 1, 2, 3] }
+remove_contract_user_group_urefs = { cost = 131, arguments = [0,1,2,3,4,5] }
+remove_key = { cost = 132, arguments = [0, 1] }
+ret = { cost = 133, arguments = [0, 1] }
+revert = { cost = 134, arguments = [0] }
+set_action_threshold = { cost = 135, arguments = [0, 1] }
+transfer_from_purse_to_account = { cost = 136, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] }
+transfer_from_purse_to_purse = { cost = 137, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
+transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3, 4, 5, 6] }
+update_associated_key = { cost = 139, arguments = [0, 1, 2] }
+write = { cost = 140,  arguments = [0, 1, 0, 2] }
+write_local = { cost = 141, arguments = [0, 1, 2, 3] }
+
+[system_costs]
+wasmless_transfer_cost = 10_000
+
+[system_costs.auction_costs]
+get_era_validators = 10_000
+read_seigniorage_recipients = 10_000
+add_bid = 10_000
+withdraw_bid = 10_000
+delegate = 10_000
+undelegate = 10_000
+run_auction = 10_000
+slash = 10_000
+distribute = 10_000
+withdraw_delegator_reward = 10_000
+withdraw_validator_reward = 10_000
+read_era_id = 10_000
+
+[system_costs.mint_costs]
+mint = 10_000
+reduce_total_supply = 10_000
+create = 10_000
+balance = 10_000
+transfer = 10_000
+read_base_round_reward = 10_000
+
+[system_costs.proof_of_stake_costs]
+get_payment_purse = 10_000
+set_refund_purse = 10_000
+get_refund_purse = 10_000
+finalize_payment = 10_000
+
+[system_costs.standard_payment_costs]
+pay = 10_000
