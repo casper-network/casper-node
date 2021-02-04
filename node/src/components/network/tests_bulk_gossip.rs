@@ -3,6 +3,7 @@ use std::{
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
+    str::FromStr,
     time::Duration,
 };
 
@@ -133,16 +134,16 @@ impl Display for DummyPayload {
 /// # Panics
 ///
 /// Panics on any parse error.
-fn read_env<T: std::str::FromStr>(name: &str) -> Option<T>
+fn read_env<T: FromStr>(name: &str) -> Option<T>
 where
-    <T as std::str::FromStr>::Err: Debug,
+    <T as FromStr>::Err: Debug,
 {
-    match std::env::var(name) {
+    match env::var(name) {
         Ok(raw) => Some(
             raw.parse()
                 .expect(&format!("cannot parse envvar `{}`", name)),
         ),
-        Err(std::env::VarError::NotPresent) => None,
+        Err(env::VarError::NotPresent) => None,
         Err(err) => {
             panic!(err)
         }
