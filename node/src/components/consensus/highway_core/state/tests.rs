@@ -5,6 +5,7 @@ use std::{
     hash::Hasher,
 };
 
+use datasize::DataSize;
 use rand::{Rng, RngCore};
 
 use super::*;
@@ -41,7 +42,7 @@ const TEST_MAX_ROUND_EXP: u8 = 19;
 const TEST_INIT_ROUND_EXP: u8 = 4;
 const TEST_ERA_HEIGHT: u64 = 5;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TestContext;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

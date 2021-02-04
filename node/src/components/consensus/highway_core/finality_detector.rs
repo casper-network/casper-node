@@ -3,6 +3,7 @@ mod rewards;
 
 use std::iter;
 
+use datasize::DataSize;
 use tracing::{trace, warn};
 
 use crate::{
@@ -29,6 +30,7 @@ pub(crate) struct FttExceeded(Weight);
 /// `State` instance: Later calls of `run` must see the same or a superset of the previous state.
 #[derive(Debug)]
 pub(crate) struct FinalityDetector<C: Context> {
+    // We are assuming that `C::Hash` does not allocate.
     /// The most recent known finalized block.
     last_finalized: Option<C::Hash>,
     /// The fault tolerance threshold.

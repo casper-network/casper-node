@@ -25,11 +25,21 @@ pub(crate) trait ConsensusValueT:
 
 /// A hash, as an identifier for a block or unit.
 pub(crate) trait HashT:
-    Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned + Send
+    Eq + Ord + Copy + Clone + DataSize + Debug + Display + Hash + Serialize + DeserializeOwned + Send
 {
 }
 impl<H> HashT for H where
-    H: Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned + Send
+    H: Eq
+        + Ord
+        + Copy
+        + Clone
+        + DataSize
+        + Debug
+        + Display
+        + Hash
+        + Serialize
+        + DeserializeOwned
+        + Send
 {
 }
 
@@ -45,7 +55,7 @@ pub(crate) trait ValidatorSecret: Send {
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
 // TODO: These trait bounds make `#[derive(...)]` work for types with a `C: Context` type
 // parameter. Split this up or replace the derives with explicit implementations.
-pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash + Send {
+pub(crate) trait Context: Clone + DataSize + Debug + Eq + Ord + Hash + Send {
     /// The consensus value type, e.g. a list of transactions.
     type ConsensusValue: ConsensusValueT + DataSize;
     /// Unique identifiers for validators.

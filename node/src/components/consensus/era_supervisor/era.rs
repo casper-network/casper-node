@@ -287,7 +287,8 @@ where
             let any_ref = consensus.as_any();
 
             if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
-                highway.estimate_heap_size()
+                (*highway).estimate_heap_size()
+                // always zero, because data_size::<&T>(val) == 0
             } else {
                 warn!(
                     "could not downcast consensus protocol to \

@@ -7,6 +7,7 @@ pub(crate) use vertex::{
 
 use std::path::PathBuf;
 
+use datasize::DataSize;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -98,8 +99,10 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 ///
 /// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
 /// or inconsistent state otherwise.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ValidVertex<C: Context>(pub(super) Vertex<C>);
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+pub(crate) struct ValidVertex<C>(pub(super) Vertex<C>)
+where
+    C: Context + DataSize;
 
 impl<C: Context> ValidVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {

@@ -58,18 +58,37 @@ const ACTION_ID_VERTEX: ActionId = ActionId(0);
 
 type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 
-#[derive(DataSize, Debug)]
+#[derive(Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
     C: Context,
 {
+    // #[data_size(skip)]
     /// Incoming blocks we can't add yet because we are waiting for validation.
     pending_values: HashMap<C::ConsensusValue, Vec<ValidVertex<C>>>,
+    // #[data_size(skip)]
     finality_detector: FinalityDetector<C>,
+    // #[data_size(skip)]
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
+    // #[data_size(skip)]
     round_success_meter: RoundSuccessMeter<C>,
+    // #[data_size(skip)]
     synchronizer: Synchronizer<I, C>,
+}
+
+impl<I, C: Context> DataSize for HighwayProtocol<I, C> {
+    const IS_DYNAMIC: bool = true;
+
+    const STATIC_HEAP_SIZE: usize = 0; // TODO
+
+    fn estimate_heap_size(&self) -> usize {
+        self.pending_values.estimate_heap_size()
+        //     + self.finality_detector.estimate_heap_size()
+        //     + self.highway.estimate_heap_size()
+        //     + self.round_success_meter.estimate_heap_size()
+        //     + self.synchronizer.estimate_heap_size()
+    }
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {

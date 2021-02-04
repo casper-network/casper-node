@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, fmt::Debug};
 
+use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -40,12 +41,15 @@ impl<C: Context> Dependency<C> {
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum Vertex<C: Context> {
+pub(crate) enum Vertex<C>
+where
+    C: Context + DataSize,
+{
     Unit(SignedWireUnit<C>),
     Evidence(Evidence<C>),
     Endorsements(Endorsements<C>),
@@ -105,12 +109,15 @@ impl<C: Context> Vertex<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct SignedWireUnit<C: Context> {
+pub(crate) struct SignedWireUnit<C>
+where
+    C: Context + DataSize,
+{
     pub(crate) hashed_wire_unit: HashedWireUnit<C>,
     pub(crate) signature: C::Signature,
 }
@@ -137,13 +144,21 @@ impl<C: Context> SignedWireUnit<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct HashedWireUnit<C: Context> {
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct HashedWireUnit<C>
+where
+    C: Context,
+    C::Hash: DataSize,
+{
     hash: C::Hash,
     wire_unit: WireUnit<C>,
 }
 
-impl<C: Context> HashedWireUnit<C> {
+impl<C> HashedWireUnit<C>
+where
+    C: Context,
+    C::Hash: DataSize,
+{
     /// Computes the unit's hash and creates a new `HashedWireUnit`.
     pub(crate) fn new(wire_unit: WireUnit<C>) -> Self {
         let hash = wire_unit.compute_hash();
@@ -187,7 +202,10 @@ impl<'de, C: Context> Deserialize<'de> for HashedWireUnit<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct WireUnit<C: Context> {
+pub(crate) struct WireUnit<C>
+where
+    C: Context + DataSize,
+{
     pub(crate) panorama: Panorama<C>,
     pub(crate) creator: ValidatorIndex,
     pub(crate) instance_id: C::InstanceId,
@@ -245,12 +263,15 @@ impl<C: Context> WireUnit<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct Endorsements<C: Context> {
+pub(crate) struct Endorsements<C>
+where
+    C: Context,
+{
     pub(crate) unit: C::Hash,
     pub(crate) endorsers: Vec<(ValidatorIndex, C::Signature)>,
 }
@@ -281,14 +302,14 @@ impl<C: Context> Endorsements<C> {
 
 /// A ping sent by a validator to signal that it is online but has not created new units in a
 /// while.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) struct Ping<C>
 where
-    C: Context,
+    C: Context + DataSize,
 {
     creator: ValidatorIndex,
     timestamp: Timestamp,

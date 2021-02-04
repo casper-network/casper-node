@@ -7,13 +7,16 @@ use std::{
     slice, vec,
 };
 
+use datasize::DataSize;
 use derive_more::{AsRef, From};
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
 
 /// The index of a validator, in a list of all validators, ordered by ID.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Copy, Clone, DataSize, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize,
+)]
 pub(crate) struct ValidatorIndex(pub(crate) u32);
 
 impl From<u32> for ValidatorIndex {
