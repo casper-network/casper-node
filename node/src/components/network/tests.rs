@@ -11,7 +11,10 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, info};
 
-use super::{Config, Event as NetworkEvent, Network as NetworkComponent, ENABLE_SMALL_NET_ENV_VAR};
+use super::{
+    network_is_isolated, Config, Event as NetworkEvent, Network as NetworkComponent,
+    ENABLE_SMALL_NET_ENV_VAR,
+};
 use crate::{
     components::{network::NetworkIdentity, Component},
     effect::{
@@ -144,7 +147,12 @@ fn network_is_complete(
     if nodes.len() == 1 {
         let nodes = &nodes.values().collect::<Vec<_>>();
         let network_component = &nodes[0].reactor().inner().network_component;
-        if network_component.is_isolated() {
+        if network_is_isolated(
+            &*network_component
+                .known_addresses_mut
+                .lock()
+                .expect("Could not lock known_addresses_mut"),
+        ) {
             return true;
         }
     }
