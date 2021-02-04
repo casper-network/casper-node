@@ -203,9 +203,7 @@ async fn send_large_message_across_network() {
     let node_ids: Vec<_> = net.nodes().keys().cloned().collect();
     for (index, sender) in node_ids.iter().enumerate() {
         // Clear all collectors at the beginning of a round.
-        net.nodes_mut()
-            .values_mut()
-            .map(|runner| runner.reactor_mut().inner_mut())
+        net.reactors_mut()
             .for_each(|reactor| reactor.collector.payloads.clear());
 
         let mut dummy_payloads = HashSet::new();
