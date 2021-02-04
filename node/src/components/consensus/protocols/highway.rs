@@ -61,6 +61,7 @@ type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
+    I: DataSize,
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
@@ -126,9 +127,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting slashed.
         let min_round_len = 1 << highway_config.minimum_round_exponent;
-        let min_rounds_per_era = highway_config
+        let min_rounds_per_era = protocol_config
             .minimum_era_height
-            .max(1 + highway_config.era_duration.millis() / min_round_len);
+            .max(1 + protocol_config.era_duration.millis() / min_round_len);
         let endorsement_evidence_limit =
             (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
@@ -139,9 +140,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
-            highway_config.minimum_era_height,
+            protocol_config.minimum_era_height,
             start_time,
-            start_time + highway_config.era_duration,
+            start_time + protocol_config.era_duration,
             endorsement_evidence_limit,
         );
 
@@ -657,9 +658,10 @@ where
         timestamp: Timestamp,
         unit_hash_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<I, C> {
-        let av_effects = self
-            .highway
-            .activate_validator(our_id, secret, timestamp, unit_hash_file);
+        let ftt = self.finality_detector.fault_tolerance_threshold();
+        let av_effects =
+            self.highway
+                .activate_validator(our_id, secret, timestamp, unit_hash_file, ftt);
         self.process_av_effects(av_effects)
     }
 

@@ -27,7 +27,7 @@ use crate::{
 
 pub type ActivationPoint = u64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UpgradeResult {
     RootNotFound,
     KeyNotFound(Key),
@@ -68,6 +68,10 @@ impl UpgradeResult {
                 effect,
             },
         }
+    }
+
+    pub fn is_success(&self) -> bool {
+        matches!(&self, UpgradeResult::Success { .. })
     }
 }
 
@@ -158,6 +162,10 @@ impl UpgradeConfig {
 
     pub fn new_unbonding_delay(&self) -> Option<EraId> {
         self.new_unbonding_delay
+    }
+
+    pub fn with_pre_state_hash(&mut self, pre_state_hash: Blake2bHash) {
+        self.pre_state_hash = pre_state_hash;
     }
 }
 

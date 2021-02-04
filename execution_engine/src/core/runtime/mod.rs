@@ -1708,7 +1708,12 @@ where
             auction::METHOD_RUN_AUCTION => (|| {
                 runtime.charge_system_contract_call(auction_costs.run_auction)?;
 
-                runtime.run_auction().map_err(Self::reverter)?;
+                let era_end_timestamp_millis =
+                    Self::get_named_argument(&runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
+
+                runtime
+                    .run_auction(era_end_timestamp_millis)
+                    .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 

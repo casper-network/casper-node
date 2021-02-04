@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use datasize::DataSize;
+
 use crate::{
     components::consensus::{
         highway_core::{
@@ -15,8 +17,11 @@ use crate::{
 /// A unit sent to or received from the network.
 ///
 /// This is only instantiated when it gets added to a `State`, and only once it has been validated.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct Unit<C: Context> {
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+pub(crate) struct Unit<C>
+where
+    C: Context,
+{
     /// The list of latest units and faults observed by the creator of this message.
     /// The panorama must be valid, and this unit's creator must not be marked as faulty.
     pub(crate) panorama: Panorama<C>,

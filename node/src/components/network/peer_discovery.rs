@@ -12,7 +12,7 @@ use libp2p::{
 };
 
 use super::{Config, ProtocolId};
-use crate::components::chainspec_loader::Chainspec;
+use crate::types::Chainspec;
 
 /// The inner portion of the `ProtocolId` for the kademlia behavior.  A standard prefix and suffix
 /// will be applied to create the full protocol name.
@@ -46,7 +46,7 @@ pub(super) fn new_behaviors(
 
     // Protocol version and agent version are separate to the protocol ID for the Identify behavior.
     // See https://github.com/libp2p/specs/tree/master/identify for further details.
-    let protocol_version = format!("/casper/{}", chainspec.genesis.protocol_version);
+    let protocol_version = format!("/casper/{}", chainspec.protocol_config.version);
     let agent_version = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     let identify = Identify::new(protocol_version, agent_version, our_public_key);
 

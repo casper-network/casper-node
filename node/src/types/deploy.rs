@@ -35,13 +35,14 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::{block_proposer::DeployType, chainspec_loader::DeployConfig},
+    components::block_proposer::DeployType,
     crypto,
     crypto::{
         hash::{self, Digest},
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
+    types::chainspec::DeployConfig,
     utils::DisplayIter,
     NodeRng,
 };

@@ -3,11 +3,12 @@ mod rewards;
 
 use std::iter;
 
+use datasize::DataSize;
 use tracing::{trace, warn};
 
 use crate::{
     components::consensus::{
-        consensus_protocol::FinalizedBlock,
+        consensus_protocol::{FinalizedBlock, TerminalBlockData},
         highway_core::{
             highway::Highway,
             state::{Observation, State, Weight},
@@ -27,8 +28,11 @@ pub(crate) struct FttExceeded(Weight);
 ///
 /// It reuses information between subsequent calls, so it must always be applied to the same
 /// `State` instance: Later calls of `run` must see the same or a superset of the previous state.
-#[derive(Debug)]
-pub(crate) struct FinalityDetector<C: Context> {
+#[derive(Debug, DataSize)]
+pub(crate) struct FinalityDetector<C>
+where
+    C: Context,
+{
     /// The most recent known finalized block.
     last_finalized: Option<C::Hash>,
     /// The fault tolerance threshold.
@@ -61,10 +65,15 @@ impl<C: Context> FinalityDetector<C> {
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let unit = state.unit(bhash);
-            let rewards = if state.is_terminal_block(bhash) {
+            let terminal_block_data = if state.is_terminal_block(bhash) {
                 let rewards = rewards::compute_rewards(state, bhash);
                 let rewards_iter = rewards.enumerate();
-                Some(rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect())
+                let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
+                let inactive_validators = unit.panorama.iter_none().map(to_id).collect();
+                Some(TerminalBlockData {
+                    rewards,
+                    inactive_validators,
+                })
             } else {
                 None
             };
@@ -72,7 +81,7 @@ impl<C: Context> FinalityDetector<C> {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
                 height: block.height,
-                rewards,
+                terminal_block_data,
                 equivocators: unit.panorama.iter_faulty().map(to_id).collect(),
                 proposer: to_id(unit.creator),
             };
@@ -156,6 +165,11 @@ impl<C: Context> FinalityDetector<C> {
     /// Returns the hash of the last finalized block (if any).
     pub(crate) fn last_finalized(&self) -> Option<&C::Hash> {
         self.last_finalized.as_ref()
+    }
+
+    /// Returns the configured fault tolerance threshold of this detector.
+    pub(crate) fn fault_tolerance_threshold(&self) -> Weight {
+        self.ftt
     }
 }
 

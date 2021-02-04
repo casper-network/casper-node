@@ -5,13 +5,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use datasize::DataSize;
 use tracing::{error, info, trace, warn};
 
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{Endorsements, ValidVertex, Vertex, WireUnit},
-    state::{self, Panorama, State, Unit},
+    highway::{Endorsements, Ping, ValidVertex, Vertex, WireUnit},
+    state::{self, Panorama, State, Unit, Weight},
     validators::ValidatorIndex,
 };
 
@@ -58,7 +59,11 @@ pub(crate) enum Effect<C: Context> {
 /// If the rounds are long enough (i.e. message delivery is fast enough) and there are enough
 /// honest validators, there will be a lot of confirmations for the proposal, and enough witness
 /// units citing all those confirmations, to create a summit and finalize the proposal.
-pub(crate) struct ActiveValidator<C: Context> {
+#[derive(DataSize)]
+pub(crate) struct ActiveValidator<C>
+where
+    C: Context,
+{
     /// Our own validator index.
     pub(crate) vidx: ValidatorIndex,
     /// The validator's secret signing key.
@@ -73,6 +78,9 @@ pub(crate) struct ActiveValidator<C: Context> {
     unit_hash_file: Option<PathBuf>,
     /// The hash of the last known unit created by us.
     own_last_unit: Option<C::Hash>,
+    /// The target fault tolerance threshold. The validator pauses (i.e. doesn't create new units)
+    /// if not enough validators are online to finalize values at this FTT.
+    target_ftt: Weight,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -93,6 +101,7 @@ impl<C: Context> ActiveValidator<C> {
         start_time: Timestamp,
         state: &State<C>,
         unit_hash_file: Option<PathBuf>,
+        target_ftt: Weight,
     ) -> (Self, Vec<Effect<C>>) {
         let own_last_unit = unit_hash_file
             .as_ref()
@@ -115,6 +124,7 @@ impl<C: Context> ActiveValidator<C> {
             next_proposal: None,
             unit_hash_file,
             own_last_unit,
+            target_ftt,
         };
         let effects = av.schedule_timer(start_time, state);
         (av, effects)
@@ -180,19 +190,45 @@ impl<C: Context> ActiveValidator<C> {
         let r_exp = self.round_exp(state, timestamp);
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
-        if timestamp == r_id && state.leader(r_id) == self.vidx {
-            effects.extend(self.request_new_block(state, instance_id, timestamp, rng))
-        } else if timestamp == r_id + self.witness_offset(r_len) {
-            let panorama = self.panorama_at(state, timestamp);
-            if panorama.has_correct() {
-                if let Some(witness_unit) =
-                    self.new_unit(panorama, timestamp, None, state, instance_id, rng)
-                {
-                    effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))))
+        // Only create new units if enough validators are online.
+        if self.enough_validators_online(state, timestamp) {
+            if timestamp == r_id && state.leader(r_id) == self.vidx {
+                effects.extend(self.request_new_block(state, instance_id, timestamp, rng));
+                return effects;
+            } else if timestamp == r_id + self.witness_offset(r_len) {
+                let panorama = self.panorama_at(state, timestamp);
+                if panorama.has_correct() {
+                    if let Some(witness_unit) =
+                        self.new_unit(panorama, timestamp, None, state, instance_id, rng)
+                    {
+                        effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
+                        return effects;
+                    }
                 }
             }
         }
+        // We are not creating a new unit. Send a ping if necessary, to show that we're online.
+        if !state.has_ping(self.vidx, timestamp) {
+            warn!(%timestamp, "too many validators offline, sending ping");
+            let ping = Ping::new(self.vidx, timestamp, &self.secret, rng);
+            effects.push(Effect::NewVertex(ValidVertex(Vertex::Ping(ping))));
+        }
         effects
+    }
+
+    /// Returns whether enough validators are online to finalize values with the target fault
+    /// tolerance threshold, always counting this validator as online.
+    fn enough_validators_online(&self, state: &State<C>, now: Timestamp) -> bool {
+        let target_quorum = (state.total_weight() + self.target_ftt) / 2;
+        let online_weight: Weight = state
+            .weights()
+            .enumerate()
+            .filter(|(vidx, _)| {
+                self.vidx == *vidx || (!state.is_faulty(*vidx) && state.is_online(*vidx, now))
+            })
+            .map(|(_, w)| *w)
+            .sum();
+        online_weight > target_quorum
     }
 
     /// Returns actions a validator needs to take upon receiving a new unit.
@@ -556,6 +592,9 @@ impl<C: Context> ActiveValidator<C> {
                 endorsements.endorsers.iter().any(is_ours)
                     && !state.has_endorsement(endorsements.unit(), self.vidx)
             }
+            Vertex::Ping(ping) => {
+                ping.creator() == self.vidx && !state.has_ping(self.vidx, ping.timestamp())
+            }
             Vertex::Evidence(_) => false,
         }
     }
@@ -620,12 +659,13 @@ mod tests {
             } else {
                 current_round_id + (1 << state.params().init_round_exp()).into()
             };
+            let target_ftt = state.total_weight() / 3;
             let active_validators = validators
                 .into_iter()
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
                     let (av, effects) =
-                        ActiveValidator::new(vidx, secret, start_time, &state, None);
+                        ActiveValidator::new(vidx, secret, start_time, &state, None, target_ftt);
                     let timestamp = unwrap_single(&effects).unwrap_timer();
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(

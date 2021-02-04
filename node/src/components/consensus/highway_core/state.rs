@@ -23,6 +23,7 @@ use std::{
     iter,
 };
 
+use datasize::DataSize;
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -50,6 +51,10 @@ use tallies::Tallies;
 // accidentally endorse conflicting votes. Fix this and enable slashing for conflicting
 // endorsements again.
 pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
+
+/// Number of maximum-length rounds after which a validator counts as offline, if we haven't heard
+/// from them.
+const PING_TIMEOUT: u64 = 3;
 
 #[derive(Debug, Error, PartialEq, Clone)]
 pub(crate) enum UnitError {
@@ -107,8 +112,11 @@ pub(crate) enum UnitError {
 /// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) enum Fault<C: Context> {
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+pub(crate) enum Fault<C>
+where
+    C: Context,
+{
     /// The validator was known to be faulty from the beginning. All their messages are considered
     /// invalid in this Highway instance.
     Banned,
@@ -132,8 +140,11 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug, Clone)]
-pub(crate) struct State<C: Context> {
+#[derive(Debug, Clone, DataSize)]
+pub(crate) struct State<C>
+where
+    C: Context,
+{
     /// The fixed parameters.
     params: Params,
     /// The validator's voting weights.
@@ -162,7 +173,10 @@ pub(crate) struct State<C: Context> {
     /// Signatures are stored in a map so that a single validator sending lots of signatures for
     /// different units doesn't cause us to allocate a lot of memory.
     incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
+    /// Timestamp of the last ping or unit we received from each validator.
+    pings: ValidatorMap<Timestamp>,
     /// Clock to measure time spent in fork choice computation.
+    #[data_size(skip)] // Not implemented for Clock; probably negligible.
     clock: Clock,
 }
 
@@ -194,6 +208,9 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
+        let pings = iter::repeat(params.start_timestamp())
+            .take(weights.len())
+            .collect();
         State {
             params,
             weights,
@@ -204,6 +221,7 @@ impl<C: Context> State<C> {
             panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
+            pings,
             clock: Clock::new(),
         }
     }
@@ -387,6 +405,7 @@ impl<C: Context> State<C> {
             let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash, block);
         }
+        self.add_ping(unit.creator, unit.timestamp);
         self.units.insert(hash, unit);
 
         // Update the panorama.
@@ -477,6 +496,28 @@ impl<C: Context> State<C> {
                 .get(uhash)
                 .map(|ends| ends.contains_key(&vidx))
                 .unwrap_or(false)
+    }
+
+    /// Updates `self.pings` with the given timestamp.
+    pub(crate) fn add_ping(&mut self, creator: ValidatorIndex, timestamp: Timestamp) {
+        self.pings[creator] = self.pings[creator].max(timestamp);
+    }
+
+    /// Returns `true` if the latest timestamp we have is less than one maximum round length older
+    /// than the given timestamp.
+    ///
+    /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
+    /// ping we have already received, we drop it without forwarding it to our peers.
+    pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
+        let max_round_len = round_len(self.params.max_round_exp());
+        self.pings[creator] + max_round_len > timestamp
+    }
+
+    /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
+    /// lengths old.
+    pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
+        let max_round_len = round_len(self.params.max_round_exp());
+        self.pings[vidx] + max_round_len * PING_TIMEOUT >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
@@ -820,6 +861,12 @@ impl<C: Context> State<C> {
     /// Returns `true` if the state contains no units.
     pub(crate) fn is_empty(&self) -> bool {
         self.units.is_empty()
+    }
+
+    /// Returns the number of units received.
+    #[cfg(test)]
+    pub(crate) fn unit_count(&self) -> usize {
+        self.units.len()
     }
 
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.

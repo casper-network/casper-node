@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, time::Duration};
 
 use futures::{
     future::{self, select},
@@ -9,6 +9,7 @@ use tokio::{
     select,
     sync::{mpsc, oneshot},
 };
+use tower::builder::ServiceBuilder;
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
@@ -35,7 +36,12 @@ pub(super) async fn run(
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =
         hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
+
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+
+    let make_svc = ServiceBuilder::new()
+        .rate_limit(config.qps_limit, Duration::from_secs(1))
+        .service(make_svc);
 
     let server = builder.serve(make_svc);
     info!(address = %server.local_addr(), "started HTTP server");

@@ -78,7 +78,10 @@ impl ScopedInstrumenter {
     }
 
     fn duration(&self) -> Duration {
-        self.start.elapsed() - self.pause_state.duration()
+        self.start
+            .elapsed()
+            .checked_sub(self.pause_state.duration())
+            .unwrap_or_default()
     }
 }
 

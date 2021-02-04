@@ -1,7 +1,9 @@
+use datasize::DataSize;
+
 use super::Timestamp;
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone)]
+#[derive(Debug, DataSize, Clone)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
@@ -119,11 +121,22 @@ impl Params {
     pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
         self.endorsement_evidence_limit
     }
+}
 
-    /// Returns new `Params` with the update endorsement evidence limit.
-    #[cfg(test)]
+#[cfg(test)]
+impl Params {
     pub(crate) fn with_endorsement_evidence_limit(mut self, new_limit: u64) -> Params {
         self.endorsement_evidence_limit = new_limit;
+        self
+    }
+
+    pub(crate) fn with_max_round_exp(mut self, new_max_round_exp: u8) -> Params {
+        self.max_round_exp = new_max_round_exp;
+        self
+    }
+
+    pub(crate) fn with_end_height(mut self, new_end_height: u64) -> Params {
+        self.end_height = new_end_height;
         self
     }
 }

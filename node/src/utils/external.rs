@@ -54,12 +54,12 @@ pub enum External<T> {
 
 impl<T> External<T> {
     /// Creates an external from a value.
-    pub fn value(value: T) -> Self {
+    pub fn from_value(value: T) -> Self {
         External::Loaded(value)
     }
 
     /// Creates an external referencing a path.
-    pub fn path<P: AsRef<Path>>(path: P) -> Self {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Self {
         External::Path(path.as_ref().to_owned())
     }
 }
@@ -79,7 +79,7 @@ where
                     path
                 };
 
-                T::from_file(&full_path).map_err(move |error| LoadError::Failed {
+                T::from_path(&full_path).map_err(move |error| LoadError::Failed {
                     error,
                     // We canonicalize `full_path` here, with `ReadFileError` we get extra
                     // information about the absolute path this way if the latter is relative. It
@@ -89,6 +89,18 @@ where
             }
             External::Loaded(value) => Ok(value),
             External::Missing => Err(LoadError::Missing),
+        }
+    }
+
+    /// Returns the full path to the external item, or `None` if the type is `Loaded` or `Missing`.
+    pub fn full_path<P: AsRef<Path>>(&self, root: P) -> Option<PathBuf> {
+        match self {
+            External::Path(path) => Some(if path.is_relative() {
+                root.as_ref().join(&path)
+            } else {
+                path.clone()
+            }),
+            _ => None,
         }
     }
 }
@@ -112,12 +124,18 @@ pub trait Loadable: Sized {
     type Error: Debug + Display;
 
     /// Loads a value from the given input path.
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error>;
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error>;
 
     /// Load a test-only instance from the local path.
     #[cfg(test)]
     fn from_resources<P: AsRef<Path>>(rel_path: P) -> Self {
-        Self::from_file(RESOURCES_PATH.join(rel_path)).expect("could not load resources from local")
+        Self::from_path(RESOURCES_PATH.join(rel_path.as_ref())).unwrap_or_else(|error| {
+            panic!(
+                "could not load resources from {}: {}",
+                rel_path.as_ref().display(),
+                error
+            )
+        })
     }
 }
 
@@ -154,7 +172,7 @@ pub enum LoadError<E: Debug + Display> {
 impl Loadable for X509 {
     type Error = anyhow::Error;
 
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         tls::load_cert(path)
     }
 }
@@ -162,7 +180,7 @@ impl Loadable for X509 {
 impl Loadable for PKey<Private> {
     type Error = anyhow::Error;
 
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         tls::load_private_key(path)
     }
 }
@@ -170,7 +188,7 @@ impl Loadable for PKey<Private> {
 impl Loadable for SecretKey {
     type Error = crypto::Error;
 
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         AsymmetricKeyExt::from_file(path)
     }
 }
@@ -178,7 +196,7 @@ impl Loadable for SecretKey {
 impl Loadable for Vec<u8> {
     type Error = ReadFileError;
 
-    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
         read_file(path)
     }
 }

@@ -71,9 +71,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, BlockSignatures, Chainspec, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
-    Chainspec, NodeRng,
+    NodeRng,
 };
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};

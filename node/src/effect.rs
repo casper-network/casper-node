@@ -76,7 +76,6 @@ use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
-use tokio::join;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
@@ -96,15 +95,14 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
-        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
@@ -113,17 +111,17 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures,
+        Chainspec, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
-    Chainspec,
 };
 use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
+use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -808,6 +806,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
+    #[allow(unused)]
+    pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
+        self,
+        trie: Box<Trie<Key, StoredValue>>,
+    ) -> Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::PutTrie { trie, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
     where
@@ -1197,6 +1211,21 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Requests to check config dir to see if a new upgrade point is available, and if so, returns
+    /// its activation point.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn next_upgrade_activation_point(self) -> Option<ActivationPoint>
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(
+            ChainspecLoaderRequest::NextUpgradeActivationPoint,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Loads potentially previously stored state from storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.
@@ -1397,23 +1426,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_validator_weights_by_era_id(
-        self,
-        request: ValidatorWeightsByEraIdRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Runs the end of era step using the system smart contract.
     pub(crate) async fn run_step(
         self,
@@ -1430,26 +1442,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
-    }
-
-    /// Gets the set of validators, the booking block and the key block for a new era
-    pub(crate) async fn create_new_era(
-        self,
-        request: ValidatorWeightsByEraIdRequest,
-        booking_block_height: u64,
-        key_block_height: u64,
-    ) -> (
-        Result<Option<ValidatorWeights>, GetEraValidatorsError>,
-        Option<Block>,
-        Option<Block>,
-    )
-    where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
-    {
-        let future_validators = self.get_validator_weights_by_era_id(request);
-        let future_booking_block = self.get_block_at_height_from_storage(booking_block_height);
-        let future_key_block = self.get_block_at_height_from_storage(key_block_height);
-        join!(future_validators, future_booking_block, future_key_block)
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.

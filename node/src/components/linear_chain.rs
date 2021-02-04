@@ -1,4 +1,9 @@
-use std::{collections::{HashMap, hash_map::Entry}, convert::Infallible, fmt::{self, Display, Formatter}, marker::PhantomData};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    convert::Infallible,
+    fmt::{self, Display, Formatter},
+    marker::PhantomData,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -157,10 +162,11 @@ impl SignatureCache {
         }
         match self.signatures.entry(block_signature.block_hash) {
             Entry::Occupied(mut entry) => {
-                entry.get_mut().proofs.extend(block_signature.proofs);                
+                entry.get_mut().proofs.extend(block_signature.proofs);
             }
             Entry::Vacant(_) => {
-                self.signatures.insert(block_signature.block_hash, block_signature);
+                self.signatures
+                    .insert(block_signature.block_hash, block_signature);
             }
         }
     }
@@ -464,7 +470,7 @@ where
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
                 if let Some(signatures) = &maybe_signatures {
                     if signatures.era_id != fs.era_id {
-                        warn!(public_key=%fs.public_key, expected=%signatures.era_id, got=%fs.era_id, 
+                        warn!(public_key=%fs.public_key, expected=%signatures.era_id, got=%fs.era_id,
                             "finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
                         self.remove_from_pending_fs(&*fs);

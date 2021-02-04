@@ -24,22 +24,20 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
-use casper_types::{auction::ValidatorWeights, PublicKey};
+use casper_types::PublicKey;
 
 use crate::{
     components::Component,
-    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
             self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
@@ -111,14 +109,13 @@ pub enum Event<I> {
         block_header: Box<BlockHeader>,
         /// Ok(block_hash) if the booking block was found, Err(height) if not
         booking_block_hash: Result<BlockHash, u64>,
-        /// Ok(seed) if the key block was found, Err(height) if not
-        key_block_seed: Result<Digest, u64>,
-        get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
+    /// Got the result of checking for the next upgrade activation point.
+    GotUpgradeActivationPoint(Option<ActivationPoint>),
 }
 
 impl Debug for ConsensusMessage {
@@ -204,18 +201,18 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                key_block_seed,
-                get_validators_result,
-                ..
+                block_header,
             } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, key block seed: {:?}, \
-                response to get_validators from the contract runtime: {:?}",
-                booking_block_hash, key_block_seed, get_validators_result
+                "New era should be created; booking block hash: {:?}, switch block header: {:?}",
+                booking_block_hash, block_header
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
                 write!(f, "The node finished joining the network at {}", timestamp)
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
             }
         }
     }
@@ -233,6 +230,7 @@ pub trait ReactorEventT<I>:
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<ChainspecLoaderRequest>
 {
 }
 
@@ -246,6 +244,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
 {
 }
 
@@ -296,8 +295,6 @@ where
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,
-                key_block_seed,
-                get_validators_result,
             } => {
                 let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
@@ -307,35 +304,13 @@ where
                     );
                     panic!("couldn't get the booking block hash");
                 });
-                let key_block_seed = key_block_seed.unwrap_or_else(|height| {
-                    error!(
-                        "could not find the key block at height {} for era {}",
-                        height,
-                        block_header.era_id().successor()
-                    );
-                    panic!("couldn't get the seed from the key block");
-                });
-                let validators = match get_validators_result {
-                    Ok(Some(validator_weights)) => validator_weights,
-                    result => {
-                        error!(
-                            ?result,
-                            "get_validators in era {} returned an error: {:?}",
-                            block_header.era_id(),
-                            result
-                        );
-                        panic!("couldn't get validators");
-                    }
-                };
-                handling_es.handle_create_new_era(
-                    *block_header,
-                    booking_block_hash,
-                    key_block_seed,
-                    validators,
-                )
+                handling_es.handle_create_new_era(*block_header, booking_block_hash)
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                handling_es.got_upgrade_activation_point(activation_point)
+            }
             Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
                 era_id,
                 pk,

@@ -31,11 +31,11 @@ use libp2p::{
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
+    mplex::{MaxBufferBehaviour, MplexConfig},
     noise::{self, NoiseConfig, X25519Spec},
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    yamux::{Config as YamuxConfig, WindowUpdateMode},
     Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::seq::IteratorRandom;
@@ -56,7 +56,7 @@ use self::{
 };
 pub use self::{config::Config, error::Error};
 use crate::{
-    components::{chainspec_loader::Chainspec, Component},
+    components::Component,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -64,7 +64,7 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    types::NodeId,
+    types::{Chainspec, NodeId},
     utils::DisplayIter,
     NodeRng,
 };
@@ -107,10 +107,14 @@ enum ConnectionState {
 
 #[derive(DataSize)]
 pub struct Network<REv, P> {
+    #[data_size(skip)]
+    network_identity: NetworkIdentity,
     our_id: NodeId,
+    /// The set of peers which are current connected to our node. Kept in sync with libp2p
+    /// internals.
     #[data_size(skip)]
     peers: HashMap<NodeId, ConnectedPoint>,
-    /// A set of peers whose address we currently know. Kept in-sync with the internal Kademlia
+    /// The set of peers whose address we currently know. Kept in sync with the internal Kademlia
     /// routing table.
     #[data_size(skip)]
     seen_peers: HashSet<PeerId>,
@@ -145,13 +149,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         config: Config,
+        network_identity: NetworkIdentity,
         chainspec: &Chainspec,
         notify: bool,
     ) -> Result<(Network<REv, P>, Effects<Event<P>>), Error> {
-        // Create a new Ed25519 keypair for this session.
-        let our_id_keys = Keypair::generate_ed25519();
-        let our_peer_id = PeerId::from(our_id_keys.public());
-        let our_id = NodeId::from(our_peer_id.clone());
+        let our_peer_id = PeerId::from(&network_identity);
+        let our_id = NodeId::from(&network_identity);
 
         // Convert the known addresses to multiaddr format and prepare the shutdown signal.
         let known_addresses = config
@@ -176,6 +179,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without starting the server.
         if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
             let network = Network {
+                network_identity,
                 our_id,
                 peers: HashMap::new(),
                 seen_peers: HashSet::new(),
@@ -199,46 +203,24 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 
         // Create a keypair for authenticated encryption of the transport.
         let noise_keys = noise::Keypair::<X25519Spec>::new()
-            .into_authentic(&our_id_keys)
+            .into_authentic(&network_identity.keypair)
             .map_err(Error::StaticKeypairSigning)?;
 
-        let mut yamux_config = YamuxConfig::default();
+        let mut mplex_config = MplexConfig::default();
+        mplex_config.max_buffer_len_behaviour(MaxBufferBehaviour::Block);
 
-        // The are two `WindowUpdateMode`s available in yamux, both of which control how a receiver
-        // communicates its available receive capacity to a sender.
-        //
-        // With `OnReceive`, as soon as the yamux module has received bytes, it considers them
-        // handled. `OnRead` requires the data to be removed from yamuxs internal buffer instead,
-        // which happens via `AsyncRead`.
-        //
-        // If a lot of data is sent and at the same time there is not enough time allocated to the
-        // task that reads from the buffer, a `WindowUpdateMode` of `OnReceive` will cause the
-        // internal buffer to overflow. For this reason, we set it `OnRead`.
-        //
-        // `OnRead`, according to the docs (see below), is in danger of deadlocking under certain
-        // conditions. In our networking design, sending and receiving are independent and we have
-        // infinite send- and receive buffers on a message, so we should not run into this issue.
-        //
-        // Note that this comment is based on some logs from a failed test network, as the exact
-        // conditions for these errors are hard to reproduce reliably. We rely on reasoning alone
-        // here, so evidence to the contrary of the above assumptions should be examined closely.
-        //
-        // Please read https://docs.rs/yamux/0.8.0/yamux/enum.WindowUpdateMode.html for more
-        // information.
-        yamux_config.set_window_update_mode(WindowUpdateMode::OnRead);
-
-        // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `yamux`
+        // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `mplex`
         // for multiplexing of substreams on a TCP stream.
         let transport = TokioTcpConfig::new()
             .nodelay(true)
             .upgrade(upgrade::Version::V1)
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(yamux_config)
+            .multiplex(MplexConfig::default())
             .timeout(config.connection_setup_timeout.into())
             .boxed();
 
         // Create a Swarm to manage peers and events.
-        let behavior = Behavior::new(&config, chainspec, our_id_keys.public());
+        let behavior = Behavior::new(&config, chainspec, network_identity.keypair.public());
         let mut swarm = SwarmBuilder::new(transport, behavior, our_peer_id)
             .executor(Box::new(|future| {
                 tokio::spawn(future);
@@ -272,6 +254,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         )));
 
         let network = Network {
+            network_identity,
             our_id,
             peers: HashMap::new(),
             seen_peers: HashSet::new(),
@@ -941,5 +924,47 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 responder.respond(peers).ignore()
             }
         }
+    }
+}
+
+/// An ephemeral [libp2p::identity::Keypair] which uniquely identifies this node
+#[derive(Clone)]
+pub struct NetworkIdentity {
+    keypair: Keypair,
+}
+
+impl Debug for NetworkIdentity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "NetworkIdentity(public key: {:?})",
+            self.keypair.public()
+        )
+    }
+}
+
+impl NetworkIdentity {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let keypair = Keypair::generate_ed25519();
+        NetworkIdentity { keypair }
+    }
+}
+
+impl<REv, P> From<&Network<REv, P>> for NetworkIdentity {
+    fn from(network: &Network<REv, P>) -> Self {
+        network.network_identity.clone()
+    }
+}
+
+impl From<&NetworkIdentity> for PeerId {
+    fn from(network_identity: &NetworkIdentity) -> Self {
+        PeerId::from(network_identity.keypair.public())
+    }
+}
+
+impl From<&NetworkIdentity> for NodeId {
+    fn from(network_identity: &NetworkIdentity) -> Self {
+        NodeId::from(PeerId::from(network_identity))
     }
 }

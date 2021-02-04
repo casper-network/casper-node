@@ -7,10 +7,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use super::{event::DeployType, BlockHeight, FinalizationQueue};
-use crate::{
-    types::{DeployHash, DeployHeader, Timestamp},
-    Chainspec,
-};
+use crate::types::{Chainspec, DeployHash, DeployHeader, Timestamp};
 
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -71,7 +68,7 @@ impl Display for BlockProposerDeploySets {
 pub fn create_storage_key(chainspec: &Chainspec) -> Vec<u8> {
     format!(
         "block_proposer_deploy_sets:version={},chain_name={}",
-        chainspec.genesis.protocol_version, chainspec.genesis.name
+        chainspec.protocol_config.version, chainspec.network_config.name
     )
     .into()
 }

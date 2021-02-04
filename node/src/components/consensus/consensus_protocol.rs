@@ -27,6 +27,11 @@ impl BlockContext {
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
+
+    #[cfg(test)]
+    pub(crate) fn height(&self) -> u64 {
+        self.height
+    }
 }
 
 /// Equivocation and reward information to be included in the terminal finalized block.
@@ -43,6 +48,16 @@ pub struct EraEnd<VID> {
     /// This is a measure of the value of each validator's contribution to consensus, in
     /// fractions of the configured maximum block reward.
     pub(crate) rewards: BTreeMap<VID, u64>,
+    /// Validators that haven't produced any unit during the era.
+    pub(crate) inactive_validators: Vec<VID>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TerminalBlockData<C: Context> {
+    /// The rewards for participating in consensus.
+    pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
+    /// The list of validators that haven't produced any units.
+    pub(crate) inactive_validators: Vec<C::ValidatorId>,
 }
 
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
@@ -56,10 +71,11 @@ pub(crate) struct FinalizedBlock<C: Context> {
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
-    /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
-    pub(crate) rewards: Option<BTreeMap<C::ValidatorId, u64>>,
     /// The validators known to be faulty as seen by this block.
     pub(crate) equivocators: Vec<C::ValidatorId>,
+    /// If this is a terminal block, i.e. the last one to be finalized, this contains additional
+    /// data like rewards and inactive validators.
+    pub(crate) terminal_block_data: Option<TerminalBlockData<C>>,
     /// Proposer of this value
     pub(crate) proposer: C::ValidatorId,
 }
@@ -99,7 +115,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: Context> {
+pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Upcasts consensus protocol into `dyn Any`.
     ///
     /// Typically called on a boxed trait object for downcasting afterwards.

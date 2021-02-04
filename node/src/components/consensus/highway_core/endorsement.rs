@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -20,12 +21,15 @@ pub(crate) enum EndorsementError {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct Endorsement<C: Context> {
+pub(crate) struct Endorsement<C>
+where
+    C: Context,
+{
     /// Unit being endorsed.
     unit: C::Hash,
     /// The validator who created and sent this endorsement.
@@ -49,12 +53,15 @@ impl<C: Context> Endorsement<C> {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Signature: Serialize",
     deserialize = "C::Signature: Deserialize<'de>",
 ))]
-pub(crate) struct SignedEndorsement<C: Context> {
+pub(crate) struct SignedEndorsement<C>
+where
+    C: Context,
+{
     /// Original endorsement,
     endorsement: Endorsement<C>,
     /// Original signature.

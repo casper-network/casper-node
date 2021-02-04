@@ -304,7 +304,7 @@ pub trait Auction:
     /// (number of auction slots) bidders and replaces era_validators with these.
     ///
     /// Accessed by: node
-    fn run_auction(&mut self) -> Result<()> {
+    fn run_auction(&mut self, era_end_timestamp_millis: u64) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
@@ -321,7 +321,7 @@ pub trait Auction:
         // Process locked bids
         let mut bids_modified = false;
         for bid in bids.values_mut() {
-            if bid.unlock(era_id) {
+            if bid.unlock(era_end_timestamp_millis) {
                 bids_modified = true;
             }
         }

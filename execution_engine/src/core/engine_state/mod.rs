@@ -9,6 +9,7 @@ pub mod execution_effect;
 pub mod execution_result;
 pub mod genesis;
 pub mod op;
+pub mod put_trie;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -25,8 +26,8 @@ use tracing::{debug, error};
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraValidators, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-        LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -49,6 +50,7 @@ pub use self::{
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
     query::{QueryRequest, QueryResult},
+    step::{RewardItem, SlashItem, StepRequest, StepResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeResult},
@@ -56,10 +58,8 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
-            executable_deploy_item::DeployMetadata,
-            execution_result::ExecutionResultBuilder,
-            genesis::GenesisInstaller,
-            step::{StepRequest, StepResult},
+            executable_deploy_item::DeployMetadata, execution_result::ExecutionResultBuilder,
+            genesis::GenesisInstaller, put_trie::InsertedTrieKeyAndMissingDescendants,
             upgrade::SystemUpgrader,
         },
         execution::{self, DirectSystemContractCall, Executor},
@@ -1701,17 +1701,22 @@ where
             .map_err(Error::from)
     }
 
-    pub fn put_trie(
+    pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Error>
+    ) -> Result<InsertedTrieKeyAndMissingDescendants, Error>
     where
         Error: From<S::Error>,
     {
-        self.state
-            .put_trie(correlation_id, trie)
-            .map_err(Error::from)
+        let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
+        let missing_descendant_trie_keys = self
+            .state
+            .missing_trie_keys(correlation_id, inserted_trie_key)?;
+        Ok(InsertedTrieKeyAndMissingDescendants::new(
+            inserted_trie_key,
+            missing_descendant_trie_keys,
+        ))
     }
 
     pub fn missing_trie_keys(
@@ -1976,7 +1981,20 @@ where
         }
 
         if step_request.run_auction {
-            let run_auction_args = RuntimeArgs::new();
+            let run_auction_args = {
+                let maybe_runtime_args = RuntimeArgs::try_new(|args| {
+                    args.insert(
+                        ARG_ERA_END_TIMESTAMP_MILLIS,
+                        step_request.era_end_timestamp_millis,
+                    )?;
+                    Ok(())
+                });
+
+                match maybe_runtime_args {
+                    Ok(runtime_args) => runtime_args,
+                    Err(error) => return Ok(StepResult::CLValueError(error)),
+                }
+            };
 
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(

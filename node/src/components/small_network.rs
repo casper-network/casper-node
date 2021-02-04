@@ -47,6 +47,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
+    result,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -61,10 +62,11 @@ use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
-use openssl::pkey;
+use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use rand::seq::IteratorRandom;
 use serde::{de::DeserializeOwned, Serialize};
+use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{
@@ -90,7 +92,7 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    tls::{self, TlsCert},
+    tls::{self, TlsCert, ValidationError},
     types::NodeId,
     utils, NodeRng,
 };
@@ -180,6 +182,7 @@ where
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
+        small_network_identity: SmallNetworkIdentity,
         genesis_config_hash: Digest,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
@@ -192,17 +195,16 @@ where
         let mut public_address =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        // First, we generate the TLS keys.
-        let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
-        let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
+        let our_id = NodeId::from(&small_network_identity);
+        let secret_key = small_network_identity.secret_key;
+        let certificate = small_network_identity.tls_certificate;
 
         // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without starting the
         // server.
         if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
             let model = SmallNetwork {
                 certificate,
-                secret_key: Arc::new(secret_key),
+                secret_key,
                 public_address,
                 our_id,
                 is_bootstrap_node: false,
@@ -257,13 +259,12 @@ where
             event_queue,
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
             server_shutdown_receiver,
-            our_id,
+            our_id.clone(),
         ));
 
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
         let mut model = SmallNetwork {
             certificate,
-            secret_key: Arc::new(secret_key),
+            secret_key,
             public_address,
             our_id,
             is_bootstrap_node: false,
@@ -972,6 +973,52 @@ async fn server_task<P, REv>(
             "shutting down socket, no longer accepting incoming connections"
         ),
         Either::Right(_) => unreachable!(),
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum SmallNetworkIdentityError {
+    #[error("could not generate TLS certificate: {0}")]
+    CouldNotGenerateTlsCertificate(OpenSslErrorStack),
+    #[error(transparent)]
+    ValidationError(#[from] ValidationError),
+}
+
+/// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
+#[derive(DataSize, Debug, Clone)]
+pub struct SmallNetworkIdentity {
+    secret_key: Arc<PKey<Private>>,
+    tls_certificate: Arc<TlsCert>,
+}
+
+impl SmallNetworkIdentity {
+    pub fn new() -> result::Result<Self, SmallNetworkIdentityError> {
+        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
+            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
+        let tls_certificate = tls::validate_cert(not_yet_validated_x509_cert)?;
+        Ok(SmallNetworkIdentity {
+            secret_key: Arc::new(secret_key),
+            tls_certificate: Arc::new(tls_certificate),
+        })
+    }
+}
+
+impl<REv, P> From<&SmallNetwork<REv, P>> for SmallNetworkIdentity {
+    fn from(small_network: &SmallNetwork<REv, P>) -> Self {
+        SmallNetworkIdentity {
+            secret_key: small_network.secret_key.clone(),
+            tls_certificate: small_network.certificate.clone(),
+        }
+    }
+}
+
+impl From<&SmallNetworkIdentity> for NodeId {
+    fn from(small_network_identity: &SmallNetworkIdentity) -> Self {
+        NodeId::from(
+            small_network_identity
+                .tls_certificate
+                .public_key_fingerprint(),
+        )
     }
 }
 
