@@ -1,6 +1,8 @@
 use std::{
+    collections::HashSet,
     convert::Infallible,
     fmt::{Debug, Display},
+    hash::Hash,
 };
 
 use derive_more::From;
@@ -20,14 +22,14 @@ use super::Component;
 /// Stores each received payload.
 #[derive(Debug)]
 pub struct Collector<P: Collectable> {
-    pub payloads: Vec<P::CollectedType>,
+    pub payloads: HashSet<P::CollectedType>,
 }
 
 impl<P: Collectable> Collector<P> {
     /// Creates a new collector.
     pub fn new() -> Self {
         Collector {
-            payloads: Vec::new(),
+            payloads: HashSet::new(),
         }
     }
 }
@@ -67,7 +69,7 @@ where
                 payload, ..
             }) => {
                 debug!("collected {}", payload);
-                self.payloads.push(payload.into_collectable());
+                self.payloads.insert(payload.into_collectable());
             }
             _ => {}
         }
@@ -79,7 +81,7 @@ where
 ///
 /// Some items may be collected not by themselves, but in a modified form (e.g. hash only).
 pub trait Collectable {
-    type CollectedType;
+    type CollectedType: Eq + Hash;
 
     /// Transforms the item into the ultimately collected item.
     fn into_collectable(self) -> Self::CollectedType;
