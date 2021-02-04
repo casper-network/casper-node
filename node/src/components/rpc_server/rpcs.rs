@@ -15,6 +15,7 @@ use http::Response;
 use hyper::Body;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use warp::{
     filters::BoxedFilter,
     reject::{self, Reject},
@@ -34,15 +35,15 @@ pub const RPC_API_PATH: &str = "rpc";
 /// See <https://www.jsonrpc.org/specification#error_object> for details.
 #[repr(i64)]
 enum ErrorCode {
-    NoSuchDeploy = 32000,
-    NoSuchBlock = 32001,
-    ParseQueryKey = 32002,
-    QueryFailed = 32003,
-    QueryFailedToExecute = 32004,
-    ParseGetBalanceURef = 32005,
-    GetBalanceFailed = 32006,
-    GetBalanceFailedToExecute = 32007,
-    InvalidDeploy = 32008,
+    NoSuchDeploy = -32000,
+    NoSuchBlock = -32001,
+    ParseQueryKey = -32002,
+    QueryFailed = -32003,
+    QueryFailedToExecute = -32004,
+    ParseGetBalanceURef = -32005,
+    GetBalanceFailed = -32006,
+    GetBalanceFailedToExecute = -32007,
+    InvalidDeploy = -32008,
 }
 
 #[derive(Debug)]
@@ -84,7 +85,7 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
     ) -> BoxedFilter<(Response<Body>,)> {
-        warp::path(RPC_API_PATH)
+        let with_valid_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and(filters::params::<Self::RequestParams>())
@@ -93,7 +94,31 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
                     Self::handle_request(effect_builder, response_builder, params)
                         .map_err(reject::custom)
                 },
-            )
+            );
+        let with_invalid_params = warp::path(RPC_API_PATH)
+            .and(filters::json_rpc())
+            .and(filters::method(Self::METHOD))
+            .and(filters::params::<Value>())
+            .and_then(
+                move |response_builder: Builder, _params: Value| async move {
+                    response_builder
+                        .error(warp_json_rpc::Error::INVALID_PARAMS)
+                        .map_err(|_| reject::reject())
+                },
+            );
+        let with_missing_params = warp::path(RPC_API_PATH)
+            .and(filters::json_rpc())
+            .and(filters::method(Self::METHOD))
+            .and_then(move |response_builder: Builder| async move {
+                response_builder
+                    .error(warp_json_rpc::Error::INVALID_PARAMS)
+                    .map_err(|_| reject::reject())
+            });
+        with_valid_params
+            .or(with_invalid_params)
+            .unify()
+            .or(with_missing_params)
+            .unify()
             .boxed()
     }
 
@@ -125,13 +150,24 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
     ) -> BoxedFilter<(Response<Body>,)> {
-        warp::path(RPC_API_PATH)
+        let with_no_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
                 Self::handle_request(effect_builder, response_builder).map_err(reject::custom)
-            })
-            .boxed()
+            });
+        let with_params = warp::path(RPC_API_PATH)
+            .and(filters::json_rpc())
+            .and(filters::method(Self::METHOD))
+            .and(filters::params::<Value>())
+            .and_then(
+                move |response_builder: Builder, _params: Value| async move {
+                    response_builder
+                        .error(warp_json_rpc::Error::INVALID_PARAMS)
+                        .map_err(|_| reject::reject())
+                },
+            );
+        with_no_params.or(with_params).unify().boxed()
     }
 
     /// Handles the incoming RPC request.
@@ -180,13 +216,29 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
                         .map_err(reject::custom)
                 },
             );
+        let with_invalid_params = warp::path(RPC_API_PATH)
+            .and(filters::json_rpc())
+            .and(filters::method(Self::METHOD))
+            .and(filters::params::<Value>())
+            .and_then(
+                move |response_builder: Builder, _params: Value| async move {
+                    response_builder
+                        .error(warp_json_rpc::Error::INVALID_PARAMS)
+                        .map_err(|_| reject::reject())
+                },
+            );
         let without_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
                 Self::handle_request(effect_builder, response_builder, None).map_err(reject::custom)
             });
-        with_params.or(without_params).unify().boxed()
+        with_params
+            .or(without_params)
+            .unify()
+            .or(with_invalid_params)
+            .unify()
+            .boxed()
     }
 
     /// Handles the incoming RPC request.
