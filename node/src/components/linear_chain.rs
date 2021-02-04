@@ -151,14 +151,14 @@ impl SignatureCache {
         }
     }
 
-    fn get(&mut self, hash: &BlockHash) -> Option<BlockSignatures> {
-        let finality_signatures = self.signatures.get_mut(hash)?;
+    fn get(&mut self, hash: &BlockHash, era_id: EraId) -> Option<BlockSignatures> {
+        let mut block_signatures = BlockSignatures::new(*hash, era_id);
         if let Some(proofs) = self.proofs.get(hash) {
             for (pub_key, sig) in proofs {
-                finality_signatures.insert_proof(*pub_key, *sig);
+                block_signatures.insert_proof(*pub_key, *sig);
             }
         }
-        Some(finality_signatures.clone())
+        Some(block_signatures)
     }
 
     fn insert(&mut self, block_signature: BlockSignatures) {
@@ -445,6 +445,7 @@ where
                 let FinalitySignature {
                     block_hash,
                     public_key,
+                    era_id,
                     ..
                 } = *fs;
                 if let Err(err) = fs.verify() {
@@ -462,7 +463,7 @@ where
                     return Effects::new();
                 }
                 self.add_pending_finality_signature(*fs.clone());
-                match self.signature_cache.get(&block_hash) {
+                match self.signature_cache.get(&block_hash, era_id) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
                         .event(move |maybe_signatures| {
