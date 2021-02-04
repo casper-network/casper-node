@@ -126,6 +126,29 @@ impl Display for DummyPayload {
     }
 }
 
+/// Reads an envvar from the environment and, if present, parses it.
+///
+/// Only absent envvars are returned as `None`.
+///
+/// # Panics
+///
+/// Panics on any parse error.
+fn read_env<T: std::str::FromStr>(name: &str) -> Option<T>
+where
+    <T as std::str::FromStr>::Err: Debug,
+{
+    match std::env::var(name) {
+        Ok(raw) => Some(
+            raw.parse()
+                .expect(&format!("cannot parse envvar `{}`", name)),
+        ),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(err) => {
+            panic!(err)
+        }
+    }
+}
+
 #[tokio::test]
 async fn send_large_message_across_network() {
     init_logging();
@@ -137,15 +160,13 @@ async fn send_large_message_across_network() {
 
     // This can, on a decent machine, be set to 30, 50, maybe even 100 nodes. The default is set to
     // 5 to avoid overloading CI.
-    let node_count: usize = std::env::var("TEST_NODE_COUNT")
-        .expect("TEST_NODE_COUNT not set")
-        .parse()
-        .expect("cannot parse TEST_NODE_COUNT");
+    let node_count: usize = read_env("TEST_NODE_COUNT").unwrap_or(5);
 
     // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time for gossip
     // and connecting.
     let timeout = Duration::from_secs(60);
-    let large_size: usize = 1024 * 1024 * 4;
+    let payload_size: usize = read_env("TEST_PAYLOAD_SIZE").unwrap_or(1024 * 1024 * 4);
+    let payload_count: usize = read_env("TEST_PAYLOAD_COUNT").unwrap_or(1);
 
     let mut rng = crate::new_rng();
 
@@ -181,7 +202,7 @@ async fn send_large_message_across_network() {
     // gossiping large payloads. We gossip one on each node.
     let node_ids: Vec<_> = net.nodes().keys().cloned().collect();
     for (index, sender) in node_ids.iter().enumerate() {
-        let dummy_payload = DummyPayload::random_with_size(&mut rng, large_size);
+        let dummy_payload = DummyPayload::random_with_size(&mut rng, payload_size);
 
         // Calling `broadcast_message` actually triggers libp2p gossping.
         net.process_injected_effect_on(sender, |effect_builder| {
