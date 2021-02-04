@@ -15,7 +15,6 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fmt::{self, Debug, Display, Formatter},
-    io,
     marker::PhantomData,
     num::NonZeroU32,
 };
@@ -23,10 +22,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use libp2p::{
-    core::{
-        connection::{ConnectedPoint, PendingConnectionError},
-        upgrade,
-    },
+    core::{connection::ConnectedPoint, upgrade},
     gossipsub::GossipsubEvent,
     identify::IdentifyEvent,
     identity::Keypair,
@@ -333,48 +329,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let _ = self.peers.insert(peer_id.clone(), endpoint);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
         effect_builder.announce_new_peer(peer_id).ignore()
-    }
-
-    fn handle_unknown_peer_unreachable_address(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        address: Multiaddr,
-        error: PendingConnectionError<io::Error>,
-    ) -> Effects<Event<P>> {
-        debug!(%address, %error, "{}: failed to connect", self.our_id);
-        let mut known_addresses = match self.known_addresses_mut.lock() {
-            Ok(known_addresses) => known_addresses,
-            Err(err) => {
-                return fatal!(
-                    effect_builder,
-                    "Could not acquire `known_addresses_mut` mutex: {:?}",
-                    err
-                )
-            }
-        };
-        if let Some(state) = known_addresses.get_mut(&address) {
-            if *state == ConnectionState::Pending {
-                *state = ConnectionState::Failed
-            }
-        }
-
-        if network_is_isolated(&*known_addresses) {
-            if self.is_bootstrap_node {
-                info!(
-                    "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
-                    bootstrap node", self.our_id
-                );
-            } else {
-                // Note that we could retry the connection to other nodes, but for now we just
-                // leave it up to the node operator to restart.
-                return fatal!(
-                    effect_builder,
-                    "{}: failed to connect to any known node, now isolated",
-                    self.our_id
-                );
-            }
-        }
-        Effects::new()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -920,9 +874,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             } => {
                 debug!(%peer_id, %address, %error, %attempts_remaining, "{}: failed to connect", self.our_id);
                 Effects::new()
-            }
-            Event::UnknownPeerUnreachableAddress { address, error } => {
-                self.handle_unknown_peer_unreachable_address(effect_builder, address, error)
             }
             Event::NewListenAddress(address) => {
                 self.listening_addresses.push(address);
