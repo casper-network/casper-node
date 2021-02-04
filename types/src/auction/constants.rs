@@ -6,6 +6,9 @@ pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = 0;
 
+/// Initial value of era end timestamp.
+pub const INITIAL_ERA_END_TIMESTAMP_MILLIS: u64 = 0;
+
 /// Delegation rate is a fraction between 0-1. Validator sets the delegation rate
 /// in integer terms, which is then divided by the denominator to obtain the fraction.
 pub const DELEGATION_RATE_DENOMINATOR: u64 = 1_000_000_000_000;
@@ -84,6 +87,8 @@ pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 pub const BIDS_KEY: &str = "bids";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
+/// Storage for era-end timestamp.
+pub const ERA_END_TIMESTAMP_MILLIS_KEY: &str = "era_end_timestamp_millis";
 /// Storage for `SeigniorageRecipientsSnapshot`.
 pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
 /// Storage for delegator reward purse

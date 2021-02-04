@@ -130,6 +130,12 @@ pub trait Auction:
 
         let bid = bids.get_mut(&public_key).ok_or(Error::ValidatorNotFound)?;
 
+        let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+
+        // Fails if requested amount is greater than either the total stake or the amount of vested
+        // stake.
+        let new_amount = bid.decrease_stake(amount, era_end_timestamp_millis)?;
+
         detail::create_unbonding_purse(
             self,
             public_key,
@@ -137,8 +143,6 @@ pub trait Auction:
             *bid.bonding_purse(),
             amount,
         )?;
-
-        let new_amount = bid.decrease_stake(amount)?;
 
         if new_amount.is_zero() {
             // NOTE: Assumed safe as we're checking for existence above
@@ -318,19 +322,17 @@ pub trait Auction:
         // Process unbond requests
         detail::process_unbond_requests(self)?;
 
-        // Process locked bids
+        // Process bids
         let mut bids_modified = false;
         for bid in bids.values_mut() {
-            if bid.unlock(era_end_timestamp_millis) {
-                bids_modified = true;
-            }
+            bids_modified = bid.process(era_end_timestamp_millis)
         }
 
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let founder_weights: ValidatorWeights = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.is_locked())
+                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((*public_key, total_staked_amount))
@@ -340,7 +342,7 @@ pub trait Auction:
             // We collect these into a vec for sorting
             let mut non_founder_weights: Vec<(PublicKey, U512)> = bids
                 .iter()
-                .filter(|(_public_key, bid)| !bid.is_locked())
+                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((*public_key, total_staked_amount))
@@ -388,6 +390,7 @@ pub trait Auction:
         }
 
         detail::set_era_id(self, era_id)?;
+        detail::set_era_end_timestamp_millis(self, era_end_timestamp_millis)?;
 
         if bids_modified {
             detail::set_bids(self, bids)?;
