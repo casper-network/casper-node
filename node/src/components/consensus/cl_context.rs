@@ -17,6 +17,7 @@ use crate::{
     NodeRng,
 };
 
+#[derive(DataSize)]
 pub(crate) struct Keypair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,

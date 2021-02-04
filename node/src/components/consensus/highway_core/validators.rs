@@ -26,7 +26,7 @@ impl From<u32> for ValidatorIndex {
 }
 
 /// Information about a validator: their ID and weight.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct Validator<VID> {
     weight: Weight,
     id: VID,
@@ -54,8 +54,11 @@ impl<VID> Validator<VID> {
 }
 
 /// The validator IDs and weight map.
-#[derive(Debug, Clone)]
-pub(crate) struct Validators<VID: Eq + Hash> {
+#[derive(Debug, DataSize, Clone)]
+pub(crate) struct Validators<VID>
+where
+    VID: Eq + Hash,
+{
     index_by_id: HashMap<VID, ValidatorIndex>,
     validators: Vec<Validator<VID>>,
 }
@@ -125,7 +128,7 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
 
 impl<T> ValidatorMap<T> {

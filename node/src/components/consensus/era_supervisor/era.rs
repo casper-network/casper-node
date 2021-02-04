@@ -260,7 +260,7 @@ impl<I> Era<I> {
 
 impl<I> DataSize for Era<I>
 where
-    I: 'static,
+    I: DataSize + 'static,
 {
     const IS_DYNAMIC: bool = true;
 
@@ -288,7 +288,6 @@ where
 
             if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
                 (*highway).estimate_heap_size()
-                // always zero, because data_size::<&T>(val) == 0
             } else {
                 warn!(
                     "could not downcast consensus protocol to \

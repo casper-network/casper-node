@@ -45,7 +45,7 @@ const TEST_ERA_HEIGHT: u64 = 5;
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TestContext;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct TestSecret(pub(crate) u32);
 
 impl ValidatorSecret for TestSecret {

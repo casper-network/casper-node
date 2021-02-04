@@ -58,8 +58,10 @@ pub(crate) enum PingError {
 /// The vertex could not be determined to be invalid based on its contents alone. The remaining
 /// checks will be applied once all of its dependencies have been added to `Highway`. (See
 /// `ValidVertex`.)
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+pub(crate) struct PreValidatedVertex<C>(Vertex<C>)
+where
+    C: Context;
 
 impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
@@ -102,7 +104,7 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 #[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct ValidVertex<C>(pub(super) Vertex<C>)
 where
-    C: Context + DataSize;
+    C: Context;
 
 impl<C: Context> ValidVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
@@ -137,8 +139,11 @@ pub(crate) enum GetDepOutcome<C: Context> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug)]
-pub(crate) struct Highway<C: Context> {
+#[derive(Debug, DataSize)]
+pub(crate) struct Highway<C>
+where
+    C: Context,
+{
     /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
     instance_id: C::InstanceId,
     /// The validator IDs and weight map.
