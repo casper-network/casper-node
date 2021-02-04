@@ -93,7 +93,7 @@ paths that are not absolute will be resolved relative to `config.toml` directory
 ### Environment overrides
 
 Some environments may call for overriding options through the environment.  In this
-scenario, the `NODE_CONFIG` environment variable can be used. For example, the command from the previous section can be
+scenario, the `NODE_CONFIG` environment variable can be used. For example:
 alternatively expressed as
 
 ```
