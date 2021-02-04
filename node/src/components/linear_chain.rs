@@ -478,7 +478,8 @@ where
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
                 if let Some(signatures) = &maybe_signatures {
                     if signatures.era_id != fs.era_id {
-                        warn!(public_key=%fs.public_key, "Finality signature with invalid era id.");
+                        warn!(public_key=%fs.public_key, expected=%signatures.era_id, got=%fs.era_id, 
+                            "finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
                         self.remove_from_pending_fs(&*fs);
                         return Effects::new();
