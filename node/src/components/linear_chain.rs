@@ -181,10 +181,10 @@ impl SignatureCache {
 
     /// Get signatures from the cache to be updated.
     /// If there are no signatures, create an empty signature to be updated.
-    fn get_known_signatures(&self, block_hash: &BlockHash) -> BlockSignatures {
+    fn get_known_signatures(&self, block_hash: &BlockHash, block_era: EraId) -> BlockSignatures {
         match self.signatures.get(block_hash) {
             Some(signatures) => signatures.clone(),
-            None => BlockSignatures::new(*block_hash, self.curr_era),
+            None => BlockSignatures::new(*block_hash, block_era),
         }
     }
 
@@ -258,7 +258,9 @@ impl<I> LinearChain<I> {
         I: Display + Send + 'static,
     {
         let mut effects = Effects::new();
-        let mut known_signatures = self.signature_cache.get_known_signatures(block_hash);
+        let mut known_signatures = self
+            .signature_cache
+            .get_known_signatures(block_hash, block_era);
         let pending_sigs = self
             .pending_finality_signatures
             .values_mut()
