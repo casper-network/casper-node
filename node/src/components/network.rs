@@ -68,6 +68,7 @@ use crate::{
     utils::DisplayIter,
     NodeRng,
 };
+use std::sync::{Arc, Mutex};
 
 /// Env var which, if it's defined at runtime, enables the small_network component.
 pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
@@ -121,8 +122,10 @@ pub struct Network<REv, P> {
     #[data_size(skip)]
     listening_addresses: Vec<Multiaddr>,
     /// The addresses of known peers to be used for bootstrapping, and their connection states.
+    /// Wrapped in a [Mutex] so it can be shared with [SwarmEvent] handling (which runs in a
+    /// separate thread).
     #[data_size(skip)]
-    known_addresses: HashMap<Multiaddr, ConnectionState>,
+    known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
     /// Whether this node is a bootstrap node or not.
     is_bootstrap_node: bool,
     /// The channel through which to send outgoing one-way requests.
@@ -184,7 +187,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 peers: HashMap::new(),
                 seen_peers: HashSet::new(),
                 listening_addresses: vec![],
-                known_addresses,
+                known_addresses_mut: Arc::new(Mutex::new(known_addresses)),
                 is_bootstrap_node: config.is_bootstrap_node,
                 one_way_message_sender,
                 max_one_way_message_size: 0,
@@ -266,6 +269,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             })?;
         }
 
+        // Wrap the known_addresses in a mutex so we can share it with the server task.
+        let known_addresses_mut = Arc::new(Mutex::new(known_addresses));
+        let is_bootstrap_node = config.is_bootstrap_node;
+
         // Start the server task.
         let server_join_handle = Some(tokio::spawn(server_task(
             event_queue,
@@ -273,6 +280,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             gossip_message_receiver,
             server_shutdown_receiver,
             swarm,
+            known_addresses_mut.clone(),
+            is_bootstrap_node,
         )));
 
         let network = Network {
@@ -281,8 +290,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             peers: HashMap::new(),
             seen_peers: HashSet::new(),
             listening_addresses: vec![],
-            known_addresses,
-            is_bootstrap_node: config.is_bootstrap_node,
+            known_addresses_mut,
+            is_bootstrap_node,
             one_way_message_sender,
             max_one_way_message_size: config.max_one_way_message_size,
             gossip_message_sender,
@@ -304,12 +313,22 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         debug!(%peer_id, ?endpoint, %num_established,"{}: connection established", self.our_id);
 
         if let ConnectedPoint::Dialer { ref address } = endpoint {
-            if let Some(state) = self.known_addresses.get_mut(address) {
+            let mut known_addresses = match self.known_addresses_mut.lock() {
+                Ok(known_addresses) => known_addresses,
+                Err(err) => {
+                    return fatal!(
+                        effect_builder,
+                        "Could not acquire `known_addresses_mut` mutex: {:?}",
+                        err
+                    )
+                }
+            };
+            if let Some(state) = known_addresses.get_mut(address) {
                 if *state == ConnectionState::Pending {
                     *state = ConnectionState::Connected
                 }
             }
-        }
+        };
 
         let _ = self.peers.insert(peer_id.clone(), endpoint);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
@@ -323,13 +342,23 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         error: PendingConnectionError<io::Error>,
     ) -> Effects<Event<P>> {
         debug!(%address, %error, "{}: failed to connect", self.our_id);
-        if let Some(state) = self.known_addresses.get_mut(&address) {
+        let mut known_addresses = match self.known_addresses_mut.lock() {
+            Ok(known_addresses) => known_addresses,
+            Err(err) => {
+                return fatal!(
+                    effect_builder,
+                    "Could not acquire `known_addresses_mut` mutex: {:?}",
+                    err
+                )
+            }
+        };
+        if let Some(state) = known_addresses.get_mut(&address) {
             if *state == ConnectionState::Pending {
                 *state = ConnectionState::Failed
             }
         }
 
-        if self.is_isolated() {
+        if network_is_isolated(&*known_addresses) {
             if self.is_bootstrap_node {
                 info!(
                     "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
@@ -413,16 +442,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         peer_ids.into_iter().cloned().collect()
     }
 
-    /// Returns whether or not this node has been isolated.
-    ///
-    /// An isolated node has no chance of recovering a connection to the network and is not
-    /// connected to any peer.
-    fn is_isolated(&self) -> bool {
-        self.known_addresses
-            .values()
-            .all(|state| *state == ConnectionState::Failed)
-    }
-
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
@@ -449,7 +468,10 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     // Receives notification to shut down the server loop.
     mut shutdown_receiver: watch::Receiver<()>,
     mut swarm: Swarm<Behavior>,
+    known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
+    is_bootsrap_node: bool,
 ) {
+    //let our_id = our
     async move {
         loop {
             // Note that `select!` will cancel all futures on branches not eventually selected by
@@ -459,7 +481,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
                     trace!("{}: {:?}", our_id(&swarm), swarm_event);
-                    handle_swarm_event(&mut swarm, event_queue, swarm_event).await;
+                    handle_swarm_event(&mut swarm, event_queue, swarm_event, &known_addresses_mut, is_bootsrap_node).await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
@@ -515,6 +537,8 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
     swarm: &mut Swarm<Behavior>,
     event_queue: EventQueueHandle<REv>,
     swarm_event: SwarmEvent<SwarmBehaviorEvent, E>,
+    known_addresses_mut: &Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
+    is_bootstrap_node: bool,
 ) {
     let event = match swarm_event {
         SwarmEvent::ConnectionEstablished {
@@ -538,8 +562,8 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             num_established,
             cause,
         } => {
-            // If we lost the final connection to this peer, do a random kademlia lookup to discover
-            // any new/replacement peers.
+            // If we lost the final connection to this peer, do a random kademlia lookup to
+            // discover any new/replacement peers.
             if num_established == 0 {
                 swarm.discover_peers()
             }
@@ -562,7 +586,41 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             attempts_remaining,
         },
         SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
-            Event::UnknownPeerUnreachableAddress { address, error }
+            debug!(%address, %error, "{}: failed to connect", our_id(&swarm));
+            let mut known_addresses = match known_addresses_mut.lock() {
+                Ok(known_addresses) => known_addresses,
+                Err(err) => {
+                    panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
+                }
+            };
+            if let Some(state) = known_addresses.get_mut(&address) {
+                if *state == ConnectionState::Pending {
+                    *state = ConnectionState::Failed
+                }
+            }
+
+            if network_is_isolated(&*known_addresses) {
+                if is_bootstrap_node {
+                    info!(
+                        "{}: failed to bootstrap to any other nodes, but continuing to run as we \
+                             are a bootstrap node",
+                        our_id(&swarm)
+                    );
+                } else {
+                    // (Re)schedule connection attempts to known peers.
+                    for address in known_addresses.keys() {
+                        let our_id = our_id(&swarm);
+                        debug!(%our_id, %address, "dialing known address");
+                        match Swarm::dial_addr(swarm, address.clone()) {
+                            Ok(()) => {}
+                            Err(err) => {
+                                error!(%our_id, %address, "Swarm error when rescheduling connection: {:?}", err)
+                            }
+                        };
+                    }
+                }
+            }
+            return;
         }
         SwarmEvent::NewListenAddr(address) => Event::NewListenAddress(address),
         SwarmEvent::ExpiredListenAddr(address) => Event::ExpiredListenAddress(address),
@@ -594,6 +652,16 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         | SwarmEvent::Dialing(_) => return,
     };
     event_queue.schedule(event, QueueKind::Network).await;
+}
+
+/// Takes the known_addresses of a node and returns if it is isolated.
+///
+/// An isolated node has no chance of recovering a connection to the network and is not
+/// connected to any peer.
+fn network_is_isolated(known_addresses: &HashMap<Multiaddr, ConnectionState>) -> bool {
+    known_addresses
+        .values()
+        .all(|state| *state == ConnectionState::Failed)
 }
 
 async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
@@ -805,7 +873,7 @@ impl<REv, P> Debug for Network<REv, P> {
             .field("our_id", &self.our_id)
             .field("peers", &self.peers)
             .field("listening_addresses", &self.listening_addresses)
-            .field("known_addresses", &self.known_addresses)
+            .field("known_addresses", &self.known_addresses_mut)
             .finish()
     }
 }
