@@ -123,7 +123,7 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Creates a new `EraSupervisor`, starting in era 0.
+    /// Creates a new `EraSupervisor`, starting in era corresponding to the last upgrade point.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
@@ -145,12 +145,13 @@ where
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
         let genesis_start_time = protocol_config.timestamp;
+        let current_era = protocol_config.last_upgrade_point;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
             public_signing_key,
-            current_era: EraId(0),
+            current_era,
             protocol_config,
             config,
             new_consensus,
@@ -165,7 +166,7 @@ where
         };
 
         let results = era_supervisor.new_era(
-            EraId(0),
+            current_era,
             timestamp,
             validators,
             vec![], // no banned validators in era 0
@@ -176,7 +177,7 @@ where
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, &mut rng)
-            .handle_consensus_results(EraId(0), results);
+            .handle_consensus_results(current_era, results);
 
         Ok((era_supervisor, effects))
     }
@@ -252,7 +253,7 @@ where
         );
 
         let slashed = era_id
-            .iter_other(self.bonded_eras)
+            .iter_other(self.protocol_config.last_upgrade_point, self.bonded_eras)
             .flat_map(|e_id| &self.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
@@ -450,7 +451,10 @@ where
                     return Effects::new();
                 }
                 era_id
-                    .iter_bonded(self.era_supervisor.bonded_eras)
+                    .iter_bonded(
+                        self.era_supervisor.protocol_config.last_upgrade_point,
+                        self.era_supervisor.bonded_eras,
+                    )
                     .flat_map(|e_id| {
                         self.delegate_to_era(e_id, |consensus, _| {
                             consensus.request_evidence(sender.clone(), &pub_key)
@@ -478,7 +482,10 @@ where
             return Effects::new();
         }
         let accusations = era_id
-            .iter_bonded(self.era_supervisor.bonded_eras)
+            .iter_bonded(
+                self.era_supervisor.protocol_config.last_upgrade_point,
+                self.era_supervisor.bonded_eras,
+            )
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
@@ -671,7 +678,10 @@ where
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
         era_id
-            .iter_bonded(self.era_supervisor.bonded_eras)
+            .iter_bonded(
+                self.era_supervisor.protocol_config.last_upgrade_point,
+                self.era_supervisor.bonded_eras,
+            )
             .any(|eid| self.era(eid).consensus.has_evidence(&pub_key))
     }
 
@@ -858,7 +868,10 @@ where
                 effects
             }
             ProtocolOutcome::SendEvidence(sender, pub_key) => era_id
-                .iter_other(self.era_supervisor.bonded_eras)
+                .iter_other(
+                    self.era_supervisor.protocol_config.last_upgrade_point,
+                    self.era_supervisor.bonded_eras,
+                )
                 .flat_map(|e_id| {
                     self.delegate_to_era(e_id, |consensus, _| {
                         consensus.request_evidence(sender.clone(), &pub_key)
