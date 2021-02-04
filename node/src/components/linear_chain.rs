@@ -460,6 +460,7 @@ where
                     if signatures.era_id != fs.era_id {
                         warn!(public_key=%fs.public_key, "Finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
+                        self.remove_from_pending_fs(&*fs);
                         return Effects::new();
                     }
                     // Populate cache so that next finality signatures don't have to read from the
@@ -530,6 +531,7 @@ where
                     .any(|sig| *sig == &fs.signature);
                 // If new, gossip and store.
                 if signature_known {
+                    self.remove_from_pending_fs(&*fs);
                     Effects::new()
                 } else {
                     let message = Message::FinalitySignature(fs.clone());
@@ -544,6 +546,7 @@ where
                     // manage to store it in the database.
                     self.signature_cache.insert(*signature.clone());
                     debug!(hash=%signature.block_hash, "storing finality signatures");
+                    self.remove_from_pending_fs(&*fs);
                     effects.extend(
                         effect_builder
                             .put_signatures_to_storage(*signature)
