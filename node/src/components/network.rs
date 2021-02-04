@@ -18,6 +18,7 @@ use std::{
     marker::PhantomData,
     num::NonZeroU32,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -68,6 +69,9 @@ use crate::{
 
 /// Env var which, if it's defined at runtime, enables the small_network component.
 pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
+
+/// How long to sleep before reconnecting
+const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 
 /// A helper trait whose bounds represent the requirements for a payload that `Network` can
 /// work with.
@@ -541,19 +545,21 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         },
         SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
             debug!(%address, %error, "{}: failed to connect", our_id(&swarm));
-            let mut known_addresses = match known_addresses_mut.lock() {
-                Ok(known_addresses) => known_addresses,
+            let we_are_isolated = match known_addresses_mut.lock() {
                 Err(err) => {
                     panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
                 }
-            };
-            if let Some(state) = known_addresses.get_mut(&address) {
-                if *state == ConnectionState::Pending {
-                    *state = ConnectionState::Failed
+                Ok(mut known_addresses) => {
+                    if let Some(state) = known_addresses.get_mut(&address) {
+                        if *state == ConnectionState::Pending {
+                            *state = ConnectionState::Failed
+                        }
+                    }
+                    network_is_isolated(&*known_addresses)
                 }
-            }
+            };
 
-            if network_is_isolated(&*known_addresses) {
+            if we_are_isolated {
                 if is_bootstrap_node {
                     info!(
                         "{}: failed to bootstrap to any other nodes, but continuing to run as we \
@@ -562,16 +568,27 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                     );
                 } else {
                     // (Re)schedule connection attempts to known peers.
-                    for address in known_addresses.keys() {
-                        let our_id = our_id(&swarm);
-                        debug!(%our_id, %address, "dialing known address");
-                        match Swarm::dial_addr(swarm, address.clone()) {
-                            Ok(()) => {}
-                            Err(err) => {
-                                error!(%our_id, %address, "Swarm error when rescheduling connection: {:?}", err)
+
+                    // Before reconnecting wait RECONNECT_DELAY
+                    tokio::time::delay_for(RECONNECT_DELAY).await;
+
+                    // Now that we've slept and re-awoken, grab the mutex again
+                    match known_addresses_mut.lock() {
+                        Err(err) => {
+                            panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
+                        }
+                        Ok(known_addresses) => {
+                            for address in known_addresses.keys() {
+                                let our_id = our_id(&swarm);
+                                debug!(%our_id, %address, "dialing known address");
+                                Swarm::dial_addr(swarm, address.clone()).unwrap_or_else(|err| {
+                                    error!(%our_id, %address,
+                                           "Swarm error when rescheduling connection: {:?}",
+                                           err)
+                                });
                             }
-                        };
-                    }
+                        }
+                    };
                 }
             }
             return;
