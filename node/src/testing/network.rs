@@ -283,7 +283,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes_mut(&mut self) -> &mut HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub fn nodes_mut(&mut self) -> &mut Nodes<R> {
         &mut self.nodes
     }
 
