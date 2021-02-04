@@ -17,6 +17,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     marker::PhantomData,
     num::NonZeroU32,
+    sync::{Arc, Mutex},
 };
 
 use datasize::DataSize;
@@ -64,7 +65,6 @@ use crate::{
     utils::DisplayIter,
     NodeRng,
 };
-use std::sync::{Arc, Mutex};
 
 /// Env var which, if it's defined at runtime, enables the small_network component.
 pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
