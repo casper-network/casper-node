@@ -819,6 +819,10 @@ impl BlockSignatures {
     ) -> Option<Signature> {
         self.proofs.insert(public_key, signature)
     }
+
+    pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
+        self.proofs.contains_key(public_key)
+    }
 }
 
 impl Display for BlockSignatures {

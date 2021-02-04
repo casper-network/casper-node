@@ -187,6 +187,18 @@ impl SignatureCache {
             None => BlockSignatures::new(*block_hash, self.curr_era),
         }
     }
+
+    /// Returns whether finality signature is known already.
+    fn known_signature(&self, fs: &FinalitySignature) -> bool {
+        let FinalitySignature {
+            block_hash,
+            public_key,
+            ..
+        } = fs;
+        self.signatures
+            .get(block_hash)
+            .map_or(false, |bs| bs.has_proof(public_key))
+    }
 }
 
 #[derive(DataSize, Debug)]
@@ -440,6 +452,11 @@ where
                 if self.has_finality_signature(&fs) {
                     debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
                         "finality signature already pending");
+                    return Effects::new();
+                }
+                if self.signature_cache.known_signature(&fs) {
+                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                        "finality signature is already known");
                     return Effects::new();
                 }
                 self.add_pending_finality_signature(*fs.clone());
