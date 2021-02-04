@@ -584,7 +584,7 @@ where
             .get_account(correlation_id, proposer_addr)
         {
             Ok(proposer) => proposer,
-            Err(e) => return Ok(ExecutionResult::precondition_failure(Error::Exec(e))),
+            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
 
         let mint_contract = match tracking_copy
@@ -621,7 +621,7 @@ where
             protocol_data.system_config().wasmless_transfer_cost(),
         ));
 
-        let wasmless_transfer_cost = match Motes::from_gas(
+        let wasmless_transfer_motes = match Motes::from_gas(
             wasmless_transfer_gas_cost,
             WASMLESS_TRANSFER_FIXED_GAS_PRICE,
         ) {
@@ -641,11 +641,7 @@ where
                 .get_purse_balance_key(correlation_id, proposer_main_purse.into())
             {
                 Ok(balance_key) => balance_key,
-                Err(_) => {
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::InsufficientPayment,
-                    ))
-                }
+                Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
             }
         };
 
@@ -658,11 +654,7 @@ where
             .get_purse_balance_key(correlation_id, account_main_purse.into())
         {
             Ok(balance_key) => balance_key,
-            Err(_) => {
-                return Ok(ExecutionResult::precondition_failure(
-                    Error::InsufficientPayment,
-                ))
-            }
+            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
 
         let account_main_purse_balance = match tracking_copy
@@ -670,14 +662,10 @@ where
             .get_purse_balance(correlation_id, account_main_purse_balance_key)
         {
             Ok(balance_key) => balance_key,
-            Err(_) => {
-                return Ok(ExecutionResult::precondition_failure(
-                    Error::InsufficientPayment,
-                ))
-            }
+            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
 
-        if account_main_purse_balance < wasmless_transfer_cost {
+        if account_main_purse_balance < wasmless_transfer_motes {
             // We don't have minimum balance to operate and therefore we can't charge for user
             // errors.
             return Ok(ExecutionResult::precondition_failure(
@@ -688,7 +676,7 @@ where
         // Function below creates an ExecutionResult with precomputed effects of "finalize_payment".
         let make_charged_execution_failure = |error| match ExecutionResult::new_payment_code_error(
             error,
-            wasmless_transfer_cost,
+            wasmless_transfer_motes,
             account_main_purse_balance,
             wasmless_transfer_gas_cost,
             account_main_purse_balance_key,
@@ -742,8 +730,12 @@ where
                                 .write(Key::Account(public_key), StoredValue::Account(new_account))
                         }
                         None => {
-                            // Implies that execution_result is a failure.
-                            return Ok(execution_result);
+                            // This case implies that the execution_result is a failure variant as
+                            // implemented inside host_exec().
+                            let error = execution_result
+                                .take_error()
+                                .unwrap_or(Error::InsufficientPayment);
+                            return Ok(make_charged_execution_failure(error));
                         }
                     }
                 }
@@ -761,8 +753,7 @@ where
         let payment_result = {
             // Check source purses minimum balance
             let source_uref = transfer_args.source();
-
-            let source_purse_balance = {
+            let source_purse_balance = if source_uref != account_main_purse {
                 let source_purse_balance_key = match tracking_copy
                     .borrow_mut()
                     .get_purse_balance_key(correlation_id, Key::URef(source_uref))
@@ -778,11 +769,14 @@ where
                     Ok(purse_balance) => purse_balance,
                     Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
                 }
+            } else {
+                // If source purse is main purse then we already have the balance.
+                account_main_purse_balance
             };
 
             let transfer_amount_motes = Motes::new(transfer_args.amount());
 
-            match wasmless_transfer_cost.checked_add(transfer_amount_motes) {
+            match wasmless_transfer_motes.checked_add(transfer_amount_motes) {
                 Some(total_amount) if source_purse_balance < total_amount => {
                     // We can't continue if the minimum funds in source purse are lower than the
                     // required cost.
@@ -831,7 +825,7 @@ where
                 transfer_args.to(),
                 transfer_args.source(),
                 payment_uref,
-                wasmless_transfer_cost.value(),
+                wasmless_transfer_motes.value(),
                 transfer_args.arg_id(),
             );
 
@@ -961,7 +955,7 @@ where
                     // A case where payment_result.cost() is different than wasmless transfer cost
                     // is considered a programming error.
                     debug_assert_eq!(payment_result.cost(), wasmless_transfer_gas_cost);
-                    wasmless_transfer_cost
+                    wasmless_transfer_motes
                 };
 
                 let account = deploy_item.address;
