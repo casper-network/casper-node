@@ -1,16 +1,11 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    convert::Infallible,
-    fmt::{self, Display, Formatter},
-    marker::PhantomData,
-};
+use std::{collections::{HashMap, hash_map::Entry}, convert::Infallible, fmt::{self, Display, Formatter}, marker::PhantomData};
 
 use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer, Signature};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
 
 use super::{consensus::EraId, Component};
 use crate::{
@@ -139,7 +134,6 @@ impl<I: Display> Display for Event<I> {
 struct SignatureCache {
     curr_era: EraId,
     signatures: HashMap<BlockHash, BlockSignatures>,
-    proofs: HashMap<BlockHash, BTreeMap<PublicKey, Signature>>,
 }
 
 impl SignatureCache {
@@ -147,18 +141,11 @@ impl SignatureCache {
         SignatureCache {
             curr_era: EraId(0),
             signatures: Default::default(),
-            proofs: Default::default(),
         }
     }
 
-    fn get(&mut self, hash: &BlockHash, era_id: EraId) -> Option<BlockSignatures> {
-        let mut block_signatures = BlockSignatures::new(*hash, era_id);
-        if let Some(proofs) = self.proofs.get(hash) {
-            for (pub_key, sig) in proofs {
-                block_signatures.insert_proof(*pub_key, *sig);
-            }
-        }
-        Some(block_signatures)
+    fn get(&mut self, hash: &BlockHash, _era_id: EraId) -> Option<BlockSignatures> {
+        self.signatures.get(hash).cloned()
     }
 
     fn insert(&mut self, block_signature: BlockSignatures) {
@@ -166,17 +153,16 @@ impl SignatureCache {
         // proximity refer to the same era.
         if self.curr_era < block_signature.era_id {
             self.signatures.clear();
-            self.proofs.clear();
             self.curr_era = block_signature.era_id;
         }
-        if !block_signature.proofs.is_empty() {
-            let entry = self.proofs.entry(block_signature.block_hash).or_default();
-            for (pub_key, sig) in &block_signature.proofs {
-                entry.insert(*pub_key, *sig);
+        match self.signatures.entry(block_signature.block_hash) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().proofs.extend(block_signature.proofs);                
+            }
+            Entry::Vacant(_) => {
+                self.signatures.insert(block_signature.block_hash, block_signature);
             }
         }
-        self.signatures
-            .insert(block_signature.block_hash, block_signature);
     }
 
     /// Get signatures from the cache to be updated.
