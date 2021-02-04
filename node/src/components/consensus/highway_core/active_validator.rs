@@ -75,7 +75,6 @@ where
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
     /// The path to the file storing the hash of our latest known unit (if any).
-    #[data_size(skip)] // (negligible, but still:) TODO: impl DataSize for PathBuf
     unit_hash_file: Option<PathBuf>,
     /// The hash of the last known unit created by us.
     own_last_unit: Option<C::Hash>,
