@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
@@ -71,7 +71,7 @@ pub struct TestReactorConfig {
 }
 
 /// A dummy payload.
-#[derive(Clone, Eq, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Eq, Deserialize, Hash, PartialEq, Serialize)]
 pub struct DummyPayload(Vec<u8>);
 
 const DUMMY_PAYLOAD_ID_LEN: usize = 16;
@@ -202,21 +202,37 @@ async fn send_large_message_across_network() {
     // gossiping large payloads. We gossip one on each node.
     let node_ids: Vec<_> = net.nodes().keys().cloned().collect();
     for (index, sender) in node_ids.iter().enumerate() {
-        let dummy_payload = DummyPayload::random_with_size(&mut rng, payload_size);
+        // Clear all collectors at the beginning of a round.
+        net.nodes_mut()
+            .values_mut()
+            .map(|runner| runner.reactor_mut().inner_mut())
+            .for_each(|reactor| reactor.collector.payloads.clear());
 
-        // Calling `broadcast_message` actually triggers libp2p gossping.
-        net.process_injected_effect_on(sender, |effect_builder| {
-            effect_builder
-                .broadcast_message(dummy_payload.clone())
-                .ignore()
-        })
-        .await;
+        let mut dummy_payloads = HashSet::new();
+        let mut dummy_payload_ids = HashSet::new();
 
-        info!(?sender, payload = %dummy_payload, round=index, total=node_ids.len(),
-              "Started broadcast/gossip of payload, waiting for all nodes to receive it");
+        // Prepare a set of dummy payloads.
+        for _ in 0..payload_count {
+            let payload = DummyPayload::random_with_size(&mut rng, payload_size);
+            dummy_payload_ids.insert(payload.id());
+            dummy_payloads.insert(payload);
+        }
+
+        for dummy_payload in &dummy_payloads {
+            // Calling `broadcast_message` actually triggers libp2p gossping.
+            net.process_injected_effect_on(sender, |effect_builder| {
+                effect_builder
+                    .broadcast_message(dummy_payload.clone())
+                    .ignore()
+            })
+            .await;
+        }
+
+        info!(?sender, num_payloads = %dummy_payloads.len(), round=index, total_rounds=node_ids.len(),
+              "Started broadcast/gossip of payloads, waiting for all nodes to receive it");
         net.settle_on(
             &mut rng,
-            others_received(dummy_payload.id(), sender.clone()),
+            others_received(dummy_payload_ids, sender.clone()),
             timeout,
         )
         .await;
@@ -254,7 +270,7 @@ fn network_online(
 
 /// Checks whether or not every node except `sender` on the network received the given payload.
 fn others_received(
-    payload_id: DummyPayloadId,
+    payloads: HashSet<DummyPayloadId>,
     sender: NodeId,
 ) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool {
     move |nodes| {
@@ -265,6 +281,7 @@ fn others_received(
             // Skip the sender.
             .filter(|reactor| reactor.node_id() != sender)
             // Ensure others all have received the payload.
-            .all(|reactor| reactor.collector.payloads.contains(&payload_id))
+            // Note: `std` HashSet short circuits on length, so this should be fine.
+            .all(|reactor| reactor.collector.payloads == payloads)
     }
 }

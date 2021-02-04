@@ -276,6 +276,11 @@ where
         &self.nodes
     }
 
+    /// Returns the internal map of nodes.
+    pub fn nodes_mut(&mut self) -> &mut HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+        &mut self.nodes
+    }
+
     /// Create effects and dispatch them on the given node.
     ///
     /// The effects are created via a call to `create_effects` which is itself passed an instance of
