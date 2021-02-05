@@ -19,7 +19,6 @@ use casper_types::{
         DelegationRate, SeigniorageAllocation, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
         ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEY, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
-        METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     runtime_args, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -66,6 +65,7 @@ fn withdraw_validator_reward(
     validator: PublicKey,
     protocol_version: Option<ProtocolVersion>,
 ) -> U512 {
+    const METHOD_WITHDRAW_VALIDATOR_REWARD: &str = "withdraw_validator_reward";
     let withdraw_request = {
         let mut builder = ExecuteRequestBuilder::standard(
             sender,
@@ -105,6 +105,7 @@ fn withdraw_delegator_reward(
     delegator: PublicKey,
     protocol_version: Option<ProtocolVersion>,
 ) -> U512 {
+    const METHOD_WITHDRAW_DELEGATOR_REWARD: &str = "withdraw_delegator_reward";
     let withdraw_request = {
         let mut builder = ExecuteRequestBuilder::standard(
             sender,
