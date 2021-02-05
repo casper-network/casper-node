@@ -23,7 +23,7 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -37,7 +37,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::{NodeId, StatusFeed},
+    types::{Chainspec, NodeId, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -76,12 +76,14 @@ pub(crate) struct RestServer {
     shutdown_sender: oneshot::Sender<()>,
     /// The task handle which will only join once the server loop has exited.
     server_join_handle: Option<JoinHandle<()>>,
+    chainspec: Arc<Chainspec>,
 }
 
 impl RestServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        chainspec: Arc<Chainspec>,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -99,6 +101,7 @@ impl RestServer {
         Ok(RestServer {
             shutdown_sender,
             server_join_handle: Some(server_join_handle),
+            chainspec,
         })
     }
 }

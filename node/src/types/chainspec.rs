@@ -57,6 +57,9 @@ pub struct Chainspec {
     pub(crate) wasm_config: WasmConfig,
     #[serde(rename = "system_costs")]
     pub(crate) system_costs_config: SystemConfig,
+    #[serde(skip)]
+    /// The state root hash after running EE genesis/upgrade process.
+    pub(crate) state_root_hash: Option<Digest>,
 }
 
 impl Chainspec {

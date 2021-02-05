@@ -12,6 +12,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -42,11 +43,6 @@ use crate::{
     NodeRng,
 };
 
-static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
-    name: String::from("casper-example"),
-    root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
-});
-
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
 pub enum Event {
@@ -75,53 +71,15 @@ impl Display for Event {
     }
 }
 
-#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
-pub struct ChainspecInfo {
-    // Name of the chainspec.
-    name: String,
-    // If `Some` then genesis process returned a valid post state hash.
-    root_hash: Option<Digest>,
-}
-
-impl ChainspecInfo {
-    pub(crate) fn new(name: String, root_hash: Option<Digest>) -> ChainspecInfo {
-        ChainspecInfo { name, root_hash }
-    }
-
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    pub fn root_hash(&self) -> Option<Digest> {
-        self.root_hash
-    }
-}
-
-impl DocExample for ChainspecInfo {
-    fn doc_example() -> &'static Self {
-        &*CHAINSPEC_INFO
-    }
-}
-
-impl From<ChainspecLoader> for ChainspecInfo {
-    fn from(chainspec_loader: ChainspecLoader) -> Self {
-        ChainspecInfo::new(
-            chainspec_loader.chainspec.network_config.name.clone(),
-            chainspec_loader.genesis_state_root_hash,
-        )
-    }
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub struct ChainspecLoader {
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    /// If `Some`, we're finished.  The value of the bool indicates success (true) or not.
+    /// If `Some`, we're finished loading and committing the chainspec.  The value of the bool
+    /// indicates success (true) or not.
     completed_successfully: Option<bool>,
-    /// If `Some` then genesis process returned a valid state root hash.
-    genesis_state_root_hash: Option<Digest>,
 }
 
 impl ChainspecLoader {
@@ -177,7 +135,6 @@ impl ChainspecLoader {
             chainspec,
             root_dir,
             completed_successfully: None,
-            genesis_state_root_hash: None,
         };
 
         (chainspec_loader, effects)
@@ -192,7 +149,7 @@ impl ChainspecLoader {
     }
 
     pub(crate) fn genesis_state_root_hash(&self) -> &Option<Digest> {
-        &self.genesis_state_root_hash
+        &self.state_root_hash
     }
 
     pub(crate) fn chainspec(&self) -> &Chainspec {
@@ -214,9 +171,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
-                responder.respond(self.clone().into()).ignore()
-            }
             Event::Request(ChainspecLoaderRequest::NextUpgradeActivationPoint(responder)) => {
                 let root_dir = self.root_dir.clone();
                 let current_version = self.chainspec.protocol_config.version.clone();
@@ -257,7 +211,7 @@ where
                             info!("genesis state root hash {}", post_state_hash);
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
-                            self.genesis_state_root_hash = Some(post_state_hash.into());
+                            self.state_root_hash = Some(post_state_hash.into());
                         }
                     },
                     Err(error) => {

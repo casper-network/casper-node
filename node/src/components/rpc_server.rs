@@ -19,7 +19,7 @@ mod event;
 mod http_server;
 pub mod rpcs;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use futures::join;
@@ -46,7 +46,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeId, StatusFeed},
+    types::{Chainspec, NodeId, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -85,12 +85,15 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RpcServer {}
+pub(crate) struct RpcServer {
+    chainspec: Arc<Chainspec>,
+}
 
 impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        chainspec: Arc<Chainspec>,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -98,7 +101,7 @@ impl RpcServer {
         let builder = utils::start_listening(&config.address)?;
         tokio::spawn(http_server::run(builder, effect_builder, config.qps_limit));
 
-        Ok(RpcServer {})
+        Ok(RpcServer { chainspec })
     }
 }
 

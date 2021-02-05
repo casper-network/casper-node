@@ -19,8 +19,14 @@ use crate::{
         chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
     },
     crypto::hash::Digest,
-    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
+    types::{Block, BlockHash, Chainspec, NodeId, PeersMap, Timestamp},
 };
+
+static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
+    name: String::from("casper-example"),
+    root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
+});
+
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
@@ -35,6 +41,30 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     };
     GetStatusResult::from(status_feed)
 });
+
+
+#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
+pub struct ChainspecInfo {
+    // Name of the chainspec.
+    pub name: String,
+    // If `Some` then genesis process returned a valid post state hash.
+    pub root_hash: Option<Digest>,
+}
+
+impl DocExample for ChainspecInfo {
+    fn doc_example() -> &'static Self {
+        &*CHAINSPEC_INFO
+    }
+}
+
+impl From<&Chainspec> for ChainspecInfo {
+    fn from(chainspec: &Chainspec) -> Self {
+        ChainspecInfo(
+            name: chainspec.network_config.name.clone(),
+            root_hash: chainspec.state_root_hash,
+        )
+    }
+}
 
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
@@ -54,12 +84,12 @@ impl<I> StatusFeed<I> {
     pub(crate) fn new(
         last_added_block: Option<Block>,
         peers: BTreeMap<I, String>,
-        chainspec_info: ChainspecInfo,
+        chainspec: &Chainspec,
     ) -> Self {
         StatusFeed {
             last_added_block,
             peers,
-            chainspec_info,
+            chainspec_info: ChainspecInfo::from(chainspec),
             version: crate::VERSION_STRING.as_str(),
         }
     }
