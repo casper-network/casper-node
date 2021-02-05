@@ -142,8 +142,8 @@ impl FromBytes for VestingSchedule {
 }
 
 /// Generators for [`VestingSchedule`]
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
+#[cfg(test)]
+mod gens {
     use proptest::{
         array, option,
         prelude::{Arbitrary, Strategy},
