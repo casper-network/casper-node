@@ -265,11 +265,6 @@ mod tests {
             vesting_schedule.locked_amount(timestamp),
             Some(U512::from(10))
         );
-        timestamp = RELEASE_TIMESTAMP + (WEEK_MILLIS as u64 * 12) + 1;
-        assert_eq!(
-            vesting_schedule.locked_amount(timestamp),
-            Some(U512::from(10))
-        );
 
         timestamp = RELEASE_TIMESTAMP + (WEEK_MILLIS as u64 * 13) - 1;
         assert_eq!(
