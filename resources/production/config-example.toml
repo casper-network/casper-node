@@ -4,7 +4,7 @@
 [node]
 
 # If set, use this hash as a trust anchor when joining an existing network.
-# trusted_hash =
+#trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
 
 # =================================
