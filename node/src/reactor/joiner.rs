@@ -29,7 +29,7 @@ use crate::{
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraId, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -368,7 +368,7 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -479,6 +479,7 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
+            EraId(0),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
@@ -488,7 +489,6 @@ impl reactor::Reactor for Reactor {
                 .expect("should have genesis post state hash"),
             registry,
             Box::new(HighwayProtocol::new_boxed),
-            rng,
         )?;
 
         Ok((
