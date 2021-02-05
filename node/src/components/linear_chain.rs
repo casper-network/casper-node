@@ -398,7 +398,8 @@ where
                     effect_builder,
                 );
                 // Cache the signature as we expect more finality signatures to arrive soon.
-                self.signature_cache.insert(signatures);
+                self.signature_cache.insert(signatures.clone());
+                effects.extend(effect_builder.put_signatures_to_storage(signatures).ignore());
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
                         block,

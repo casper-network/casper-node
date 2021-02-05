@@ -606,10 +606,21 @@ impl Storage {
                 responder,
             } => {
                 let mut txn = self.env.begin_rw_txn()?;
+                let old_data: Option<BlockSignatures> =
+                    txn.get_value(self.block_metadata_db, &signatures.block_hash)?;
+                let new_data = match old_data {
+                    None => signatures,
+                    Some(mut data) => {
+                        for (pk, sig) in signatures.proofs {
+                            data.insert_proof(pk, sig);
+                        }
+                        data
+                    }
+                };
                 let outcome = txn.put_value(
                     self.block_metadata_db,
-                    &signatures.block_hash,
-                    &signatures,
+                    &new_data.block_hash,
+                    &new_data,
                     true,
                 )?;
                 txn.commit()?;
