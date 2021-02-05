@@ -146,19 +146,6 @@ where
             .expect("failure to setup and register ConsensusMetrics");
         let genesis_start_time = protocol_config.timestamp;
 
-        let effects = effect_builder
-            .collect_switch_blocks(
-                current_era.iter_other(protocol_config.last_upgrade_point, bonded_eras * 3),
-            )
-            .event(move |switch_blocks| Event::InitializeEras {
-                switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
-                current_era,
-                validators,
-                genesis_state_root_hash,
-                timestamp,
-                genesis_start_time,
-            });
-
         let era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
@@ -176,6 +163,17 @@ where
             next_upgrade_activation_point: None,
             stop_for_upgrade: false,
         };
+
+        let effects = effect_builder
+            .collect_switch_blocks(era_supervisor.iter_past_other(current_era, bonded_eras * 3))
+            .event(move |switch_blocks| Event::InitializeEras {
+                switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
+                current_era,
+                validators,
+                genesis_state_root_hash,
+                timestamp,
+                genesis_start_time,
+            });
 
         Ok((era_supervisor, effects))
     }
@@ -218,6 +216,30 @@ where
         });
 
         u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
+    }
+
+    /// Returns an iterator over era IDs of `num_eras` past eras, including the provided one.
+    pub(crate) fn iter_past(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
+        (self
+            .protocol_config
+            .last_upgrade_point
+            .0
+            .max(era_id.0.saturating_sub(num_eras))..=era_id.0)
+            .map(EraId)
+    }
+
+    /// Returns an iterator over era IDs of `num_eras` past eras, excluding the provided one.
+    pub(crate) fn iter_past_other(
+        &self,
+        era_id: EraId,
+        num_eras: u64,
+    ) -> impl Iterator<Item = EraId> {
+        (self
+            .protocol_config
+            .last_upgrade_point
+            .0
+            .max(era_id.0.saturating_sub(num_eras))..era_id.0)
+            .map(EraId)
     }
 
     /// Starts a new era; panics if it already exists.
@@ -442,11 +464,8 @@ where
                     trace!(era = era_id.0, "not handling message; era too old");
                     return Effects::new();
                 }
-                era_id
-                    .iter_bonded(
-                        self.era_supervisor.protocol_config.last_upgrade_point,
-                        self.era_supervisor.bonded_eras,
-                    )
+                self.era_supervisor
+                    .iter_past(era_id, self.era_supervisor.bonded_eras)
                     .flat_map(|e_id| {
                         self.delegate_to_era(e_id, |consensus, _| {
                             consensus.request_evidence(sender.clone(), &pub_key)
@@ -473,11 +492,9 @@ where
             warn!(era = era_id.0, "new proto block in outdated era");
             return Effects::new();
         }
-        let accusations = era_id
-            .iter_bonded(
-                self.era_supervisor.protocol_config.last_upgrade_point,
-                self.era_supervisor.bonded_eras,
-            )
+        let accusations = self
+            .era_supervisor
+            .iter_past(era_id, self.era_supervisor.bonded_eras)
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
@@ -593,8 +610,9 @@ where
         let last_upgrade_point = self.era_supervisor.protocol_config.last_upgrade_point;
         let mut effects: Effects<Event<I>> = Default::default();
 
-        for era_id in
-            current_era.iter_bonded(last_upgrade_point, self.era_supervisor.bonded_eras * 2)
+        for era_id in self
+            .era_supervisor
+            .iter_past(current_era, self.era_supervisor.bonded_eras * 2)
         {
             let maybe_switch_block = if era_id > last_upgrade_point {
                 Some(EraId(era_id.0 - 1))
@@ -608,8 +626,9 @@ where
                 .map(|era_end| era_end.equivocators.clone())
                 .unwrap_or_default();
 
-            let slashed = era_id
-                .iter_other(last_upgrade_point, self.era_supervisor.bonded_eras)
+            let slashed = self
+                .era_supervisor
+                .iter_past_other(era_id, self.era_supervisor.bonded_eras)
                 .filter_map(|old_id| switch_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
@@ -688,11 +707,9 @@ where
         let seed =
             EraSupervisor::<I>::era_seed(booking_block_hash, block_header.accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
-        let slashed = era_id
-            .iter_other(
-                self.era_supervisor.protocol_config.last_upgrade_point,
-                self.era_supervisor.bonded_eras,
-            )
+        let slashed = self
+            .era_supervisor
+            .iter_past_other(era_id, self.era_supervisor.bonded_eras)
             .flat_map(|e_id| &self.era_supervisor.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
@@ -760,11 +777,8 @@ where
     /// Returns `true` if any of the most recent eras has evidence against the validator with key
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
-        era_id
-            .iter_bonded(
-                self.era_supervisor.protocol_config.last_upgrade_point,
-                self.era_supervisor.bonded_eras,
-            )
+        self.era_supervisor
+            .iter_past(era_id, self.era_supervisor.bonded_eras)
             .any(|eid| self.era(eid).consensus.has_evidence(&pub_key))
     }
 
@@ -950,11 +964,9 @@ where
                 }
                 effects
             }
-            ProtocolOutcome::SendEvidence(sender, pub_key) => era_id
-                .iter_other(
-                    self.era_supervisor.protocol_config.last_upgrade_point,
-                    self.era_supervisor.bonded_eras,
-                )
+            ProtocolOutcome::SendEvidence(sender, pub_key) => self
+                .era_supervisor
+                .iter_past_other(era_id, self.era_supervisor.bonded_eras)
                 .flat_map(|e_id| {
                     self.delegate_to_era(e_id, |consensus, _| {
                         consensus.request_evidence(sender.clone(), &pub_key)

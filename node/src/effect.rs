@@ -1412,6 +1412,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Collects the switch blocks from the eras identified by provided era IDs. Returns
+    /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
+    /// `None` if at least one was missing.
     pub(crate) async fn collect_switch_blocks<I: IntoIterator<Item = EraId>>(
         self,
         era_ids: I,

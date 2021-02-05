@@ -49,7 +49,7 @@ pub(crate) struct ProtocolConfig {
     /// The network protocol version.
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
-    /// The first Era ID after the last upgrade
+    /// The first era ID after the last upgrade
     pub(crate) last_upgrade_point: EraId,
     /// Name of the network.
     pub(crate) name: String,
