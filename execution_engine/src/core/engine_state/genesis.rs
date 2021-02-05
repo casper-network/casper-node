@@ -17,12 +17,13 @@ use casper_types::{
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY,
         ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
-        DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-        METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS,
-        METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH,
-        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD,
-        METHOD_WITHDRAW_VALIDATOR_REWARD, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+        DELEGATOR_REWARD_PURSE_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+        INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID,
+        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
+        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
+        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
@@ -687,6 +688,22 @@ where
             ),
         );
         named_keys.insert(ERA_ID_KEY.into(), era_id_uref.into());
+
+        let era_end_timestamp_millis_uref = self
+            .uref_address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        self.tracking_copy.borrow_mut().write(
+            era_end_timestamp_millis_uref.into(),
+            StoredValue::CLValue(
+                CLValue::from_t(INITIAL_ERA_END_TIMESTAMP_MILLIS)
+                    .map_err(|_| GenesisError::CLValue(ERA_END_TIMESTAMP_MILLIS_KEY.to_string()))?,
+            ),
+        );
+        named_keys.insert(
+            ERA_END_TIMESTAMP_MILLIS_KEY.into(),
+            era_end_timestamp_millis_uref.into(),
+        );
 
         let initial_seigniorage_recipients_uref = self
             .uref_address_generator
