@@ -47,9 +47,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        ActivationPoint, Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures,
-        Chainspec, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
+        ActivationPoint, Block as LinearBlock, Block, BlockHash, BlockHeader, Chainspec, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -298,25 +298,6 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
-    /// Retrieve block and its metadata by its hash.
-    GetBlockAndMetadataByHash {
-        /// The hash of the block.
-        block_hash: BlockHash,
-        /// The responder to call with the results.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
-    },
-    /// Retrieve block and its metadata at a given height.
-    GetBlockAndMetadataByHeight {
-        /// The height of the block.
-        block_height: BlockHeight,
-        /// The responder to call with the results.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
-    },
-    /// Get the highest block and its metadata.
-    GetHighestBlockWithMetadata {
-        /// The responder to call the results with.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
-    },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
@@ -330,21 +311,6 @@ pub enum StorageRequest {
         version: Version,
         /// Responder to call with the result.
         responder: Responder<Option<Arc<Chainspec>>>,
-    },
-    /// Get finality signatures for a Block hash.
-    GetBlockSignatures {
-        /// The hash for the request
-        block_hash: BlockHash,
-        /// Responder to call with the result.
-        responder: Responder<Option<BlockSignatures>>,
-    },
-    /// Store finality signatures.
-    PutBlockSignatures {
-        /// Signatures that are to be stored.
-        signatures: BlockSignatures,
-        /// Responder to call with the result, if true then the signatures were successfully
-        /// stored.
-        responder: Responder<bool>,
     },
 }
 
@@ -384,23 +350,6 @@ impl Display for StorageRequest {
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }
-            StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get block and metadata for block with hash: {}",
-                    block_hash
-                )
-            }
-            StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
-                write!(
-                    formatter,
-                    "get block and metadata for block at height: {}",
-                    block_height
-                )
-            }
-            StorageRequest::GetHighestBlockWithMetadata { .. } => {
-                write!(formatter, "get highest block with metadata")
-            }
             StorageRequest::PutChainspec { chainspec, .. } => {
                 write!(
                     formatter,
@@ -410,16 +359,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
-            }
-            StorageRequest::GetBlockSignatures { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get finality signatures for block hash {}",
-                    block_hash
-                )
-            }
-            StorageRequest::PutBlockSignatures { .. } => {
-                write!(formatter, "put finality signatures")
             }
         }
     }
@@ -520,13 +459,13 @@ pub enum RpcRequest<I> {
         /// Responder to call.
         responder: Responder<Result<(), Error>>,
     },
-    /// If `maybe_identifier` is `Some`, return the specified block if it exists, else `None`.  If
-    /// `maybe_identifier` is `None`, return the latest block.
+    /// If `maybe_hash` is `Some`, return the specified block if it exists, else `None`.  If
+    /// `maybe_hash` is `None`, return the latest block.
     GetBlock {
-        /// The identifier (can either be a hash or the height) of the block to be retrieved.
+        /// The hash of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
-        responder: Responder<Option<(LinearBlock, BlockSignatures)>>,
+        responder: Responder<Option<LinearBlock>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {

@@ -45,7 +45,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, JsonBlock, NodeRng},
+    types::{Deploy, DeployHash, NodeRng},
     utils::DisplayIter,
 };
 
@@ -111,26 +111,17 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         Some(next_era_validator_weights)
     };
 
-    Block::new(
+    let mut block = Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
-    )
-});
-static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
-    let block = Block::doc_example().clone();
-    let mut block_signature = BlockSignatures::new(*block.hash(), block.header().era_id);
-
-    let secret_key = SecretKey::doc_example();
-    let public_key = PublicKey::from(secret_key);
-
+    );
     let mut rng = NodeRng::seed_from_u64(0);
     let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
-    block_signature.insert_proof(public_key, signature);
-
-    JsonBlock::new(block, block_signature)
+    block.append_proof(public_key, signature);
+    block
 });
 
 /// Error returned from constructing or validating a `Block`.
@@ -808,51 +799,6 @@ impl From<bytesrepr::Error> for BlockValidationError {
     }
 }
 
-/// A storage representation of finality signatures with the associated block hash.
-#[derive(Debug, Serialize, Deserialize, Clone, DataSize)]
-pub struct BlockSignatures {
-    /// The block hash for a given block.
-    pub(crate) block_hash: BlockHash,
-    /// The era id for the given set of finality signatures.
-    pub(crate) era_id: EraId,
-    /// The signatures associated with the block hash.
-    pub(crate) proofs: BTreeMap<PublicKey, Signature>,
-}
-
-impl BlockSignatures {
-    pub(crate) fn new(block_hash: BlockHash, era_id: EraId) -> Self {
-        BlockSignatures {
-            block_hash,
-            era_id,
-            proofs: BTreeMap::new(),
-        }
-    }
-
-    pub(crate) fn insert_proof(
-        &mut self,
-        public_key: PublicKey,
-        signature: Signature,
-    ) -> Option<Signature> {
-        self.proofs.insert(public_key, signature)
-    }
-
-    pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
-        self.proofs.contains_key(public_key)
-    }
-}
-
-impl Display for BlockSignatures {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "block signatures for hash: {} in era_id: {} with {} proofs",
-            self.block_hash,
-            self.era_id,
-            self.proofs.len()
-        )
-    }
-}
-
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -860,6 +806,7 @@ pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
     body: (), // TODO: implement body of block
+    proofs: BTreeMap<PublicKey, Signature>,
 }
 
 impl Block {
@@ -905,7 +852,24 @@ impl Block {
 
         let hash = header.hash();
 
-        Block { hash, header, body }
+        Block {
+            hash,
+            header,
+            body,
+            proofs: BTreeMap::new(),
+        }
+    }
+
+    /// Creates an instance of the block from the block header.
+    pub(crate) fn from_header(header: BlockHeader) -> Self {
+        let body = ();
+        let hash = header.hash();
+        Block {
+            hash,
+            header,
+            body,
+            proofs: BTreeMap::new(),
+        }
     }
 
     pub(crate) fn header(&self) -> &BlockHeader {
@@ -933,6 +897,21 @@ impl Block {
     /// The height of a block.
     pub fn height(&self) -> u64 {
         self.header.height()
+    }
+
+    /// Appends the given signature to this block's proofs.  It should have been validated prior to
+    /// this via `BlockHash::verify()`.
+    pub(crate) fn append_proof(
+        &mut self,
+        pub_key: PublicKey,
+        proof: Signature,
+    ) -> Option<Signature> {
+        self.proofs.insert(pub_key, proof)
+    }
+
+    /// Provide proofs for an OpenRPC compatible representation.
+    pub fn proofs(&self) -> &BTreeMap<PublicKey, Signature> {
+        &self.proofs
     }
 
     fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -974,13 +953,23 @@ impl Block {
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
 
-        Block::new(
+        let mut block = Block::new(
             parent_hash,
             parent_seed,
             state_root_hash,
             finalized_block,
             None,
-        )
+        );
+
+        let signatures_count = rng.gen_range(0, 11);
+        for _ in 0..signatures_count {
+            let secret_key = SecretKey::random(rng);
+            let public_key = PublicKey::from(&secret_key);
+            let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, rng);
+            block.append_proof(public_key, signature);
+        }
+
+        block
     }
 }
 
@@ -995,7 +984,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}",
+            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
@@ -1006,6 +995,7 @@ impl Display for Block {
             self.header.timestamp,
             self.header.era_id.0,
             self.header.height,
+            self.proofs.len()
         )?;
         if let Some(ee) = &self.header.era_end {
             write!(formatter, ", era_end: {}", ee)?;
@@ -1019,11 +1009,14 @@ impl ToBytes for Block {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.hash.to_bytes()?);
         buffer.extend(self.header.to_bytes()?);
+        buffer.extend(self.proofs.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length() + self.header.serialized_length()
+        self.hash.serialized_length()
+            + self.header.serialized_length()
+            + self.proofs.serialized_length()
     }
 }
 
@@ -1031,10 +1024,12 @@ impl FromBytes for Block {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
+        let (proofs, remainder) = BTreeMap::<PublicKey, Signature>::from_bytes(remainder)?;
         let block = Block {
             hash,
             header,
             body: (),
+            proofs,
         };
         Ok((block, remainder))
     }
@@ -1119,14 +1114,14 @@ impl Item for BlockByHeight {
 pub(crate) mod json_compatibility {
     use super::*;
 
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     struct Reward {
         validator: PublicKey,
         amount: u64,
     }
 
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     struct ValidatorWeight {
         validator: PublicKey,
@@ -1134,7 +1129,7 @@ pub(crate) mod json_compatibility {
     }
 
     /// Equivocation and reward information to be included in the terminal block.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     struct JsonEraEnd {
         equivocators: Vec<PublicKey>,
@@ -1173,7 +1168,7 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     struct JsonBlockHeader {
         parent_hash: BlockHash,
@@ -1248,7 +1243,7 @@ pub(crate) mod json_compatibility {
     }
 
     /// A JSON-friendly representation of `Block`.
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlock {
         hash: BlockHash,
@@ -1258,20 +1253,6 @@ pub(crate) mod json_compatibility {
     }
 
     impl JsonBlock {
-        /// Create a new JSON Block with a Linear chain block and its associated signatures.
-        pub fn new(block: Block, signatures: BlockSignatures) -> Self {
-            let hash = *block.hash();
-            let header = JsonBlockHeader::from(block.header.clone());
-            let proofs = signatures.proofs.into_iter().map(JsonProof::from).collect();
-
-            JsonBlock {
-                hash,
-                header,
-                body: block.body,
-                proofs,
-            }
-        }
-
         /// Returns the hashes of the `Deploy`s included in the `Block`.
         pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
@@ -1283,9 +1264,14 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    impl DocExample for JsonBlock {
-        fn doc_example() -> &'static Self {
-            &*JSON_BLOCK
+    impl From<Block> for JsonBlock {
+        fn from(block: Block) -> Self {
+            JsonBlock {
+                hash: block.hash,
+                header: JsonBlockHeader::from(block.header),
+                body: block.body,
+                proofs: block.proofs.into_iter().map(JsonProof::from).collect(),
+            }
         }
     }
 
@@ -1295,12 +1281,13 @@ pub(crate) mod json_compatibility {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
                 body: block.body,
+                proofs: block.proofs.into_iter().map(JsonProof::into).collect(),
             }
         }
     }
 
     /// A JSON-friendly representation of a proof, i.e. a block's finality signature.
-    #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
     #[serde(deny_unknown_fields)]
     pub struct JsonProof {
         public_key: PublicKey,
@@ -1326,8 +1313,7 @@ pub(crate) mod json_compatibility {
     fn block_json_roundtrip() {
         let mut rng = TestRng::new();
         let block: Block = Block::random(&mut rng);
-        let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
-        let json_block = JsonBlock::new(block.clone(), empty_signatures);
+        let json_block = JsonBlock::from(block.clone());
         let block_deserialized = Block::from(json_block);
         assert_eq!(block, block_deserialized);
     }
