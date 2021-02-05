@@ -533,7 +533,7 @@ impl Storage {
                 let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block = if let Some(block) =
-                    self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?
+                    self.get_single_block(&mut txn, &block_hash)?
                 {
                     block
                 } else {
