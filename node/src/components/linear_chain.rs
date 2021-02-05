@@ -558,7 +558,7 @@ where
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
                     self.signature_cache.insert(*signatures.clone());
-                    debug!(hash=%signature.block_hash, "storing finality signatures");
+                    debug!(hash=%signatures.block_hash, "storing finality signatures");
                     self.remove_from_pending_fs(&*fs);
                     effects.extend(
                         effect_builder
