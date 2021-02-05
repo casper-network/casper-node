@@ -534,10 +534,10 @@ where
                     }
                 }
             }
-            Event::IsBonded(Some(mut signature), fs, true) => {
+            Event::IsBonded(Some(mut signatures), fs, true) => {
                 // Known block and signature from a bonded validator.
                 // Check if we had already seen this signature before.
-                let signature_known = signature
+                let signature_known = signatures
                     .proofs
                     .get(&fs.public_key)
                     .iter()
@@ -554,15 +554,15 @@ where
                             .announce_finality_signature(fs.clone())
                             .ignore(),
                     );
-                    signature.insert_proof(fs.public_key, fs.signature);
+                    signatures.insert_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
-                    self.signature_cache.insert(*signature.clone());
+                    self.signature_cache.insert(*signatures.clone());
                     debug!(hash=%signature.block_hash, "storing finality signatures");
                     self.remove_from_pending_fs(&*fs);
                     effects.extend(
                         effect_builder
-                            .put_signatures_to_storage(*signature)
+                            .put_signatures_to_storage(*signatures)
                             .ignore(),
                     );
                     effects
