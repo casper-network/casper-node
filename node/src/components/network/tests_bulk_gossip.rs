@@ -4,6 +4,7 @@ use std::{
     env, fmt,
     fmt::{Debug, Display, Formatter},
     fs::File,
+    path::PathBuf,
     str::FromStr,
     time::Duration,
 };
@@ -11,7 +12,7 @@ use std::{
 use hex_fmt::HexFmt;
 use libp2p::kad::kbucket::K_VALUE;
 use rand::{distributions::Standard, Rng};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
@@ -155,21 +156,84 @@ where
     }
 }
 
+/// Load a configuration for a test from an environment variable.
+///
+/// `var_name` dictates the name of the environment variable the configuration is loaded from. The
+/// variable must contain the path to a JSON file from which the data is deserialized.
+///
+/// If `var_name` is not set, returns the `Default::default` value.
+///
+/// # Panics
+///
+/// If the envvar is pointing to an invalid or nonexistant filename, or the input file is malformed,
+/// this function will panic.
+fn load_test_config<T>(var_name: &str) -> T
+where
+    T: Debug + Default + DeserializeOwned + Serialize,
+{
+    let cfg = if let Some(cfg_path) = read_env::<PathBuf>(var_name) {
+        let cfg = serde_json::from_reader(
+            File::open(cfg_path).expect("failure opening test configuration"),
+        )
+        .expect("failure parsing test configuration");
+        println!("Loaded test configuration from {}.", var_name);
+        cfg
+    } else {
+        let cfg = Default::default();
+        println!("Using default configuration.");
+        cfg
+    };
+
+    // Dump the test configuration.
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&cfg)
+            .expect("could not serialize test configuration for output")
+    );
+
+    cfg
+}
+
+/// Configuration for a message sending test.
+#[derive(Debug, Deserialize, Serialize)]
+struct MessageSendTestConfig {
+    /// Number of nodes to include in test.
+    node_count: usize,
+    /// Size of the payload to send.
+    payload_size: usize,
+    /// How often to send the payload.
+    payload_count: usize,
+    /// How long to wait for a round to reach saturation before quitting.
+    full_gossip_round_timeout: u64,
+    /// How long to wait for the network to fully discover itself.
+    discovery_timeout: u64,
+    /// Number of seconds to wait after binding first node.
+    bind_delay: u64,
+}
+
+impl Default for MessageSendTestConfig {
+    fn default() -> Self {
+        MessageSendTestConfig {
+            node_count: 5,
+            payload_size: 1024 * 1024 * 4,
+            payload_count: 1,
+            full_gossip_round_timeout: 20,
+            discovery_timeout: 30,
+            bind_delay: 2,
+        }
+    }
+}
+
 #[tokio::test]
-async fn send_large_message_across_network() {
+async fn message_sending_test() {
     init_logging();
+
+    let test_cfg: MessageSendTestConfig = load_test_config("TESTCFG_SEND_MESSAGE");
 
     if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
         eprintln!("{} set, skipping test", ENABLE_SMALL_NET_ENV_VAR);
         return;
     }
-
-    // This can, on a decent machine, be set to 30, 50, maybe even 100 nodes. The default is set to
-    // 5 to avoid overloading CI.
-    let node_count: usize = read_env("TEST_NODE_COUNT").unwrap_or(5);
-
-    let payload_size: usize = read_env("TEST_PAYLOAD_SIZE").unwrap_or(1024 * 1024 * 4);
-    let payload_count: usize = read_env("TEST_PAYLOAD_COUNT").unwrap_or(1);
 
     let mut rng = crate::new_rng();
 
@@ -189,10 +253,10 @@ async fn send_large_message_across_network() {
 
     // Hack to get network component to connect. This gives the libp2p thread (which is independent
     // of cranking) a little time to bind to the socket.
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    std::thread::sleep(std::time::Duration::from_secs(test_cfg.bind_delay));
 
     // Create `node_count-1` additional node instances.
-    for _ in 1..node_count {
+    for _ in 1..test_cfg.node_count {
         let cfg = TestReactorConfig {
             chainspec: chainspec.clone(),
             network_config: NetworkComponentConfig::default_local_net(first_node_port),
@@ -203,8 +267,12 @@ async fn send_large_message_across_network() {
 
     info!("Network setup, waiting for discovery to complete");
     // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time.
-    net.settle_on(&mut rng, network_online, Duration::from_secs(30))
-        .await;
+    net.settle_on(
+        &mut rng,
+        network_online,
+        Duration::from_secs(test_cfg.discovery_timeout),
+    )
+    .await;
     info!("Discovery complete");
 
     // At this point each node has at least one other peer. Assuming no split, we can now start
@@ -219,8 +287,8 @@ async fn send_large_message_across_network() {
         let mut dummy_payload_ids = HashSet::new();
 
         // Prepare a set of dummy payloads.
-        for _ in 0..payload_count {
-            let payload = DummyPayload::random_with_size(&mut rng, payload_size);
+        for _ in 0..test_cfg.payload_count {
+            let payload = DummyPayload::random_with_size(&mut rng, test_cfg.payload_size);
             dummy_payload_ids.insert(payload.id());
             dummy_payloads.insert(payload);
         }
@@ -240,7 +308,7 @@ async fn send_large_message_across_network() {
         net.try_settle_on(
             &mut rng,
             others_received(dummy_payload_ids, sender.clone()),
-            Duration::from_secs(5),
+            Duration::from_secs(test_cfg.full_gossip_round_timeout),
         )
         .await
         .unwrap_or_else(|elapsed| {
