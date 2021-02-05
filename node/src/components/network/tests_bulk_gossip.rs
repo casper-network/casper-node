@@ -1,12 +1,14 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
+    fs::File,
     str::FromStr,
     time::Duration,
 };
 
+use hex_fmt::HexFmt;
 use libp2p::kad::kbucket::K_VALUE;
 use rand::{distributions::Standard, Rng};
 use serde::{Deserialize, Serialize};
@@ -236,12 +238,43 @@ async fn send_large_message_across_network() {
 
         info!(?sender, num_payloads = %dummy_payloads.len(), round=index, total_rounds=node_ids.len(),
               "Started broadcast/gossip of payloads, waiting for all nodes to receive it");
-        net.settle_on(
+        net.try_settle_on(
             &mut rng,
             others_received(dummy_payload_ids, sender.clone()),
-            timeout,
+            Duration::from_secs(5),
         )
-        .await;
+        .await
+        .unwrap_or_else(|elapsed| {
+            let dump_filename = "test_run_network_state.json";
+
+            let state: HashMap<_, _> = net
+                .reactors()
+                .map(|reactor| {
+                    (
+                        reactor.node_id().to_string(),
+                        reactor
+                            .collector
+                            .payloads
+                            .iter()
+                            .map(|payload_id| HexFmt(payload_id).to_string())
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
+
+            // TODO: Allow for general saving of test outcome state using trait type. Use to collect
+            // diagnostics in general.
+            let mut dump_file = File::create(dump_filename).expect("cannot open dump filename");
+            serde_json::to_writer_pretty(&mut dump_file, &state)
+                .expect("failed to dump node state");
+
+            drop(dump_file);
+
+            panic!(
+                "failed after {}, network gossip state has been dumped to {}",
+                elapsed, dump_filename
+            )
+        });
         info!(?sender, "Completed gossip test for sender")
     }
 }
