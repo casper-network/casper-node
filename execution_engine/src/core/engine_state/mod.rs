@@ -1793,13 +1793,11 @@ where
             Ok(None) => {
                 return Ok(StepResult::InvalidProtocolVersion);
             }
-            Err(_) => {
-                return Ok(StepResult::PreconditionError);
-            }
+            Err(error) => return Ok(StepResult::GetProtocolDataError(Error::Exec(error.into()))),
         };
 
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
-            Err(_) => return Ok(StepResult::PreconditionError),
+            Err(error) => return Ok(StepResult::TrackingCopyError(error)),
             Ok(None) => return Ok(StepResult::RootNotFound),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -1818,15 +1816,15 @@ where
             .get_contract(correlation_id, auction_hash)
         {
             Ok(contract) => contract,
-            Err(_) => {
-                return Ok(StepResult::PreconditionError);
+            Err(error) => {
+                return Ok(StepResult::GetContractError(error.into()));
             }
         };
 
         let system_module = match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
             Ok(module) => module,
-            Err(_) => {
-                return Ok(StepResult::PreconditionError);
+            Err(error) => {
+                return Ok(StepResult::GetSystemModuleError(error.into()));
             }
         };
 
