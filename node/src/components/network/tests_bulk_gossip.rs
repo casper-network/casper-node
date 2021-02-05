@@ -168,9 +168,6 @@ async fn send_large_message_across_network() {
     // 5 to avoid overloading CI.
     let node_count: usize = read_env("TEST_NODE_COUNT").unwrap_or(5);
 
-    // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time for gossip
-    // and connecting.
-    let timeout = Duration::from_secs(60);
     let payload_size: usize = read_env("TEST_PAYLOAD_SIZE").unwrap_or(1024 * 1024 * 4);
     let payload_count: usize = read_env("TEST_PAYLOAD_COUNT").unwrap_or(1);
 
@@ -205,7 +202,9 @@ async fn send_large_message_across_network() {
     }
 
     info!("Network setup, waiting for discovery to complete");
-    net.settle_on(&mut rng, network_online, timeout).await;
+    // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time.
+    net.settle_on(&mut rng, network_online, Duration::from_secs(30))
+        .await;
     info!("Discovery complete");
 
     // At this point each node has at least one other peer. Assuming no split, we can now start
