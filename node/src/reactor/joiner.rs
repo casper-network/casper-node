@@ -73,6 +73,7 @@ use crate::{
 use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {

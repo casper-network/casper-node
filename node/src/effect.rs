@@ -111,9 +111,9 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Chainspec,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures,
+        Chainspec, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
 };
@@ -685,6 +685,39 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested signatures for a given block hash.
+    pub(crate) async fn get_signatures_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockSignatures {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the requested finality signatures into storage.
+    pub(crate) async fn put_signatures_to_storage(self, signatures: BlockSignatures) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockSignatures {
+                signatures,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block's transfers from storage.
     pub(crate) async fn get_block_transfers_from_storage(
         self,
@@ -852,6 +885,56 @@ impl<REv> EffectBuilder<REv> {
                 deploy_hash,
                 responder,
             },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its associated metadata.
+    pub(crate) async fn get_block_at_height_with_metadata_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<(Block, BlockSignatures)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block by hash with its associated metadata.
+    pub(crate) async fn get_block_with_metadata_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<(Block, BlockSignatures)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHash {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get the highest block with its associated metadata.
+    pub(crate) async fn get_highest_block_with_metadata_from_storage(
+        self,
+    ) -> Option<(Block, BlockSignatures)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestBlockWithMetadata { responder },
             QueueKind::Regular,
         )
         .await

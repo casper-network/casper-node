@@ -341,7 +341,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                             error_msg,
                         ))?);
                     }
-                    Some(block) => block,
+                    Some((block, _)) => block,
                 }
             };
 
