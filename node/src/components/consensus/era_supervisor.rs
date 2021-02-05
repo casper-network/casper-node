@@ -717,7 +717,7 @@ where
                 .send_message(to, era_id.message(out_msg).into())
                 .ignore(),
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
-                let timediff = timestamp.saturating_sub(Timestamp::now());
+                let timediff = timestamp.saturating_diff(Timestamp::now());
                 self.effect_builder
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer {
@@ -789,7 +789,7 @@ where
                 self.era_supervisor.next_block_height = finalized_block.height() + 1;
                 if finalized_block.era_end().is_some() {
                     // This was the era's last block. Schedule deactivating this era.
-                    let delay = Timestamp::now().saturating_sub(timestamp).into();
+                    let delay = Timestamp::now().saturating_diff(timestamp).into();
                     let faulty_num = era.consensus.validators_with_evidence().len();
                     let deactivate_era = move |_| Event::DeactivateEra {
                         era_id,

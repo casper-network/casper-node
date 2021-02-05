@@ -664,7 +664,7 @@ pub(crate) mod tests {
         types::Timestamp,
     };
 
-    fn test_validators() -> Validators<u32> {
+    pub(crate) fn test_validators() -> Validators<u32> {
         let vid_weights: Vec<(u32, u64)> =
             vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
                 .into_iter()
