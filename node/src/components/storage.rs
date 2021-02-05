@@ -532,13 +532,12 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let block: Block = if let Some(block) =
-                    self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?
-                {
-                    block
-                } else {
-                    return Ok(responder.respond(None).ignore());
-                };
+                let block: Block =
+                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
+                        block
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    };
                 // Check that the hash of the block retrieved is correct.
                 assert_eq!(&block_hash, block.hash());
                 let signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
