@@ -79,12 +79,18 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         storage: &Storage,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
+        next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, Err>
     where
         Err: From<prometheus::Error> + From<storage::Error>,
     {
         if let Some(state) = read_init_state(storage, chainspec)? {
-            Ok(LinearChainSync::from_state(registry, chainspec, state)?)
+            Ok(LinearChainSync::from_state(
+                registry,
+                chainspec,
+                state,
+                next_upgrade_activation_point,
+            )?)
         } else {
             let state = init_hash.map_or(State::None, |init_hash| {
                 State::sync_trusted_hash(init_hash, genesis_validator_weights)
@@ -94,7 +100,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 peers: PeersState::new(),
                 state,
                 metrics: LinearChainSyncMetrics::new(registry)?,
-                next_upgrade_activation_point: None,
+                next_upgrade_activation_point,
                 stop_for_upgrade: false,
                 state_key,
             })
@@ -102,18 +108,19 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     /// Initialize `LinearChainSync` component from preloaded `State`.
-    pub fn from_state(
+    fn from_state(
         registry: &Registry,
         chainspec: &Chainspec,
         state: State,
+        next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, prometheus::Error> {
-        let state_key = create_state_key(&chainspec);
+        let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
-            next_upgrade_activation_point: None,
+            next_upgrade_activation_point,
             stop_for_upgrade: false,
             state_key,
         })

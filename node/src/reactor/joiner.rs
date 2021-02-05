@@ -6,6 +6,7 @@ use std::{
     collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -457,10 +458,16 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
+        let rest_server = RestServer::new(
+            config.rest_server.clone(),
+            effect_builder,
+            chainspec_loader.chainspec().protocol_config.version.clone(),
+        )?;
 
-        let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), effect_builder)?;
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            chainspec_loader.chainspec().protocol_config.version.clone(),
+        )?;
 
         let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
         effects.extend(reactor::wrap_effects(
@@ -472,12 +479,12 @@ impl reactor::Reactor for Reactor {
 
         let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
-        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            Arc::clone(chainspec_loader.chainspec()),
+        );
 
-        let genesis_state_root_hash = chainspec_loader
-            .genesis_state_root_hash()
-            .expect("Should have Genesis state root hash");
-
+        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
 
         let linear_chain = linear_chain::LinearChain::new(&registry)?;
@@ -490,26 +497,32 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
         let linear_chain_sync = LinearChainSync::new::<Error>(
             registry,
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
             validator_weights.clone(),
+            maybe_next_activation_point,
         )?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
 
+        let state_root_hash = chainspec_loader
+            .state_root_hash()
+            .expect("should have chainspec state root hash");
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
-            chainspec_loader.chainspec().into(),
-            chainspec_loader
-                .genesis_state_root_hash()
-                .expect("should have genesis post state hash"),
+            chainspec_loader.chainspec().as_ref().into(),
+            state_root_hash,
+            maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
             rng,
@@ -803,7 +816,7 @@ impl reactor::Reactor for Reactor {
                     ),
                 ),
                 ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                    // TODO: handle the announcement and acutally disconnect
+                    // TODO: handle the announcement and actually disconnect
                     warn!("disconnecting from a given peer not yet implemented.");
                     Effects::new()
                 }

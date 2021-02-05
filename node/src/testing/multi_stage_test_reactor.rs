@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Display, Formatter},
     mem,
     path::PathBuf,
+    sync::Arc,
 };
 
 use derive_more::From;
@@ -156,7 +157,7 @@ where
 
 pub(crate) struct InitializerReactorConfigWithChainspec {
     config: <InitializerReactor as Reactor>::Config,
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
 }
 
 impl Reactor for MultiStageTestReactor {

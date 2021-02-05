@@ -25,9 +25,10 @@ use super::{
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::{
-    components::CLIENT_API_VERSION, effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock,
-};
+use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
+
+pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<Version> =
+    Lazy::new(|| Version::new(1, 0, 0));
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -42,7 +43,7 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
         url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
     };
     let info = OpenRpcInfoField {
-        version: CLIENT_API_VERSION.to_string(),
+        version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
         title: "Client API of Casper Node".to_string(),
         description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
             .to_string(),
@@ -88,7 +89,7 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema
 });
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
 });
@@ -403,7 +404,25 @@ impl RpcWithoutParamsExt for ListRpcs {
     fn handle_request<REv: ReactorEventT>(
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
+        _api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{types::Chainspec, utils::Loadable};
+
+    use super::*;
+
+    #[test]
+    fn check_docs_example_version() {
+        let chainspec = Chainspec::from_resources("production");
+        assert_eq!(
+            *DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
+            "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \
+            'resources/production/chainspec.toml'"
+        );
     }
 }

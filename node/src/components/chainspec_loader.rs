@@ -15,11 +15,11 @@ use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
 use derive_more::From;
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -31,33 +31,20 @@ use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::{consensus::EraId, Component},
+    components::Component,
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    rpcs::docs::DocExample,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Chainspec,
+        ActivationPoint, Chainspec, ChainspecInfo,
     },
     utils::{self, Loadable},
     NodeRng,
 };
-
-static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade {
-        activation_point: ActivationPoint { era_id: EraId(42) },
-        protocol_version: Version::new(2, 0, 1),
-    };
-    ChainspecInfo {
-        name: String::from("casper-example"),
-        root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
-        next_upgrade: Some(next_upgrade),
-    }
-});
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -107,6 +94,13 @@ pub struct NextUpgrade {
 }
 
 impl NextUpgrade {
+    pub(crate) fn new(activation_point: ActivationPoint, protocol_version: Version) -> Self {
+        NextUpgrade {
+            activation_point,
+            protocol_version,
+        }
+    }
+
     pub(crate) fn activation_point(&self) -> ActivationPoint {
         self.activation_point
     }
@@ -131,58 +125,17 @@ impl Display for NextUpgrade {
     }
 }
 
-/// Information about the chainspec.
-#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
-pub struct ChainspecInfo {
-    /// Name of the chainspec.
-    name: String,
-    /// If `Some` then genesis process returned a valid post state hash.
-    root_hash: Option<Digest>,
-    next_upgrade: Option<NextUpgrade>,
-}
-
-impl ChainspecInfo {
-    pub(crate) fn new(
-        name: String,
-        root_hash: Option<Digest>,
-        next_upgrade: Option<NextUpgrade>,
-    ) -> ChainspecInfo {
-        ChainspecInfo {
-            name,
-            root_hash,
-            next_upgrade,
-        }
-    }
-
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    pub fn root_hash(&self) -> Option<Digest> {
-        self.root_hash
-    }
-
-    pub fn next_upgrade(&self) -> Option<NextUpgrade> {
-        self.next_upgrade.clone()
-    }
-}
-
-impl DocExample for ChainspecInfo {
-    fn doc_example() -> &'static Self {
-        &*CHAINSPEC_INFO
-    }
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub struct ChainspecLoader {
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    /// If `Some`, we're finished.  The value of the bool indicates success (true) or not.
+    /// If `Some`, we're finished loading and committing the chainspec.  The value of the bool
+    /// indicates success (true) or not.
     completed_successfully: Option<bool>,
-    /// If `Some` then genesis process returned a valid state root hash.
-    genesis_state_root_hash: Option<Digest>,
+    /// The state root hash resulting from calling contract runtime commit_genesis/upgrade.
+    state_root_hash: Option<Digest>,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -196,7 +149,7 @@ impl ChainspecLoader {
         REv: From<Event> + From<StorageRequest> + Send,
     {
         Ok(Self::new_with_chainspec_and_path(
-            Chainspec::from_path(&chainspec_dir.as_ref())?,
+            Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
             chainspec_dir,
             effect_builder,
         ))
@@ -204,7 +157,7 @@ impl ChainspecLoader {
 
     #[cfg(test)]
     pub(crate) fn new_with_chainspec<REv>(
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
@@ -214,7 +167,7 @@ impl ChainspecLoader {
     }
 
     fn new_with_chainspec_and_path<P, REv>(
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
         chainspec_dir: P,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
@@ -232,15 +185,17 @@ impl ChainspecLoader {
             .to_path_buf();
 
         let version = chainspec.protocol_config.version.clone();
+        let next_upgrade =
+            next_upgrade(root_dir.clone(), chainspec.protocol_config.version.clone());
         let effects = effect_builder
-            .put_chainspec(chainspec.clone())
+            .put_chainspec(Arc::clone(&chainspec))
             .event(|_| Event::PutToStorage { version });
         let chainspec_loader = ChainspecLoader {
             chainspec,
             root_dir,
             completed_successfully: None,
-            genesis_state_root_hash: None,
-            next_upgrade: None,
+            state_root_hash: None,
+            next_upgrade,
         };
 
         (chainspec_loader, effects)
@@ -254,12 +209,24 @@ impl ChainspecLoader {
         self.completed_successfully.unwrap_or_default()
     }
 
-    pub(crate) fn genesis_state_root_hash(&self) -> &Option<Digest> {
-        &self.genesis_state_root_hash
+    pub(crate) fn state_root_hash(&self) -> Option<Digest> {
+        self.state_root_hash
     }
 
-    pub(crate) fn chainspec(&self) -> &Chainspec {
+    /// Returns the state root hash if available and if this protocol version is genesis.
+    pub(crate) fn genesis_state_root_hash(&self) -> Option<Digest> {
+        if self.chainspec.is_genesis() {
+            return self.state_root_hash;
+        }
+        None
+    }
+
+    pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
         &self.chainspec
+    }
+
+    pub(crate) fn next_upgrade(&self) -> Option<NextUpgrade> {
+        self.next_upgrade.clone()
     }
 }
 
@@ -284,7 +251,7 @@ where
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 let chainspec_info = ChainspecInfo::new(
                     self.chainspec.network_config.name.clone(),
-                    self.genesis_state_root_hash,
+                    self.state_root_hash,
                     self.next_upgrade.clone(),
                 );
                 responder.respond(chainspec_info).ignore()
@@ -325,7 +292,7 @@ where
             Event::PutToStorage { version } => {
                 debug!("stored chainspec {}", version);
                 effect_builder
-                    .commit_genesis(self.chainspec.clone())
+                    .commit_genesis(Arc::clone(&self.chainspec))
                     .event(Event::CommitGenesisResult)
             }
             Event::CommitGenesisResult(result) => {
@@ -346,7 +313,7 @@ where
                             info!("genesis state root hash {}", post_state_hash);
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
-                            self.genesis_state_root_hash = Some(post_state_hash.into());
+                            self.state_root_hash = Some(post_state_hash.into());
                         }
                     },
                     Err(error) => {

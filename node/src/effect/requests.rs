@@ -38,7 +38,6 @@ use casper_types::{
 use super::{Multiple, Responder};
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo,
         consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
@@ -47,9 +46,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, StatusFeed, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -686,7 +685,7 @@ pub enum ContractRuntimeRequest {
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
-        chainspec: Box<Chainspec>,
+        chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
     },
@@ -946,7 +945,7 @@ pub enum LinearChainRequest<I> {
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
     /// Local request for a linear chain block at height.
-    /// TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
+    // TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
     BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 

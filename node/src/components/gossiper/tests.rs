@@ -154,7 +154,10 @@ impl reactor::Reactor for Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new(deploy_acceptor::Config::new(false));
+        let deploy_acceptor = DeployAcceptor::new(
+            deploy_acceptor::Config::new(false),
+            Arc::new(Chainspec::from_resources("local")),
+        );
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,

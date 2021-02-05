@@ -166,10 +166,14 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
 }
 
 /// Stores the chainspec in a storage component.
-fn put_chainspec(harness: &mut ComponentHarness<()>, storage: &mut Storage, chainspec: Chainspec) {
+fn put_chainspec(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    chainspec: Arc<Chainspec>,
+) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutChainspec {
-            chainspec: Arc::new(chainspec),
+            chainspec,
             responder,
         }
         .into()
@@ -666,12 +670,12 @@ fn store_and_load_chainspec() {
     assert!(response.is_none());
 
     // Store a random chainspec.
-    let chainspec = Chainspec::random(&mut harness.rng);
-    put_chainspec(&mut harness, &mut storage, chainspec.clone());
+    let chainspec = Arc::new(Chainspec::random(&mut harness.rng));
+    put_chainspec(&mut harness, &mut storage, Arc::clone(&chainspec));
 
     // Compare returned chainspec.
     let response = get_chainspec(&mut harness, &mut storage, version);
-    assert_eq!(response, Some(Arc::new(chainspec)));
+    assert_eq!(response, Some(chainspec));
 }
 
 /// Example state used in storage.

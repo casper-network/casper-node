@@ -12,6 +12,7 @@ use std::{
     cmp, env,
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -421,10 +422,21 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder)?;
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
+        let rpc_server = RpcServer::new(
+            config.rpc_server.clone(),
+            effect_builder,
+            chainspec_loader.chainspec().protocol_config.version.clone(),
+        )?;
+        let rest_server = RestServer::new(
+            config.rest_server.clone(),
+            effect_builder,
+            chainspec_loader.chainspec().protocol_config.version.clone(),
+        )?;
 
-        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            Arc::clone(chainspec_loader.chainspec()),
+        );
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -441,10 +453,7 @@ impl reactor::Reactor for Reactor {
                 .unwrap_or(0),
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
-        // Post state hash is expected to be present.
-        let genesis_state_root_hash = chainspec_loader
-            .genesis_state_root_hash()
-            .expect("should have state root hash");
+        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
             .with_parent_map(latest_block);
         let (proto_block_validator, block_validator_effects) = BlockValidator::new(effect_builder);

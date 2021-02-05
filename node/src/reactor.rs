@@ -31,6 +31,8 @@ pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
+#[cfg(test)]
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     env,
@@ -646,7 +648,7 @@ where
 impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));

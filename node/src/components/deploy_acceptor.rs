@@ -1,10 +1,8 @@
 mod config;
 mod event;
 
-use std::{collections::HashMap, convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
-use semver::Version;
-use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -15,7 +13,7 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{chainspec::DeployConfig, Chainspec, Deploy, DeployValidationFailure, NodeId},
+    types::{Chainspec, Deploy, DeployValidationFailure, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -57,21 +55,6 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct DeployAcceptorChainspec {
-    chain_name: String,
-    deploy_config: DeployConfig,
-}
-
-impl From<Chainspec> for DeployAcceptorChainspec {
-    fn from(chainspec: Chainspec) -> Self {
-        DeployAcceptorChainspec {
-            chain_name: chainspec.network_config.name,
-            deploy_config: chainspec.deploy_config,
-        }
-    }
-}
-
 /// The `DeployAcceptor` is the component which handles all new `Deploy`s immediately after they're
 /// received by this node, regardless of whether they were provided by a peer or a client.
 ///
@@ -79,14 +62,14 @@ impl From<Chainspec> for DeployAcceptorChainspec {
 /// accepted `Deploy`.
 #[derive(Debug)]
 pub struct DeployAcceptor {
-    cached_deploy_configs: HashMap<Version, DeployAcceptorChainspec>,
+    chainspec: Arc<Chainspec>,
     verify_accounts: bool,
 }
 
 impl DeployAcceptor {
-    pub(crate) fn new(config: Config) -> Self {
+    pub(crate) fn new(config: Config, chainspec: Arc<Chainspec>) -> Self {
         DeployAcceptor {
-            cached_deploy_configs: HashMap::new(),
+            chainspec,
             verify_accounts: config.verify_accounts(),
         }
     }
@@ -100,33 +83,53 @@ impl DeployAcceptor {
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
         source: Source<NodeId>,
-        responder: Option<Responder<Result<(), Error>>>,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
-        // TODO - where to get version from?
-        let chainspec_version = Version::new(1, 0, 0);
-        let cached_config = self.cached_deploy_configs.get(&chainspec_version).cloned();
-        match cached_config {
-            Some(genesis_config) => {
-                effect_builder
-                    .immediately()
-                    .event(move |_| Event::GetChainspecResult {
-                        deploy,
-                        source,
-                        chainspec_version,
-                        maybe_chainspec: Box::new(Some(genesis_config)),
-                        maybe_responder: responder,
-                    })
+        let mut cloned_deploy = deploy.clone();
+        let mut effects = Effects::new();
+        let is_acceptable = cloned_deploy.is_acceptable(
+            &self.chainspec.network_config.name,
+            &self.chainspec.deploy_config,
+        );
+        if let Err(error) = is_acceptable {
+            // The client has submitted an invalid deploy. Return an error to the RPC component via
+            // the responder.
+            if let Some(responder) = maybe_responder {
+                effects.extend(responder.respond(Err(Error::InvalidDeploy(error))).ignore());
             }
-            None => effect_builder
-                .get_chainspec(chainspec_version.clone())
-                .event(move |maybe_chainspec| Event::GetChainspecResult {
+            effects.extend(
+                effect_builder
+                    .announce_invalid_deploy(deploy, source)
+                    .ignore(),
+            );
+            return effects;
+        }
+
+        let account_key = deploy.header().account().to_account_hash().into();
+
+        // skip account verification if deploy not received from client or node is configured to
+        // not verify accounts
+        if !source.from_client() || !self.verify_accounts {
+            return effect_builder
+                .immediately()
+                .event(move |_| Event::AccountVerificationResult {
                     deploy,
                     source,
-                    chainspec_version,
-                    maybe_chainspec: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
-                    maybe_responder: responder,
-                }),
+                    account_key,
+                    verified: Some(true),
+                    maybe_responder,
+                });
         }
+
+        effect_builder
+            .is_verified_account(account_key)
+            .event(move |verified| Event::AccountVerificationResult {
+                deploy,
+                source,
+                account_key,
+                verified,
+                maybe_responder,
+            })
     }
 
     fn account_verification<REv: ReactorEventT>(
@@ -190,69 +193,6 @@ impl DeployAcceptor {
         effects
     }
 
-    fn validate<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        deploy: Box<Deploy>,
-        source: Source<NodeId>,
-        chainspec: DeployAcceptorChainspec,
-        maybe_responder: Option<Responder<Result<(), Error>>>,
-    ) -> Effects<Event> {
-        let mut cloned_deploy = deploy.clone();
-        let mut effects = Effects::new();
-        let is_acceptable =
-            cloned_deploy.is_acceptable(chainspec.chain_name, chainspec.deploy_config);
-        if let Err(error) = is_acceptable {
-            // The client has submitted an invalid deploy. Return an error to the RPC component via
-            // the responder.
-            if let Some(responder) = maybe_responder {
-                effects.extend(responder.respond(Err(Error::InvalidDeploy(error))).ignore());
-            }
-            effects.extend(
-                effect_builder
-                    .announce_invalid_deploy(deploy, source)
-                    .ignore(),
-            );
-            return effects;
-        }
-
-        let account_key = deploy.header().account().to_account_hash().into();
-
-        // skip account verification if deploy not received from client or node is configured to
-        // not verify accounts
-        if !source.from_client() || !self.verify_accounts {
-            return effect_builder
-                .immediately()
-                .event(move |_| Event::AccountVerificationResult {
-                    deploy,
-                    source,
-                    account_key,
-                    verified: Some(true),
-                    maybe_responder,
-                });
-        }
-
-        effect_builder
-            .is_verified_account(account_key)
-            .event(move |verified| Event::AccountVerificationResult {
-                deploy,
-                source,
-                account_key,
-                verified,
-                maybe_responder,
-            })
-    }
-
-    fn failed_to_get_chainspec(
-        &self,
-        deploy: Box<Deploy>,
-        source: Source<NodeId>,
-        chainspec_version: Version,
-    ) -> Effects<Event> {
-        error!(%deploy, %source, %chainspec_version, "failed to get chainspec");
-        Effects::new()
-    }
-
     fn handle_put_to_storage<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -286,21 +226,6 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 source,
                 responder,
             } => self.accept(effect_builder, deploy, source, responder),
-            Event::GetChainspecResult {
-                deploy,
-                source,
-                chainspec_version,
-                maybe_chainspec,
-                maybe_responder,
-            } => match *maybe_chainspec {
-                Some(chainspec) => {
-                    // Update chainspec cache.
-                    self.cached_deploy_configs
-                        .insert(chainspec_version, chainspec.clone());
-                    self.validate(effect_builder, deploy, source, chainspec, maybe_responder)
-                }
-                None => self.failed_to_get_chainspec(deploy, source, chainspec_version),
-            },
             Event::PutToStorageResult {
                 deploy,
                 source,

@@ -22,7 +22,9 @@ use super::{
 };
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock},
+    types::{
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
+    },
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -48,6 +50,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         _storage: &Storage,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
+        _next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, Err>
     where
         Err: From<prometheus::Error> + From<storage::Error>,

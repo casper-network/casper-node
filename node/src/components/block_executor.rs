@@ -82,7 +82,7 @@ type BlockHeight = u64;
 /// The Block executor component.
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
-    genesis_state_root_hash: Digest,
+    genesis_state_root_hash: Option<Digest>,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
@@ -98,7 +98,7 @@ pub(crate) struct BlockExecutor {
 }
 
 impl BlockExecutor {
-    pub(crate) fn new(genesis_state_root_hash: Digest, registry: Registry) -> Self {
+    pub(crate) fn new(genesis_state_root_hash: Option<Digest>, registry: Registry) -> Self {
         let metrics = BlockExecutorMetrics::new(registry).unwrap();
         BlockExecutor {
             genesis_state_root_hash,
@@ -436,7 +436,7 @@ impl BlockExecutor {
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
         if finalized_block.is_genesis_child() {
-            Some(self.genesis_state_root_hash)
+            self.genesis_state_root_hash
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.

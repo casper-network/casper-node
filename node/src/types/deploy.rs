@@ -608,8 +608,8 @@ impl Deploy {
     /// Note: if everything else checks out, calls the computationally expensive `is_valid` method.
     pub fn is_acceptable(
         &mut self,
-        chain_name: String,
-        config: DeployConfig,
+        chain_name: &str,
+        config: &DeployConfig,
     ) -> Result<(), DeployValidationFailure> {
         let header = self.header();
         if header.chain_name() != chain_name {
@@ -620,7 +620,7 @@ impl Deploy {
                 "invalid chain identifier"
             );
             return Err(DeployValidationFailure::InvalidChainName {
-                expected: chain_name,
+                expected: chain_name.to_string(),
                 got: header.chain_name().to_string(),
             });
         }
@@ -1018,7 +1018,7 @@ mod tests {
     #[test]
     fn is_acceptable() {
         let mut rng = crate::new_rng();
-        let chain_name = "net-1".to_string();
+        let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
         let mut deploy = create_deploy(
@@ -1028,14 +1028,14 @@ mod tests {
             &chain_name,
         );
         deploy
-            .is_acceptable(chain_name, deploy_config)
+            .is_acceptable(chain_name, &deploy_config)
             .expect("should be acceptable");
     }
 
     #[test]
     fn not_acceptable_due_to_invalid_chain_name() {
         let mut rng = crate::new_rng();
-        let expected_chain_name = "net-1".to_string();
+        let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
         let deploy_config = DeployConfig::default();
 
@@ -1047,12 +1047,12 @@ mod tests {
         );
 
         let expected_error = DeployValidationFailure::InvalidChainName {
-            expected: expected_chain_name.clone(),
+            expected: expected_chain_name.to_string(),
             got: wrong_chain_name,
         };
 
         assert_eq!(
-            deploy.is_acceptable(expected_chain_name, deploy_config),
+            deploy.is_acceptable(expected_chain_name, &deploy_config),
             Err(expected_error)
         );
         assert!(
@@ -1064,7 +1064,7 @@ mod tests {
     #[test]
     fn not_acceptable_due_to_excessive_dependencies() {
         let mut rng = crate::new_rng();
-        let chain_name = "net-1".to_string();
+        let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
         let dependency_count = usize::from(deploy_config.max_dependencies + 1);
@@ -1082,7 +1082,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_acceptable(chain_name, deploy_config),
+            deploy.is_acceptable(chain_name, &deploy_config),
             Err(expected_error)
         );
         assert!(
@@ -1094,7 +1094,7 @@ mod tests {
     #[test]
     fn not_acceptable_due_to_excessive_ttl() {
         let mut rng = crate::new_rng();
-        let chain_name = "net-1".to_string();
+        let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
         let ttl = deploy_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
@@ -1112,7 +1112,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_acceptable(chain_name, deploy_config),
+            deploy.is_acceptable(chain_name, &deploy_config),
             Err(expected_error)
         );
         assert!(

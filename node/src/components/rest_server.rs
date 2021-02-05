@@ -27,6 +27,7 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use semver::Version;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, warn};
 
@@ -82,6 +83,7 @@ impl RestServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -92,6 +94,7 @@ impl RestServer {
         let server_join_handle = tokio::spawn(http_server::run(
             builder,
             effect_builder,
+            api_version,
             shutdown_receiver,
             config.qps_limit,
         ));

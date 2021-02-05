@@ -5,6 +5,7 @@ use futures::{
     FutureExt,
 };
 use hyper::server::{conn::AddrIncoming, Builder};
+use semver::Version;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
@@ -14,7 +15,7 @@ use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
 use super::{
-    sse_server::{self, BroadcastChannelMessage, ServerSentEvent, SSE_INITIAL_EVENT},
+    sse_server::{self, BroadcastChannelMessage, ServerSentEvent},
     Config, SseData,
 };
 
@@ -24,6 +25,7 @@ use super::{
 /// subscribed clients.
 pub(super) async fn run(
     config: Config,
+    api_version: Version,
     builder: Builder<AddrIncoming>,
     mut data_receiver: mpsc::UnboundedReceiver<SseData>,
 ) {
@@ -55,7 +57,7 @@ pub(super) async fn run(
     // Initialize the index and buffer for the SSEs.
     let mut event_index = 0_u32;
     let mut buffer = WheelBuf::new(vec![
-        SSE_INITIAL_EVENT.clone();
+        ServerSentEvent::initial_event(api_version.clone());
         config.event_stream_buffer_length as usize
     ]);
 
@@ -68,7 +70,7 @@ pub(super) async fn run(
                     if let Some(subscriber) = maybe_new_subscriber {
                         // First send the client the `ApiVersion` event.  We don't care if this
                         // errors - the client may have disconnected already.
-                        let _ = subscriber.initial_events_sender.send(SSE_INITIAL_EVENT.clone());
+                        let _ = subscriber.initial_events_sender.send(ServerSentEvent::initial_event(api_version.clone()));
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
                         if let Some(start_index) = subscriber.start_from {

@@ -3,6 +3,8 @@
 #[cfg(test)]
 use std::env;
 use std::fmt::{self, Display, Formatter};
+#[cfg(test)]
+use std::sync::Arc;
 
 use datasize::DataSize;
 use derive_more::From;
@@ -138,7 +140,7 @@ impl Reactor {
         config: <Self as reactor::Reactor>::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Event>,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (chainspec_loader, chainspec_effects) =

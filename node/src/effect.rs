@@ -100,7 +100,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -112,8 +112,8 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
 };
@@ -1180,14 +1180,14 @@ impl<REv> EffectBuilder<REv> {
     /// Runs the genesis process on the contract runtime.
     pub(crate) async fn commit_genesis(
         self,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<GenesisResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::CommitGenesis {
-                chainspec: Box::new(chainspec),
+                chainspec,
                 responder,
             },
             QueueKind::Regular,
@@ -1196,13 +1196,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec(self, chainspec: Chainspec)
+    pub(crate) async fn put_chainspec(self, chainspec: Arc<Chainspec>)
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutChainspec {
-                chainspec: Arc::new(chainspec),
+                chainspec,
                 responder,
             },
             QueueKind::Regular,

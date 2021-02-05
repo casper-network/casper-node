@@ -1188,8 +1188,8 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 ///
-/// Initially sends a handshake including the `genesis_config_hash` as a final handshake step.  If
-/// the recipient's `genesis_config_hash` doesn't match, the connection will be closed.
+/// Initially sends a handshake including the `chainspec_hash` as a final handshake step.  If the
+/// recipient's `chainspec_hash` doesn't match, the connection will be closed.
 async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,

@@ -12,8 +12,10 @@ mod protocol_config;
 use std::{fmt::Debug, path::Path};
 
 use datasize::DataSize;
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
+use semver::Version;
 use serde::Serialize;
 use tracing::{error, warn};
 
@@ -38,10 +40,12 @@ use crate::{
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
+/// The protocol version at genesis.
+static GENESIS_VERSION: Lazy<Version> = Lazy::new(|| Version::new(1, 0, 0));
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Debug)]
+#[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct Chainspec {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,
@@ -83,6 +87,11 @@ impl Chainspec {
             vec![]
         });
         hash::hash(&serialized_chainspec)
+    }
+
+    /// Returns true if this chainspec has version <= genesis version (v1.0.0)
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.protocol_config.version <= *GENESIS_VERSION
     }
 }
 
@@ -141,7 +150,7 @@ impl FromBytes for Chainspec {
         let (core_config, remainder) = CoreConfig::from_bytes(remainder)?;
         let (highway_config, remainder) = HighwayConfig::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
-        let (wasm_costs_config, remainder) = WasmConfig::from_bytes(remainder)?;
+        let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
@@ -149,7 +158,7 @@ impl FromBytes for Chainspec {
             core_config,
             highway_config,
             deploy_config,
-            wasm_config: wasm_costs_config,
+            wasm_config,
             system_costs_config,
         };
         Ok((chainspec, remainder))
@@ -164,10 +173,10 @@ impl Loadable for Chainspec {
     }
 }
 
-impl From<Chainspec> for ExecConfig {
-    fn from(chainspec: Chainspec) -> Self {
+impl From<&Chainspec> for ExecConfig {
+    fn from(chainspec: &Chainspec) -> Self {
         ExecConfig::new(
-            chainspec.network_config.accounts,
+            chainspec.network_config.accounts.clone(),
             chainspec.wasm_config,
             chainspec.system_costs_config,
             chainspec.core_config.validator_slots,
