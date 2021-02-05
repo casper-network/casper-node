@@ -33,6 +33,6 @@ function get_erc20_contract_key_value ()
         --state-root-hash "$(get_state_root_hash)" \
         --key "$QUERY_KEY" \
         --query-path "$QUERY_PATH" \
-        | jq '.result.stored_value.CLValue.parsed_to_json' \
+        | jq '.result.stored_value.CLValue.parsed' \
         | sed -e 's/^"//' -e 's/"$//'
 }
