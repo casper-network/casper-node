@@ -930,6 +930,11 @@ impl Block {
         self.header.deploy_hashes()
     }
 
+    /// The list of transfer hashes included in the block.
+    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        self.header.transfer_hashes()
+    }
+
     /// The height of a block.
     pub fn height(&self) -> u64 {
         self.header.height()
@@ -1042,7 +1047,10 @@ impl FromBytes for Block {
 
 impl BlockLike for Block {
     fn deploys(&self) -> Vec<&DeployHash> {
-        self.deploy_hashes().iter().collect()
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+            .collect()
     }
 }
 
