@@ -8,10 +8,8 @@ pub(crate) struct NetworkingMetrics {
     pub(crate) direct_message_requests: IntCounter,
     /// Current number of open connections.
     pub(crate) open_connections: IntGauge,
-    /// Number of messages still waiting to be broadcast.
-    pub(crate) queued_broadcast_messages: IntGauge,
-    /// Number of messages still waiting to be sent out.
-    pub(crate) queued_direct_messages: IntGauge,
+    /// Number of messages still waiting to be sent out (broadcast and direct).
+    pub(crate) queued_messages: IntGauge,
 
     /// Registry instance.
     registry: Registry,
@@ -26,31 +24,25 @@ impl NetworkingMetrics {
             "net_direct_message_requests",
             "How often a request to send a message directly to a peer was made.",
         )?;
-        let open_connnections = IntGauge::new(
+        let open_connections = IntGauge::new(
             "net_open_connnections",
             "Current number of open connections.",
         )?;
-        let queued_broadcast_messages = IntGauge::new(
-            "net_queued_broadcast_messages",
-            "Number of messages still waiting to be broadcast.",
-        )?;
-        let queued_direct_messages = IntGauge::new(
+        let queued_messages = IntGauge::new(
             "net_queued_direct_messages",
             "Number of messages still waiting to be sent out.",
         )?;
 
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
-        registry.register(Box::new(open_connnections.clone()))?;
-        registry.register(Box::new(queued_broadcast_messages.clone()))?;
-        registry.register(Box::new(queued_direct_messages.clone()))?;
+        registry.register(Box::new(open_connections.clone()))?;
+        registry.register(Box::new(queued_messages.clone()))?;
 
         Ok(NetworkingMetrics {
             broadcast_requests,
             direct_message_requests,
-            open_connections: open_connnections,
-            queued_broadcast_messages,
-            queued_direct_messages,
+            open_connections,
+            queued_messages,
             registry: registry.clone(),
         })
     }
@@ -68,10 +60,7 @@ impl Drop for NetworkingMetrics {
             .unregister(Box::new(self.open_connections.clone()))
             .expect("did not expect deregistering open_connnections to fail");
         self.registry
-            .unregister(Box::new(self.queued_broadcast_messages.clone()))
-            .expect("did not expect deregistering queued_broadcast_messages to fail");
-        self.registry
-            .unregister(Box::new(self.queued_direct_messages.clone()))
+            .unregister(Box::new(self.queued_messages.clone()))
             .expect("did not expect deregistering queued_direct_messages to fail");
     }
 }
