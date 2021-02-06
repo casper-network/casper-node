@@ -549,7 +549,7 @@ impl Storage {
     }
 
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
+    pub(crate) fn get_switch_block_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         era_id: EraId,
@@ -603,6 +603,12 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<Transfer>>, Error> {
         Ok(tx.get_value(self.transfer_db, block_hash)?)
+    }
+
+    /// Get the lmdb environment
+    #[cfg(test)]
+    pub(crate) fn env(&self) -> &Environment {
+        &self.env
     }
 }
 
