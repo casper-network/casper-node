@@ -403,6 +403,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
+            registry,
             small_network_identity,
             genesis_config_hash,
             false,
