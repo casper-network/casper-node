@@ -7,7 +7,7 @@ pub(crate) struct NetworkingMetrics {
     /// How often a request to send a message directly to a peer was made.
     pub(crate) direct_message_requests: IntCounter,
     /// Current number of open connections.
-    pub(crate) open_connnections: IntGauge,
+    pub(crate) open_connections: IntGauge,
     /// Number of messages still waiting to be broadcast.
     pub(crate) queued_broadcast_messages: IntGauge,
     /// Number of messages still waiting to be sent out.
@@ -48,7 +48,7 @@ impl NetworkingMetrics {
         Ok(NetworkingMetrics {
             broadcast_requests,
             direct_message_requests,
-            open_connnections,
+            open_connections: open_connnections,
             queued_broadcast_messages,
             queued_direct_messages,
             registry: registry.clone(),
@@ -65,7 +65,7 @@ impl Drop for NetworkingMetrics {
             .unregister(Box::new(self.direct_message_requests.clone()))
             .expect("did not expect deregistering direct_message_requests to fail");
         self.registry
-            .unregister(Box::new(self.open_connnections.clone()))
+            .unregister(Box::new(self.open_connections.clone()))
             .expect("did not expect deregistering open_connnections to fail");
         self.registry
             .unregister(Box::new(self.queued_broadcast_messages.clone()))
