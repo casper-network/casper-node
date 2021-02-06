@@ -981,16 +981,15 @@ pub enum ConsensusRequest {
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
-    /// Request to check config dir to see if a new upgrade point is available, and if so, return
-    /// its activation point.
-    NextUpgradeActivationPoint(Responder<Option<ActivationPoint>>),
+    /// Request for the cached upgrade activation point.
+    GetUpgradeActivationPoint(Responder<Option<ActivationPoint>>),
 }
 
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
-            ChainspecLoaderRequest::NextUpgradeActivationPoint(_) => {
+            ChainspecLoaderRequest::GetUpgradeActivationPoint(_) => {
                 write!(f, "get activation point")
             }
         }

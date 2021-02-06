@@ -30,6 +30,7 @@ use crate::{
     components::Component,
     crypto::hash::Digest,
     effect::{
+        announcements::ChainspecLoaderAnnouncement,
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -52,6 +53,10 @@ static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
 pub enum Event {
     #[from]
     Request(ChainspecLoaderRequest),
+    /// Check config dir to see if an upgrade activation point is available, and if so announce it.
+    CheckUpgradeActivationPoint,
+    /// If the result of checking for an upgrade activation point is successful, it is passed here.
+    GotUpgradeActivationPoint(ActivationPoint),
     /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
     PutToStorage { version: Version },
     /// The result of contract runtime running the genesis process.
@@ -62,6 +67,12 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Request(_) => write!(formatter, "chainspec_loader request"),
+            Event::CheckUpgradeActivationPoint => {
+                write!(formatter, "check for upgrade activation point")
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(formatter, "got {}", activation_point)
+            }
             Event::PutToStorage { version } => {
                 write!(formatter, "put chainspec {} to storage", version)
             }
@@ -122,6 +133,7 @@ pub struct ChainspecLoader {
     completed_successfully: Option<bool>,
     /// If `Some` then genesis process returned a valid state root hash.
     genesis_state_root_hash: Option<Digest>,
+    upgrade_activation_point: Option<ActivationPoint>,
 }
 
 impl ChainspecLoader {
@@ -178,6 +190,7 @@ impl ChainspecLoader {
             root_dir,
             completed_successfully: None,
             genesis_state_root_hash: None,
+            upgrade_activation_point: None,
         };
 
         (chainspec_loader, effects)
@@ -202,7 +215,11 @@ impl ChainspecLoader {
 
 impl<REv> Component<REv> for ChainspecLoader
 where
-    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderAnnouncement>
+        + Send,
 {
     type Event = Event;
     type ConstructionError = Error;
@@ -217,7 +234,10 @@ where
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.clone().into()).ignore()
             }
-            Event::Request(ChainspecLoaderRequest::NextUpgradeActivationPoint(responder)) => {
+            Event::Request(ChainspecLoaderRequest::GetUpgradeActivationPoint(responder)) => {
+                responder.respond(self.upgrade_activation_point).ignore()
+            }
+            Event::CheckUpgradeActivationPoint => {
                 let root_dir = self.root_dir.clone();
                 let current_version = self.chainspec.protocol_config.version.clone();
                 async move {
@@ -229,9 +249,23 @@ where
                         warn!(%error, "failed to join tokio task");
                         None
                     });
-                    responder.respond(maybe_upgrade_activation_point).await
+                    if let Some(activation_point) = maybe_upgrade_activation_point {
+                        effect_builder
+                            .announce_upgrade_activation_point_read(activation_point)
+                            .await
+                    }
                 }
                 .ignore()
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                debug!("got {}", activation_point);
+                if let Some(ref current_point) = self.upgrade_activation_point {
+                    if activation_point != *current_point {
+                        info!(new_point=%activation_point, %current_point, "changing upgrade activation point");
+                    }
+                }
+                self.upgrade_activation_point = Some(activation_point);
+                Effects::new()
             }
             Event::PutToStorage { version } => {
                 debug!("stored chainspec {}", version);

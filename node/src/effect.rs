@@ -118,8 +118,9 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
@@ -653,6 +654,21 @@ impl<REv> EffectBuilder<REv> {
                     block,
                     execution_results,
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce upgrade activation point read.
+    pub(crate) async fn announce_upgrade_activation_point_read(
+        self,
+        activation_point: ActivationPoint,
+    ) where
+        REv: From<ChainspecLoaderAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(activation_point),
                 QueueKind::Regular,
             )
             .await
@@ -1211,16 +1227,13 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Requests to check config dir to see if a new upgrade point is available, and if so, returns
-    /// its activation point.
-    // TODO - remove once used.
-    #[allow(unused)]
-    pub(crate) async fn next_upgrade_activation_point(self) -> Option<ActivationPoint>
+    /// Requests the current upgrade activation point from the chainspec loader.
+    pub(crate) async fn get_upgrade_activation_point(self) -> Option<ActivationPoint>
     where
         REv: From<ChainspecLoaderRequest> + Send,
     {
         self.make_request(
-            ChainspecLoaderRequest::NextUpgradeActivationPoint,
+            ChainspecLoaderRequest::GetUpgradeActivationPoint,
             QueueKind::Regular,
         )
         .await

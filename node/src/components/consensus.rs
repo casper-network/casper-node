@@ -115,8 +115,8 @@ pub enum Event<I> {
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
-    /// Got the result of checking for the next upgrade activation point.
-    GotUpgradeActivationPoint(Option<ActivationPoint>),
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Debug for ConsensusMessage {
