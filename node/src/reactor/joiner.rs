@@ -865,15 +865,15 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, event)
             }
             Event::ChainspecLoaderAnnouncement(
-                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(activation_point),
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {
                 let reactor_event = Event::ChainspecLoader(
-                    chainspec_loader::Event::GotUpgradeActivationPoint(activation_point),
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
                 let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
-                    activation_point,
+                    next_upgrade.activation_point(),
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects

@@ -16,10 +16,12 @@ use casper_types::PublicKey;
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
+        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        consensus::EraId,
+        rpc_server::rpcs::docs::DocExample,
     },
     crypto::hash::Digest,
-    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, Timestamp},
+    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
@@ -31,7 +33,6 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
-        upgrade_activation_point: Some(ActivationPoint { era_id: EraId(42) }),
         version: crate::VERSION_STRING.as_str(),
     };
     GetStatusResult::from(status_feed)
@@ -47,8 +48,6 @@ pub struct StatusFeed<I> {
     pub peers: BTreeMap<I, String>,
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
-    /// The next upgrade activation point.
-    pub upgrade_activation_point: Option<ActivationPoint>,
     /// The compiled node version.
     pub version: &'static str,
 }
@@ -58,13 +57,11 @@ impl<I> StatusFeed<I> {
         last_added_block: Option<Block>,
         peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
-        upgrade_activation_point: Option<ActivationPoint>,
     ) -> Self {
         StatusFeed {
             last_added_block,
             peers,
             chainspec_info,
-            upgrade_activation_point,
             version: crate::VERSION_STRING.as_str(),
         }
     }
@@ -110,8 +107,8 @@ pub struct GetStatusResult {
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
-    /// The next upgrade activation point.
-    pub next_upgrade_activation_point: Option<EraId>,
+    /// Information about the next scheduled upgrade.
+    pub next_upgrade: Option<NextUpgrade>,
     /// The compiled node version.
     pub build_version: String,
 }
@@ -140,9 +137,7 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
         let api_version = Version::from((0, 0, 0));
         let peers = PeersMap::from(status_feed.peers);
         let last_added_block_info = status_feed.last_added_block.map(Into::into);
-        let next_upgrade_activation_point = status_feed
-            .upgrade_activation_point
-            .map(|point| point.era_id);
+        let next_upgrade = status_feed.chainspec_info.next_upgrade();
         let build_version = crate::VERSION_STRING.clone();
         GetStatusResult {
             api_version,
@@ -150,7 +145,7 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
             genesis_root_hash,
             peers,
             last_added_block_info,
-            next_upgrade_activation_point,
+            next_upgrade,
             build_version,
         }
     }

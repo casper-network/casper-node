@@ -100,7 +100,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo,
+        chainspec_loader::{ChainspecInfo, NextUpgrade},
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -111,9 +111,9 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures,
-        Chainspec, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
 };
@@ -660,15 +660,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announce upgrade activation point read.
-    pub(crate) async fn announce_upgrade_activation_point_read(
-        self,
-        activation_point: ActivationPoint,
-    ) where
+    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    where
         REv: From<ChainspecLoaderAnnouncement>,
     {
         self.0
             .schedule(
-                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(activation_point),
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
                 QueueKind::Regular,
             )
             .await
@@ -1225,18 +1223,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
             .await
-    }
-
-    /// Requests the current upgrade activation point from the chainspec loader.
-    pub(crate) async fn get_upgrade_activation_point(self) -> Option<ActivationPoint>
-    where
-        REv: From<ChainspecLoaderRequest> + Send,
-    {
-        self.make_request(
-            ChainspecLoaderRequest::GetUpgradeActivationPoint,
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Loads potentially previously stored state from storage.

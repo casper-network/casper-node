@@ -13,11 +13,14 @@ use serde::Serialize;
 use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
-    components::{consensus::EraId, deploy_acceptor::Error, small_network::GossipedAddress},
+    components::{
+        chainspec_loader::NextUpgrade, consensus::EraId, deploy_acceptor::Error,
+        small_network::GossipedAddress,
+    },
     effect::Responder,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
-        FinalitySignature, FinalizedBlock, Item, Timestamp,
+        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
+        FinalizedBlock, Item, Timestamp,
     },
     utils::Source,
 };
@@ -239,14 +242,14 @@ impl Display for LinearChainAnnouncement {
 #[derive(Debug, Serialize)]
 pub enum ChainspecLoaderAnnouncement {
     /// New finality signature received.
-    UpgradeActivationPointRead(ActivationPoint),
+    UpgradeActivationPointRead(NextUpgrade),
 }
 
 impl Display for ChainspecLoaderAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderAnnouncement::UpgradeActivationPointRead(activation_point) => {
-                write!(f, "read {}", activation_point)
+            ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
+                write!(f, "read {}", next_upgrade)
             }
         }
     }

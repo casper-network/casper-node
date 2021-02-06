@@ -47,9 +47,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        ActivationPoint, Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures,
-        Chainspec, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -981,17 +981,12 @@ pub enum ConsensusRequest {
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
-    /// Request for the cached upgrade activation point.
-    GetUpgradeActivationPoint(Responder<Option<ActivationPoint>>),
 }
 
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
-            ChainspecLoaderRequest::GetUpgradeActivationPoint(_) => {
-                write!(f, "get activation point")
-            }
         }
     }
 }
