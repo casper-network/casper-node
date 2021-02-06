@@ -117,6 +117,7 @@ impl Reactor for TestReactor {
         let (net, effects) = SmallNetwork::new(
             event_queue,
             cfg,
+            registry,
             small_network_identity,
             Digest::default(),
             false,
