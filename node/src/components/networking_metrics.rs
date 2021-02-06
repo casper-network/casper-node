@@ -13,7 +13,7 @@ pub(crate) struct NetworkingMetrics {
     /// Number of messages still waiting to be sent out.
     pub(crate) queued_direct_messages: IntGauge,
 
-    /// Registry instance,
+    /// Registry instance.
     registry: Registry,
 }
 
