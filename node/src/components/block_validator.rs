@@ -48,7 +48,7 @@ pub enum Event<T, I> {
     DeployFound(DeployHash),
 
     /// A request to find a specific deploy, potentially from a peer, failed.
-    #[display(fmt = "deploy {} missing/invalid", _0, _1)]
+    #[display(fmt = "deploy {} missing/invalid {}", _0, _1)]
     DeployMissing(DeployHash, bool),
 
     /// An event changing the current state to BlockValidatorReady, once the chainspec has been
@@ -223,25 +223,25 @@ where
 
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
-                        let next_peer = state.source();
-                        // If deploy is invalid there's no point in trying alternative sources.
-                        // Retry only on timeout.
-                        if timeout && next_peer.is_some() {
-                            // This should be safe as we've just tested if it's `Some(_)`.
-                            let peer = next_peer.unwrap();
-                            // There's still hope to download the deploy.
-                            let (chainspec, block_timestamp) = &state.context;
-                            effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, peer));
-                            true
-                        } else {
-                            // Otherwise notify everyone still waiting on it that all is lost.
-                            info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
-                            // This validation state contains a failed deploy hash, it can never
-                            // succeed.
-                            state.responders.drain(..).for_each(|responder| {
-                                effects.extend(responder.respond((false, key.clone())).ignore());
-                            });
-                            false
+                        match state.source() {
+                            // If deploy is invalid there's no point in trying alternative sources.
+                            // Retry only on timeout.
+                            Some(peer) if timeout => {
+                                // There's still hope to download the deploy.
+                                let (chainspec, block_timestamp) = &state.context;
+                                effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, peer));
+                                true
+                            },
+                            _ => {
+                                // Otherwise notify everyone still waiting on it that all is lost.
+                                info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
+                                // This validation state contains a failed deploy hash, it can never
+                                // succeed.
+                                state.responders.drain(..).for_each(|responder| {
+                                    effects.extend(responder.respond((false, key.clone())).ignore());
+                                });
+                                false
+                            }
                         }
                     } else {
                         true
