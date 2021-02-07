@@ -100,6 +100,7 @@ steps:
   - make setup
   - make test
   - make test-contracts
+  - make test-fast-sync
 
 - name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
