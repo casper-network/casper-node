@@ -48,8 +48,8 @@ pub enum Event<T, I> {
     DeployFound(DeployHash),
 
     /// A request to find a specific deploy, potentially from a peer, failed.
-    #[display(fmt = "deploy {} missing", _0)]
-    DeployMissing(DeployHash),
+    #[display(fmt = "deploy {} missing/invalid", _0, _1)]
+    DeployMissing(DeployHash, bool),
 
     /// An event changing the current state to BlockValidatorReady, once the chainspec has been
     /// loaded.
@@ -214,7 +214,7 @@ where
                     }
                 });
             }
-            Event::DeployMissing(deploy_hash) => {
+            Event::DeployMissing(deploy_hash, timeout) => {
                 // A deploy failed to fetch. If there is still hope (i.e. other outstanding
                 // requests), we just ignore this little accident.
                 if self.in_flight.dec(&deploy_hash) != 0 {
@@ -223,10 +223,15 @@ where
 
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
-                        if let Some(next_peer) = state.source() {
+                        let next_peer = state.source();
+                        // If deploy is invalid there's no point in trying alternative sources.
+                        // Retry only on timeout.
+                        if timeout && next_peer.is_some() {
+                            // This should be safe as we've just tested if it's `Some(_)`.
+                            let peer = next_peer.unwrap();
                             // There's still hope to download the deploy.
                             let (chainspec, block_timestamp) = &state.context;
-                            effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, next_peer));
+                            effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, peer));
                             true
                         } else {
                             // Otherwise notify everyone still waiting on it that all is lost.
@@ -275,7 +280,7 @@ where
                 Event::DeployFound(deploy_hash)
             } else {
                 info!(%deploy_hash, "deploy is invalid");
-                Event::DeployMissing(deploy_hash)
+                Event::DeployMissing(deploy_hash, false)
             }
         }
     };
@@ -284,7 +289,7 @@ where
         .fetch_deploy(deploy_hash, sender)
         .map_or_else(validate_deploy, move || {
             info!(%deploy_hash, "deploy missing");
-            Event::DeployMissing(deploy_hash)
+            Event::DeployMissing(deploy_hash, true)
         })
 }
 
