@@ -29,7 +29,7 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Chainspec, Deploy, DeployHash},
+    types::{BlockLike, Chainspec, Deploy, DeployHash, Timestamp},
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
@@ -161,33 +161,16 @@ where
                         let fetch_effects: Effects<Event<T, I>> = block_deploys
                             .iter()
                             .flat_map(|deploy_hash| {
-                                let chainspec = Arc::clone(&chainspec);
                                 // For every request, increase the number of in-flight...
                                 in_flight.inc(deploy_hash);
-
                                 // ...then request it.
-                                let deploy_hash = *deploy_hash;
-                                let validate_deploy =
-                                    move |result: FetchResult<Deploy, I>| match result {
-                                        FetchResult::FromStorage(deploy)
-                                        | FetchResult::FromPeer(deploy, _) => {
-                                            if deploy
-                                                .header()
-                                                .is_valid(&chainspec.deploy_config, block_timestamp)
-                                            {
-                                                Event::DeployFound(deploy_hash)
-                                            } else {
-                                                info!(%deploy_hash, "deploy is invalid");
-                                                Event::DeployMissing(deploy_hash)
-                                            }
-                                        }
-                                    };
-                                effect_builder
-                                    .fetch_deploy(deploy_hash, sender.clone())
-                                    .map_or_else(validate_deploy, move || {
-                                        info!(%deploy_hash, "deploy missing");
-                                        Event::DeployMissing(deploy_hash)
-                                    })
+                                fetch_deploy(
+                                    effect_builder,
+                                    Arc::clone(&chainspec),
+                                    block_timestamp,
+                                    *deploy_hash,
+                                    sender.clone(),
+                                )
                             })
                             .collect();
                         effects.extend(fetch_effects);
@@ -250,6 +233,45 @@ where
         }
         effects
     }
+}
+
+/// Returns effects that fetch the deploy and validate it.
+fn fetch_deploy<REv, T, I>(
+    effect_builder: EffectBuilder<REv>,
+    chainspec: Arc<Chainspec>,
+    block_timestamp: Timestamp,
+    deploy_hash: DeployHash,
+    sender: I,
+) -> Effects<Event<T, I>>
+where
+    REv: From<Event<T, I>>
+        + From<BlockValidationRequest<T, I>>
+        + From<StorageRequest>
+        + From<FetcherRequest<I, Deploy>>
+        + Send,
+    T: BlockLike + Debug + Send + Clone + 'static,
+    I: Clone + Send + PartialEq + Eq + 'static,
+{
+    let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
+        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
+            if deploy
+                .header()
+                .is_valid(&chainspec.deploy_config, block_timestamp)
+            {
+                Event::DeployFound(deploy_hash)
+            } else {
+                info!(%deploy_hash, "deploy is invalid");
+                Event::DeployMissing(deploy_hash)
+            }
+        }
+    };
+
+    effect_builder
+        .fetch_deploy(deploy_hash, sender)
+        .map_or_else(validate_deploy, move || {
+            info!(%deploy_hash, "deploy missing");
+            Event::DeployMissing(deploy_hash)
+        })
 }
 
 /// Block validator states.
