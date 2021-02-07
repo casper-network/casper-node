@@ -51,7 +51,7 @@ pub enum MultiStageTestEvent {
     ValidatorEvent(<ValidatorReactor as Reactor>::Event),
 
     // Events related to stage transitions.
-    JoinerFinalized(#[serde(skip_serializing)] ValidatorInitConfig),
+    JoinerFinalized(#[serde(skip_serializing)] Box<ValidatorInitConfig>),
 }
 
 impl Display for MultiStageTestEvent {
@@ -76,22 +76,22 @@ impl Display for MultiStageTestEvent {
 pub(crate) enum MultiStageTestReactor {
     Deactivated,
     Initializer {
-        initializer_reactor: InitializerReactor,
+        initializer_reactor: Box<InitializerReactor>,
         initializer_event_queue_handle: EventQueueHandle<<InitializerReactor as Reactor>::Event>,
-        registry: Registry,
+        registry: Box<Registry>,
     },
     Joiner {
-        joiner_reactor: JoinerReactor,
+        joiner_reactor: Box<JoinerReactor>,
         joiner_event_queue_handle: EventQueueHandle<<JoinerReactor as Reactor>::Event>,
-        registry: Registry,
+        registry: Box<Registry>,
     },
     JoinerFinalizing {
-        maybe_validator_init_config: Option<ValidatorInitConfig>,
+        maybe_validator_init_config: Option<Box<ValidatorInitConfig>>,
         node_id: NodeId,
-        registry: Registry,
+        registry: Box<Registry>,
     },
     Validator {
-        validator_reactor: ValidatorReactor,
+        validator_reactor: Box<ValidatorReactor>,
         validator_event_queue_handle: EventQueueHandle<<ValidatorReactor as Reactor>::Event>,
     },
 }
@@ -188,9 +188,9 @@ impl Reactor for MultiStageTestReactor {
 
         Ok((
             MultiStageTestReactor::Initializer {
-                initializer_reactor,
+                initializer_reactor: Box::new(initializer_reactor),
                 initializer_event_queue_handle,
-                registry: registry.clone(),
+                registry: Box::new(registry.clone()),
             },
             wrap_effects(MultiStageTestEvent::InitializerEvent, initializer_effects),
         ))
@@ -268,13 +268,13 @@ impl Reactor for MultiStageTestReactor {
             (
                 MultiStageTestEvent::JoinerFinalized(validator_config),
                 MultiStageTestReactor::JoinerFinalizing {
-                    maybe_validator_init_config: ref mut opt_validator_config,
+                    ref mut maybe_validator_init_config,
                     ..
                 },
             ) => {
                 should_transition = true;
 
-                *opt_validator_config = Some(validator_config);
+                *maybe_validator_init_config = Some(validator_config);
 
                 // No effects, just transitioning.
                 Effects::new()
@@ -355,7 +355,7 @@ impl Reactor for MultiStageTestReactor {
                     ));
 
                     let (joiner_reactor, joiner_effects) = JoinerReactor::new(
-                        WithDir::new(&*CONFIG_DIR, initializer_reactor),
+                        WithDir::new(&*CONFIG_DIR, *initializer_reactor),
                         &registry,
                         joiner_event_queue_handle,
                         rng,
@@ -363,7 +363,7 @@ impl Reactor for MultiStageTestReactor {
                     .expect("joiner initialization failed");
 
                     *self = MultiStageTestReactor::Joiner {
-                        joiner_reactor,
+                        joiner_reactor: Box::new(joiner_reactor),
                         joiner_event_queue_handle,
                         registry,
                     };
@@ -398,12 +398,11 @@ impl Reactor for MultiStageTestReactor {
                     // effect and let runner do it.
 
                     let node_id = joiner_reactor.node_id();
-                    effects.extend(
-                        joiner_reactor
-                            .into_validator_config()
-                            .boxed()
-                            .event(MultiStageTestEvent::JoinerFinalized),
-                    );
+                    effects.extend(joiner_reactor.into_validator_config().boxed().event(
+                        |validator_init_config| {
+                            MultiStageTestEvent::JoinerFinalized(Box::new(validator_init_config))
+                        },
+                    ));
 
                     *self = MultiStageTestReactor::JoinerFinalizing {
                         maybe_validator_init_config: None,
@@ -428,7 +427,7 @@ impl Reactor for MultiStageTestReactor {
                     ));
 
                     let (validator_reactor, validator_effects) = ValidatorReactor::new(
-                        validator_config,
+                        *validator_config,
                         &registry,
                         validator_event_queue_handle,
                         rng,
@@ -436,7 +435,7 @@ impl Reactor for MultiStageTestReactor {
                     .expect("validator intialization failed");
 
                     *self = MultiStageTestReactor::Validator {
-                        validator_reactor,
+                        validator_reactor: Box::new(validator_reactor),
                         validator_event_queue_handle,
                     };
 
@@ -458,11 +457,8 @@ impl Reactor for MultiStageTestReactor {
         let new_node_id = self.node_id();
         assert_eq!(old_node_id, new_node_id);
 
-        match self {
-            MultiStageTestReactor::Deactivated => {
-                panic!("Reactor should not longer be Deactivated!")
-            }
-            _ => (),
+        if let MultiStageTestReactor::Deactivated = self {
+            panic!("Reactor should not longer be Deactivated!")
         }
 
         effects

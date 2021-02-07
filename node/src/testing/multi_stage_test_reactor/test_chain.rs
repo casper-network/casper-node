@@ -315,7 +315,7 @@ async fn get_switch_block_hash(
         "Found block hash for Era {}: {}",
         switch_block_era_num, switch_block_hash
     );
-    switch_block_hash.clone()
+    *switch_block_hash
 }
 
 #[tokio::test]
