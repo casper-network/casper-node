@@ -10,7 +10,7 @@
 mod keyed_counter;
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     convert::Infallible,
     fmt::Debug,
     marker::PhantomData,
@@ -61,11 +61,29 @@ pub enum Event<T, I> {
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidationState<T> {
+pub(crate) struct BlockValidationState<T, I> {
     /// The deploys that have not yet been "crossed off" the list of potential misses.
     missing_deploys: HashSet<DeployHash>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<(bool, T)>; 2]>,
+    /// Peers that should have the data.
+    sources: VecDeque<I>,
+}
+
+impl<T, I> BlockValidationState<T, I>
+where
+    I: PartialEq + Eq + 'static,
+{
+    /// Adds alternative source of data.
+    /// Returns true if we already know about the peer.
+    fn add_source(&mut self, peer: I) -> bool {
+        if self.sources.contains(&peer) {
+            true
+        } else {
+            self.sources.push_back(peer);
+            false
+        }
+    }
 }
 
 #[derive(DataSize, Debug)]
@@ -74,7 +92,7 @@ pub(crate) struct BlockValidatorReady<T, I> {
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     /// State of validation of a specific block.
-    validation_states: HashMap<T, BlockValidationState<T>>,
+    validation_states: HashMap<T, BlockValidationState<T, I>>,
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
 
@@ -84,7 +102,7 @@ pub(crate) struct BlockValidatorReady<T, I> {
 impl<T, I> BlockValidatorReady<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static,
+    I: Clone + Send + PartialEq + Eq + 'static,
 {
     fn handle_event<REv>(
         &mut self,
@@ -129,6 +147,8 @@ where
                             // We register ourselves as someone interested in the ultimate
                             // validation result.
                             entry.get_mut().responders.push(responder);
+                            // And add an alternative source of data.
+                            entry.get_mut().add_source(sender);
                         }
                     }
                     Entry::Vacant(entry) => {
@@ -175,6 +195,9 @@ where
                         entry.insert(BlockValidationState {
                             missing_deploys,
                             responders: smallvec![responder],
+                            sources: VecDeque::new(), /* This is empty b/c we create the first
+                                                       * request
+                                                       * using `sender`. */
                         });
                     }
                 }
@@ -272,7 +295,7 @@ where
 impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static,
+    I: Clone + Send + PartialEq + Eq + 'static,
     REv: From<Event<T, I>>
         + From<BlockValidationRequest<T, I>>
         + From<FetcherRequest<I, Deploy>>
