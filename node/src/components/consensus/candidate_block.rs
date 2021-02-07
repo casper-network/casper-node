@@ -36,7 +36,10 @@ impl CandidateBlock {
         &self.proto_block
     }
 
-    /// Returns the candidate block's timestamp.
+    /// Returns the candidate block's timestamp, i.e. when the block was proposed.
+    ///
+    /// This is idential to the timestamp of the Highway unit, and the timestamp of the `Block`,
+    /// if it gets finalized.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
