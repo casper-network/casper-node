@@ -5,6 +5,7 @@ use std::{
     iter::FromIterator,
 };
 
+use datasize::DataSize;
 use hex_fmt::HexFmt;
 use itertools::Itertools;
 use rand::Rng;
@@ -984,15 +985,15 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TestContext;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct TestSecret(pub(crate) u64);
 
 // Newtype wrapper for test signature.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
@@ -1003,7 +1004,7 @@ impl Debug for SignatureWrapper {
 
 // Newtype wrapper for test hash.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, DataSize, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {

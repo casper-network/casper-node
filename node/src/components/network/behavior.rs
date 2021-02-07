@@ -19,7 +19,7 @@ use super::{
     gossip::{self, TOPIC},
     one_way_messaging, peer_discovery, Config, GossipMessage, OneWayCodec, OneWayOutgoingMessage,
 };
-use crate::{components::chainspec_loader::Chainspec, types::NodeId};
+use crate::types::{Chainspec, NodeId};
 
 /// An enum defining the top-level events passed to the swarm's handler.  This will be received in
 /// the swarm's handler wrapped in a `SwarmEvent::Behaviour`.

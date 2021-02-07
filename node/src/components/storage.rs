@@ -71,9 +71,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, BlockSignatures, Chainspec, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
-    Chainspec, NodeRng,
+    NodeRng,
 };
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
@@ -97,7 +97,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 5;
+const MAX_DB_COUNT: u32 = 6;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -175,6 +175,9 @@ pub struct Storage {
     /// The block database.
     #[data_size(skip)]
     block_db: Database,
+    /// The block metadata db.
+    #[data_size(skip)]
+    block_metadata_db: Database,
     /// The deploy database.
     #[data_size(skip)]
     deploy_db: Database,
@@ -255,6 +258,7 @@ impl Storage {
             .open(&root.join(STORAGE_DB_FILENAME))?;
 
         let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
+        let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
@@ -291,6 +295,7 @@ impl Storage {
             root,
             env,
             block_db,
+            block_metadata_db,
             deploy_db,
             deploy_metadata_db,
             transfer_db,
@@ -521,6 +526,68 @@ impl Storage {
                     .unwrap_or_default();
                 responder.respond(Some((deploy, metadata))).ignore()
             }
+            StorageRequest::GetBlockAndMetadataByHash {
+                block_hash,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+
+                let block: Block =
+                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
+                        block
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    };
+                // Check that the hash of the block retrieved is correct.
+                assert_eq!(&block_hash, block.hash());
+                let signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(block_hash, block.header().era_id()),
+                };
+                responder.respond(Some((block, signatures))).ignore()
+            }
+            StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+
+                let block: Block =
+                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
+                        block
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    };
+
+                let hash = block.hash();
+                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(*hash, block.header().era_id()),
+                };
+                responder.respond(Some((block, signatures))).ignore()
+            }
+            StorageRequest::GetHighestBlockWithMetadata { responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let highest_block: Block = if let Some(block) = self
+                    .block_height_index
+                    .keys()
+                    .last()
+                    .and_then(|&height| self.get_block_by_height(&mut txn, height).transpose())
+                    .transpose()?
+                {
+                    block
+                } else {
+                    return Ok(responder.respond(None).ignore());
+                };
+                let hash = highest_block.hash();
+                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(*hash, highest_block.header().era_id()),
+                };
+                responder
+                    .respond(Some((highest_block, signatures)))
+                    .ignore()
+            }
             StorageRequest::PutChainspec {
                 chainspec,
                 responder,
@@ -533,6 +600,39 @@ impl Storage {
                 version: _version,
                 responder,
             } => responder.respond(self.chainspec_cache.clone()).ignore(),
+            StorageRequest::PutBlockSignatures {
+                signatures,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                let old_data: Option<BlockSignatures> =
+                    txn.get_value(self.block_metadata_db, &signatures.block_hash)?;
+                let new_data = match old_data {
+                    None => signatures,
+                    Some(mut data) => {
+                        for (pk, sig) in signatures.proofs {
+                            data.insert_proof(pk, sig);
+                        }
+                        data
+                    }
+                };
+                let outcome = txn.put_value(
+                    self.block_metadata_db,
+                    &new_data.block_hash,
+                    &new_data,
+                    true,
+                )?;
+                txn.commit()?;
+                responder.respond(outcome).ignore()
+            }
+            StorageRequest::GetBlockSignatures {
+                block_hash,
+                responder,
+            } => {
+                let result =
+                    self.get_finality_signatures(&mut self.env.begin_ro_txn()?, &block_hash)?;
+                responder.respond(result).ignore()
+            }
         })
     }
 
@@ -603,6 +703,15 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<Transfer>>, Error> {
         Ok(tx.get_value(self.transfer_db, block_hash)?)
+    }
+
+    /// Retrieves finality signatures for a block with a given block hash
+    fn get_finality_signatures<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockSignatures>, Error> {
+        Ok(tx.get_value(self.block_metadata_db, block_hash)?)
     }
 }
 

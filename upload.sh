@@ -31,6 +31,11 @@ parse_args() {
             #echo "Parsing option: '--${OPTARG}', value: '${val}'" >&2
             PACKAGE_VERSION=${val}
             ;;
+          package-tag)
+            val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+            #echo "Parsing option: '--${OPTARG}', value: '${val}'" >&2
+            PACKAGE_TAG=${val}
+            ;;
           help)
             get_help
             exit 1
@@ -135,9 +140,14 @@ else
   export BINTRAY_API_KEY=$(/bin/cat $CREDENTIAL_FILE_TMP | jq -r .data.bintray_api_key)
 fi
 
+if [ "$PACKAGE_TAG" == "true" ]; then
+  REV="0"
+else
+  REV=${DRONE_BUILD_NUMBER}
+fi
 
 if [ -d "$UPLOAD_DIR" ]; then
-  DEB_FILE="${BINTRAY_PACKAGE_NAME}_${PACKAGE_VERSION}-${DRONE_BUILD_NUMBER}_amd64.deb"
+  DEB_FILE="${BINTRAY_PACKAGE_NAME}_${PACKAGE_VERSION}-${REV}_amd64.deb"
   DEB_FILE_PATH="$UPLOAD_DIR/$DEB_FILE"
 else
   echo "[ERROR] Not such dir: $UPLOAD_DIR"

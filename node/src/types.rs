@@ -1,6 +1,7 @@
 //! Common types used across multiple components.
 
 mod block;
+pub mod chainspec;
 mod deploy;
 mod item;
 pub mod json_compatibility;
@@ -15,10 +16,12 @@ use rand::{CryptoRng, RngCore};
 use rand_chacha::ChaCha20Rng;
 
 pub use block::{
-    json_compatibility::JsonBlock, Block, BlockHash, BlockHeader, BlockValidationError,
-    FinalitySignature,
+    json_compatibility::JsonBlock, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockValidationError, FinalitySignature,
 };
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
+pub(crate) use chainspec::ActivationPoint;
+pub use chainspec::Chainspec;
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
     Error as DeployError,

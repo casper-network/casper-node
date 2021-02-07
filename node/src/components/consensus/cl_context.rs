@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use datasize::DataSize;
 use tracing::info;
 
 use casper_types::{PublicKey, SecretKey, Signature};
@@ -16,6 +17,7 @@ use crate::{
     NodeRng,
 };
 
+#[derive(DataSize)]
 pub(crate) struct Keypair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
@@ -47,7 +49,7 @@ impl ValidatorSecret for Keypair {
 }
 
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ClContext;
 
 impl Context for ClContext {

@@ -8,15 +8,14 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
-use super::chainspec_loader::DeployConfig;
 use crate::{
-    components::{chainspec_loader::Chainspec, Component},
+    components::Component,
     effect::{
         announcements::DeployAcceptorAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Deploy, DeployValidationFailure, NodeId},
+    types::{chainspec::DeployConfig, Chainspec, Deploy, DeployValidationFailure, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -65,10 +64,10 @@ pub struct DeployAcceptorChainspec {
 }
 
 impl From<Chainspec> for DeployAcceptorChainspec {
-    fn from(c: Chainspec) -> Self {
+    fn from(chainspec: Chainspec) -> Self {
         DeployAcceptorChainspec {
-            chain_name: c.genesis.name,
-            deploy_config: c.genesis.deploy_config,
+            chain_name: chainspec.network_config.name,
+            deploy_config: chainspec.deploy_config,
         }
     }
 }

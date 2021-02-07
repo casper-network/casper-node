@@ -3,9 +3,6 @@
 # ================================
 [node]
 
-# Path (absolute, or relative to this config.toml) to the chainspec configuration file.
-chainspec_config_path = '/etc/casper/chainspec.toml'
-
 # If set, use this hash as a trust anchor when joining an existing network.
 # trusted_hash =
 
@@ -91,7 +88,7 @@ address = '0.0.0.0:7777'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 100
+qps_limit = 5
 
 # =============================================
 # Configuration options for the REST HTTP server
@@ -108,7 +105,7 @@ address = '0.0.0.0:8888'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 100
+qps_limit = 10
 
 # =============================================
 # Configuration options for the SSE HTTP event stream server

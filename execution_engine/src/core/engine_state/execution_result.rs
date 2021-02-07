@@ -76,6 +76,8 @@ pub type ExecutionResults = VecDeque<ExecutionResult>;
 pub enum ForcedTransferResult {
     /// Payment code ran out of gas during execution
     InsufficientPayment,
+    /// Gas conversion overflow
+    GasConversionOverflow,
     /// Payment code execution resulted in an error
     PaymentFailure,
 }
@@ -227,9 +229,7 @@ impl ExecutionResult {
     ) -> Option<ForcedTransferResult> {
         let payment_result_cost = match Motes::from_gas(self.cost(), gas_price) {
             Some(cost) => cost,
-            // Multiplying cost by gas_price overflowed the U512 range
-            // TODO: Add a specific error variant to represent gas to motes conversion overflow.
-            None => return Some(ForcedTransferResult::InsufficientPayment),
+            None => return Some(ForcedTransferResult::GasConversionOverflow),
         };
         // payment_code_spec_3_b_ii: if (balance of PoS pay purse) < (gas spent during
         // payment code execution) * gas_price, no session

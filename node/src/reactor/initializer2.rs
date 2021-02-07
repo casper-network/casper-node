@@ -1,4 +1,5 @@
 //! Reactor used to initialize a node.
+#![allow(unreachable_code)]
 
 use casper_node_macros::reactor;
 
@@ -8,13 +9,7 @@ reactor!(Initializer {
   type Config = WithDir<validator::Config>;
 
   components: {
-    chainspec = has_effects infallible ChainspecLoader(cfg
-           .value()
-           .node
-           .chainspec_config_path
-           .clone()
-           .load(cfg.dir())
-           .expect("TODO: return proper error when chainspec cannot be loaded"), effect_builder);
+    chainspec_loader = has_effects ChainspecLoader(cfg.dir(), effect_builder);
     storage = Storage(&cfg.map_ref(|cfg| cfg.storage.clone()));
     contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()),
 &cfg.value().contract_runtime, registry);   }
@@ -31,7 +26,7 @@ reactor!(Initializer {
   }
 
   announcements: {
-    // We neither send nor process announcements.
+    ChainspecLoaderAnnouncement -> [!];
   }
 });
 
@@ -41,6 +36,6 @@ reactor!(Initializer {
 impl Initializer {
     /// Returns whether the initialization process completed successfully or not.
     pub fn stopped_successfully(&self) -> bool {
-        self.chainspec.stopped_successfully()
+        self.chainspec_loader.stopped_successfully()
     }
 }

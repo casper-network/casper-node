@@ -22,12 +22,12 @@ use semver::Version;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-    components::{chainspec_loader::DeployConfig, Component},
+    components::Component,
     effect::{
         requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
+    types::{chainspec::DeployConfig, DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 use casper_execution_engine::shared::gas::Gas;
@@ -155,7 +155,7 @@ where
                     sets: sets
                         .unwrap_or_default()
                         .with_next_finalized(next_finalized_block),
-                    deploy_config: chainspec.genesis.deploy_config,
+                    deploy_config: chainspec.deploy_config,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),
                     unhandled_finalized: Default::default(),

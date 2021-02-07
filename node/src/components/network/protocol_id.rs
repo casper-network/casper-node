@@ -1,6 +1,6 @@
 use libp2p::core::ProtocolName;
 
-use crate::components::chainspec_loader::Chainspec;
+use crate::types::Chainspec;
 
 /// The max length of protocol ID supported by libp2p.  See
 /// https://docs.rs/libp2p/0.22.0/libp2p/core/trait.ProtocolName.html#tymethod.protocol_name
@@ -16,7 +16,7 @@ impl ProtocolId {
     pub(super) fn new(chainspec: &Chainspec, name: &str) -> Self {
         let id = format!(
             "/casper/{}/{}/{}",
-            chainspec.genesis.name, name, chainspec.genesis.protocol_version
+            chainspec.network_config.name, name, chainspec.protocol_config.version
         );
 
         assert!(

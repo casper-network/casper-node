@@ -45,9 +45,9 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -183,6 +183,9 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+    /// Chainspec loader announcement.
+    #[from]
+    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
 }
 
 impl From<RpcRequest<NodeId>> for Event {
@@ -279,6 +282,9 @@ impl Display for Event {
                 write!(f, "address gossiper announcement: {}", ann)
             }
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
+            Event::ChainspecLoaderAnnouncement(ann) => {
+                write!(f, "chainspec loader announcement: {}", ann)
+            }
         }
     }
 }
@@ -384,6 +390,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
+            registry,
             small_network_identity,
             genesis_config_hash,
             true,
@@ -438,7 +445,7 @@ impl reactor::Reactor for Reactor {
         // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
         let now = Timestamp::now();
         let five_minutes = TimeDiff::from_str("5minutes").unwrap();
-        let later_timestamp = cmp::max(now, chainspec_loader.chainspec().genesis.timestamp);
+        let later_timestamp = cmp::max(now, chainspec_loader.chainspec().network_config.timestamp);
         let timer_duration = later_timestamp + five_minutes - now;
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
@@ -796,17 +803,18 @@ impl reactor::Reactor for Reactor {
                 source: _,
             }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
-                let mut reactor_event_dispatch = |dbe: block_proposer::Event| {
-                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(dbe))
-                };
-
                 match consensus_announcement {
                     ConsensusAnnouncement::Finalized(block) => {
-                        let effects =
-                            reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
+                        let reactor_event =
+                            Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
                                 block: block.proto_block().clone(),
                                 height: block.height(),
                             });
+                        let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                        let reactor_event =
+                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
                     ConsensusAnnouncement::Handled(_) => {
@@ -827,7 +835,7 @@ impl reactor::Reactor for Reactor {
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                        // TODO: handle the announcement and acutally disconnect
+                        // TODO: handle the announcement and actually disconnect
                         warn!("Disconnecting from a given peer not yet implemented.");
                         Effects::new()
                     }
@@ -890,6 +898,20 @@ impl reactor::Reactor for Reactor {
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            Event::ChainspecLoaderAnnouncement(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+            ) => {
+                let reactor_event = Event::ChainspecLoader(
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
+                );
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
+                    next_upgrade.activation_point(),
+                ));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
+            }
         }
     }
 
@@ -897,6 +919,10 @@ impl reactor::Reactor for Reactor {
         self.memory_metrics.estimate(&self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn is_stopped(&mut self) -> bool {
+        self.consensus.stop_for_upgrade()
     }
 }
 

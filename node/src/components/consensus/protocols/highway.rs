@@ -37,10 +37,7 @@ use crate::{
     NodeRng,
 };
 
-use self::{
-    round_success_meter::RoundSuccessMeter,
-    synchronizer::{PendingVertex, Synchronizer},
-};
+use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
@@ -61,6 +58,7 @@ type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
+    I: DataSize,
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
@@ -126,9 +124,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting slashed.
         let min_round_len = 1 << highway_config.minimum_round_exponent;
-        let min_rounds_per_era = highway_config
+        let min_rounds_per_era = protocol_config
             .minimum_era_height
-            .max(1 + highway_config.era_duration.millis() / min_round_len);
+            .max(1 + protocol_config.era_duration.millis() / min_round_len);
         let endorsement_evidence_limit =
             (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
@@ -139,9 +137,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
-            highway_config.minimum_era_height,
+            protocol_config.minimum_era_height,
             start_time,
-            start_time + highway_config.era_duration,
+            start_time + protocol_config.era_duration,
             endorsement_evidence_limit,
         );
 
@@ -220,9 +218,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             results.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(v);
-        results.push(ProtocolOutcome::CreatedGossipMessage(
-            bincode::serialize(&msg).expect("should serialize message"),
-        ));
+        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
         results.extend(self.detect_finality());
         results
     }
@@ -238,23 +234,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
     fn add_vertex(&mut self, rng: &mut NodeRng) -> ProtocolOutcomes<I, C> {
-        let (pending_vertex, mut outcomes) =
-            match self.synchronizer.pop_vertex_to_add(&self.highway) {
-                None => return vec![],
-                Some((pending_vertex, outcomes)) => (pending_vertex, outcomes),
-            };
-
-        // If we are still missing a dependency, store the vertex in the map and request the
-        // dependency from the sender.
-        if let Some(dep) = self.highway.missing_dependency(pending_vertex.pvv()) {
-            let sender = pending_vertex.sender().clone();
-            self.synchronizer
-                .add_missing_dependency(dep.clone(), pending_vertex);
-            let msg = HighwayMessage::RequestDependency(dep);
-            let ser_msg = bincode::serialize(&msg).expect("should serialize message");
-            outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
-            return outcomes;
-        }
+        let (maybe_pending_vertex, mut outcomes) =
+            self.synchronizer.pop_vertex_to_add(&self.highway);
+        let pending_vertex = match maybe_pending_vertex {
+            None => return outcomes,
+            Some(pending_vertex) => pending_vertex,
+        };
 
         // If unit is sent by a doppelganger, deactivate this instance of an active
         // validator. Continue processing the unit so that it can be added to the state.
@@ -344,9 +329,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
-        results.push(ProtocolOutcome::CreatedGossipMessage(
-            bincode::serialize(&msg).expect("should serialize message"),
-        ));
+        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
         results
     }
 
@@ -385,6 +368,12 @@ enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
     LatestStateRequest(Panorama<C>),
+}
+
+impl<C: Context> HighwayMessage<C> {
+    fn serialize(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("should serialize message")
+    }
 }
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
@@ -459,7 +448,7 @@ where
                         // If it's not from an equivocator and from the future, add to queue
                         trace!("received a vertex from the future; storing for later");
                         self.synchronizer
-                            .store_vertex_for_addition_later(timestamp, sender, pvv);
+                            .store_vertex_for_addition_later(timestamp, now, sender, pvv);
                         let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
                         vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
                     }
@@ -467,8 +456,7 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         trace!("received a valid vertex");
-                        let pv = PendingVertex::new(sender, pvv);
-                        self.synchronizer.schedule_add_vertices(iter::once(pv))
+                        self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
             }
@@ -482,16 +470,11 @@ where
                     GetDepOutcome::Evidence(vid) => {
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
-                    GetDepOutcome::Vertex(vv) => {
-                        let msg = HighwayMessage::NewVertex(vv.into());
-                        let serialized_msg =
-                            bincode::serialize(&msg).expect("should serialize message");
-                        // TODO: Should this be done via a gossip service?
-                        vec![ProtocolOutcome::CreatedTargetedMessage(
-                            serialized_msg,
-                            sender,
-                        )]
-                    }
+                    // TODO: Should this be done via a gossip service?
+                    GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
+                        HighwayMessage::NewVertex(vv.into()).serialize(),
+                        sender,
+                    )],
                 }
             }
             Ok(HighwayMessage::LatestStateRequest(panorama)) => {
@@ -547,9 +530,7 @@ where
                     .zip(&panorama)
                     .filter_map(create_message)
                     .map(|msg| {
-                        let serialized_msg =
-                            bincode::serialize(&msg).expect("should serialize message");
-                        ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
+                        ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender.clone())
                     })
                     .collect()
             }
@@ -559,9 +540,8 @@ where
     fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C> {
         trace!(?peer_id, "connected to a new peer");
         let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-        let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
         vec![ProtocolOutcome::CreatedTargetedMessage(
-            serialized_msg,
+            msg.serialize(),
             peer_id,
         )]
     }
@@ -581,7 +561,7 @@ where
                 self.synchronizer.add_past_due_stored_vertices(timestamp)
             }
             TIMER_ID_PURGE_VERTICES => {
-                self.synchronizer.purge_vertices();
+                self.synchronizer.purge_vertices(timestamp);
                 let next_time = Timestamp::now() + self.synchronizer.pending_vertex_timeout();
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
@@ -685,10 +665,8 @@ where
                     GetDepOutcome::None | GetDepOutcome::Evidence(_) => None,
                     GetDepOutcome::Vertex(vv) => {
                         let msg = HighwayMessage::NewVertex(vv.into());
-                        let serialized_msg =
-                            bincode::serialize(&msg).expect("should serialize message");
                         Some(ProtocolOutcome::CreatedTargetedMessage(
-                            serialized_msg,
+                            msg.serialize(),
                             sender,
                         ))
                     }

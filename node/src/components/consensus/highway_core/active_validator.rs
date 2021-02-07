@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use datasize::DataSize;
 use tracing::{error, info, trace, warn};
 
 use super::{
@@ -58,7 +59,11 @@ pub(crate) enum Effect<C: Context> {
 /// If the rounds are long enough (i.e. message delivery is fast enough) and there are enough
 /// honest validators, there will be a lot of confirmations for the proposal, and enough witness
 /// units citing all those confirmations, to create a summit and finalize the proposal.
-pub(crate) struct ActiveValidator<C: Context> {
+#[derive(DataSize)]
+pub(crate) struct ActiveValidator<C>
+where
+    C: Context,
+{
     /// Our own validator index.
     pub(crate) vidx: ValidatorIndex,
     /// The validator's secret signing key.

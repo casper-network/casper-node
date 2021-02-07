@@ -26,7 +26,7 @@ function main()
     # Set standard deploy parameters.
     CHAIN_NAME=$(get_chain_name)
     GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
-    GAS_PAYMENT=70000000000
+    GAS_PAYMENT=10000000000000
     NODE_ADDRESS=$(get_node_address_rpc)
     PATH_TO_CLIENT=$(get_path_to_client)
 

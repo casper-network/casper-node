@@ -53,7 +53,7 @@ function _set_chainspec()
     local PATH_TO_CHAINSPEC
     local GENESIS_NAME
     local GENESIS_TIMESTAMP
-    
+
     # Set directory.
     PATH_TO_NET=$(get_path_to_net)
     mkdir "$PATH_TO_NET"/chainspec
@@ -85,17 +85,16 @@ function _set_chainspec_config()
 {
     local PATH_TO_NET=${1}
     local PATH_TO_FILE=${2}
-    local GENESIS_NAME=${3}
-    local GENESIS_TIMESTAMP=${4}
+    local NETWORK_NAME=${3}
+    local NETWORK_TIMESTAMP=${4}
     local COUNT_MAX_NODES=${5}
 
     local SCRIPT=(
         "import toml;"
         "cfg=toml.load('$PATH_TO_FILE');"
-        "cfg['genesis']['name']='$GENESIS_NAME';"
-        "cfg['genesis']['timestamp']='$GENESIS_TIMESTAMP';"
-        "cfg['genesis']['validator_slots']=$COUNT_MAX_NODES;"
-        "cfg['genesis']['accounts_path']='$PATH_TO_NET/chainspec/accounts.csv';"
+        "cfg['network']['name']='$NETWORK_NAME';"
+        "cfg['network']['timestamp']='$NETWORK_TIMESTAMP';"
+        "cfg['core']['validator_slots']=$COUNT_MAX_NODES;"
         "toml.dump(cfg, open('$PATH_TO_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
@@ -115,7 +114,7 @@ function _set_chainspec_account()
     local INITIAL_WEIGHT=${3:-0}
     local ACCOUNT_KEY
     local PATH_TO_NET
-    
+
     PATH_TO_NET=$(get_path_to_net)
 
     ACCOUNT_KEY=$(cat "$PATH_TO_ACCOUNT_KEY")
@@ -187,7 +186,23 @@ function _set_nodes()
     for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         setup_node "$NODE_ID" "$COUNT_GENESIS_NODES"
-    done
+    done   
+}
+
+#######################################
+# Sets chainspec to each node.
+# Arguments:
+#   Count of genesis nodes to setup.
+#######################################
+function _set_node_chainspecs()
+{
+    local COUNT_GENESIS_NODES=${1}
+
+    # Copy the chainspec.toml and accounts.csv files into each node's config folder now they're complete.
+    for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
+    do
+        setup_node_chainspec "$NODE_ID"
+    done    
 }
 
 #######################################
@@ -238,21 +253,24 @@ function _main()
 
     log "net-$NET_ID: asset setup begins ... please wait"
 
-    # Set artefacts.    
-    log "... setting binaries"    
+    # Set artefacts.
+    log "... setting binaries"
     _set_bin
 
     log "... setting chainspec"
     _set_chainspec "$GENESIS_DELAY" "$COUNT_NODES"
 
     log "... setting faucet"
-    _set_faucet 
+    _set_faucet
 
     log "... setting nodes"
     _set_nodes "$COUNT_NODES"
 
     log "... setting users"
     _set_users "$COUNT_USERS"
+
+    log "... setting node chainspecs"
+    _set_node_chainspecs "$COUNT_NODES"    
 
     log "... setting daemon"
     _set_daemon

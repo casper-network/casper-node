@@ -1,15 +1,14 @@
 use std::path::PathBuf;
 
 use datasize::DataSize;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_types::SecretKey;
 
 use crate::{
-    components::chainspec_loader::{HighwayConfig, UpgradePoint},
-    types::{TimeDiff, Timestamp},
+    types::{chainspec::HighwayConfig, Chainspec, TimeDiff, Timestamp},
     utils::External,
-    Chainspec,
 };
 
 /// Consensus configuration.
@@ -39,27 +38,33 @@ impl Default for Config {
 #[derive(DataSize, Debug)]
 pub(crate) struct ProtocolConfig {
     pub(crate) highway_config: HighwayConfig,
+    pub(crate) era_duration: TimeDiff,
+    pub(crate) minimum_era_height: u64,
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
     pub(crate) auction_delay: u64,
     pub(crate) unbonding_delay: u64,
+    /// The network protocol version.
+    #[data_size(skip)]
+    pub(crate) protocol_version: Version,
     /// Name of the network.
     pub(crate) name: String,
     /// Genesis timestamp.
     pub(crate) timestamp: Timestamp,
-    pub(crate) upgrades: Vec<UpgradePoint>,
 }
 
 impl From<&Chainspec> for ProtocolConfig {
-    fn from(c: &Chainspec) -> Self {
+    fn from(chainspec: &Chainspec) -> Self {
         ProtocolConfig {
-            highway_config: c.genesis.highway_config.clone(),
-            auction_delay: c.genesis.auction_delay,
-            unbonding_delay: c.genesis.unbonding_delay,
-            name: c.genesis.name.clone(),
-            timestamp: c.genesis.timestamp,
-            upgrades: c.upgrades.clone(),
+            highway_config: chainspec.highway_config,
+            era_duration: chainspec.core_config.era_duration,
+            minimum_era_height: chainspec.core_config.minimum_era_height,
+            auction_delay: chainspec.core_config.auction_delay,
+            unbonding_delay: chainspec.core_config.unbonding_delay.into(),
+            protocol_version: chainspec.protocol_config.version.clone(),
+            name: chainspec.network_config.name.clone(),
+            timestamp: chainspec.network_config.timestamp,
         }
     }
 }

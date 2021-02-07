@@ -5,6 +5,7 @@ mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
+#[macro_use]
 mod highway_core;
 mod metrics;
 mod protocols;
@@ -32,12 +33,12 @@ use crate::{
         announcements::ConsensusAnnouncement,
         requests::{
             self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
@@ -114,6 +115,8 @@ pub enum Event<I> {
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Debug for ConsensusMessage {
@@ -209,6 +212,9 @@ impl<I: Debug> Display for Event<I> {
             Event::FinishedJoining(timestamp) => {
                 write!(f, "The node finished joining the network at {}", timestamp)
             }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
+            }
         }
     }
 }
@@ -225,6 +231,7 @@ pub trait ReactorEventT<I>:
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<ChainspecLoaderRequest>
 {
 }
 
@@ -238,6 +245,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
 {
 }
 
@@ -301,6 +309,9 @@ where
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                handling_es.got_upgrade_activation_point(activation_point)
+            }
             Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
                 era_id,
                 pk,
