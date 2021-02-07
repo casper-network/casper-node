@@ -3,21 +3,30 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::PublicKey;
 
-use crate::{components::consensus::traits::ConsensusValueT, types::ProtoBlock};
+use crate::{
+    components::consensus::traits::ConsensusValueT,
+    types::{ProtoBlock, Timestamp},
+};
 
 /// A proposed block. Once the consensus protocol reaches agreement on it, it will be converted to
 /// a `FinalizedBlock`.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) struct CandidateBlock {
     proto_block: ProtoBlock,
+    timestamp: Timestamp,
     accusations: Vec<PublicKey>,
 }
 
 impl CandidateBlock {
     /// Creates a new candidate block, wrapping a proto block and accusing the given validators.
-    pub(crate) fn new(proto_block: ProtoBlock, accusations: Vec<PublicKey>) -> Self {
+    pub(crate) fn new(
+        proto_block: ProtoBlock,
+        timestamp: Timestamp,
+        accusations: Vec<PublicKey>,
+    ) -> Self {
         CandidateBlock {
             proto_block,
+            timestamp,
             accusations,
         }
     }
@@ -25,6 +34,11 @@ impl CandidateBlock {
     /// Returns the proto block containing the deploys.
     pub(crate) fn proto_block(&self) -> &ProtoBlock {
         &self.proto_block
+    }
+
+    /// Returns the candidate block's timestamp.
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Returns the validators accused by this block.
