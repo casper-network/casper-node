@@ -4,6 +4,7 @@ use std::{
     env, fmt,
     fmt::{Debug, Display, Formatter},
     str::FromStr,
+    thread,
     time::Duration,
 };
 
@@ -141,7 +142,7 @@ where
     match env::var(name) {
         Ok(raw) => Some(
             raw.parse()
-                .expect(&format!("cannot parse envvar `{}`", name)),
+                .unwrap_or_else(|_| panic!("cannot parse envvar `{}`", name)),
         ),
         Err(env::VarError::NotPresent) => None,
         Err(err) => {
@@ -187,7 +188,7 @@ async fn send_large_message_across_network() {
 
     // Hack to get network component to connect. This gives the libp2p thread (which is independent
     // of cranking) a little time to bind to the socket.
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(2));
 
     // Create `node_count-1` additional node instances.
     for _ in 1..node_count {
