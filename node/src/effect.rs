@@ -100,7 +100,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo,
+        chainspec_loader::{ChainspecInfo, NextUpgrade},
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -111,15 +111,16 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures,
-        Chainspec, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
@@ -653,6 +654,19 @@ impl<REv> EffectBuilder<REv> {
                     block,
                     execution_results,
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce upgrade activation point read.
+    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    where
+        REv: From<ChainspecLoaderAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
                 QueueKind::Regular,
             )
             .await
@@ -1209,21 +1223,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
             .await
-    }
-
-    /// Requests to check config dir to see if a new upgrade point is available, and if so, returns
-    /// its activation point.
-    // TODO - remove once used.
-    #[allow(unused)]
-    pub(crate) async fn next_upgrade_activation_point(self) -> Option<ActivationPoint>
-    where
-        REv: From<ChainspecLoaderRequest> + Send,
-    {
-        self.make_request(
-            ChainspecLoaderRequest::NextUpgradeActivationPoint,
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Loads potentially previously stored state from storage.

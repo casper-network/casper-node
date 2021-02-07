@@ -46,8 +46,9 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+            BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -212,6 +213,10 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+
+    /// Chainspec loader announcement.
+    #[from]
+    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
@@ -314,6 +319,9 @@ impl Display for Event {
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
+            Event::ChainspecLoaderAnnouncement(ann) => {
+                write!(f, "chainspec loader announcement: {}", ann)
+            }
         }
     }
 }
@@ -856,6 +864,20 @@ impl reactor::Reactor for Reactor {
                     Event::SmallNetwork(small_network::Event::from(req))
                 };
                 self.dispatch_event(effect_builder, rng, event)
+            }
+            Event::ChainspecLoaderAnnouncement(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+            ) => {
+                let reactor_event = Event::ChainspecLoader(
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
+                );
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
+                    next_upgrade.activation_point(),
+                ));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
         }
     }
