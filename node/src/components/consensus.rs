@@ -95,6 +95,7 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     },
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -184,11 +185,13 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
             } => write!(
                 f,
-                "Proto-block received from {:?} for {} is {}: {:?}",
+                "Proto-block received from {:?} at {} for {} is {}: {:?}",
                 sender,
+                timestamp,
                 era_id,
                 if *valid { "valid" } else { "invalid" },
                 proto_block
@@ -286,8 +289,9 @@ where
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
-            } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            } => handling_es.resolve_validity(era_id, sender, proto_block, timestamp, valid),
             Event::DeactivateEra {
                 era_id,
                 faulty_num,

@@ -484,7 +484,8 @@ where
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
-        let candidate_block = CandidateBlock::new(proto_block, accusations);
+        let candidate_block =
+            CandidateBlock::new(proto_block, block_context.timestamp(), accusations);
         self.delegate_to_era(era_id, move |consensus, rng| {
             consensus.propose(candidate_block, block_context, rng)
         })
@@ -626,6 +627,7 @@ where
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     ) -> Effects<Event<I>> {
         self.era_supervisor.metrics.proposed_block();
@@ -639,7 +641,7 @@ where
             effects.extend(self.disconnect(sender));
         }
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.resolve_validity(&proto_block, valid)
+            era.resolve_validity(&proto_block, timestamp, valid)
         } else {
             return effects;
         };
@@ -765,7 +767,7 @@ where
                     inactive_validators: tbd.inactive_validators,
                 });
                 let finalized_block = FinalizedBlock::new(
-                    value.proto_block().clone(),
+                    value.into(),
                     timestamp,
                     era_end,
                     era_id,
@@ -825,6 +827,7 @@ where
                             era_id,
                             sender,
                             proto_block,
+                            timestamp,
                             valid,
                         }),
                 );
