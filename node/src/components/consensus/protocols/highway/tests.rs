@@ -244,6 +244,7 @@ fn detect_doppelganger() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(
+        &mut rng,
         *ALICE_PUBLIC_KEY,
         alice_keypair,
         Timestamp::zero(),

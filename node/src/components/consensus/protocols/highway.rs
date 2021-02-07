@@ -167,21 +167,28 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         (hw_proto, outcomes)
     }
 
-    fn process_av_effects<E>(&mut self, av_effects: E) -> ProtocolOutcomes<I, C>
+    fn process_av_effects<E>(&mut self, rng: &mut NodeRng, av_effects: E) -> ProtocolOutcomes<I, C>
     where
         E: IntoIterator<Item = AvEffect<C>>,
     {
         av_effects
             .into_iter()
-            .flat_map(|effect| self.process_av_effect(effect))
+            .flat_map(|effect| self.process_av_effect(rng, effect))
             .collect()
     }
 
-    fn process_av_effect(&mut self, effect: AvEffect<C>) -> ProtocolOutcomes<I, C> {
+    fn process_av_effect(
+        &mut self,
+        rng: &mut NodeRng,
+        effect: AvEffect<C>,
+    ) -> ProtocolOutcomes<I, C> {
         match effect {
             AvEffect::NewVertex(vv) => {
                 self.calculate_round_exponent(&vv);
-                self.process_new_vertex(vv.into())
+                let mut outcomes = self.add_valid_vertex(vv.clone(), rng, Timestamp::now());
+                let msg = HighwayMessage::NewVertex(vv.into());
+                outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
+                outcomes
             }
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ProtocolOutcome::ScheduleTimer(
@@ -327,9 +334,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // newer ones.
         self.calculate_round_exponent(&vv);
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
-        let mut results = self.process_av_effects(av_effects);
-        let msg = HighwayMessage::NewVertex(vv.into());
-        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
+        let mut results = self.process_av_effects(rng, av_effects);
         results
     }
 
@@ -555,7 +560,7 @@ where
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
                 let effects = self.highway.handle_timer(timestamp, rng);
-                self.process_av_effects(effects)
+                self.process_av_effects(rng, effects)
             }
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => {
                 self.synchronizer.add_past_due_stored_vertices(timestamp)
@@ -583,7 +588,7 @@ where
         rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C> {
         let effects = self.highway.propose(value, block_context, rng);
-        self.process_av_effects(effects)
+        self.process_av_effects(rng, effects)
     }
 
     fn resolve_validity(
@@ -632,6 +637,7 @@ where
 
     fn activate_validator(
         &mut self,
+        rng: &mut NodeRng,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
@@ -641,7 +647,7 @@ where
         let av_effects =
             self.highway
                 .activate_validator(our_id, secret, timestamp, unit_hash_file, ftt);
-        self.process_av_effects(av_effects)
+        self.process_av_effects(rng, av_effects)
     }
 
     fn deactivate_validator(&mut self) {

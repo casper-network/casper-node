@@ -168,6 +168,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Turns this instance into an active validator, that participates in the consensus protocol.
     fn activate_validator(
         &mut self,
+        rng: &mut NodeRng,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
