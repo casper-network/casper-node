@@ -58,7 +58,7 @@ pub(crate) enum PingError {
 /// The vertex could not be determined to be invalid based on its contents alone. The remaining
 /// checks will be applied once all of its dependencies have been added to `Highway`. (See
 /// `ValidVertex`.)
-#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct PreValidatedVertex<C>(Vertex<C>)
 where
     C: Context;
