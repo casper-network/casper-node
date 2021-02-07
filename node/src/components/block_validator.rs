@@ -68,6 +68,7 @@ pub(crate) struct BlockValidationState<T, I> {
     responders: SmallVec<[Responder<(bool, T)>; 2]>,
     /// Peers that should have the data.
     sources: VecDeque<I>,
+    context: (Arc<Chainspec>, Timestamp),
 }
 
 impl<T, I> BlockValidationState<T, I>
@@ -83,6 +84,11 @@ where
             self.sources.push_back(peer);
             false
         }
+    }
+
+    /// Returns a peer, if there is any, that we haven't yet tried.
+    fn source(&mut self) -> Option<I> {
+        self.sources.pop_front()
     }
 }
 
@@ -181,6 +187,7 @@ where
                             sources: VecDeque::new(), /* This is empty b/c we create the first
                                                        * request
                                                        * using `sender`. */
+                            context: (chainspec, block_timestamp),
                         });
                     }
                 }
@@ -214,16 +221,23 @@ where
                     return Effects::new();
                 }
 
-                // Otherwise notify everyone still waiting on it that all is lost.
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
-                        info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
-                        // This validation state contains a failed deploy hash, it can never
-                        // succeed.
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond((false, key.clone())).ignore());
-                        });
-                        false
+                        if let Some(next_peer) = state.source() {
+                            // There's still hope to download the deploy.
+                            let (chainspec, block_timestamp) = &state.context;
+                            effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, next_peer));
+                            true
+                        } else {
+                            // Otherwise notify everyone still waiting on it that all is lost.
+                            info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
+                            // This validation state contains a failed deploy hash, it can never
+                            // succeed.
+                            state.responders.drain(..).for_each(|responder| {
+                                effects.extend(responder.respond((false, key.clone())).ignore());
+                            });
+                            false
+                        }
                     } else {
                         true
                     }
