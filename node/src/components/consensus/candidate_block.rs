@@ -9,7 +9,7 @@ use casper_types::PublicKey;
 
 use crate::{
     components::consensus::traits::ConsensusValueT,
-    crypto::hash::Digest, 
+    crypto::hash::Digest,
     types::{ProtoBlock, Timestamp},
 };
 
@@ -76,7 +76,7 @@ impl ConsensusValueT for CandidateBlock {
         });
         result.into()
     }
-    
+
     fn needs_validation(&self) -> bool {
         !self.proto_block.wasm_deploys().is_empty() || !self.proto_block.transfers().is_empty()
     }
