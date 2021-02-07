@@ -98,9 +98,9 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
   - make setup
-  - make test
-  - make test-contracts
-  - make test-fast-sync
+  - make test CARGO_FLAGS=--release
+  - make test-contracts CARGO_FLAGS=--release
+  - make test-fast-sync CARGO_FLAGS=--release
 
 - name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
@@ -318,11 +318,6 @@ type: docker
 name: release-by-tag
 
 steps:
-- name: update-revision
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./update-rev.sh"
-
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
@@ -331,8 +326,8 @@ steps:
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
   commands:
-  - "./upload.sh --repo-name debian --package-name casper-node"
-  - "./upload.sh --repo-name debian --package-name casper-client"
+  - "./upload.sh --repo-name debian --package-name casper-node --package-tag true"
+  - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token

@@ -21,7 +21,7 @@ use datasize::DataSize;
 use derive_more::{Display, From};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
     components::Component,
@@ -83,7 +83,7 @@ pub(crate) struct BlockValidatorReady<T, I> {
 
 impl<T, I> BlockValidatorReady<T, I>
 where
-    T: BlockLike + Send + Clone + 'static,
+    T: BlockLike + Debug + Send + Clone + 'static,
     I: Clone + Send + 'static,
 {
     fn handle_event<REv>(
@@ -157,6 +157,7 @@ where
                                             {
                                                 Event::DeployFound(deploy_hash)
                                             } else {
+                                                info!(%deploy_hash, "deploy is invalid");
                                                 Event::DeployMissing(deploy_hash)
                                             }
                                         }
@@ -164,6 +165,7 @@ where
                                 effect_builder
                                     .fetch_deploy(deploy_hash, sender.clone())
                                     .map_or_else(validate_deploy, move || {
+                                        info!(%deploy_hash, "deploy missing");
                                         Event::DeployMissing(deploy_hash)
                                     })
                             })
@@ -209,6 +211,7 @@ where
                 // Otherwise notify everyone still waiting on it that all is lost.
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
+                        info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
                         // This validation state contains a failed deploy hash, it can never
                         // succeed.
                         state.responders.drain(..).for_each(|responder| {
@@ -242,7 +245,7 @@ pub(crate) struct BlockValidator<T, I> {
 
 impl<T, I> BlockValidator<T, I>
 where
-    T: BlockLike + Send + Clone + 'static,
+    T: BlockLike + Debug + Send + Clone + 'static,
     I: Clone + Send + 'static + Send,
 {
     /// Creates a new block validator instance.
@@ -268,7 +271,7 @@ where
 
 impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
-    T: BlockLike + Send + Clone + 'static,
+    T: BlockLike + Debug + Send + Clone + 'static,
     I: Clone + Send + 'static,
     REv: From<Event<T, I>>
         + From<BlockValidationRequest<T, I>>

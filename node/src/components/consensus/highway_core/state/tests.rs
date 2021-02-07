@@ -122,7 +122,7 @@ impl<C: Context> SignedWireUnit<C> {
     }
 }
 
-fn test_params(seed: u64) -> Params {
+pub(crate) fn test_params(seed: u64) -> Params {
     Params::new(
         seed,
         TEST_BLOCK_REWARD,

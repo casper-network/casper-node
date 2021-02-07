@@ -29,7 +29,7 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::common::{self},
-    types::{Block, BlockHash, Item, JsonBlock},
+    types::{Block, BlockHash, BlockSignatures, Item, JsonBlock},
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
@@ -39,7 +39,7 @@ static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: CLIENT_API_VERSION.clone(),
-    block: Some(Block::doc_example().clone().into()),
+    block: Some(JsonBlock::doc_example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     Lazy::new(|| GetBlockTransfersParams {
@@ -127,15 +127,25 @@ impl RpcWithOptionalParamsExt for GetBlock {
         async move {
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let maybe_block = match get_block(maybe_block_id, effect_builder).await {
-                Ok(maybe_block) => maybe_block,
-                Err(error) => return Ok(response_builder.error(error)?),
-            };
+            let (block, signatures) =
+                match get_block_with_metadata(maybe_block_id, effect_builder).await {
+                    Ok(Some((block, signatures))) => (block, signatures),
+                    Ok(None) => {
+                        let error = warp_json_rpc::Error::custom(
+                            ErrorCode::NoSuchBlock as i64,
+                            "block not known",
+                        );
+                        return Ok(response_builder.error(error)?);
+                    }
+                    Err(error) => return Ok(response_builder.error(error)?),
+                };
+
+            let json_block = JsonBlock::new(block, signatures);
 
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block: maybe_block.map(Into::into),
+                block: Some(json_block),
             };
             Ok(response_builder.success(result)?)
         }
@@ -426,9 +436,25 @@ async fn get_block<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Block>, warp_json_rpc::Error> {
+    match get_block_with_metadata(maybe_id, effect_builder).await {
+        Ok(Some((block, _))) => Ok(Some(block)),
+        Ok(None) => {
+            return Err(warp_json_rpc::Error::custom(
+                ErrorCode::NoSuchBlock as i64,
+                "block not known",
+            ))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn get_block_with_metadata<REv: ReactorEventT>(
+    maybe_id: Option<BlockIdentifier>,
+    effect_builder: EffectBuilder<REv>,
+) -> Result<Option<(Block, BlockSignatures)>, warp_json_rpc::Error> {
     // Get the block from storage or the latest from the linear chain.
     let getting_specific_block = maybe_id.is_some();
-    let maybe_block = effect_builder
+    let maybe_result = effect_builder
         .make_request(
             |responder| RpcRequest::GetBlock {
                 maybe_id,
@@ -438,7 +464,7 @@ async fn get_block<REv: ReactorEventT>(
         )
         .await;
 
-    if maybe_block.is_none() && getting_specific_block {
+    if maybe_result.is_none() && getting_specific_block {
         info!("failed to get {:?} from storage", maybe_id.unwrap());
         return Err(warp_json_rpc::Error::custom(
             ErrorCode::NoSuchBlock as i64,
@@ -446,5 +472,5 @@ async fn get_block<REv: ReactorEventT>(
         ));
     }
 
-    Ok(maybe_block)
+    Ok(maybe_result)
 }

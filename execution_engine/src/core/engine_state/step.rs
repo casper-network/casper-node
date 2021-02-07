@@ -108,7 +108,10 @@ impl StepRequest {
 #[derive(Debug)]
 pub enum StepResult {
     RootNotFound,
-    PreconditionError,
+    GetProtocolDataError(Error),
+    TrackingCopyError(Error),
+    GetContractError(Error),
+    GetSystemModuleError(Error),
     SlashingError(Error),
     AuctionError(Error),
     DistributeError(Error),

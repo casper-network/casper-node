@@ -5,6 +5,7 @@ mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
+#[macro_use]
 mod highway_core;
 mod metrics;
 mod protocols;
@@ -114,8 +115,8 @@ pub enum Event<I> {
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
-    /// Got the result of checking for the next upgrade activation point.
-    GotUpgradeActivationPoint(Option<ActivationPoint>),
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Debug for ConsensusMessage {
