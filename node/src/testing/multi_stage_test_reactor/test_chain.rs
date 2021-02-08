@@ -240,6 +240,9 @@ async fn run_validator_network() {
 
 #[tokio::test]
 async fn run_equivocator_network() {
+    // Test that we won't panic if a node equivocates
+    // Creates an equivocating node by launching two reactors with the same private key (alice_sk)
+    // The two nodes will create signatures of distinct units causing an equivocation
     testing::init_logging();
 
     let mut rng: NodeRng = crate::new_rng();
