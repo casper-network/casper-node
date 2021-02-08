@@ -165,7 +165,6 @@ where
         };
 
         let results = era_supervisor.new_era(
-            rng,
             EraId(0),
             timestamp,
             validators,
@@ -226,7 +225,6 @@ where
     #[allow(clippy::too_many_arguments)] // FIXME
     fn new_era(
         &mut self,
-        rng: &mut NodeRng,
         era_id: EraId,
         timestamp: Timestamp,
         validators: BTreeMap<PublicKey, U512>,
@@ -297,7 +295,6 @@ where
                 self.public_signing_key.to_hex()
             ));
             outcomes.extend(consensus.activate_validator(
-                rng,
                 our_id,
                 secret,
                 timestamp,
@@ -345,7 +342,6 @@ where
     /// To be called when we transition from the joiner to the validator reactor.
     pub(crate) fn finished_joining(
         &mut self,
-        rng: &mut NodeRng,
         now: Timestamp,
     ) -> Vec<ProtocolOutcome<I, ClContext>> {
         self.finished_joining = true;
@@ -362,13 +358,8 @@ where
                         instance_id,
                         public_key.to_hex()
                     ));
-                    era.consensus.activate_validator(
-                        rng,
-                        public_key,
-                        secret,
-                        now,
-                        Some(unit_hash_file),
-                    )
+                    era.consensus
+                        .activate_validator(public_key, secret, now, Some(unit_hash_file))
                 } else {
                     Vec::new()
                 }
@@ -613,7 +604,6 @@ where
             EraSupervisor::<I>::era_seed(booking_block_hash, block_header.accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let results = self.era_supervisor.new_era(
-            self.rng,
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
@@ -896,7 +886,7 @@ where
     }
 
     pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
-        let results = self.era_supervisor.finished_joining(self.rng, now);
+        let results = self.era_supervisor.finished_joining(now);
         self.handle_consensus_results(self.era_supervisor.current_era, results)
     }
 
