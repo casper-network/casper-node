@@ -9,6 +9,7 @@ use core::{
     num::ParseIntError,
 };
 
+use datasize::DataSize;
 use hex_fmt::HexFmt;
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
@@ -87,7 +88,7 @@ impl Display for FromStrError {
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, DataSize)]
 pub struct URef(URefAddr, AccessRights);
 
 impl URef {

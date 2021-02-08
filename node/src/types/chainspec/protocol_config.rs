@@ -1,7 +1,10 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display, Formatter},
+};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -10,7 +13,10 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Key,
+};
 
 use crate::components::consensus::EraId;
 #[cfg(test)]
@@ -36,12 +42,38 @@ impl Display for ActivationPoint {
     }
 }
 
+/// Type storing the information about modifications to be applied to the global state.
+/// It stores the serialized `StoredValue`s corresponding to keys to be modified.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
+pub struct GlobalStateUpdate(pub(crate) BTreeMap<Key, Vec<u8>>);
+
+impl ToBytes for GlobalStateUpdate {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for GlobalStateUpdate {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (update, remainder) = BTreeMap::<Key, Vec<u8>>::from_bytes(bytes)?;
+        let global_state_update = GlobalStateUpdate(update);
+        Ok((global_state_update, remainder))
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {
     #[data_size(skip)]
     pub(crate) version: Version,
     /// This protocol config applies to the era begun immediately after the activation point.
     pub(crate) activation_point: ActivationPoint,
+    /// Any arbitrary updates we might want to make to the global state at the start of the first
+    /// era after the activation point.
+    pub(crate) global_state_update: Option<GlobalStateUpdate>,
 }
 
 #[cfg(test)]
@@ -60,6 +92,7 @@ impl ProtocolConfig {
         ProtocolConfig {
             version: protocol_version,
             activation_point,
+            global_state_update: None,
         }
     }
 }
@@ -69,12 +102,14 @@ impl ToBytes for ProtocolConfig {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.version.to_string().to_bytes()?);
         buffer.extend(self.activation_point.era_id.to_bytes()?);
+        buffer.extend(self.global_state_update.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         self.version.to_string().serialized_length()
             + self.activation_point.era_id.serialized_length()
+            + self.global_state_update.serialized_length()
     }
 }
 
@@ -85,9 +120,11 @@ impl FromBytes for ProtocolConfig {
             Version::parse(&protocol_version_string).map_err(|_| bytesrepr::Error::Formatting)?;
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let activation_point = ActivationPoint { era_id };
+        let (global_state_update, remainder) = Option::<GlobalStateUpdate>::from_bytes(remainder)?;
         let protocol_config = ProtocolConfig {
             version: protocol_version,
             activation_point,
+            global_state_update,
         };
         Ok((protocol_config, remainder))
     }
