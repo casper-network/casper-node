@@ -343,8 +343,8 @@ impl Reactor for MultiStageTestReactor {
                             .values()
                             .sum::<usize>(),
                         0,
-                        "before transitioning from joiner to validator, \
-                         there should be no unprocessed events"
+                        "before transitioning from initializer to joiner, there should be no \
+                         unprocessed events"
                     );
 
                     let joiner_scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
