@@ -368,6 +368,11 @@ where
                 .write(locked_funds_period_key, value);
         }
 
+        // apply the arbitrary modifications
+        for (key, value) in upgrade_config.global_state_update() {
+            tracking_copy.borrow_mut().write(*key, value.clone());
+        }
+
         let effects = tracking_copy.borrow().effect();
 
         // commit
