@@ -189,8 +189,7 @@ where
                             missing_deploys,
                             responders: smallvec![responder],
                             sources: VecDeque::new(), /* This is empty b/c we create the first
-                                                       * request
-                                                       * using `sender`. */
+                                                       * request using `sender`. */
                             context: (chainspec, block_timestamp),
                         });
                     }
@@ -230,13 +229,21 @@ where
                 let mut retried = false;
 
                 self.validation_states.retain(|key, state| {
-                    if state.missing_deploys.contains(&deploy_hash) {
+                    if !state.missing_deploys.contains(&deploy_hash) {
+                        true
+                    } else {
                         match state.source() {
                             Some(peer) => {
                                 info!(%deploy_hash, ?peer, "trying the next peer");
                                 // There's still hope to download the deploy.
                                 let (chainspec, block_timestamp) = &state.context;
-                                effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, peer));
+                                effects.extend(
+                                    fetch_deploy(effect_builder,
+                                        Arc::clone(chainspec),
+                                        *block_timestamp,
+                                        deploy_hash,
+                                        peer,
+                                    ));
                                 retried = true;
                                 true
                             },
@@ -251,8 +258,6 @@ where
                                 false
                             }
                         }
-                    } else {
-                        true
                     }
                 });
 
