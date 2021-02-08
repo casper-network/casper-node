@@ -12,7 +12,7 @@ use thiserror::Error;
 
 #[cfg(test)]
 use crate::{
-    components::network::ENABLE_SMALL_NET_ENV_VAR, testing::network::NetworkedReactor,
+    components::network::ENABLE_LIBP2P_NET_ENV_VAR, testing::network::NetworkedReactor,
     types::Chainspec,
 };
 use crate::{
@@ -236,7 +236,7 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
             NodeId::from(&self.small_network_identity)
         } else {
             NodeId::from(&self.network_identity)

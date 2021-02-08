@@ -925,7 +925,7 @@ impl Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
             self.small_network.node_id()
         } else {
             self.network.node_id()
