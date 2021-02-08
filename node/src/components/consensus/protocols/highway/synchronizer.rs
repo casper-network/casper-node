@@ -24,7 +24,7 @@ mod tests;
 /// Incoming pre-validated vertices that we haven't added to the protocol state yet, and the
 /// timestamp when we received them.
 #[derive(DataSize, Debug)]
-pub(crate) struct PendingVertices<I, C>(HashMap<(I, PreValidatedVertex<C>), Timestamp>)
+pub(crate) struct PendingVertices<I, C>(HashMap<PreValidatedVertex<C>, HashMap<I, Timestamp>>)
 where
     C: Context;
 
@@ -37,21 +37,18 @@ impl<I, C: Context> Default for PendingVertices<I, C> {
 impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Removes expired vertices and returns `true` if it is now empty.
     fn remove_expired(&mut self, oldest: Timestamp) {
-        let keys = self
-            .0
-            .iter()
-            .filter(|(_, time_received)| **time_received < oldest)
-            .map(|(key, _)| key.clone())
-            .collect_vec();
-        for key in keys {
-            self.0.remove(&key);
+        for time_by_sender in self.0.values_mut() {
+            time_by_sender.retain(|_, time_received| *time_received >= oldest);
         }
+        self.0.retain(|_, time_by_peer| !time_by_peer.is_empty())
     }
 
     /// Adds a vertex, or updates its timestamp.
     fn add(&mut self, sender: I, pvv: PreValidatedVertex<C>, time_received: Timestamp) {
         self.0
-            .entry((sender, pvv))
+            .entry(pvv)
+            .or_default()
+            .entry(sender)
             .and_modify(|timestamp| *timestamp = (*timestamp).max(time_received))
             .or_insert(time_received);
     }
@@ -62,9 +59,16 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     }
 
     fn pop(&mut self) -> Option<PendingVertex<I, C>> {
-        let key = self.0.keys().next()?.clone();
-        let timestamp = self.0.remove(&key)?;
-        let (sender, pvv) = key;
+        let pvv = self.0.keys().next()?.clone();
+        let (sender, timestamp, is_empty) = {
+            let time_by_sender = self.0.get_mut(&pvv)?;
+            let sender = time_by_sender.keys().next()?.clone();
+            let timestamp = time_by_sender.remove(&sender)?;
+            (sender, timestamp, time_by_sender.is_empty())
+        };
+        if is_empty {
+            self.0.remove(&pvv);
+        }
         Some(PendingVertex::new(sender, pvv, timestamp))
     }
 
