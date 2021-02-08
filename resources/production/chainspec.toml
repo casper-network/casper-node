@@ -10,12 +10,12 @@ era_id = 0
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casper-delta'
+name = 'delta-10'
 # Timestamp for the genesis block.  This is the beginning of era 0. By this time, a sufficient majority (> 50% + F/2 —
 # see finality_threshold_percent below) of validator nodes must be up and running to start the blockchain.  This
 # timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-timestamp = '2020-12-29T20:00:00Z'
+timestamp = '2021-02-08T05:00:00Z'
 
 [core]
 # Era duration.
@@ -70,7 +70,7 @@ max_block_size = 10_485_760
 # The maximum number of non-transfer deploys permitted in a single block.
 block_max_deploy_count = 100
 # The maximum number of wasm-less transfer deploys permitted in a single block.
-block_max_transfer_count = 1000
+block_max_transfer_count = 100
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
 
