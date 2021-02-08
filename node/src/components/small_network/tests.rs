@@ -20,7 +20,7 @@ use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        network::ENABLE_SMALL_NET_ENV_VAR,
+        network::ENABLE_LIBP2P_NET_ENV_VAR,
         small_network::SmallNetworkIdentity,
         Component,
     },
@@ -258,8 +258,8 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
         return;
     }
 
@@ -324,8 +324,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
         return;
     }
 
@@ -369,8 +369,8 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
         return;
     }
 

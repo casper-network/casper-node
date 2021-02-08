@@ -36,7 +36,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_SMALL_NET_ENV_VAR},
+        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
@@ -573,7 +573,7 @@ impl reactor::Reactor for Reactor {
 
             // Requests:
             Event::NetworkRequest(req) => {
-                let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
                 } else {
                     Event::SmallNetwork(small_network::Event::from(req))
@@ -581,7 +581,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, event)
             }
             Event::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
                 } else {
                     Event::SmallNetwork(small_network::Event::from(req))
@@ -930,7 +930,7 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             self.network.node_id()
         } else {
             self.small_network.node_id()
