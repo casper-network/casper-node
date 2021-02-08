@@ -11,6 +11,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use semver::Version;
 use serde::Serialize;
 
@@ -33,7 +34,6 @@ use casper_types::{
     auction::{EraValidators, ValidatorWeights},
     ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
-use hex_fmt::HexFmt;
 
 use super::{Multiple, Responder};
 use crate::{
@@ -47,14 +47,14 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock,
-        StatusFeed, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
-    Chainspec,
 };
 use casper_execution_engine::{
+    core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants,
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
 };
@@ -401,11 +401,13 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestBlockWithMetadata { .. } => {
                 write!(formatter, "get highest block with metadata")
             }
-            StorageRequest::PutChainspec { chainspec, .. } => write!(
-                formatter,
-                "put chainspec {}",
-                chainspec.genesis.protocol_version
-            ),
+            StorageRequest::PutChainspec { chainspec, .. } => {
+                write!(
+                    formatter,
+                    "put chainspec {}",
+                    chainspec.protocol_config.version
+                )
+            }
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
             }
@@ -780,7 +782,7 @@ pub enum ContractRuntimeRequest {
         /// The hash of the value to get from the `TrieStore`
         trie: Box<Trie<Key, StoredValue>>,
         /// Responder to call with the result.
-        responder: Responder<Result<(), engine_state::Error>>,
+        responder: Responder<Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>>,
     },
     /// Get the missing keys under a given trie key in global storage
     MissingTrieKeys {
@@ -794,11 +796,13 @@ pub enum ContractRuntimeRequest {
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => write!(
-                formatter,
-                "commit genesis {}",
-                chainspec.genesis.protocol_version
-            ),
+            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
+                write!(
+                    formatter,
+                    "commit genesis {}",
+                    chainspec.protocol_config.version
+                )
+            }
             ContractRuntimeRequest::Execute {
                 execute_request, ..
             } => write!(
@@ -972,7 +976,7 @@ pub enum ConsensusRequest {
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }
 
-/// ChainspecLoader componenent requests.
+/// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.

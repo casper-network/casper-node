@@ -58,6 +58,8 @@ use crate::{
     utils::{self, WeightedRoundRobin},
     NodeRng,
 };
+#[cfg(test)]
+use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 use quanta::Clock;
 pub use queue_kind::QueueKind;
 
@@ -136,6 +138,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns number of events in each of the scheduler's queues.
+    #[inline]
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.0.event_queues_counts()
     }
@@ -597,6 +600,41 @@ where
     #[inline]
     pub fn into_inner(self) -> R {
         self.reactor
+    }
+}
+
+#[cfg(test)]
+impl Runner<InitializerReactor> {
+    pub(crate) async fn new_with_chainspec(
+        cfg: <InitializerReactor as Reactor>::Config,
+        chainspec: Chainspec,
+    ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
+        let registry = Registry::new();
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+
+        let event_queue = EventQueueHandle::new(scheduler);
+        let (reactor, initial_effects) =
+            InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
+
+        // Run all effects from component instantiation.
+        let span = debug_span!("process initial effects");
+        process_effects(scheduler, initial_effects)
+            .instrument(span)
+            .await;
+
+        info!("reactor main loop is ready");
+
+        Ok(Runner {
+            scheduler,
+            reactor,
+            event_count: 0,
+            metrics: RunnerMetrics::new(&registry)?,
+            last_metrics: Instant::now(),
+            event_metrics_min_delay: Duration::from_secs(30),
+            event_metrics_threshold: 1000,
+            clock: Clock::new(),
+            last_queue_dump: None,
+        })
     }
 }
 

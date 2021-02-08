@@ -67,6 +67,7 @@ alias nctl-view-chain-era='source $NCTL/sh/views/view_chain_era.sh'
 alias nctl-view-chain-era-info='source $NCTL/sh/views/view_chain_era_info.sh'
 alias nctl-view-chain-height='source $NCTL/sh/views/view_chain_height.sh'
 alias nctl-view-chain-state-root-hash='source $NCTL/sh/views/view_chain_state_root_hash.sh'
+alias nctl-view-chain-lfb='source $NCTL/sh/views/view_chain_lfb.sh'
 alias nctl-view-chain-spec='source $NCTL/sh/views/view_chain_spec.sh'
 alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accounts.sh'
 

@@ -15,16 +15,18 @@ pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
+#[cfg(feature = "fast-sync")]
 pub(crate) mod linear_chain_fast_sync;
+#[cfg(not(feature = "fast-sync"))]
 pub(crate) mod linear_chain_sync;
 pub(crate) mod rest_server;
 pub(crate) mod rpc_server;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
-
 pub(crate) mod metrics;
 pub(crate) mod network;
+pub(crate) mod networking_metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 

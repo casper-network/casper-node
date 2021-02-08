@@ -10,7 +10,7 @@ Prior to testing a network ensure that the binary sets are available:
 nctl-compile
 ```
 
-This runs `make setup-rs` and `make build-system-contracts -j`, and compiles both `casper-node` and `casper-client` in release mode.
+This runs `make setup-rs`, and compiles both `casper-node` and `casper-client` in release mode.
 
 ## Step 1: Create network assets.
 

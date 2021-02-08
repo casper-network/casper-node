@@ -16,7 +16,7 @@ use libp2p::{
 };
 
 use super::{Config, Error, PayloadT, ProtocolId};
-use crate::{components::chainspec_loader::Chainspec, types::NodeId};
+use crate::types::{Chainspec, NodeId};
 
 /// The inner portion of the `ProtocolId` for the one-way message behavior.  A standard prefix and
 /// suffix will be applied to create the full protocol name.

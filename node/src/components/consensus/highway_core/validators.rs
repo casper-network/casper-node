@@ -7,13 +7,16 @@ use std::{
     slice, vec,
 };
 
+use datasize::DataSize;
 use derive_more::{AsRef, From};
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
 
 /// The index of a validator, in a list of all validators, ordered by ID.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Copy, Clone, DataSize, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize,
+)]
 pub(crate) struct ValidatorIndex(pub(crate) u32);
 
 impl From<u32> for ValidatorIndex {
@@ -23,7 +26,7 @@ impl From<u32> for ValidatorIndex {
 }
 
 /// Information about a validator: their ID and weight.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct Validator<VID> {
     weight: Weight,
     id: VID,
@@ -51,8 +54,11 @@ impl<VID> Validator<VID> {
 }
 
 /// The validator IDs and weight map.
-#[derive(Debug, Clone)]
-pub(crate) struct Validators<VID: Eq + Hash> {
+#[derive(Debug, DataSize, Clone)]
+pub(crate) struct Validators<VID>
+where
+    VID: Eq + Hash,
+{
     index_by_id: HashMap<VID, ValidatorIndex>,
     validators: Vec<Validator<VID>>,
 }
@@ -122,7 +128,7 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
 
 impl<T> ValidatorMap<T> {

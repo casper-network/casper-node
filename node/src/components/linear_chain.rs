@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{hash_map::Entry, HashMap},
     convert::Infallible,
     fmt::{self, Display, Formatter},
     marker::PhantomData,
@@ -10,7 +10,7 @@ use derive_more::From;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer, Signature};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
 
 use super::{consensus::EraId, Component};
 use crate::{
@@ -139,7 +139,6 @@ impl<I: Display> Display for Event<I> {
 struct SignatureCache {
     curr_era: EraId,
     signatures: HashMap<BlockHash, BlockSignatures>,
-    proofs: HashMap<BlockHash, BTreeMap<PublicKey, Signature>>,
 }
 
 impl SignatureCache {
@@ -147,18 +146,11 @@ impl SignatureCache {
         SignatureCache {
             curr_era: EraId(0),
             signatures: Default::default(),
-            proofs: Default::default(),
         }
     }
 
-    fn get(&mut self, hash: &BlockHash) -> Option<BlockSignatures> {
-        let finality_signatures = self.signatures.get_mut(hash)?;
-        if let Some(proofs) = self.proofs.get(hash) {
-            for (pub_key, sig) in proofs {
-                finality_signatures.insert_proof(*pub_key, *sig);
-            }
-        }
-        Some(finality_signatures.clone())
+    fn get(&mut self, hash: &BlockHash, _era_id: EraId) -> Option<BlockSignatures> {
+        self.signatures.get(hash).cloned()
     }
 
     fn insert(&mut self, block_signature: BlockSignatures) {
@@ -166,26 +158,38 @@ impl SignatureCache {
         // proximity refer to the same era.
         if self.curr_era < block_signature.era_id {
             self.signatures.clear();
-            self.proofs.clear();
             self.curr_era = block_signature.era_id;
         }
-        if !block_signature.proofs.is_empty() {
-            let entry = self.proofs.entry(block_signature.block_hash).or_default();
-            for (pub_key, sig) in &block_signature.proofs {
-                entry.insert(*pub_key, *sig);
+        match self.signatures.entry(block_signature.block_hash) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().proofs.extend(block_signature.proofs);
+            }
+            Entry::Vacant(_) => {
+                self.signatures
+                    .insert(block_signature.block_hash, block_signature);
             }
         }
-        self.signatures
-            .insert(block_signature.block_hash, block_signature);
     }
 
     /// Get signatures from the cache to be updated.
     /// If there are no signatures, create an empty signature to be updated.
-    fn get_known_signatures(&self, block_hash: &BlockHash) -> BlockSignatures {
+    fn get_known_signatures(&self, block_hash: &BlockHash, block_era: EraId) -> BlockSignatures {
         match self.signatures.get(block_hash) {
             Some(signatures) => signatures.clone(),
-            None => BlockSignatures::new(*block_hash, self.curr_era),
+            None => BlockSignatures::new(*block_hash, block_era),
         }
+    }
+
+    /// Returns whether finality signature is known already.
+    fn known_signature(&self, fs: &FinalitySignature) -> bool {
+        let FinalitySignature {
+            block_hash,
+            public_key,
+            ..
+        } = fs;
+        self.signatures
+            .get(block_hash)
+            .map_or(false, |bs| bs.has_proof(public_key))
     }
 }
 
@@ -246,7 +250,9 @@ impl<I> LinearChain<I> {
         I: Display + Send + 'static,
     {
         let mut effects = Effects::new();
-        let mut known_signatures = self.signature_cache.get_known_signatures(block_hash);
+        let mut known_signatures = self
+            .signature_cache
+            .get_known_signatures(block_hash, block_era);
         let pending_sigs = self
             .pending_finality_signatures
             .values_mut()
@@ -392,7 +398,8 @@ where
                     effect_builder,
                 );
                 // Cache the signature as we expect more finality signatures to arrive soon.
-                self.signature_cache.insert(signatures);
+                self.signature_cache.insert(signatures.clone());
+                effects.extend(effect_builder.put_signatures_to_storage(signatures).ignore());
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
                         block,
@@ -431,6 +438,7 @@ where
                 let FinalitySignature {
                     block_hash,
                     public_key,
+                    era_id,
                     ..
                 } = *fs;
                 if let Err(err) = fs.verify() {
@@ -442,8 +450,13 @@ where
                         "finality signature already pending");
                     return Effects::new();
                 }
+                if self.signature_cache.known_signature(&fs) {
+                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                        "finality signature is already known");
+                    return Effects::new();
+                }
                 self.add_pending_finality_signature(*fs.clone());
-                match self.signature_cache.get(&block_hash) {
+                match self.signature_cache.get(&block_hash, era_id) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
                         .event(move |maybe_signatures| {
@@ -458,8 +471,10 @@ where
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
                 if let Some(signatures) = &maybe_signatures {
                     if signatures.era_id != fs.era_id {
-                        warn!(public_key=%fs.public_key, "Finality signature with invalid era id.");
+                        warn!(public_key=%fs.public_key, expected=%signatures.era_id, got=%fs.era_id,
+                            "finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
+                        self.remove_from_pending_fs(&*fs);
                         return Effects::new();
                     }
                     // Populate cache so that next finality signatures don't have to read from the
@@ -520,16 +535,17 @@ where
                     }
                 }
             }
-            Event::IsBonded(Some(mut signature), fs, true) => {
+            Event::IsBonded(Some(mut signatures), fs, true) => {
                 // Known block and signature from a bonded validator.
                 // Check if we had already seen this signature before.
-                let signature_known = signature
+                let signature_known = signatures
                     .proofs
                     .get(&fs.public_key)
                     .iter()
                     .any(|sig| *sig == &fs.signature);
                 // If new, gossip and store.
                 if signature_known {
+                    self.remove_from_pending_fs(&*fs);
                     Effects::new()
                 } else {
                     let message = Message::FinalitySignature(fs.clone());
@@ -539,14 +555,15 @@ where
                             .announce_finality_signature(fs.clone())
                             .ignore(),
                     );
-                    signature.insert_proof(fs.public_key, fs.signature);
+                    signatures.insert_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
-                    self.signature_cache.insert(*signature.clone());
-                    debug!(hash=%signature.block_hash, "storing finality signatures");
+                    self.signature_cache.insert(*signatures.clone());
+                    debug!(hash=%signatures.block_hash, "storing finality signatures");
+                    self.remove_from_pending_fs(&*fs);
                     effects.extend(
                         effect_builder
-                            .put_signatures_to_storage(*signature)
+                            .put_signatures_to_storage(*signatures)
                             .ignore(),
                     );
                     effects

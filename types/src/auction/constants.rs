@@ -6,6 +6,9 @@ pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = 0;
 
+/// Initial value of era end timestamp.
+pub const INITIAL_ERA_END_TIMESTAMP_MILLIS: u64 = 0;
+
 /// Delegation rate is a fraction between 0-1. Validator sets the delegation rate
 /// in integer terms, which is then divided by the denominator to obtain the fraction.
 pub const DELEGATION_RATE_DENOMINATOR: u64 = 1_000_000_000_000;
@@ -50,6 +53,9 @@ pub const ARG_AUCTION_DELAY: &str = "auction_delay";
 pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 /// Named constant for `unbonding_delay`
 pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
+/// Named constant for `era_end_timestamp_millis`;
+pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
+
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.
@@ -81,6 +87,8 @@ pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 pub const BIDS_KEY: &str = "bids";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
+/// Storage for era-end timestamp.
+pub const ERA_END_TIMESTAMP_MILLIS_KEY: &str = "era_end_timestamp_millis";
 /// Storage for `SeigniorageRecipientsSnapshot`.
 pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
 /// Storage for delegator reward purse

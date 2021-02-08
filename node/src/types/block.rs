@@ -59,9 +59,14 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let mut rewards = BTreeMap::new();
     rewards.insert(public_key_2, 1000);
 
+    let secret_key_3 = SecretKey::ed25519([2; 32]);
+    let public_key_3 = PublicKey::from(&secret_key_3);
+    let inactive_validators = vec![public_key_3];
+
     EraEnd {
         equivocators,
         rewards,
+        inactive_validators,
     }
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
@@ -300,11 +305,14 @@ impl ToBytes for EraEnd {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.equivocators.to_bytes()?);
         buffer.extend(self.rewards.to_bytes()?);
+        buffer.extend(self.inactive_validators.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.equivocators.serialized_length() + self.rewards.serialized_length()
+        self.equivocators.serialized_length()
+            + self.rewards.serialized_length()
+            + self.inactive_validators.serialized_length()
     }
 }
 
@@ -312,9 +320,11 @@ impl FromBytes for EraEnd {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
         let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
+        let (inactive_validators, remainder) = Vec::<PublicKey>::from_bytes(remainder)?;
         let era_end = EraEnd {
             equivocators,
             rewards,
+            inactive_validators,
         };
         Ok((era_end, remainder))
     }
@@ -408,6 +418,7 @@ impl FinalizedBlock {
         let era_end = if rng.gen_bool(0.1) {
             let equivocators_count = rng.gen_range(0, 5);
             let rewards_count = rng.gen_range(0, 5);
+            let inactive_count = rng.gen_range(0, 5);
             Some(EraEnd {
                 equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
                     .take(equivocators_count)
@@ -418,6 +429,11 @@ impl FinalizedBlock {
                     (pub_key, reward)
                 })
                 .take(rewards_count)
+                .collect(),
+                inactive_validators: iter::repeat_with(|| {
+                    PublicKey::from(&SecretKey::ed25519(rng.gen()))
+                })
+                .take(inactive_count)
                 .collect(),
             })
         } else {
@@ -851,6 +867,10 @@ impl BlockSignatures {
     ) -> Option<Signature> {
         self.proofs.insert(public_key, signature)
     }
+
+    pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
+        self.proofs.contains_key(public_key)
+    }
 }
 
 impl Display for BlockSignatures {
@@ -938,6 +958,11 @@ impl Block {
     /// The deploy hashes included in this block.
     pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
         self.body.deploy_hashes()
+    }
+
+    /// The list of transfer hashes included in the block.
+    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        self.header.transfer_hashes()
     }
 
     /// The height of a block.
@@ -1052,7 +1077,10 @@ impl FromBytes for Block {
 
 impl BlockLike for Block {
     fn deploys(&self) -> Vec<&DeployHash> {
-        self.deploy_hashes().iter().collect()
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+            .collect()
     }
 }
 
@@ -1140,6 +1168,7 @@ pub(crate) mod json_compatibility {
     struct JsonEraEnd {
         equivocators: Vec<PublicKey>,
         rewards: Vec<Reward>,
+        inactive_validators: Vec<PublicKey>,
     }
 
     impl From<EraEnd> for JsonEraEnd {
@@ -1151,6 +1180,7 @@ pub(crate) mod json_compatibility {
                     .into_iter()
                     .map(|(validator, amount)| Reward { validator, amount })
                     .collect(),
+                inactive_validators: era_end.inactive_validators,
             }
         }
     }
@@ -1163,9 +1193,11 @@ pub(crate) mod json_compatibility {
                 .into_iter()
                 .map(|reward| (reward.validator, reward.amount))
                 .collect();
+            let inactive_validators = era_end.inactive_validators;
             EraEnd {
                 equivocators,
                 rewards,
+                inactive_validators,
             }
         }
     }

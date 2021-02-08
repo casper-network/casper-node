@@ -3,9 +3,6 @@
 # ================================
 [node]
 
-# Path (absolute, or relative to this config.toml) to the chainspec configuration file.
-chainspec_config_path = 'chainspec.toml'
-
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
@@ -89,6 +86,10 @@ systemd_support = false
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
+
 # =============================================
 # Configuration options for the REST HTTP server
 # =============================================
@@ -101,6 +102,10 @@ address = '0.0.0.0:7777'
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:8888'
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
 
 # =============================================
 # Configuration options for the SSE HTTP event stream server
@@ -120,6 +125,10 @@ event_stream_buffer_length = 100
 
 # The capacity of the broadcast channel size.
 broadcast_channel_size = 100
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
 
 # ===============================================
 # Configuration options for the storage component

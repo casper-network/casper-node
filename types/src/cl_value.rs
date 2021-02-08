@@ -7,7 +7,7 @@ use core::fmt;
 use datasize::DataSize;
 use failure::Fail;
 #[cfg(feature = "std")]
-use schemars::JsonSchema;
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
@@ -60,17 +60,9 @@ impl From<bytesrepr::Error> for CLValueError {
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug, DataSize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct CLValue {
     #[data_size(skip)]
     cl_type: CLType,
-    #[cfg_attr(
-        feature = "std",
-        schemars(
-            with = "String",
-            description = "Hex-encoded value, serialized using ToBytes."
-        )
-    )]
     bytes: Bytes,
 }
 
@@ -164,8 +156,29 @@ impl FromBytes for CLValue {
     }
 }
 
+/// We need to implement `JsonSchema` for `CLValue` as though it is a `CLValueJson`.
+#[cfg(feature = "std")]
+impl JsonSchema for CLValue {
+    fn schema_name() -> String {
+        "CLValue".to_string()
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        <CLValueJson>::json_schema(gen)
+    }
+}
+
+/// A Casper value, i.e. a value which can be stored and manipulated by smart contracts.
+///
+/// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the CLType of
+/// the underlying data as a separate member.
+///
+/// The `parsed` field, representing the original value, is a convenience only available when a
+/// CLValue is encoded to JSON, and can always be set to null if preferred.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "std", schemars(rename = "CLValue"))]
 struct CLValueJson {
     cl_type: CLType,
     bytes: String,
@@ -209,6 +222,9 @@ impl<'de> Deserialize<'de> for CLValue {
 mod tests {
     use alloc::string::ToString;
 
+    #[cfg(feature = "std")]
+    use schemars::schema_for;
+
     use super::*;
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
@@ -216,6 +232,14 @@ mod tests {
         AccessRights, DeployHash, Key, PublicKey, TransferAddr, URef, DEPLOY_HASH_LENGTH,
         TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
     };
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn json_schema() {
+        let json_clvalue_schema = schema_for!(CLValueJson);
+        let clvalue_schema = schema_for!(CLValue);
+        assert_eq!(json_clvalue_schema, clvalue_schema);
+    }
 
     #[test]
     fn serde_roundtrip() {

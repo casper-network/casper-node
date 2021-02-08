@@ -21,6 +21,7 @@ use crate::{
     components::{
         gossiper::{self, Gossiper},
         network::ENABLE_SMALL_NET_ENV_VAR,
+        small_network::SmallNetworkIdentity,
         Component,
     },
     crypto::hash::Digest,
@@ -112,7 +113,15 @@ impl Reactor for TestReactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, cfg, Digest::default(), false)?;
+        let small_network_identity = SmallNetworkIdentity::new()?;
+        let (net, effects) = SmallNetwork::new(
+            event_queue,
+            cfg,
+            registry,
+            small_network_identity,
+            Digest::default(),
+            false,
+        )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;

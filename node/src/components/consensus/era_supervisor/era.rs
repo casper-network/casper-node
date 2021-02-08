@@ -7,7 +7,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{debug, warn};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -192,20 +192,25 @@ impl<I> Era<I> {
     pub(crate) fn resolve_validity(
         &mut self,
         proto_block: &ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     ) -> Vec<CandidateBlock> {
         if valid {
-            self.accept_proto_block(proto_block)
+            self.accept_proto_block(proto_block, timestamp)
         } else {
-            self.reject_proto_block(proto_block)
+            self.reject_proto_block(proto_block, timestamp)
         }
     }
 
     /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
     /// resolved and returns all candidates that have no missing dependencies left.
-    pub(crate) fn accept_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
+    pub(crate) fn accept_proto_block(
+        &mut self,
+        proto_block: &ProtoBlock,
+        timestamp: Timestamp,
+    ) -> Vec<CandidateBlock> {
         for pc in &mut self.candidates {
-            if pc.candidate.proto_block() == proto_block {
+            if pc.candidate.proto_block() == proto_block && pc.candidate.timestamp() == timestamp {
                 pc.validated = true;
             }
         }
@@ -214,11 +219,14 @@ impl<I> Era<I> {
 
     /// Removes and returns any candidate blocks depending on the validity of the specified proto
     /// block. If it is invalid, all those candidates are invalid.
-    pub(crate) fn reject_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
-        let (invalid, candidates): (Vec<_>, Vec<_>) = self
-            .candidates
-            .drain(..)
-            .partition(|pc| pc.candidate.proto_block() == proto_block);
+    pub(crate) fn reject_proto_block(
+        &mut self,
+        proto_block: &ProtoBlock,
+        timestamp: Timestamp,
+    ) -> Vec<CandidateBlock> {
+        let (invalid, candidates): (Vec<_>, Vec<_>) = self.candidates.drain(..).partition(|pc| {
+            pc.candidate.proto_block() == proto_block && pc.candidate.timestamp() == timestamp
+        });
         self.candidates = candidates;
         invalid.into_iter().map(|pc| pc.candidate).collect()
     }
@@ -260,7 +268,7 @@ impl<I> Era<I> {
 
 impl<I> DataSize for Era<I>
 where
-    I: 'static,
+    I: DataSize + 'static,
 {
     const IS_DYNAMIC: bool = true;
 
@@ -287,7 +295,15 @@ where
             let any_ref = consensus.as_any();
 
             if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
-                highway.estimate_heap_size()
+                // TODO: Allow switching between `detailed`, `flat` and `off` via envvar or config.
+                let detailed = (*highway).estimate_detailed_heap_size();
+
+                match serde_json::to_string(&detailed) {
+                    Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
+                    Err(err) => warn!(%err, "error encoding consensus memory metrics"),
+                }
+
+                detailed.total()
             } else {
                 warn!(
                     "could not downcast consensus protocol to \

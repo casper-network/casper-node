@@ -89,8 +89,12 @@ impl RestServer {
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let builder = utils::start_listening(&config.address)?;
-        let server_join_handle =
-            tokio::spawn(http_server::run(builder, effect_builder, shutdown_receiver));
+        let server_join_handle = tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            shutdown_receiver,
+            config.qps_limit,
+        ));
 
         Ok(RestServer {
             shutdown_sender,
@@ -117,7 +121,7 @@ where
                 let (last_added_block, peers, chainspec_info) = join!(
                     effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
-                    effect_builder.get_chainspec_info()
+                    effect_builder.get_chainspec_info(),
                 );
                 let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
                 responder.respond(status_feed).await;

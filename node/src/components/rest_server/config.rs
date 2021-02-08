@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Uses a fixed port per node, but binds on any interface.
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
+/// Default rate limit in qps.
+const DEFAULT_QPS_LIMIT: u64 = 100;
 
 /// REST HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -13,6 +15,9 @@ const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 pub struct Config {
     /// Address to bind REST HTTP server to.
     pub address: String,
+
+    /// Max rate limit in qps.
+    pub qps_limit: u64,
 }
 
 impl Config {
@@ -20,6 +25,7 @@ impl Config {
     pub fn new() -> Self {
         Config {
             address: DEFAULT_ADDRESS.to_string(),
+            qps_limit: DEFAULT_QPS_LIMIT,
         }
     }
 }

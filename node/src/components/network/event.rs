@@ -54,15 +54,6 @@ pub enum Event<P> {
         /// Number of remaining connection attempts that are being tried for this peer.
         attempts_remaining: u32,
     },
-    /// Tried to dial an address but it ended up being unreachable.  Contrary to
-    /// `UnreachableAddress`, we don't know the identity of the peer that we were trying to reach.
-    UnknownPeerUnreachableAddress {
-        /// Address that we failed to reach.
-        address: Multiaddr,
-        /// Error that has been encountered.
-        #[serde(skip_serializing)]
-        error: PendingConnectionError<io::Error>,
-    },
     /// One of our listeners has reported a new local listening address.
     NewListenAddress(Multiaddr),
     /// One of our listeners has reported the expiration of a listening address.
@@ -153,9 +144,6 @@ impl<P: Display> Display for Event<P> {
                 "failed to connect to {} at {}, {} attempts remaining: {}",
                 peer_id, address, attempts_remaining, error
             ),
-            Event::UnknownPeerUnreachableAddress { address, error } => {
-                write!(f, "failed to connect to peer at {}: {}", address, error)
-            }
             Event::NewListenAddress(address) => write!(f, "new listening address {}", address),
             Event::ExpiredListenAddress(address) => {
                 write!(f, "expired listening address {}", address)

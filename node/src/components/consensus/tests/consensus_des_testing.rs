@@ -4,6 +4,8 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
+
 use super::queue::{MessageT, Queue, QueueEntry};
 use crate::types::Timestamp;
 
@@ -51,7 +53,7 @@ impl<M: Clone + Debug> TargetedMessage<M> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, DataSize, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub(crate) struct ValidatorId(pub(crate) u64);
 
 impl Display for ValidatorId {
@@ -62,7 +64,11 @@ impl Display for ValidatorId {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Fault {
-    Mute,
+    /// The validator does not send any messages within the interval between the timestamps.
+    TemporarilyMute { from: Timestamp, till: Timestamp },
+    /// The validator does not send any messages ever.
+    PermanentlyMute,
+    /// The validator is actively malicious.
     Equivocate,
 }
 
@@ -210,6 +216,12 @@ where
     /// It's a message with the earliest delivery time.
     pub(crate) fn pop_message(&mut self) -> Option<QueueEntry<M>> {
         self.msg_queue.pop()
+    }
+
+    /// Returns a reference to the next message from the queue without removing it.
+    /// It's a message with the earliest delivery time.
+    pub(crate) fn peek_message(&self) -> Option<&QueueEntry<M>> {
+        self.msg_queue.peek()
     }
 
     pub(crate) fn validators_ids(&self) -> impl Iterator<Item = &ValidatorId> {

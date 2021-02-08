@@ -43,7 +43,7 @@ function setup_node()
         POS_WEIGHT=$(get_node_staking_weight "$NODE_ID")
     else
         POS_WEIGHT=0
-    fi 
+    fi
 
     # Set chainspec account.
 	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
@@ -70,7 +70,6 @@ function setup_node_config()
         "cfg['logging']['format']='json';"
         "cfg['network']['bind_address']='$(get_network_bind_address "$NODE_ID")';"
         "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
-        "cfg['node']['chainspec_config_path']='../../../chainspec/chainspec.toml';"
         "cfg['storage']['path']='../storage';"
         "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
         "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
@@ -79,3 +78,28 @@ function setup_node_config()
     )
     python3 -c "${SCRIPT[*]}"
 }
+
+#######################################
+# Sets chainspec assets pertaining to a single node.
+# Globals:
+#   NCTL_CASPER_HOME - path to node software github repo.
+#   NCTL_VALIDATOR_BASE_WEIGHT - base weight applied to validator POS.
+#   NCTL_INITIAL_BALANCE_VALIDATOR - initial balance of a lucky validator.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type enum.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function setup_node_chainspec()
+{
+    local NODE_ID=${1}
+    local PATH_TO_NET
+    local PATH_TO_NODE
+
+    PATH_TO_NET=$(get_path_to_net)
+    PATH_TO_NODE=$(get_path_to_node "$NODE_ID")
+
+    # Copy files.
+    cp "$PATH_TO_NET"/chainspec/chainspec.toml "$PATH_TO_NODE"/config/chainspec.toml
+    cp "$PATH_TO_NET"/chainspec/accounts.csv "$PATH_TO_NODE"/config/accounts.csv
+}
+

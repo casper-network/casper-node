@@ -5,6 +5,11 @@ fn main() {
 
         use cbindgen::{Builder, Language};
 
+        let output_file = format!(
+            "{}/../../../../headers/casper_client.h",
+            env::var("OUT_DIR").expect("should have env var OUT_DIR set"),
+        );
+
         let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         Builder::new()
             .with_crate(crate_dir)
@@ -23,6 +28,6 @@ fn main() {
             .include_item("casper_session_params_t")
             .generate()
             .expect("Unable to generate bindings")
-            .write_to_file("headers/casper_client.h");
+            .write_to_file(&output_file);
     }
 }

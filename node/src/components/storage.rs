@@ -71,9 +71,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, BlockSignatures, Chainspec, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
-    Chainspec, NodeRng,
+    NodeRng,
 };
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
@@ -532,13 +532,12 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let block: Block = if let Some(block) =
-                    self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?
-                {
-                    block
-                } else {
-                    return Ok(responder.respond(None).ignore());
-                };
+                let block: Block =
+                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
+                        block
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    };
                 // Check that the hash of the block retrieved is correct.
                 assert_eq!(&block_hash, block.hash());
                 let signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
@@ -606,10 +605,21 @@ impl Storage {
                 responder,
             } => {
                 let mut txn = self.env.begin_rw_txn()?;
+                let old_data: Option<BlockSignatures> =
+                    txn.get_value(self.block_metadata_db, &signatures.block_hash)?;
+                let new_data = match old_data {
+                    None => signatures,
+                    Some(mut data) => {
+                        for (pk, sig) in signatures.proofs {
+                            data.insert_proof(pk, sig);
+                        }
+                        data
+                    }
+                };
                 let outcome = txn.put_value(
                     self.block_metadata_db,
-                    &signatures.block_hash,
-                    &signatures,
+                    &new_data.block_hash,
+                    &new_data,
                     true,
                 )?;
                 txn.commit()?;
@@ -639,7 +649,7 @@ impl Storage {
     }
 
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
+    pub(crate) fn get_switch_block_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         era_id: EraId,
@@ -702,6 +712,12 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
+    }
+
+    /// Get the lmdb environment
+    #[cfg(test)]
+    pub(crate) fn env(&self) -> &Environment {
+        &self.env
     }
 }
 
@@ -869,5 +885,30 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
+    }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env()
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
     }
 }

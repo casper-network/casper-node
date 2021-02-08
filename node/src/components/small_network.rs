@@ -47,6 +47,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
+    result,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -61,10 +62,12 @@ use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
-use openssl::pkey;
+use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
+use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
 use serde::{de::DeserializeOwned, Serialize};
+use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{
@@ -81,7 +84,9 @@ use tracing::{debug, error, info, trace, warn};
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
-    components::{network::ENABLE_SMALL_NET_ENV_VAR, Component},
+    components::{
+        network::ENABLE_SMALL_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
+    },
     crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
@@ -90,7 +95,7 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    tls::{self, TlsCert},
+    tls::{self, TlsCert, ValidationError},
     types::NodeId,
     utils, NodeRng,
 };
@@ -165,6 +170,10 @@ where
     is_stopped: Arc<AtomicBool>,
     /// Join handle for the server thread.
     server_join_handle: Option<JoinHandle<()>>,
+
+    /// Networking metrics.
+    #[data_size(skip)]
+    net_metrics: NetworkingMetrics,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -180,6 +189,8 @@ where
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
+        registry: &Registry,
+        small_network_identity: SmallNetworkIdentity,
         genesis_config_hash: Digest,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
@@ -192,17 +203,18 @@ where
         let mut public_address =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        // First, we generate the TLS keys.
-        let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
-        let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
+        let our_id = NodeId::from(&small_network_identity);
+        let secret_key = small_network_identity.secret_key;
+        let certificate = small_network_identity.tls_certificate;
+
+        let net_metrics = NetworkingMetrics::new(&registry)?;
 
         // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without starting the
         // server.
         if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
             let model = SmallNetwork {
                 certificate,
-                secret_key: Arc::new(secret_key),
+                secret_key,
                 public_address,
                 our_id,
                 is_bootstrap_node: false,
@@ -217,6 +229,7 @@ where
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
                 is_stopped: Arc::new(AtomicBool::new(true)),
+                net_metrics,
             };
             return Ok((model, Effects::new()));
         }
@@ -257,13 +270,12 @@ where
             event_queue,
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
             server_shutdown_receiver,
-            our_id,
+            our_id.clone(),
         ));
 
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
         let mut model = SmallNetwork {
             certificate,
-            secret_key: Arc::new(secret_key),
+            secret_key,
             public_address,
             our_id,
             is_bootstrap_node: false,
@@ -278,6 +290,7 @@ where
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             is_stopped: Arc::new(AtomicBool::new(false)),
+            net_metrics,
         };
 
         // Bootstrap process.
@@ -377,6 +390,8 @@ where
             if let Err(msg) = connection.sender.send(msg) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
+            } else {
+                self.net_metrics.queued_messages.inc();
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
@@ -434,6 +449,9 @@ where
                         times_seen_asymmetric: 0,
                     },
                 );
+                self.net_metrics
+                    .open_connections
+                    .set(self.incoming.len() as i64);
 
                 // If the connection is now complete, announce the new peer before starting reader.
                 effects.extend(self.check_connection_complete(effect_builder, peer_id.clone()));
@@ -520,7 +538,13 @@ where
         };
         let peer_id_cloned = peer_id.clone();
         effects.extend(
-            message_sender(receiver, sink, handshake).event(move |result| Event::OutgoingFailed {
+            message_sender(
+                receiver,
+                sink,
+                self.net_metrics.queued_messages.clone(),
+                handshake,
+            )
+            .event(move |result| Event::OutgoingFailed {
                 peer_id: Some(peer_id),
                 peer_address,
                 error: result.err().map(Into::into),
@@ -578,6 +602,10 @@ where
         if let Some(incoming) = self.incoming.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the incoming connections");
             let _ = self.pending.remove(&incoming.peer_address);
+
+            self.net_metrics
+                .open_connections
+                .set(self.incoming.len() as i64);
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
@@ -877,6 +905,7 @@ where
                     },
             } => {
                 // We're given a message to send out.
+                self.net_metrics.direct_message_requests.inc();
                 self.send_message(dest, Message::Payload(payload));
                 responder.respond(()).ignore()
             }
@@ -884,6 +913,7 @@ where
                 req: NetworkRequest::Broadcast { payload, responder },
             } => {
                 // We're given a message to broadcast.
+                self.net_metrics.broadcast_requests.inc();
                 self.broadcast_message(Message::Payload(payload));
                 responder.respond(()).ignore()
             }
@@ -972,6 +1002,52 @@ async fn server_task<P, REv>(
             "shutting down socket, no longer accepting incoming connections"
         ),
         Either::Right(_) => unreachable!(),
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum SmallNetworkIdentityError {
+    #[error("could not generate TLS certificate: {0}")]
+    CouldNotGenerateTlsCertificate(OpenSslErrorStack),
+    #[error(transparent)]
+    ValidationError(#[from] ValidationError),
+}
+
+/// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
+#[derive(DataSize, Debug, Clone)]
+pub struct SmallNetworkIdentity {
+    secret_key: Arc<PKey<Private>>,
+    tls_certificate: Arc<TlsCert>,
+}
+
+impl SmallNetworkIdentity {
+    pub fn new() -> result::Result<Self, SmallNetworkIdentityError> {
+        let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
+            .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
+        let tls_certificate = tls::validate_cert(not_yet_validated_x509_cert)?;
+        Ok(SmallNetworkIdentity {
+            secret_key: Arc::new(secret_key),
+            tls_certificate: Arc::new(tls_certificate),
+        })
+    }
+}
+
+impl<REv, P> From<&SmallNetwork<REv, P>> for SmallNetworkIdentity {
+    fn from(small_network: &SmallNetwork<REv, P>) -> Self {
+        SmallNetworkIdentity {
+            secret_key: small_network.secret_key.clone(),
+            tls_certificate: small_network.certificate.clone(),
+        }
+    }
+}
+
+impl From<&SmallNetworkIdentity> for NodeId {
+    fn from(small_network_identity: &SmallNetworkIdentity) -> Self {
+        NodeId::from(
+            small_network_identity
+                .tls_certificate
+                .public_key_fingerprint(),
+        )
     }
 }
 
@@ -1101,6 +1177,7 @@ where
 async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
+    counter: IntGauge,
     handshake: Message<P>,
 ) -> Result<()>
 where
@@ -1108,6 +1185,7 @@ where
 {
     sink.send(handshake).await.map_err(Error::MessageNotSent)?;
     while let Some(payload) = queue.recv().await {
+        counter.dec();
         // We simply error-out if the sink fails, it means that our connection broke.
         sink.send(payload).await.map_err(Error::MessageNotSent)?;
     }

@@ -34,6 +34,8 @@ pub enum Error {
     Authorization,
     #[error("Insufficient payment")]
     InsufficientPayment,
+    #[error("Gas conversion overflow")]
+    GasConversionOverflow,
     #[error("Deploy error")]
     Deploy,
     #[error("Payment finalization error")]

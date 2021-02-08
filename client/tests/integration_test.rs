@@ -1,11 +1,15 @@
-use std::{convert::Infallible, net::SocketAddr};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
 use serde::Deserialize;
-use tokio::task::JoinHandle;
+use tokio::{sync::Mutex, task, task::JoinHandle};
+use tower::builder::ServiceBuilder;
 use warp::{Filter, Rejection};
 use warp_json_rpc::Builder;
+
+use casper_node::crypto::Error as CryptoError;
+use hex::FromHexError;
 
 use casper_client::{DeployStrParams, Error, PaymentStrParams, SessionStrParams};
 use casper_node::rpcs::{
@@ -20,6 +24,9 @@ const VALID_PURSE_UREF: &str =
     "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
 const VALID_STATE_ROOT_HASH: &str =
     "55db08058acb54c295b115cbd9b282eb2862e76d5bb8493bb80c0598a50a12a5";
+
+const DEFAULT_RATE_LIMIT: u64 = 1;
+const DEFAULT_RATE_PER: Duration = Duration::from_secs(1);
 
 fn test_filter<P>(
     method: &'static str,
@@ -41,11 +48,16 @@ fn test_filter_without_params(
         .map(|builder: Builder| builder.success(()).unwrap())
 }
 
+type ServerJoiner = Option<Arc<Mutex<JoinHandle<Result<(), hyper::error::Error>>>>>;
+
 struct MockServerHandle {
     graceful_shutdown: Option<oneshot::Sender<()>>,
-    server_joiner: Option<JoinHandle<Result<(), hyper::error::Error>>>,
+    server_joiner: ServerJoiner,
     address: SocketAddr,
 }
+
+trait Captures<'a> {}
+impl<'a, T: ?Sized> Captures<'a> for T {}
 
 impl MockServerHandle {
     fn url(&self) -> String {
@@ -59,22 +71,36 @@ impl MockServerHandle {
         P: 'static,
         for<'de> P: Deserialize<'de> + Send,
     {
-        Self::spawn_with_filter(test_filter::<P>(method))
+        Self::spawn_with_filter(
+            test_filter::<P>(method),
+            DEFAULT_RATE_LIMIT,
+            DEFAULT_RATE_PER,
+        )
     }
 
     /// Will spawn a server on localhost and respond to JSON-RPC requests that don't take
     /// parameters.
     fn spawn_without_params(method: &'static str) -> Self {
-        Self::spawn_with_filter(test_filter_without_params(method))
+        Self::spawn_with_filter(
+            test_filter_without_params(method),
+            DEFAULT_RATE_LIMIT,
+            DEFAULT_RATE_PER,
+        )
     }
 
-    fn spawn_with_filter<F>(filter: F) -> Self
+    fn spawn_with_filter<F>(filter: F, rate: u64, per: Duration) -> Self
     where
         F: Filter<Extract = (Response<Body>,), Error = Rejection> + Send + Sync + 'static + Copy,
     {
         let service = warp_json_rpc::service(filter);
+
         let make_svc =
             hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
+
+        let make_svc = ServiceBuilder::new()
+            .rate_limit(rate, per)
+            .service(make_svc);
+
         let builder = Server::try_bind(&([127, 0, 0, 1], 0).into()).unwrap();
         let (graceful_shutdown, shutdown_receiver) = oneshot::channel::<()>();
         let graceful_shutdown = Some(graceful_shutdown);
@@ -84,7 +110,7 @@ impl MockServerHandle {
             shutdown_receiver.await.ok();
         });
         let server_joiner = tokio::spawn(server_with_shutdown);
-        let server_joiner = Some(server_joiner);
+        let server_joiner = Some(Arc::new(Mutex::new(server_joiner)));
         MockServerHandle {
             graceful_shutdown,
             server_joiner,
@@ -126,8 +152,8 @@ impl MockServerHandle {
         &self,
         amount: &str,
         maybe_target_account: &str,
-        deploy_params: DeployStrParams<'static>,
-        payment_params: PaymentStrParams<'static>,
+        deploy_params: DeployStrParams,
+        payment_params: PaymentStrParams,
     ) -> Result<(), ErrWrapper> {
         casper_client::transfer(
             "1",
@@ -145,9 +171,9 @@ impl MockServerHandle {
 
     fn put_deploy(
         &self,
-        deploy_params: DeployStrParams<'static>,
-        session_params: SessionStrParams<'static>,
-        payment_params: PaymentStrParams<'static>,
+        deploy_params: DeployStrParams,
+        session_params: SessionStrParams,
+        payment_params: PaymentStrParams,
     ) -> Result<(), ErrWrapper> {
         casper_client::put_deploy(
             "1",
@@ -179,7 +205,8 @@ impl Drop for MockServerHandle {
         let _ = self.graceful_shutdown.take().unwrap().send(());
         let joiner = self.server_joiner.take().unwrap();
         futures::executor::block_on(async {
-            let _ = joiner.await;
+            let join = &mut *joiner.lock().await;
+            let _ = join.await;
         });
     }
 }
@@ -246,10 +273,6 @@ mod session_params {
     }
 }
 
-use casper_node::crypto::Error::*;
-use hex::FromHexError::*;
-use Error::*;
-
 mod get_balance {
     use super::*;
 
@@ -265,7 +288,9 @@ mod get_balance {
             // is outside the scope of this test.
             // The MockServerHandle could support a pre-baked response, which should successfully
             // validate
-            Err(InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into())
+            Err(
+                Error::InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into()
+            )
         );
     }
 
@@ -274,9 +299,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", ""),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -287,9 +312,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", VALID_PURSE_UREF),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -300,7 +325,7 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance(VALID_STATE_ROOT_HASH, ""),
-            Err(FailedToParseURef("purse_uref", URefFromStrError::InvalidPrefix).into())
+            Err(Error::FailedToParseURef("purse_uref", URefFromStrError::InvalidPrefix).into())
         );
     }
 
@@ -309,9 +334,9 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("deadbeef", VALID_PURSE_UREF),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -371,7 +396,7 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block(VALID_STATE_ROOT_HASH),
-            Err(ErrWrapper(InvalidResponse(
+            Err(ErrWrapper(Error::InvalidResponse(
                 ValidateResponseError::NoBlockInResponse
             )))
         );
@@ -382,7 +407,7 @@ mod get_block {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block("1"),
-            Err(ErrWrapper(InvalidResponse(
+            Err(ErrWrapper(Error::InvalidResponse(
                 ValidateResponseError::NoBlockInResponse
             )))
         );
@@ -393,7 +418,7 @@ mod get_block {
         let server_handle = MockServerHandle::spawn_without_params(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block(""),
-            Err(ErrWrapper(InvalidResponse(
+            Err(ErrWrapper(Error::InvalidResponse(
                 ValidateResponseError::NoBlockInResponse
             )))
         );
@@ -435,9 +460,9 @@ mod get_item {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item("<invalid state root hash>", VALID_PURSE_UREF, ""),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(OddLength)
+                error: CryptoError::FromHex(FromHexError::OddLength)
             }
             .into())
         );
@@ -448,7 +473,7 @@ mod get_item {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item(VALID_STATE_ROOT_HASH, "invalid key", ""),
-            Err(FailedToParseKey.into())
+            Err(Error::FailedToParseKey.into())
         );
     }
 
@@ -457,9 +482,9 @@ mod get_item {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item("<invalid state root hash>", "", ""),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "state_root_hash",
-                error: FromHex(OddLength)
+                error: CryptoError::FromHex(FromHexError::OddLength)
             }
             .into())
         );
@@ -484,9 +509,9 @@ mod get_deploy {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle.get_deploy("012345",),
-            Err(CryptoError {
+            Err(Error::CryptoError {
                 context: "deploy_hash",
-                error: FromHex(InvalidStringLength)
+                error: CryptoError::FromHex(FromHexError::InvalidStringLength)
             }
             .into())
         );
@@ -686,7 +711,7 @@ mod keygen_generate_files {
                 .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(FileAlreadyExists(
+            Err(Error::FileAlreadyExists(
                 current_dir()
                     .expect("does exist")
                     .parent()
@@ -709,7 +734,7 @@ mod keygen_generate_files {
             .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
+            Err(Error::UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
         );
     }
 
@@ -721,7 +746,7 @@ mod keygen_generate_files {
                 .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(InvalidArgument(
+            Err(Error::InvalidArgument(
                 "generate_files",
                 "empty output_dir provided, must be a valid path".to_string()
             )
@@ -743,6 +768,54 @@ mod put_deploy {
                 payment_params::test_data_with_name()
             ),
             Ok(())
+        );
+    }
+}
+
+mod rate_limit {
+    use super::*;
+    use casper_node::types::Timestamp;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn client_should_should_be_rate_limited_to_approx_1_qps() {
+        // Transfer uses PutDeployParams + PutDeploy
+        let server_handle = Arc::new(MockServerHandle::spawn::<PutDeployParams>(
+            PutDeploy::METHOD,
+        ));
+
+        let now = Timestamp::now();
+        // Our default is 1 req/s, so this will hit the threshold
+        for _ in 0..3u32 {
+            let amount = "100";
+            let maybe_target_account =
+                "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
+
+            // If you remove the tokio::task::spawn_blocking call wrapping the call to transfer, the
+            // client will eventually eat all executor threads and deadlock (at 64 consecutive
+            // requests). I believe this is happening because the server is executing on the same
+            // tokio runtime as the client.
+            let server_handle = server_handle.clone();
+            let join_handle = task::spawn_blocking(move || {
+                server_handle.transfer(
+                    amount,
+                    maybe_target_account,
+                    deploy_params::test_data_valid(),
+                    payment_params::test_data_with_name(),
+                )
+            });
+            assert_eq!(join_handle.await.unwrap(), Ok(()));
+        }
+
+        let diff = Timestamp::now() - now;
+        assert!(
+            diff < Duration::from_millis(4000).into(),
+            "Rate limiting of 1 qps for 3 sec took too long at {}ms",
+            diff.millis()
+        );
+        assert!(
+            diff > Duration::from_millis(2000).into(),
+            "Rate limiting of 1 qps for 3 sec too fast took {}ms",
+            diff.millis()
         );
     }
 }

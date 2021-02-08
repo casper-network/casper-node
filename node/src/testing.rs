@@ -4,6 +4,7 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
+mod multi_stage_test_reactor;
 pub mod network;
 mod test_rng;
 
@@ -28,6 +29,7 @@ use crate::{
 };
 use anyhow::Context;
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
+pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 pub(crate) use test_rng::TestRng;
 
 // Lower bound for the port, below there's a high chance of hitting a system service.

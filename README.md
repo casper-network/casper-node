@@ -11,13 +11,13 @@ The Casper Testnet is live.
 
 ## Specification
 
-- [Platform Specification](https://techspec.casperlabs.io/en/latest/)
+- [Platform Specification](https://docs.casperlabs.io/en/latest/implementation/index.html)
 - [Highway Consensus Proofs](https://github.com/CasperLabs/highway/releases/latest)
 
 ## Get Started with Smart Contracts
 - [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
-- [Rust Smart Contract API Docs](https://docs.rs/casperlabs-contract/0.6.1/casperlabs_contract/contract_api/index.html)
+- [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
 - [AssemblyScript Smart Contract API](https://www.npmjs.com/package/@casperlabs/contract)
 
 ## Community
@@ -44,11 +44,10 @@ This is the core application for the Casper blockchain.
 
 ### Setup
 
-Before building a node, prepare your Rust build environment, and build the required system smart contracts:
+Before building a node, prepare your Rust build environment:
 
 ```
 make setup-rs
-make build-system-contracts -j
 ```
 
 The node software can be compiled afterwards:
@@ -80,20 +79,6 @@ For launching, the following configuration values must be properly set:
 
 ### Running multiple nodes on one machine
 
-If you want to run multiple instances on the same machine, you will need to modify the following
-configuration values:
-
-| Setting                     | Description |
-| :---------------------------| :---------- |
-| `consensus.secret_key_path` | The path to the secret key must be different for each node, as no two nodes should be using an identical secret key. |
-| `storage.path`              | Storage must be separate for each node, e.g. `/tmp/node-2-storage` for the second node |
-| `network.bind_address`      | Each node requires a different bind address, although the port can be set to `0`, which will cause the node to select a random port. |
-| `network.gossip_interval`   | (optional) To reduce the initial time to become fully interconnected, this value can be reduced, e.g. set  to `1000` for once every second.  However, beware thatthis will also increase the network traffic, as gossip rounds between the nodes will continue to be exchanged at this frequency for the duration of the network. |
-
-The nodes can take quite a long time to become fully interconnected.  This is dependent on the
-`network.gossip_interval` value (in milliseconds).  Nodes gossip their own listening addresses at
-this frequency.
-
 There is a [tool](https://github.com/CasperLabs/casper-node/tree/master/utils/nctl) which automates the process of running multiple nodes on a single machine.
 
 Note that running multiple nodes on a single machine is normally only recommended for test purposes.
@@ -104,28 +89,11 @@ In general nodes are configured through a configuration file, typically named `c
 file may reference other files or locations through relative paths.  When it does, note that all
 paths that are not absolute will be resolved relative to `config.toml` directory.
 
-### CLI overrides
-
-It is possible to override config file options from the command line using one or more args in the
-form of `-C=<SECTION>.<KEY>=<VALUE>`.  These will override values set in a config file if provided,
-or will override the default values otherwise.  For example
-
-```
-casper-node validator /etc/casper-node/config.toml \
-    -C=consensus.secret_key_path=secret_keys/node-1.pem \
-    -C=network.known_addresses="[1.2.3.4:34553, 200.201.203.204:34553]"
-```
-
-will override the `consensus.secret_key_path` and the `network.known_addresses` configuration
-setting.
-
-Be aware that semicolons are prohibited (even escaped) from being used in any option passed on the
-command line.
 
 ### Environment overrides
 
-Some environments may call for overriding options through the environment rather than the command line.  In this
-scenario, the `NODE_CONFIG` environment variable can be used. For example, the command from the previous section can be
+Some environments may call for overriding options through the environment.  In this
+scenario, the `NODE_CONFIG` environment variable can be used. For example:
 alternatively expressed as
 
 ```

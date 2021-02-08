@@ -11,7 +11,7 @@
 function do_node_start()
 {
     local NODE_ID=${1}
-    local TRUSTED_HASH=${3:-}
+    local TRUSTED_HASH=${2:-}
     local PATH_TO_NET
     local PATH_TO_NET_CHAINSPEC
     local PATH_TO_NODE

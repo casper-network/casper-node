@@ -41,8 +41,7 @@ CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	grpc/server \
-	grpc/test_support \
+	execution_engine_testing/test_support \
 	node \
 	smart_contracts/contract \
 	types
@@ -109,10 +108,14 @@ test-contracts-rs: build-contracts-rs
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "execution_engine_testing/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts-as
+
+.PHONY: test-fast-sync
+test-fast-sync:
+	cd $(CURDIR)/node && $(CARGO) test --lib testing::multi_stage_test_reactor::test_chain --features "fast-sync"
 
 .PHONY: check-format
 check-format:
@@ -128,7 +131,7 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2020-0123
 
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
@@ -169,16 +172,8 @@ build-for-packaging: build-client-contracts
 
 .PHONY: deb
 deb: setup build-for-packaging
-	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
 	cd client && $(CARGO) deb -p casper-client --no-build
-
-grpc/server/.rpm:
-	cd grpc/server && $(CARGO) rpm init
-
-.PHONY: rpm
-rpm: grpc/server/.rpm
-	cd grpc/server && $(CARGO) rpm build
 
 .PHONY: package
 package:

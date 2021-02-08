@@ -6,7 +6,7 @@ use std::{collections::HashMap, convert::Infallible, fmt::Debug, time::Duration}
 
 use datasize::DataSize;
 use smallvec::smallvec;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 
@@ -339,8 +339,14 @@ where
             }
             // We do nothing in the case of having an incoming deploy rejected.
             Event::RejectedRemotely { .. } => Effects::new(),
-            Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
-            Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
+            Event::AbsentRemotely { id, peer } => {
+                info!(%id, %peer, "element absent on the remote node");
+                self.signal(id, None, peer)
+            }
+            Event::TimeoutPeer { id, peer } => {
+                info!(%id, %peer, "request timed out");
+                self.signal(id, None, peer)
+            }
         }
     }
 }

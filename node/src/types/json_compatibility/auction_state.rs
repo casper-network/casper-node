@@ -92,11 +92,6 @@ pub struct JsonBid {
     staked_amount: U512,
     /// The delegation rate.
     delegation_rate: DelegationRate,
-    /// A flag that represents a winning entry.
-    ///
-    /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
-    /// means that funds are unlocked and autowin status is removed.
-    release_era: Option<EraId>,
     /// The delegators.
     delegators: Vec<JsonDelegator>,
     /// This validator's seigniorage reward.
@@ -116,7 +111,6 @@ impl From<Bid> for JsonBid {
             bonding_purse: *bid.bonding_purse(),
             staked_amount: *bid.staked_amount(),
             delegation_rate: *bid.delegation_rate(),
-            release_era: bid.release_era(),
             delegators: json_delegators,
             reward: *bid.reward(),
         }

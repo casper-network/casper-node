@@ -9,7 +9,7 @@ use libp2p::{
 use once_cell::sync::Lazy;
 
 use super::{Config, Error, PayloadT, ProtocolId};
-use crate::components::chainspec_loader::Chainspec;
+use crate::types::Chainspec;
 
 /// The inner portion of the `ProtocolId` for the gossip behavior.  A standard prefix and suffix
 /// will be applied to create the full protocol name.

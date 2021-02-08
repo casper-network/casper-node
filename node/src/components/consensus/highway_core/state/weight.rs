@@ -3,12 +3,14 @@ use std::{
     ops::{Div, Mul},
 };
 
+use datasize::DataSize;
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
 
 /// A vote weight.
 #[derive(
     Copy,
     Clone,
+    DataSize,
     Default,
     Debug,
     PartialEq,

@@ -1708,7 +1708,12 @@ where
             auction::METHOD_RUN_AUCTION => (|| {
                 runtime.charge_system_contract_call(auction_costs.run_auction)?;
 
-                runtime.run_auction().map_err(Self::reverter)?;
+                let era_end_timestamp_millis =
+                    Self::get_named_argument(&runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
+
+                runtime
+                    .run_auction(era_end_timestamp_millis)
+                    .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
@@ -2938,7 +2943,7 @@ where
             }
             Some(StoredValue::Account(account)) => {
                 let target_uref = account.main_purse_add_only();
-                if source == target_uref {
+                if source.with_access_rights(AccessRights::ADD) == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse

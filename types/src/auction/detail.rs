@@ -79,6 +79,27 @@ where
     write_to(provider, ERA_ID_KEY, era_id)
 }
 
+pub fn get_era_end_timestamp_millis<P>(provider: &mut P) -> Result<u64>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    Ok(read_from(provider, ERA_END_TIMESTAMP_MILLIS_KEY)?)
+}
+
+pub fn set_era_end_timestamp_millis<P>(
+    provider: &mut P,
+    era_end_timestamp_millis: u64,
+) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(
+        provider,
+        ERA_END_TIMESTAMP_MILLIS_KEY,
+        era_end_timestamp_millis,
+    )
+}
+
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshot>
@@ -236,12 +257,12 @@ where
     let delegators = bid.delegators_mut();
 
     for (delegator_key, delegator_reward) in rewards {
-        let delegator_reward_trunc = delegator_reward.to_integer();
-
         let delegator = match delegators.get_mut(&delegator_key) {
             Some(delegator) => delegator,
-            None => return Err(Error::DelegatorNotFound),
+            None => continue,
         };
+
+        let delegator_reward_trunc = delegator_reward.to_integer();
 
         delegator.increase_reward(delegator_reward_trunc)?;
 

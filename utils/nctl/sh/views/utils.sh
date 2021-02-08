@@ -163,3 +163,24 @@ function render_chain_state_root_hash()
 
     log "state root hash @ node-$NODE_ID = ${STATE_ROOT_HASH:-'N/A'}"
 }
+
+#######################################
+# Renders a last finalized block hash at a certain node.
+# Globals:
+#   NCTL - path to nctl home directory.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function render_last_finalized_block_hash()
+{
+    local NODE_ID=${1}
+    local NODE_IS_UP
+    local LFB_HASH
+
+    NODE_IS_UP=$(get_node_is_up "$NODE_ID")
+    if [ "$NODE_IS_UP" = true ]; then
+        LFB_HASH=$(get_chain_latest_block_hash "$NODE_ID")
+    fi
+
+    log "last finalized block hash @ node-$NODE_ID = ${LFB_HASH:-'N/A'}"
+}
