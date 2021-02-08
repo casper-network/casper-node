@@ -207,7 +207,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 
     fn process_new_vertex(&mut self, v: Vertex<C>) -> ProtocolOutcomes<I, C> {
-        let mut results = Vec::new();
+        let mut outcomes = Vec::new();
         if let Vertex::Evidence(ev) = &v {
             let v_id = self
                 .highway
@@ -215,12 +215,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 .id(ev.perpetrator())
                 .expect("validator not found")
                 .clone();
-            results.push(ProtocolOutcome::NewEvidence(v_id));
+            outcomes.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(v);
-        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
-        results.extend(self.detect_finality());
-        results
+        outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
+        outcomes.extend(self.detect_finality());
+        outcomes
     }
 
     fn detect_finality(&mut self) -> impl Iterator<Item = ProtocolOutcome<I, C>> + '_ {
@@ -327,11 +327,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
         self.calculate_round_exponent(&vv);
-        let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
-        let mut results = self.process_av_effects(av_effects);
-        let msg = HighwayMessage::NewVertex(vv.into());
-        results.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
-        results
+        let av_effects = self.highway.add_valid_vertex(vv, rng, now);
+        self.process_av_effects(av_effects)
     }
 
     /// Returns the median round exponent of all the validators that haven't been observed to be
