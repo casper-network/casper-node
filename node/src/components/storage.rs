@@ -649,7 +649,7 @@ impl Storage {
     }
 
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    pub(crate) fn get_switch_block_by_era_id<Tx: Transaction>(
+    fn get_switch_block_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         era_id: EraId,
