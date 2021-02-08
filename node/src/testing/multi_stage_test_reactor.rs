@@ -459,7 +459,7 @@ impl Reactor for MultiStageTestReactor {
         assert_eq!(old_node_id, new_node_id);
 
         if let MultiStageTestReactor::Deactivated = self {
-            panic!("Reactor should not longer be Deactivated!")
+            panic!("Reactor should no longer be Deactivated!")
         }
 
         effects
