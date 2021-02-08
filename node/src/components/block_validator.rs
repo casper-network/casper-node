@@ -230,33 +230,36 @@ where
 
                 self.validation_states.retain(|key, state| {
                     if !state.missing_deploys.contains(&deploy_hash) {
-                        true
-                    } else {
-                        match state.source() {
-                            Some(peer) => {
-                                info!(%deploy_hash, ?peer, "trying the next peer");
-                                // There's still hope to download the deploy.
-                                let (chainspec, block_timestamp) = &state.context;
-                                effects.extend(
-                                    fetch_deploy(effect_builder,
-                                        Arc::clone(chainspec),
-                                        *block_timestamp,
-                                        deploy_hash,
-                                        peer,
-                                    ));
-                                retried = true;
-                                true
-                            },
-                            None => {
-                                // Notify everyone still waiting on it that all is lost.
-                                info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
-                                // This validation state contains a failed deploy hash, it can never
-                                // succeed.
-                                state.responders.drain(..).for_each(|responder| {
-                                    effects.extend(responder.respond((false, key.clone())).ignore());
-                                });
-                                false
-                            }
+                        return true
+                    }
+                    if retried {
+                        // We don't want to retry downloading the same element more than once.
+                        return true
+                    }
+                    match state.source() {
+                        Some(peer) => {
+                            info!(%deploy_hash, ?peer, "trying the next peer");
+                            // There's still hope to download the deploy.
+                            let (chainspec, block_timestamp) = &state.context;
+                            effects.extend(
+                                fetch_deploy(effect_builder,
+                                    Arc::clone(chainspec),
+                                    *block_timestamp,
+                                    deploy_hash,
+                                    peer,
+                                ));
+                            retried = true;
+                            true
+                        },
+                        None => {
+                            // Notify everyone still waiting on it that all is lost.
+                            info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
+                            // This validation state contains a failed deploy hash, it can never
+                            // succeed.
+                            state.responders.drain(..).for_each(|responder| {
+                                effects.extend(responder.respond((false, key.clone())).ignore());
+                            });
+                            false
                         }
                     }
                 });
