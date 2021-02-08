@@ -229,8 +229,6 @@ where
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
                         match state.source() {
-                            // If deploy is invalid there's no point in trying alternative sources.
-                            // Retry only on timeout.
                             Some(peer) => {
                                 info!(%deploy_hash, ?peer, "trying the next peer");
                                 // There's still hope to download the deploy.
@@ -239,7 +237,7 @@ where
                                 true
                             },
                             None => {
-                                // Otherwise notify everyone still waiting on it that all is lost.
+                                // Notify everyone still waiting on it that all is lost.
                                 info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
                                 // This validation state contains a failed deploy hash, it can never
                                 // succeed.
