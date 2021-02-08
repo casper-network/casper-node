@@ -41,6 +41,7 @@ pub enum MultiStageTestReactorError {
 }
 
 #[derive(Debug, From, Serialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum MultiStageTestEvent {
     // Events wrapping internal reactor events.
     #[from]
