@@ -232,7 +232,7 @@ where
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
                         match state.source() {
-                            Some(peer) => { 
+                            Some(peer) => {
                                 info!(%deploy_hash, ?peer, "trying the next peer");
                                 // There's still hope to download the deploy.
                                 let (chainspec, block_timestamp) = &state.context;
@@ -255,7 +255,7 @@ where
                         true
                     }
                 });
-                
+
                 if retried {
                     // If we retried, we need to increase this counter.
                     self.in_flight.inc(&deploy_hash);
@@ -263,7 +263,8 @@ where
             }
             Event::DeployInvalid(deploy_hash) => {
                 info!(%deploy_hash, "deploy invalid");
-                // Deploy is invalid. There's no point waiting for other in-flight requests to finish.
+                // Deploy is invalid. There's no point waiting for other in-flight requests to
+                // finish.
                 self.in_flight.dec(&deploy_hash);
 
                 self.validation_states.retain(|key, state| {
