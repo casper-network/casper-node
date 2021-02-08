@@ -115,7 +115,7 @@ test-contracts: test-contracts-rs test-contracts-as
 
 .PHONY: test-fast-sync
 test-fast-sync:
-	cd $(CURDIR)/node && $(CARGO) test --package casper-node --lib testing::multi_stage_test_reactor::test_chain --features "fast-sync"
+	cd $(CURDIR)/node && $(CARGO) test --lib testing::multi_stage_test_reactor::test_chain --features "fast-sync"
 
 .PHONY: check-format
 check-format:
