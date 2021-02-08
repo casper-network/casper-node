@@ -35,7 +35,7 @@ impl<I, C: Context> Default for PendingVertices<I, C> {
 }
 
 impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
-    /// Removes expired vertices and returns `true` if it is now empty.
+    /// Removes expired vertices.
     fn remove_expired(&mut self, oldest: Timestamp) {
         for time_by_sender in self.0.values_mut() {
             time_by_sender.retain(|_, time_received| *time_received >= oldest);
