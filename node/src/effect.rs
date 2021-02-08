@@ -369,6 +369,12 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder(event_queue_handle)
     }
 
+    /// Extract the event queue handle out of the effect builder.
+    #[cfg(test)]
+    pub fn into_inner(self) -> EventQueueHandle<REv> {
+        self.0
+    }
+
     /// Performs a request.
     ///
     /// Given a request `Q`, that when completed will yield a result of `T`, produces a future

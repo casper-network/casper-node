@@ -303,6 +303,24 @@ pub struct ValidatorInitConfig {
     pub(super) network_identity: NetworkIdentity,
 }
 
+#[cfg(test)]
+impl ValidatorInitConfig {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
+    }
+}
+
+impl Debug for ValidatorInitConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "ValidatorInitConfig {{ .. }}")
+    }
+}
+
 /// Validator node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
@@ -339,6 +357,10 @@ impl Reactor {
     /// Inspect consensus.
     pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
     }
 }
 

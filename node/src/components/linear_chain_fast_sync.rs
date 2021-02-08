@@ -1,11 +1,7 @@
 //! Fast linear chain synchronizer.
-#[allow(dead_code)]
 mod event;
-#[allow(dead_code)]
 mod metrics;
-#[allow(dead_code)]
 mod peers;
-#[allow(dead_code)]
 mod state;
 mod traits;
 

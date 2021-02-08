@@ -116,6 +116,7 @@ tokio = { version = "0.2.20", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
+fast-sync = []
 
 [[bin]]
 name = "casper-node"
