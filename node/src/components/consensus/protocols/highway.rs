@@ -62,7 +62,7 @@ where
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
-    pending_values: HashMap<C::ConsensusValue, Vec<ValidVertex<C>>>,
+    pending_values: HashMap<<C::ConsensusValue as ConsensusValueT>::Hash, Vec<ValidVertex<C>>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
@@ -268,14 +268,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // If the vertex contains a consensus value, request validation.
         let vertex = vv.inner();
-        if let (Some(value), Some(timestamp)) = (vertex.value().cloned(), vertex.timestamp()) {
+        if let (Some(value), Some(timestamp)) = (vertex.value(), vertex.timestamp()) {
             if value.needs_validation() {
+                let cv = value.clone();
                 self.pending_values
-                    .entry(value.clone())
+                    .entry(value.hash())
                     .or_default()
                     .push(vv);
                 outcomes.push(ProtocolOutcome::ValidateConsensusValue(
-                    sender, value, timestamp,
+                    sender, cv, timestamp,
                 ));
                 return outcomes;
             }
@@ -595,7 +596,7 @@ where
         if valid {
             let mut results = self
                 .pending_values
-                .remove(value)
+                .remove(&value.hash())
                 .into_iter()
                 .flatten()
                 .flat_map(|vv| {
@@ -609,7 +610,7 @@ where
         } else {
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
-            let dropped_vertices = self.pending_values.remove(value);
+            let dropped_vertices = self.pending_values.remove(&value.hash());
             // recursively remove vertices depending on the dropped ones
             warn!(
                 ?value,

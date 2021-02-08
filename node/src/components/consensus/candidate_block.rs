@@ -1,3 +1,7 @@
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -5,6 +9,7 @@ use casper_types::PublicKey;
 
 use crate::{
     components::consensus::traits::ConsensusValueT,
+    crypto::hash::Digest,
     types::{ProtoBlock, Timestamp},
 };
 
@@ -57,6 +62,21 @@ impl From<CandidateBlock> for ProtoBlock {
 }
 
 impl ConsensusValueT for CandidateBlock {
+    type Hash = Digest;
+
+    fn hash(&self) -> Self::Hash {
+        let mut result = [0; Digest::LENGTH];
+
+        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
+        hasher.update(self.proto_block.hash().inner());
+        hasher
+            .update(bincode::serialize(self.accusations()).expect("should serialize accusations"));
+        hasher.finalize_variable(|slice| {
+            result.copy_from_slice(slice);
+        });
+        result.into()
+    }
+
     fn needs_validation(&self) -> bool {
         !self.proto_block.wasm_deploys().is_empty() || !self.proto_block.transfers().is_empty()
     }

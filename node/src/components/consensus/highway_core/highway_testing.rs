@@ -40,11 +40,19 @@ use crate::{
     NodeRng,
 };
 
-type ConsensusValue = Vec<u32>;
+type ConsensusValue = Vec<u8>;
 
 impl ConsensusValueT for ConsensusValue {
+    type Hash = u64;
+
     fn needs_validation(&self) -> bool {
         !self.is_empty()
+    }
+
+    fn hash(&self) -> Self::Hash {
+        let mut hasher = DefaultHasher::new();
+        std::hash::Hash::hash(&self, &mut hasher);
+        hasher.finish()
     }
 }
 
@@ -831,7 +839,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
-        let consensus_values = (0..self.consensus_values_count as u32)
+        let consensus_values = (0..self.consensus_values_count)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();
 
