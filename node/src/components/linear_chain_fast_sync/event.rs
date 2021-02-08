@@ -9,13 +9,14 @@ pub enum Event<I> {
     GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHandled(Box<BlockHeader>),
+    BlockHeaderHandled(Box<BlockHeader>),
+    RetrieveHandledBlockResult(Box<Block>),
 }
 
 #[derive(Debug)]
 pub enum DeploysResult<I> {
-    Found(Box<BlockHeader>),
-    NotFound(Box<BlockHeader>, I),
+    Found(Box<Block>),
+    NotFound(Box<Block>, I),
 }
 
 #[derive(Debug)]
@@ -47,7 +48,7 @@ where
             }
             Event::StartDownloadingDeploys => write!(f, "Start downloading deploys event."),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
-            Event::BlockHandled(block) => {
+            Event::BlockHeaderHandled(block) => {
                 let hash = block.hash();
                 let height = block.height();
                 write!(
@@ -58,6 +59,12 @@ where
             }
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)
+            }
+
+            Event::RetrieveHandledBlockResult(block) => {
+                let hash = block.hash();
+                let height = block.height();
+                write!(f, "Got handled block from storage. Hash {}, height {}", hash, height)
             }
         }
     }

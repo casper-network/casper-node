@@ -31,6 +31,7 @@ pub use metrics::LinearChainSyncMetrics;
 pub use peers::PeersState;
 pub use state::State;
 pub use traits::ReactorEventT;
+use crate::types::Block;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainFastSync<I> {
@@ -58,7 +59,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
     }
 
     /// Add new block to linear chain.
-    fn add_block(&mut self, block_header: BlockHeader) {
+    fn add_block(&mut self, block_header: Block) {
         match &mut self.state {
             State::None | State::Done => {}
             State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block_header),
@@ -75,14 +76,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         &mut self,
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
-        block_header: &BlockHeader,
+        block_header: &Block,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
         REv: ReactorEventT<I>,
     {
         self.peers.reset(rng);
-        self.state.block_downloaded(block_header);
+        self.state.block_downloaded(block_header.header());
         self.add_block(block_header.clone());
         match &mut self.state {
             State::None | State::Done => panic!("Downloaded block when in {} state.", self.state),
@@ -91,16 +92,16 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                 trusted_header,
                 ..
             } => {
-                if block_header.hash() == *trusted_hash {
-                    *trusted_header = Some(Box::new(block_header.clone()));
+                if *block_header.hash() == *trusted_hash {
+                    *trusted_header = Some(Box::new(block_header.header().clone()));
                 }
-                if block_header.is_genesis_child() {
+                if block_header.header().is_genesis_child() {
                     info!("linear chain downloaded. Start downloading deploys.");
                     effect_builder
                         .immediately()
                         .event(move |_| Event::StartDownloadingDeploys)
                 } else {
-                    self.fetch_next_block(effect_builder, rng, block_header)
+                    self.fetch_next_block(effect_builder, rng, block_header.header())
                 }
             }
             State::SyncingDescendants { .. } => {
@@ -123,7 +124,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         &mut self,
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
-        block_header: BlockHeader,
+        block_header: Block,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
@@ -188,7 +189,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                     None => panic!("Unexpected block execution results."),
                 }
                 if let Some(validator_weights_for_new_era) =
-                    block_header.next_era_validator_weights()
+                    block_header.header().next_era_validator_weights()
                 {
                     *validator_weights = validator_weights_for_new_era.clone();
                 }
@@ -204,14 +205,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                     **latest_block, block_header,
                     "Block execution result doesn't match received block."
                 );
-                match block_header.next_era_validator_weights() {
+                match block_header.header().next_era_validator_weights() {
                     None => (),
                     Some(validators_for_next_era) => {
                         *validators_for_latest_block = validators_for_next_era.clone();
                     }
                 }
                 self.state = curr_state;
-                self.fetch_next_block(effect_builder, rng, &block_header)
+                self.fetch_next_block(effect_builder, rng, &block_header.header())
             }
         }
     }
@@ -288,7 +289,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         }
     }
 
-    fn latest_block(&self) -> Option<&BlockHeader> {
+    fn latest_block(&self) -> Option<&Block> {
         match &self.state {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
@@ -364,13 +365,13 @@ where
                         // When syncing descendants of a trusted hash, we might have some of them in
                         // our local storage. If that's the case, just
                         // continue.
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        self.block_downloaded(rng, effect_builder, &*block)
                     }
                     BlockByHeightResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_height();
                         trace!(%block_height, %peer, "linear chain block downloaded from a peer");
                         if block.height() != block_height
-                            || *block.header().parent_hash() != self.latest_block().unwrap().hash()
+                            || *block.header().parent_hash() != *self.latest_block().unwrap().hash()
                         {
                             warn!(
                                 %peer,
@@ -392,7 +393,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        self.block_downloaded(rng, effect_builder, &*block)
                     }
                 }
             }
@@ -418,7 +419,7 @@ where
                         // If we do, it's a bug.
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                         trace!(%block_hash, "linear block found in the local storage.");
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        self.block_downloaded(rng, effect_builder, &*block)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();
@@ -445,7 +446,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        self.block_downloaded(rng, effect_builder, &*block)
                     }
                 }
             }
@@ -500,11 +501,25 @@ where
                 self.peers.push(peer_id);
                 effects
             }
-            Event::BlockHandled(header) => {
+            Event::BlockHeaderHandled(header) => {
                 let block_height = header.height();
                 let block_hash = header.hash();
-                let effects = self.block_handled(rng, effect_builder, *header);
-                trace!(%block_height, %block_hash, "block handled.");
+                //let effects = self.block_handled(rng, effect_builder, *header);
+                trace!(%block_height, %block_hash, "block header handled.");
+                effect_builder.get_block_at_height_from_storage(block_height)
+                    .event(move |maybe_block| {
+                        maybe_block.map(Box::new).map_or_else(
+                            // TODO Dont panic.
+                            || panic!("Linear chain sync should have retrieved block with hash: {}  and height: {} from internet before consensus had handled it.", block_hash, block_height),
+                            Event::RetrieveHandledBlockResult,
+                        )
+                    })
+            }
+            Event::RetrieveHandledBlockResult(block) => {
+                let block_height = block.height();
+                let block_hash = block.hash();
+                let effects = self.block_handled(rng, effect_builder, *block.clone());
+                trace!(%block_height, %block_hash, "handled block retrieved from storage.");
                 effects
             }
         }
@@ -514,12 +529,12 @@ where
 fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
-    block_header: BlockHeader,
+    block_header: Block,
 ) -> Effects<Event<I>>
 where
     REv: ReactorEventT<I>,
 {
-    let block_timestamp = block_header.timestamp();
+    let block_timestamp = block_header.header().timestamp();
     effect_builder
         .validate_block(peer.clone(), block_header, block_timestamp)
         .event(move |(found, block_header)| {
