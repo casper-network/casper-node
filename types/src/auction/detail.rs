@@ -233,21 +233,13 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
 
 /// Update validator reward map.
 pub fn update_delegator_rewards(
-    bids: &mut Bids,
+    bid: &mut Bid,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
 ) -> Result<(U512, Vec<(U512, URef)>)> {
     let mut total_delegator_payout = U512::zero();
     let mut updated_delegator_rewards = Vec::new();
-
-    let bid = match bids.get_mut(&validator_public_key) {
-        Some(bid) => bid,
-        None => {
-            // Validator has been slashed
-            return Ok((total_delegator_payout, updated_delegator_rewards));
-        }
-    };
 
     let delegators = bid.delegators_mut();
 
@@ -277,26 +269,18 @@ pub fn update_delegator_rewards(
 }
 
 /// Update validator reward map.
-pub fn update_validator_reward<'a>(
-    bids: &'a mut Bids,
+pub fn update_validator_reward(
+    bid: &mut Bid,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<&'a Bid> {
-    let bid = match bids.get_mut(&validator_public_key) {
-        Some(bid) => bid,
-        None => {
-            // Validator has been slashed
-            return Err(Error::ValidatorNotFound);
-        }
-    };
-
-    // Reinvest reward
+) -> Result<()> {
+    // Automatically reinvest the reward by increasing validator's stake.
     bid.increase_stake(amount)?;
 
     let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
 
     seigniorage_allocations.push(allocation);
 
-    Ok(bid)
+    Ok(())
 }

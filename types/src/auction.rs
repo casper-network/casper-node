@@ -458,54 +458,59 @@ pub trait Auction:
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)
                     });
-            let (total_delegator_payout, updated_delegator_rewards) =
-                detail::update_delegator_rewards(
-                    &mut bids,
+
+            // Update stakes for a validator that has not been slashed
+            if let Some(bid) = bids.get_mut(&public_key) {
+                let (total_delegator_payout, updated_delegator_rewards) =
+                    detail::update_delegator_rewards(
+                        bid,
+                        &mut seigniorage_allocations,
+                        public_key,
+                        delegator_rewards,
+                    )?;
+                let validators_part: Ratio<U512> =
+                    total_reward - Ratio::from(total_delegator_payout);
+                let validator_reward = validators_part.to_integer();
+
+                detail::update_validator_reward(
+                    bid,
                     &mut seigniorage_allocations,
                     public_key,
-                    delegator_rewards,
+                    validator_reward,
                 )?;
 
-            let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
-            let validator_reward = validators_part.to_integer();
-
-            if let Ok(validator_updated_bid) = detail::update_validator_reward(
-                &mut bids,
-                &mut seigniorage_allocations,
-                public_key,
-                validator_reward,
-            ) {
                 // TODO: add "mint into existing purse" facility
                 let tmp_validator_reward_purse =
                     self.mint(validator_reward).map_err(|_| Error::MintReward)?;
                 self.transfer_purse_to_purse(
                     tmp_validator_reward_purse,
-                    *validator_updated_bid.bonding_purse(),
+                    *bid.bonding_purse(),
                     validator_reward,
                 )
                 .map_err(|_| Error::ValidatorRewardTransfer)?;
-            }
 
-            debug_assert_eq!(
-                updated_delegator_rewards
-                    .iter()
-                    .map(|(amount, _)| *amount)
-                    .sum::<U512>(),
-                total_delegator_payout,
-            );
+                // Reinvest delegator payouts
+                debug_assert_eq!(
+                    updated_delegator_rewards
+                        .iter()
+                        .map(|(amount, _)| *amount)
+                        .sum::<U512>(),
+                    total_delegator_payout,
+                );
 
-            // TODO: add "mint into existing purse" facility
-            let tmp_delegator_reward_purse = self
-                .mint(total_delegator_payout)
-                .map_err(|_| Error::MintReward)?;
+                // TODO: add "mint into existing purse" facility
+                let tmp_delegator_reward_purse = self
+                    .mint(total_delegator_payout)
+                    .map_err(|_| Error::MintReward)?;
 
-            for (reward_amount, bonding_purse) in updated_delegator_rewards {
-                self.transfer_purse_to_purse(
-                    tmp_delegator_reward_purse,
-                    bonding_purse,
-                    reward_amount,
-                )
-                .map_err(|_| Error::DelegatorRewardTransfer)?;
+                for (reward_amount, bonding_purse) in updated_delegator_rewards {
+                    self.transfer_purse_to_purse(
+                        tmp_delegator_reward_purse,
+                        bonding_purse,
+                        reward_amount,
+                    )
+                    .map_err(|_| Error::DelegatorRewardTransfer)?;
+                }
             }
         }
 
