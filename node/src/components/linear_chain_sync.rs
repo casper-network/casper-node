@@ -23,13 +23,9 @@
 //! execute (as we do in the first, SynchronizeTrustedHash, phase) it would have taken more time and
 //! we might miss more eras.
 
-#[allow(dead_code)]
 mod event;
-#[allow(dead_code)]
 mod metrics;
-#[allow(dead_code)]
 mod peers;
-#[allow(dead_code)]
 mod state;
 mod traits;
 
