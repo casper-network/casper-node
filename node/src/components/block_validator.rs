@@ -48,8 +48,12 @@ pub enum Event<T, I> {
     DeployFound(DeployHash),
 
     /// A request to find a specific deploy, potentially from a peer, failed.
-    #[display(fmt = "deploy {} missing/invalid {}", _0, _1)]
-    DeployMissing(DeployHash, bool),
+    #[display(fmt = "deploy {} missing", _0)]
+    DeployMissing(DeployHash),
+
+    /// Deploy was invalid. Failed the chainspec test.
+    #[display(fmt = "deploy {} invalid", _0)]
+    DeployInvalid(DeployHash),
 
     /// An event changing the current state to BlockValidatorReady, once the chainspec has been
     /// loaded.
@@ -108,7 +112,7 @@ pub(crate) struct BlockValidatorReady<T, I> {
 impl<T, I> BlockValidatorReady<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + PartialEq + Eq + 'static,
+    I: Clone + Debug + Send + PartialEq + Eq + 'static,
 {
     fn handle_event<REv>(
         &mut self,
@@ -214,7 +218,8 @@ where
                     }
                 });
             }
-            Event::DeployMissing(deploy_hash, timeout) => {
+            Event::DeployMissing(deploy_hash) => {
+                info!(%deploy_hash, "request to download deploy timed out");
                 // A deploy failed to fetch. If there is still hope (i.e. other outstanding
                 // requests), we just ignore this little accident.
                 if self.in_flight.dec(&deploy_hash) != 0 {
@@ -226,13 +231,14 @@ where
                         match state.source() {
                             // If deploy is invalid there's no point in trying alternative sources.
                             // Retry only on timeout.
-                            Some(peer) if timeout => {
+                            Some(peer) => {
+                                info!(%deploy_hash, ?peer, "trying the next peer");
                                 // There's still hope to download the deploy.
                                 let (chainspec, block_timestamp) = &state.context;
                                 effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, peer));
                                 true
                             },
-                            _ => {
+                            None => {
                                 // Otherwise notify everyone still waiting on it that all is lost.
                                 info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
                                 // This validation state contains a failed deploy hash, it can never
@@ -243,6 +249,29 @@ where
                                 false
                             }
                         }
+                    } else {
+                        true
+                    }
+                });
+            }
+            Event::DeployInvalid(deploy_hash) => {
+                info!(%deploy_hash, "deploy invalid");
+                // A deploy failed to fetch. If there is still hope (i.e. other outstanding
+                // requests), we just ignore this little accident.
+                if self.in_flight.dec(&deploy_hash) != 0 {
+                    return Effects::new();
+                }
+
+                self.validation_states.retain(|key, state| {
+                    if state.missing_deploys.contains(&deploy_hash) {
+                        // Notify everyone still waiting on it that all is lost.
+                        info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
+                        // This validation state contains a failed deploy hash, it can never
+                        // succeed.
+                        state.responders.drain(..).for_each(|responder| {
+                            effects.extend(responder.respond((false, key.clone())).ignore());
+                        });
+                        false
                     } else {
                         true
                     }
@@ -279,18 +308,14 @@ where
             {
                 Event::DeployFound(deploy_hash)
             } else {
-                info!(%deploy_hash, "deploy is invalid");
-                Event::DeployMissing(deploy_hash, false)
+                Event::DeployInvalid(deploy_hash)
             }
         }
     };
 
     effect_builder
         .fetch_deploy(deploy_hash, sender)
-        .map_or_else(validate_deploy, move || {
-            info!(%deploy_hash, "deploy missing");
-            Event::DeployMissing(deploy_hash, true)
-        })
+        .map_or_else(validate_deploy, move || Event::DeployMissing(deploy_hash))
 }
 
 /// Block validator states.
@@ -336,7 +361,7 @@ where
 impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + PartialEq + Eq + 'static,
+    I: Clone + Debug + Send + PartialEq + Eq + 'static,
     REv: From<Event<T, I>>
         + From<BlockValidationRequest<T, I>>
         + From<FetcherRequest<I, Deploy>>
