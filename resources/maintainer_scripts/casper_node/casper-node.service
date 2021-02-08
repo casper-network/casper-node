@@ -9,6 +9,8 @@ After=network-online.target
 [Service]
 Type=simple
 ExecStartPre=/etc/casper/systemd_pre_start.sh
+# Enabling old network
+Environment="CASPER_ENABLE_LEGACY_NET=TRUE"
 #StandardOutput can only append log files from systemd version 240 + (Ubuntu 20.04). Use ExecStart with redirection as workaround.
 #seperate stderr logging as it outputs non-JSON stack traces
 ExecStart=/bin/sh -c 'exec /usr/bin/casper-node validator /etc/casper/config.toml 1>> /var/log/casper/casper-node.log 2>> /var/log/casper/casper-node.stderr.log'
