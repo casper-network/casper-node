@@ -67,7 +67,7 @@ use crate::{
     NodeRng,
 };
 
-/// Env var which, if it's defined at runtime, enables the small_network component.
+/// Env var which, if it's defined at runtime, enables the network (libp2p based) component.
 pub(crate) const ENABLE_LIBP2P_NET_ENV_VAR: &str = "CASPER_ENABLE_LIBP2P_NET";
 
 /// How long to sleep before reconnecting

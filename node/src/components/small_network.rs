@@ -209,7 +209,7 @@ where
 
         let net_metrics = NetworkingMetrics::new(&registry)?;
 
-        // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without starting the
+        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
