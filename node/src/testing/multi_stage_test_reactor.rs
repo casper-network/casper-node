@@ -316,7 +316,7 @@ impl Reactor for MultiStageTestReactor {
                     "discarded event due to not being in the right stage"
                 );
 
-                // Shouldn't be reachable
+                // TODO: Fix code to stop discarding events and change below to unreachable!()
                 Effects::new()
             }
         };
