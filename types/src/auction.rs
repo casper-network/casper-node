@@ -475,8 +475,6 @@ pub trait Auction:
                 public_key,
                 validator_reward,
             ) {
-                // bids.entry(&public_key).and_modify(|bid| bid.increase_stake(validator_payout))
-
                 // TODO: add "mint into existing purse" facility
                 let tmp_validator_reward_purse =
                     self.mint(validator_reward).map_err(|_| Error::MintReward)?;
@@ -488,11 +486,6 @@ pub trait Auction:
                 .map_err(|_| Error::ValidatorRewardTransfer)?;
             }
 
-            // TODO: add "mint into existing purse" facility
-            let tmp_delegator_reward_purse = self
-                .mint(total_delegator_payout)
-                .map_err(|_| Error::MintReward)?;
-
             debug_assert_eq!(
                 updated_delegator_rewards
                     .iter()
@@ -500,6 +493,11 @@ pub trait Auction:
                     .sum::<U512>(),
                 total_delegator_payout,
             );
+
+            // TODO: add "mint into existing purse" facility
+            let tmp_delegator_reward_purse = self
+                .mint(total_delegator_payout)
+                .map_err(|_| Error::MintReward)?;
 
             for (reward_amount, bonding_purse) in updated_delegator_rewards {
                 self.transfer_purse_to_purse(
