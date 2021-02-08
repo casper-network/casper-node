@@ -886,4 +886,29 @@ impl Storage {
             })
             .collect()
     }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env()
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
+    }
 }

@@ -299,17 +299,9 @@ async fn get_switch_block_hash(
         .inner()
         .storage()
         .expect("Can not access storage of first node");
-    let mut read_only_lmdb_transaction = storage
-        .env()
-        .begin_ro_txn()
-        .expect("Could not start read only transaction for lmdb");
     let switch_block = storage
-        .get_switch_block_by_era_id(
-            &mut read_only_lmdb_transaction,
-            EraId(switch_block_era_num as u64),
-        )
-        .expect("LMDB panicked trying to get switch block")
-        .expect("Could not find switch block");
+        .transactional_get_switch_block_by_era_id(switch_block_era_num as u64)
+        .expect("Could not find block for era num");
     let switch_block_hash = switch_block.hash();
     info!(
         "Found block hash for Era {}: {}",
