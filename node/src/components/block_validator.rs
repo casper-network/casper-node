@@ -226,14 +226,18 @@ where
                     return Effects::new();
                 }
 
+                // Flag indicating whether we've retried fetching the deploy.
+                let mut retried = false;
+
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
                         match state.source() {
-                            Some(peer) => {
+                            Some(peer) => { 
                                 info!(%deploy_hash, ?peer, "trying the next peer");
                                 // There's still hope to download the deploy.
                                 let (chainspec, block_timestamp) = &state.context;
                                 effects.extend(fetch_deploy(effect_builder, Arc::clone(chainspec), *block_timestamp, deploy_hash, peer));
+                                retried = true;
                                 true
                             },
                             None => {
@@ -251,14 +255,16 @@ where
                         true
                     }
                 });
+                
+                if retried {
+                    // If we retried, we need to increase this counter.
+                    self.in_flight.inc(&deploy_hash);
+                }
             }
             Event::DeployInvalid(deploy_hash) => {
                 info!(%deploy_hash, "deploy invalid");
-                // A deploy failed to fetch. If there is still hope (i.e. other outstanding
-                // requests), we just ignore this little accident.
-                if self.in_flight.dec(&deploy_hash) != 0 {
-                    return Effects::new();
-                }
+                // Deploy is invalid. There's no point waiting for other in-flight requests to finish.
+                self.in_flight.dec(&deploy_hash);
 
                 self.validation_states.retain(|key, state| {
                     if state.missing_deploys.contains(&deploy_hash) {
