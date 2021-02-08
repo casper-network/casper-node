@@ -232,7 +232,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
 }
 
 /// Update validator reward map.
-pub fn update_delegator_rewards(
+pub fn reinvest_delegator_rewards(
     bid: &mut Bid,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
@@ -269,7 +269,7 @@ pub fn update_delegator_rewards(
 }
 
 /// Update validator reward map.
-pub fn update_validator_reward(
+pub fn reinvest_validator_reward(
     bid: &mut Bid,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,

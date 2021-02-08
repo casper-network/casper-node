@@ -462,7 +462,7 @@ pub trait Auction:
             // Update stakes for a validator that has not been slashed
             if let Some(bid) = bids.get_mut(&public_key) {
                 let (total_delegator_payout, updated_delegator_rewards) =
-                    detail::update_delegator_rewards(
+                    detail::reinvest_delegator_rewards(
                         bid,
                         &mut seigniorage_allocations,
                         public_key,
@@ -472,7 +472,7 @@ pub trait Auction:
                     total_reward - Ratio::from(total_delegator_payout);
                 let validator_reward = validators_part.to_integer();
 
-                detail::update_validator_reward(
+                detail::reinvest_validator_reward(
                     bid,
                     &mut seigniorage_allocations,
                     public_key,
