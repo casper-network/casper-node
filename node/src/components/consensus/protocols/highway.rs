@@ -421,11 +421,8 @@ where
                         .collect();
                     }
                 };
-                let is_faulty = match pvv.inner().signed_wire_unit() {
-                    Some(signed_wire_unit) => self
-                        .highway
-                        .state()
-                        .is_faulty(signed_wire_unit.wire_unit().creator),
+                let is_faulty = match pvv.inner().creator() {
+                    Some(creator) => self.highway.state().is_faulty(creator),
                     None => false,
                 };
 
