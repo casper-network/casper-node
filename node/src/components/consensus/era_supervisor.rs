@@ -656,6 +656,9 @@ where
                         *switch_block.state_root_hash(),
                     )
                 } else {
+                    // TODO: the start height should be 1 more than the last block before the last
+                    // upgrade, and the state hash should be the (potentially modified) state hash
+                    // from that block
                     (validators.clone(), 0, genesis_state_root_hash)
                 };
 
@@ -666,7 +669,9 @@ where
                 newly_slashed,
                 slashed,
                 seed,
-                genesis_start_time, // TODO: is that right?
+                genesis_start_time, /* TODO: this should also be defined in some reasonable way
+                                     * based on either the switch block or chainspec / upgrade
+                                     * point */
                 start_height,
                 state_root_hash,
             );
