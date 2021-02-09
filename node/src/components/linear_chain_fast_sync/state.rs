@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt::Display};
 
 use datasize::DataSize;
 
-use crate::types::{BlockHash, BlockHeader, Block};
+use crate::types::{Block, BlockHash, BlockHeader};
 use casper_types::{PublicKey, U512};
 
 #[derive(DataSize, Debug)]

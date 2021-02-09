@@ -64,7 +64,11 @@ where
             Event::RetrieveHandledBlockResult(block) => {
                 let hash = block.hash();
                 let height = block.height();
-                write!(f, "Got handled block from storage. Hash {}, height {}", hash, height)
+                write!(
+                    f,
+                    "Got handled block from storage. Hash {}, height {}",
+                    hash, height
+                )
             }
         }
     }

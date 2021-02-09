@@ -42,7 +42,7 @@ use self::event::{BlockByHashResult, DeploysResult};
 use super::{fetcher::FetchResult, Component};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{BlockByHeight, BlockHash, FinalizedBlock},
+    types::{Block, BlockByHeight, BlockHash, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -51,7 +51,6 @@ pub use metrics::LinearChainSyncMetrics;
 pub use peers::PeersState;
 pub use state::State;
 pub use traits::ReactorEventT;
-use crate::types::Block;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainSync<I> {

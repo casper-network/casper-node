@@ -66,8 +66,7 @@ where
                 write!(
                     f,
                     "Got handled block from storage. Hash {}, height {}",
-                    hash,
-                    height
+                    hash, height
                 )
             }
         }

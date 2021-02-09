@@ -763,7 +763,7 @@ impl BlockBody {
     pub(crate) fn new(deploy_hashes: Vec<DeployHash>, transfer_hashes: Vec<DeployHash>) -> Self {
         BlockBody {
             deploy_hashes,
-            transfer_hashes
+            transfer_hashes,
         }
     }
 
@@ -797,13 +797,11 @@ impl FromBytes for BlockBody {
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let body = BlockBody {
             deploy_hashes,
-            transfer_hashes
+            transfer_hashes,
         };
         Ok((body, bytes))
     }
 }
-
-
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes
 #[derive(Debug)]
@@ -902,7 +900,10 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Self {
-        let body = BlockBody::new(finalized_block.proto_block.wasm_deploys().clone(), finalized_block.proto_block.transfers().clone());
+        let body = BlockBody::new(
+            finalized_block.proto_block.wasm_deploys().clone(),
+            finalized_block.proto_block.transfers().clone(),
+        );
         let serialized_body = Self::serialize_body(&body)
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
         let body_hash = hash::hash(&serialized_body);
@@ -962,7 +963,7 @@ impl Block {
 
     /// The list of transfer hashes included in the block.
     pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        self.header.transfer_hashes()
+        self.body.transfer_hashes()
     }
 
     /// The height of a block.
@@ -1057,7 +1058,9 @@ impl ToBytes for Block {
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length() + self.header.serialized_length() + self.body.serialized_length()
+        self.hash.serialized_length()
+            + self.header.serialized_length()
+            + self.body.serialized_length()
     }
 }
 
@@ -1066,11 +1069,7 @@ impl FromBytes for Block {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
         let (body, remainder) = BlockBody::from_bytes(remainder)?;
-        let block = Block {
-            hash,
-            header,
-            body,
-        };
+        let block = Block { hash, header, body };
         Ok((block, remainder))
     }
 }
