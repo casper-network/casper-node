@@ -946,6 +946,10 @@ impl reactor::Reactor for Reactor {
     fn is_stopped(&mut self) -> bool {
         self.consensus.stop_for_upgrade()
     }
+
+    fn needs_upgrade(&mut self) -> bool {
+        self.consensus.stop_for_upgrade()
+    }
 }
 
 #[cfg(test)]
