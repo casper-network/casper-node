@@ -1157,7 +1157,7 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 LinearChainAnnouncement::BlockAdded {
                     block_hash,
-                    block: Box::new(block_header),
+                    block_header: Box::new(block_header),
                 },
                 QueueKind::Regular,
             )

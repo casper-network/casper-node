@@ -219,7 +219,7 @@ pub enum LinearChainAnnouncement {
         /// Block hash.
         block_hash: BlockHash,
         /// Block header.
-        block: Box<BlockHeader>,
+        block_header: Box<BlockHeader>,
     },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),

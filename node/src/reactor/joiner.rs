@@ -823,7 +823,7 @@ impl reactor::Reactor for Reactor {
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
                 block_hash,
-                block: block_header,
+                block_header,
             }) => reactor::wrap_effects(
                 Event::EventStreamServer,
                 self.event_stream_server.handle_event(
