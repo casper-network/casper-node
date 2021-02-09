@@ -67,6 +67,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         matches!(self.state, State::None | State::Done)
     }
 
+    /// Fast sync won't shut down for an upgrade.
+    pub fn stopped_for_upgrade(&self) -> bool {
+        false
+    }
+
     fn block_downloaded<REv>(
         &mut self,
         rng: &mut NodeRng,

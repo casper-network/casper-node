@@ -890,6 +890,10 @@ impl reactor::Reactor for Reactor {
         self.linear_chain_sync.is_synced()
     }
 
+    fn needs_upgrade(&mut self) -> bool {
+        self.linear_chain_sync.stopped_for_upgrade()
+    }
+
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
         self.memory_metrics.estimate(&self);
         self.event_queue_metrics
