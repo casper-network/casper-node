@@ -453,6 +453,8 @@ where
                     .open_connections
                     .set(self.incoming.len() as i64);
 
+                self.net_metrics.peers.set(self.peers().len() as i64);
+
                 // If the connection is now complete, announce the new peer before starting reader.
                 effects.extend(self.check_connection_complete(effect_builder, peer_id.clone()));
 
