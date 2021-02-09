@@ -85,7 +85,7 @@ use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
     components::{
-        network::ENABLE_SMALL_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
+        network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
     },
     crypto::hash::Digest,
     effect::{
@@ -209,9 +209,9 @@ where
 
         let net_metrics = NetworkingMetrics::new(&registry)?;
 
-        // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without starting the
+        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
                 certificate,
                 secret_key,
@@ -817,7 +817,7 @@ where
                     Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
                     Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
                 }
-            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+            } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
         }
