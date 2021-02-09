@@ -336,10 +336,13 @@ pub enum RunnerExitStatus {
     /// Runner finished work without errors.
     Ok,
     /// Runner finished with an error.
-    Err,
+    Err(u8),
 }
 
 impl RunnerExitStatus {
+    /// Exit code indicating that node should shut down for a scheduled upgrade.
+    pub const UPGRADE_EXIT_CODE: u8 = 0;
+
     /// Returns whether runner finished without errors.
     pub fn is_ok(&self) -> bool {
         matches!(self, RunnerExitStatus::Ok)
@@ -347,7 +350,7 @@ impl RunnerExitStatus {
 
     /// Returns whether runner failed.
     pub fn is_err(&self) -> bool {
-        matches!(self, RunnerExitStatus::Err)
+        matches!(self, RunnerExitStatus::Err(_))
     }
 }
 
@@ -608,7 +611,7 @@ where
     pub async fn run(&mut self, rng: &mut NodeRng) -> RunnerExitStatus {
         while !self.reactor.is_stopped() {
             if self.reactor.needs_upgrade() {
-                return RunnerExitStatus::Err;
+                return RunnerExitStatus::Err(RunnerExitStatus::UPGRADE_EXIT_CODE);
             }
             self.crank(rng).await;
         }
