@@ -1,4 +1,4 @@
-use crate::types::{Block, BlockHash, BlockHeader};
+use crate::types::{Block, BlockHash};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
@@ -9,8 +9,7 @@ pub enum Event<I> {
     GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHeaderHandled(Box<BlockHeader>),
-    RetrieveHandledBlockResult(Box<Block>),
+    BlockHandled(Box<Block>),
 }
 
 #[derive(Debug)]
@@ -48,7 +47,7 @@ where
             }
             Event::StartDownloadingDeploys => write!(f, "Start downloading deploys event."),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
-            Event::BlockHeaderHandled(block) => {
+            Event::BlockHandled(block) => {
                 let hash = block.hash();
                 let height = block.height();
                 write!(
@@ -59,16 +58,6 @@ where
             }
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)
-            }
-
-            Event::RetrieveHandledBlockResult(block) => {
-                let hash = block.hash();
-                let height = block.height();
-                write!(
-                    f,
-                    "Got handled block from storage. Hash {}, height {}",
-                    hash, height
-                )
             }
         }
     }

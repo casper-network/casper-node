@@ -451,17 +451,17 @@ where
             Event::GetDeploysResult(fetch_result) => {
                 self.metrics.observe_get_deploys();
                 match fetch_result {
-                    event::DeploysResult::Found(block_header) => {
-                        let block_hash = block_header.hash();
+                    event::DeploysResult::Found(block) => {
+                        let block_hash = block.hash();
                         trace!(%block_hash, "deploys for linear chain block found");
                         // Reset used peers so we can download next block with the full set.
                         self.peers.reset(rng);
                         // Execute block
-                        let finalized_block: FinalizedBlock = (*block_header).into();
+                        let finalized_block: FinalizedBlock = (*block).into();
                         effect_builder.execute_block(finalized_block).ignore()
                     }
-                    event::DeploysResult::NotFound(block_header, peer) => {
-                        let block_hash = block_header.hash();
+                    event::DeploysResult::NotFound(block, peer) => {
+                        let block_hash = block.hash();
                         trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
                         self.peers.failure(&peer);
                         match self.peers.random() {
@@ -472,7 +472,7 @@ where
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
-                                fetch_block_deploys(effect_builder, peer, *block_header)
+                                fetch_block_deploys(effect_builder, peer, *block)
                             }
                         }
                     }
@@ -499,24 +499,11 @@ where
                 self.peers.push(peer_id);
                 effects
             }
-            Event::BlockHeaderHandled(header) => {
-                let block_height = header.height();
-                let block_hash = header.hash();
-                trace!(%block_height, %block_hash, "block header handled.");
-                effect_builder.get_block_at_height_from_storage(block_height)
-                    .event(move |maybe_block| {
-                        maybe_block.map(Box::new).map_or_else(
-                            // TODO Dont panic.
-                            || panic!("Linear chain sync should have retrieved block with hash: {}  and height: {} from internet before consensus had handled it.", block_hash, block_height),
-                            Event::RetrieveHandledBlockResult,
-                        )
-                    })
-            }
-            Event::RetrieveHandledBlockResult(block) => {
+            Event::BlockHandled(block) => {
                 let block_height = block.height();
-                let block_hash = block.hash();
-                let effects = self.block_handled(rng, effect_builder, *block.clone());
-                trace!(%block_height, %block_hash, "handled block retrieved from storage.");
+                let block_hash = *block.hash();
+                let effects = self.block_handled(rng, effect_builder, *block);
+                trace!(%block_height, %block_hash, "block handled");
                 effects
             }
         }

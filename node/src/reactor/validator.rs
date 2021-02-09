@@ -906,7 +906,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
                 block_hash,
-                block_header,
+                block: block_header,
             }) => {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::BlockAdded {

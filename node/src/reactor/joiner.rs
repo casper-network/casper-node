@@ -762,12 +762,12 @@ impl reactor::Reactor for Reactor {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block_header) => reactor::wrap_effects(
+                ConsensusAnnouncement::Handled(block) => reactor::wrap_effects(
                     Event::LinearChainSync,
                     self.linear_chain_sync.handle_event(
                         effect_builder,
                         rng,
-                        linear_chain_sync::Event::BlockHeaderHandled(block_header),
+                        linear_chain_sync::Event::BlockHandled(block),
                     ),
                 ),
                 ConsensusAnnouncement::Finalized(_) => {
@@ -823,7 +823,7 @@ impl reactor::Reactor for Reactor {
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
                 block_hash,
-                block_header,
+                block: block_header,
             }) => reactor::wrap_effects(
                 Event::EventStreamServer,
                 self.event_stream_server.handle_event(

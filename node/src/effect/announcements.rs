@@ -129,7 +129,7 @@ pub enum ConsensusAnnouncement<I> {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
     /// A linear chain block has been handled.
-    Handled(Box<BlockHeader>),
+    Handled(Box<Block>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -152,11 +152,11 @@ where
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(block_header) => write!(
+            ConsensusAnnouncement::Handled(block) => write!(
                 formatter,
                 "Linear chain block has been handled by consensus, height={}, hash={}",
-                block_header.height(),
-                block_header.hash()
+                block.height(),
+                block.hash()
             ),
             ConsensusAnnouncement::Fault {
                 era_id,
@@ -219,7 +219,7 @@ pub enum LinearChainAnnouncement {
         /// Block hash.
         block_hash: BlockHash,
         /// Block header.
-        block_header: Box<BlockHeader>,
+        block: Box<BlockHeader>,
     },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
