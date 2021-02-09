@@ -474,7 +474,7 @@ impl From<Block> for FinalizedBlock {
             era_end: block.header.era_end,
             era_id: block.header.era_id,
             height: block.header.height,
-            proposer: block.header.proposer,
+            proposer: block.body.proposer,
         }
     }
 }
@@ -584,7 +584,6 @@ pub struct BlockHeader {
     timestamp: Timestamp,
     era_id: EraId,
     height: u64,
-    proposer: PublicKey,
     next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
 }
 
@@ -637,11 +636,6 @@ impl BlockHeader {
     /// Returns the height of this block, i.e. the number of ancestors.
     pub fn height(&self) -> u64 {
         self.height
-    }
-
-    /// Block proposer.
-    pub fn proposer(&self) -> &PublicKey {
-        &self.proposer
     }
 
     /// The validators for the upcoming era and their respective weights.
@@ -700,7 +694,6 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.timestamp.to_bytes()?);
         buffer.extend(self.era_id.to_bytes()?);
         buffer.extend(self.height.to_bytes()?);
-        buffer.extend(self.proposer.to_bytes()?);
         buffer.extend(self.next_era_validator_weights.to_bytes()?);
         Ok(buffer)
     }
@@ -715,7 +708,6 @@ impl ToBytes for BlockHeader {
             + self.timestamp.serialized_length()
             + self.era_id.serialized_length()
             + self.height.serialized_length()
-            + self.proposer.serialized_length()
             + self.next_era_validator_weights.serialized_length()
     }
 }
@@ -731,7 +723,6 @@ impl FromBytes for BlockHeader {
         let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
-        let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
         let (next_era_validator_weights, remainder) =
             Option::<BTreeMap<PublicKey, U512>>::from_bytes(remainder)?;
         let block_header = BlockHeader {
@@ -744,7 +735,6 @@ impl FromBytes for BlockHeader {
             timestamp,
             era_id,
             height,
-            proposer,
             next_era_validator_weights,
         };
         Ok((block_header, remainder))
@@ -754,17 +744,28 @@ impl FromBytes for BlockHeader {
 /// The body portion of a block.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
+    proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
 }
 
 impl BlockBody {
     /// Create a new body from deploy and transfer hashes.
-    pub(crate) fn new(deploy_hashes: Vec<DeployHash>, transfer_hashes: Vec<DeployHash>) -> Self {
+    pub(crate) fn new(
+        proposer: PublicKey,
+        deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
+    ) -> Self {
         BlockBody {
+            proposer,
             deploy_hashes,
             transfer_hashes,
         }
+    }
+
+    /// Block proposer.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
     }
 
     /// Retrieve the deploy hashes within the block.
@@ -781,21 +782,26 @@ impl BlockBody {
 impl ToBytes for BlockBody {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.proposer.to_bytes()?);
         buffer.extend(self.deploy_hashes.to_bytes()?);
         buffer.extend(self.transfer_hashes.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.deploy_hashes.serialized_length() + self.transfer_hashes.serialized_length()
+        self.proposer.serialized_length()
+            + self.deploy_hashes.serialized_length()
+            + self.transfer_hashes.serialized_length()
     }
 }
 
 impl FromBytes for BlockBody {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let body = BlockBody {
+            proposer,
             deploy_hashes,
             transfer_hashes,
         };
@@ -901,6 +907,7 @@ impl Block {
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Self {
         let body = BlockBody::new(
+            finalized_block.proposer,
             finalized_block.proto_block.wasm_deploys().clone(),
             finalized_block.proto_block.transfers().clone(),
         );
@@ -930,7 +937,6 @@ impl Block {
             timestamp: finalized_block.timestamp,
             era_id,
             height,
-            proposer: finalized_block.proposer,
             next_era_validator_weights,
         };
 
@@ -941,6 +947,10 @@ impl Block {
 
     pub(crate) fn header(&self) -> &BlockHeader {
         &self.header
+    }
+
+    pub(crate) fn body(&self) -> &BlockBody {
+        &self.body
     }
 
     pub(crate) fn take_header(self) -> BlockHeader {
@@ -1213,7 +1223,6 @@ pub(crate) mod json_compatibility {
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
-        proposer: PublicKey,
         next_era_validator_weights: Option<Vec<ValidatorWeight>>,
     }
 
@@ -1237,7 +1246,6 @@ pub(crate) mod json_compatibility {
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
-                proposer: block_header.proposer,
                 next_era_validator_weights,
             }
         }
@@ -1263,7 +1271,6 @@ pub(crate) mod json_compatibility {
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
-                proposer: block_header.proposer,
                 next_era_validator_weights,
             }
         }
@@ -1273,6 +1280,7 @@ pub(crate) mod json_compatibility {
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
     pub struct JsonBlockBody {
+        proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
     }
@@ -1280,6 +1288,7 @@ pub(crate) mod json_compatibility {
     impl From<BlockBody> for JsonBlockBody {
         fn from(body: BlockBody) -> Self {
             JsonBlockBody {
+                proposer: *body.proposer(),
                 deploy_hashes: body.deploy_hashes().clone(),
                 transfer_hashes: body.transfer_hashes().clone(),
             }
@@ -1289,6 +1298,7 @@ pub(crate) mod json_compatibility {
     impl From<JsonBlockBody> for BlockBody {
         fn from(json_body: JsonBlockBody) -> Self {
             BlockBody {
+                proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
             }
@@ -1310,7 +1320,7 @@ pub(crate) mod json_compatibility {
         pub fn new(block: Block, signatures: BlockSignatures) -> Self {
             let hash = *block.hash();
             let header = JsonBlockHeader::from(block.header.clone());
-            let body = JsonBlockBody::from(block.body.clone());
+            let body = JsonBlockBody::from(block.body);
             let proofs = signatures.proofs.into_iter().map(JsonProof::from).collect();
 
             JsonBlock {
@@ -1328,7 +1338,7 @@ pub(crate) mod json_compatibility {
 
         /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
         pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
-            &self.body.deploy_hashes
+            &self.body.transfer_hashes
         }
     }
 
