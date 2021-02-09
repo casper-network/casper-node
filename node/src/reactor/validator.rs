@@ -296,7 +296,6 @@ pub struct ValidatorInitConfig {
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) consensus: EraSupervisor<NodeId>,
-    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
@@ -386,7 +385,6 @@ impl reactor::Reactor for Reactor {
             storage,
             contract_runtime,
             consensus,
-            init_consensus_effects,
             latest_block,
             event_stream_server,
             small_network_identity,
@@ -458,10 +456,6 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
             small_network_effects,
-        ));
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            init_consensus_effects,
         ));
 
         // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
