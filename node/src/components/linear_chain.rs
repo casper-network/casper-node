@@ -8,6 +8,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
+use prometheus::{IntGauge, Registry};
 use tracing::{debug, error, info, warn};
 
 use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
@@ -200,17 +201,23 @@ pub(crate) struct LinearChain<I> {
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
     signature_cache: SignatureCache,
+
+    #[data_size(skip)]
+    metrics: LinearChainMetrics,
+
     _marker: PhantomData<I>,
 }
 
 impl<I> LinearChain<I> {
-    pub fn new() -> Self {
-        LinearChain {
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let metrics = LinearChainMetrics::new(registry)?;
+        Ok(LinearChain {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),
             signature_cache: SignatureCache::new(),
+            metrics,
             _marker: PhantomData,
-        }
+        })
     }
 
     // TODO: Remove once we can return all linear chain blocks from persistent storage.
@@ -592,5 +599,36 @@ where
                 Effects::new()
             }
         }
+    }
+}
+
+#[derive(Debug)]
+struct LinearChainMetrics {
+    /// Time in milliseconds since the unix epoch that the last block was added.
+    time_of_last_added_block: IntGauge,
+    /// Prometheus registry used to publish metrics.
+    registry: Registry,
+}
+
+impl LinearChainMetrics {
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let time_of_last_added_block = IntGauge::new(
+            "time_of_last_added_block",
+            "time in milliseconds since the unix epoch that the last block was added",
+        )?;
+        registry.register(Box::new(time_of_last_added_block.clone()))?;
+        Ok(Self {
+            time_of_last_added_block,
+            registry: registry.clone(),
+        })
+    }
+}
+impl Drop for LinearChainMetrics {
+    fn drop(&mut self) {
+        self.registry
+            .unregister(Box::new(self.time_of_last_added_block.clone()))
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect unregister of time_of_last_added_block to fail"),
+            );
     }
 }
