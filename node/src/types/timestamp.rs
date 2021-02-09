@@ -60,8 +60,13 @@ impl Timestamp {
     }
 
     /// Returns the difference between `self` and `other`, or `0` if `self` is earlier than `other`.
-    pub fn saturating_sub(self, other: Timestamp) -> TimeDiff {
+    pub fn saturating_diff(self, other: Timestamp) -> TimeDiff {
         TimeDiff(self.0.saturating_sub(other.0))
+    }
+
+    /// Returns the difference between `self` and `other`, or `0` if that would be before the epoch.
+    pub fn saturating_sub(self, other: TimeDiff) -> Timestamp {
+        Timestamp(self.0.saturating_sub(other.0))
     }
 
     /// Returns the number of trailing zeros in the number of milliseconds since the epoch.

@@ -27,7 +27,7 @@ use crate::{
     types::{ProtoBlock, Timestamp},
 };
 
-#[derive(DataSize, Debug, Ord, PartialOrd, Clone, Display, Hash, Eq, PartialEq)]
+#[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
 pub(crate) struct NodeId(pub u8);
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.
@@ -180,16 +180,18 @@ fn send_a_valid_wire_unit() {
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
     let mut rng = TestRng::new();
+    let timestamp = 0.into();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: Some(CandidateBlock::new(
             ProtoBlock::new(vec![], vec![], false),
+            timestamp,
             vec![],
         )),
         seq_number,
-        timestamp: 0.into(),
+        timestamp,
         round_exp: 14,
         endorsed: BTreeSet::new(),
     };
@@ -223,14 +225,15 @@ fn detect_doppelganger() {
     let mut rng = TestRng::new();
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
-    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), vec![]);
+    let timestamp = 0.into();
+    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), timestamp, vec![]);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
         instance_id,
         value: Some(value),
         seq_number,
-        timestamp: 0.into(),
+        timestamp,
         round_exp,
         endorsed: BTreeSet::new(),
     };

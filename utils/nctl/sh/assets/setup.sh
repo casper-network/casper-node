@@ -186,13 +186,23 @@ function _set_nodes()
     for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         setup_node "$NODE_ID" "$COUNT_GENESIS_NODES"
-    done
+    done   
+}
+
+#######################################
+# Sets chainspec to each node.
+# Arguments:
+#   Count of genesis nodes to setup.
+#######################################
+function _set_node_chainspecs()
+{
+    local COUNT_GENESIS_NODES=${1}
 
     # Copy the chainspec.toml and accounts.csv files into each node's config folder now they're complete.
     for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         setup_node_chainspec "$NODE_ID"
-    done
+    done    
 }
 
 #######################################
@@ -258,6 +268,9 @@ function _main()
 
     log "... setting users"
     _set_users "$COUNT_USERS"
+
+    log "... setting node chainspecs"
+    _set_node_chainspecs "$COUNT_NODES"    
 
     log "... setting daemon"
     _set_daemon

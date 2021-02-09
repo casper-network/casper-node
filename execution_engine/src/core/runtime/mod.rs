@@ -2943,7 +2943,7 @@ where
             }
             Some(StoredValue::Account(account)) => {
                 let target_uref = account.main_purse_add_only();
-                if source == target_uref {
+                if source.with_access_rights(AccessRights::ADD) == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse

@@ -23,7 +23,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use casper_types::{AsymmetricType, PublicKey, SecretKey, U512};
 
@@ -500,7 +500,8 @@ where
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
-        let candidate_block = CandidateBlock::new(proto_block, accusations);
+        let candidate_block =
+            CandidateBlock::new(proto_block, block_context.timestamp(), accusations);
         self.delegate_to_era(era_id, move |consensus, rng| {
             consensus.propose(candidate_block, block_context, rng)
         })
@@ -511,12 +512,6 @@ where
         block_header: BlockHeader,
         responder: Responder<Option<FinalitySignature>>,
     ) -> Effects<Event<I>> {
-        // Try to get the next upgrade activation point.
-        let mut effects = self
-            .effect_builder
-            .next_upgrade_activation_point()
-            .event(Event::GotUpgradeActivationPoint);
-
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block_header.era_id();
@@ -532,7 +527,7 @@ where
         } else {
             None
         };
-        effects.extend(responder.respond(maybe_fin_sig).ignore());
+        let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;
@@ -744,6 +739,7 @@ where
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     ) -> Effects<Event<I>> {
         self.era_supervisor.metrics.proposed_block();
@@ -757,7 +753,7 @@ where
             effects.extend(self.disconnect(sender));
         }
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.resolve_validity(&proto_block, valid)
+            era.resolve_validity(&proto_block, timestamp, valid)
         } else {
             return effects;
         };
@@ -829,7 +825,7 @@ where
                 .send_message(to, era_id.message(out_msg).into())
                 .ignore(),
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
-                let timediff = timestamp.saturating_sub(Timestamp::now());
+                let timediff = timestamp.saturating_diff(Timestamp::now());
                 self.effect_builder
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer {
@@ -883,7 +879,7 @@ where
                     inactive_validators: tbd.inactive_validators,
                 });
                 let finalized_block = FinalizedBlock::new(
-                    value.proto_block().clone(),
+                    value.into(),
                     timestamp,
                     era_end,
                     era_id,
@@ -901,7 +897,7 @@ where
                 self.era_supervisor.next_block_height = finalized_block.height() + 1;
                 if finalized_block.era_end().is_some() {
                     // This was the era's last block. Schedule deactivating this era.
-                    let delay = Timestamp::now().saturating_sub(timestamp).into();
+                    let delay = Timestamp::now().saturating_diff(timestamp).into();
                     let faulty_num = era.consensus.validators_with_evidence().len();
                     let deactivate_era = move |_| Event::DeactivateEra {
                         era_id,
@@ -943,6 +939,7 @@ where
                             era_id,
                             sender,
                             proto_block,
+                            timestamp,
                             valid,
                         }),
                 );
@@ -1006,27 +1003,13 @@ where
         self.handle_consensus_results(self.era_supervisor.current_era, results)
     }
 
-    /// Handles registering a new upgrade activation point.
+    /// Handles registering an upgrade activation point.
     pub(super) fn got_upgrade_activation_point(
         &mut self,
-        maybe_activation_point: Option<ActivationPoint>,
+        activation_point: ActivationPoint,
     ) -> Effects<Event<I>> {
-        match (
-            maybe_activation_point,
-            &self.era_supervisor.next_upgrade_activation_point,
-        ) {
-            (Some(new_point), Some(current_point)) => {
-                if new_point != *current_point {
-                    info!(%new_point, %current_point, "changing upgrade activation point");
-                }
-                self.era_supervisor.next_upgrade_activation_point = Some(new_point);
-            }
-            (Some(new_point), None) => {
-                info!(activation_point=%new_point, "new upgrade activation point");
-                self.era_supervisor.next_upgrade_activation_point = Some(new_point);
-            }
-            (None, Some(_)) | (None, None) => (),
-        }
+        debug!("got {}", activation_point);
+        self.era_supervisor.next_upgrade_activation_point = Some(activation_point);
         Effects::new()
     }
 

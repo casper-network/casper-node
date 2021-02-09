@@ -5,6 +5,7 @@ mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
+#[macro_use]
 mod highway_core;
 mod metrics;
 mod protocols;
@@ -96,6 +97,7 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     },
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -125,8 +127,8 @@ pub enum Event<I> {
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
-    /// Got the result of checking for the next upgrade activation point.
-    GotUpgradeActivationPoint(Option<ActivationPoint>),
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Debug for ConsensusMessage {
@@ -194,11 +196,13 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
             } => write!(
                 f,
-                "Proto-block received from {:?} for {} is {}: {:?}",
+                "Proto-block received from {:?} at {} for {} is {}: {:?}",
                 sender,
+                timestamp,
                 era_id,
                 if *valid { "valid" } else { "invalid" },
                 proto_block
@@ -297,8 +301,9 @@ where
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
-            } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            } => handling_es.resolve_validity(era_id, sender, proto_block, timestamp, valid),
             Event::DeactivateEra {
                 era_id,
                 faulty_num,

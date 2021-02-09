@@ -138,6 +138,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns number of events in each of the scheduler's queues.
+    #[inline]
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.0.event_queues_counts()
     }

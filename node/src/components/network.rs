@@ -15,27 +15,25 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fmt::{self, Debug, Display, Formatter},
-    io,
     marker::PhantomData,
     num::NonZeroU32,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use libp2p::{
-    core::{
-        connection::{ConnectedPoint, PendingConnectionError},
-        upgrade,
-    },
+    core::{connection::ConnectedPoint, upgrade},
     gossipsub::GossipsubEvent,
     identify::IdentifyEvent,
     identity::Keypair,
     kad::KademliaEvent,
+    mplex::{MaxBufferBehaviour, MplexConfig},
     noise::{self, NoiseConfig, X25519Spec},
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    yamux::{Config as YamuxConfig, WindowUpdateMode},
     Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::seq::IteratorRandom;
@@ -71,6 +69,9 @@ use crate::{
 
 /// Env var which, if it's defined at runtime, enables the small_network component.
 pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
+
+/// How long to sleep before reconnecting
+const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 
 /// A helper trait whose bounds represent the requirements for a payload that `Network` can
 /// work with.
@@ -121,8 +122,10 @@ pub struct Network<REv, P> {
     #[data_size(skip)]
     listening_addresses: Vec<Multiaddr>,
     /// The addresses of known peers to be used for bootstrapping, and their connection states.
+    /// Wrapped in a [Mutex] so it can be shared with [SwarmEvent] handling (which runs in a
+    /// separate thread).
     #[data_size(skip)]
-    known_addresses: HashMap<Multiaddr, ConnectionState>,
+    known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
     /// Whether this node is a bootstrap node or not.
     is_bootstrap_node: bool,
     /// The channel through which to send outgoing one-way requests.
@@ -184,7 +187,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 peers: HashMap::new(),
                 seen_peers: HashSet::new(),
                 listening_addresses: vec![],
-                known_addresses,
+                known_addresses_mut: Arc::new(Mutex::new(known_addresses)),
                 is_bootstrap_node: config.is_bootstrap_node,
                 one_way_message_sender,
                 max_one_way_message_size: 0,
@@ -206,38 +209,16 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .into_authentic(&network_identity.keypair)
             .map_err(Error::StaticKeypairSigning)?;
 
-        let mut yamux_config = YamuxConfig::default();
+        let mut mplex_config = MplexConfig::default();
+        mplex_config.max_buffer_len_behaviour(MaxBufferBehaviour::Block);
 
-        // The are two `WindowUpdateMode`s available in yamux, both of which control how a receiver
-        // communicates its available receive capacity to a sender.
-        //
-        // With `OnReceive`, as soon as the yamux module has received bytes, it considers them
-        // handled. `OnRead` requires the data to be removed from yamuxs internal buffer instead,
-        // which happens via `AsyncRead`.
-        //
-        // If a lot of data is sent and at the same time there is not enough time allocated to the
-        // task that reads from the buffer, a `WindowUpdateMode` of `OnReceive` will cause the
-        // internal buffer to overflow. For this reason, we set it `OnRead`.
-        //
-        // `OnRead`, according to the docs (see below), is in danger of deadlocking under certain
-        // conditions. In our networking design, sending and receiving are independent and we have
-        // infinite send- and receive buffers on a message, so we should not run into this issue.
-        //
-        // Note that this comment is based on some logs from a failed test network, as the exact
-        // conditions for these errors are hard to reproduce reliably. We rely on reasoning alone
-        // here, so evidence to the contrary of the above assumptions should be examined closely.
-        //
-        // Please read https://docs.rs/yamux/0.8.0/yamux/enum.WindowUpdateMode.html for more
-        // information.
-        yamux_config.set_window_update_mode(WindowUpdateMode::OnRead);
-
-        // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `yamux`
+        // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `mplex`
         // for multiplexing of substreams on a TCP stream.
         let transport = TokioTcpConfig::new()
             .nodelay(true)
             .upgrade(upgrade::Version::V1)
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(yamux_config)
+            .multiplex(MplexConfig::default())
             .timeout(config.connection_setup_timeout.into())
             .boxed();
 
@@ -266,6 +247,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             })?;
         }
 
+        // Wrap the known_addresses in a mutex so we can share it with the server task.
+        let known_addresses_mut = Arc::new(Mutex::new(known_addresses));
+        let is_bootstrap_node = config.is_bootstrap_node;
+
         // Start the server task.
         let server_join_handle = Some(tokio::spawn(server_task(
             event_queue,
@@ -273,6 +258,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             gossip_message_receiver,
             server_shutdown_receiver,
             swarm,
+            known_addresses_mut.clone(),
+            is_bootstrap_node,
         )));
 
         let network = Network {
@@ -281,8 +268,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             peers: HashMap::new(),
             seen_peers: HashSet::new(),
             listening_addresses: vec![],
-            known_addresses,
-            is_bootstrap_node: config.is_bootstrap_node,
+            known_addresses_mut,
+            is_bootstrap_node,
             one_way_message_sender,
             max_one_way_message_size: config.max_one_way_message_size,
             gossip_message_sender,
@@ -304,48 +291,26 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         debug!(%peer_id, ?endpoint, %num_established,"{}: connection established", self.our_id);
 
         if let ConnectedPoint::Dialer { ref address } = endpoint {
-            if let Some(state) = self.known_addresses.get_mut(address) {
+            let mut known_addresses = match self.known_addresses_mut.lock() {
+                Ok(known_addresses) => known_addresses,
+                Err(err) => {
+                    return fatal!(
+                        effect_builder,
+                        "Could not acquire `known_addresses_mut` mutex: {:?}",
+                        err
+                    )
+                }
+            };
+            if let Some(state) = known_addresses.get_mut(address) {
                 if *state == ConnectionState::Pending {
                     *state = ConnectionState::Connected
                 }
             }
-        }
+        };
 
         let _ = self.peers.insert(peer_id.clone(), endpoint);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
         effect_builder.announce_new_peer(peer_id).ignore()
-    }
-
-    fn handle_unknown_peer_unreachable_address(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        address: Multiaddr,
-        error: PendingConnectionError<io::Error>,
-    ) -> Effects<Event<P>> {
-        debug!(%address, %error, "{}: failed to connect", self.our_id);
-        if let Some(state) = self.known_addresses.get_mut(&address) {
-            if *state == ConnectionState::Pending {
-                *state = ConnectionState::Failed
-            }
-        }
-
-        if self.is_isolated() {
-            if self.is_bootstrap_node {
-                info!(
-                    "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
-                    bootstrap node", self.our_id
-                );
-            } else {
-                // Note that we could retry the connection to other nodes, but for now we just
-                // leave it up to the node operator to restart.
-                return fatal!(
-                    effect_builder,
-                    "{}: failed to connect to any known node, now isolated",
-                    self.our_id
-                );
-            }
-        }
-        Effects::new()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -413,16 +378,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         peer_ids.into_iter().cloned().collect()
     }
 
-    /// Returns whether or not this node has been isolated.
-    ///
-    /// An isolated node has no chance of recovering a connection to the network and is not
-    /// connected to any peer.
-    fn is_isolated(&self) -> bool {
-        self.known_addresses
-            .values()
-            .all(|state| *state == ConnectionState::Failed)
-    }
-
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
@@ -449,7 +404,10 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     // Receives notification to shut down the server loop.
     mut shutdown_receiver: watch::Receiver<()>,
     mut swarm: Swarm<Behavior>,
+    known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
+    is_bootsrap_node: bool,
 ) {
+    //let our_id = our
     async move {
         loop {
             // Note that `select!` will cancel all futures on branches not eventually selected by
@@ -459,7 +417,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
                     trace!("{}: {:?}", our_id(&swarm), swarm_event);
-                    handle_swarm_event(&mut swarm, event_queue, swarm_event).await;
+                    handle_swarm_event(&mut swarm, event_queue, swarm_event, &known_addresses_mut, is_bootsrap_node).await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
@@ -515,6 +473,8 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
     swarm: &mut Swarm<Behavior>,
     event_queue: EventQueueHandle<REv>,
     swarm_event: SwarmEvent<SwarmBehaviorEvent, E>,
+    known_addresses_mut: &Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
+    is_bootstrap_node: bool,
 ) {
     let event = match swarm_event {
         SwarmEvent::ConnectionEstablished {
@@ -538,8 +498,8 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             num_established,
             cause,
         } => {
-            // If we lost the final connection to this peer, do a random kademlia lookup to discover
-            // any new/replacement peers.
+            // If we lost the final connection to this peer, do a random kademlia lookup to
+            // discover any new/replacement peers.
             if num_established == 0 {
                 swarm.discover_peers()
             }
@@ -562,7 +522,54 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             attempts_remaining,
         },
         SwarmEvent::UnknownPeerUnreachableAddr { address, error } => {
-            Event::UnknownPeerUnreachableAddress { address, error }
+            debug!(%address, %error, "{}: failed to connect", our_id(&swarm));
+            let we_are_isolated = match known_addresses_mut.lock() {
+                Err(err) => {
+                    panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
+                }
+                Ok(mut known_addresses) => {
+                    if let Some(state) = known_addresses.get_mut(&address) {
+                        if *state == ConnectionState::Pending {
+                            *state = ConnectionState::Failed
+                        }
+                    }
+                    network_is_isolated(&*known_addresses)
+                }
+            };
+
+            if we_are_isolated {
+                if is_bootstrap_node {
+                    info!(
+                        "{}: failed to bootstrap to any other nodes, but continuing to run as we \
+                             are a bootstrap node",
+                        our_id(&swarm)
+                    );
+                } else {
+                    // (Re)schedule connection attempts to known peers.
+
+                    // Before reconnecting wait RECONNECT_DELAY
+                    tokio::time::delay_for(RECONNECT_DELAY).await;
+
+                    // Now that we've slept and re-awoken, grab the mutex again
+                    match known_addresses_mut.lock() {
+                        Err(err) => {
+                            panic!("Could not acquire `known_addresses_mut` mutex: {:?}", err)
+                        }
+                        Ok(known_addresses) => {
+                            for address in known_addresses.keys() {
+                                let our_id = our_id(&swarm);
+                                debug!(%our_id, %address, "dialing known address");
+                                Swarm::dial_addr(swarm, address.clone()).unwrap_or_else(|err| {
+                                    error!(%our_id, %address,
+                                           "Swarm error when rescheduling connection: {:?}",
+                                           err)
+                                });
+                            }
+                        }
+                    };
+                }
+            }
+            return;
         }
         SwarmEvent::NewListenAddr(address) => Event::NewListenAddress(address),
         SwarmEvent::ExpiredListenAddr(address) => Event::ExpiredListenAddress(address),
@@ -594,6 +601,16 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         | SwarmEvent::Dialing(_) => return,
     };
     event_queue.schedule(event, QueueKind::Network).await;
+}
+
+/// Takes the known_addresses of a node and returns if it is isolated.
+///
+/// An isolated node has no chance of recovering a connection to the network and is not
+/// connected to any peer.
+fn network_is_isolated(known_addresses: &HashMap<Multiaddr, ConnectionState>) -> bool {
+    known_addresses
+        .values()
+        .all(|state| *state == ConnectionState::Failed)
 }
 
 async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
@@ -805,7 +822,7 @@ impl<REv, P> Debug for Network<REv, P> {
             .field("our_id", &self.our_id)
             .field("peers", &self.peers)
             .field("listening_addresses", &self.listening_addresses)
-            .field("known_addresses", &self.known_addresses)
+            .field("known_addresses", &self.known_addresses_mut)
             .finish()
     }
 }
@@ -852,9 +869,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             } => {
                 debug!(%peer_id, %address, %error, %attempts_remaining, "{}: failed to connect", self.our_id);
                 Effects::new()
-            }
-            Event::UnknownPeerUnreachableAddress { address, error } => {
-                self.handle_unknown_peer_unreachable_address(effect_builder, address, error)
             }
             Event::NewListenAddress(address) => {
                 self.listening_addresses.push(address);

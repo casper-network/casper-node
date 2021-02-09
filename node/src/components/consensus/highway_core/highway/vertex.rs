@@ -214,7 +214,6 @@ where
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
     pub(crate) round_exp: u8,
-    #[data_size(skip)] // TODO: impl DataSize for BTreeSet
     pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 

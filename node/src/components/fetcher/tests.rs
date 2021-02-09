@@ -1,4 +1,6 @@
 #![cfg(test)]
+#![allow(unreachable_code)]
+
 use std::sync::{Arc, Mutex};
 
 use casper_node_macros::reactor;
@@ -96,6 +98,7 @@ reactor!(Reactor {
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
         RpcServerAnnouncement -> [deploy_acceptor];
+        ChainspecLoaderAnnouncement -> [!];
     }
 });
 

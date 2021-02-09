@@ -100,7 +100,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo,
+        chainspec_loader::{ChainspecInfo, NextUpgrade},
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -111,15 +111,16 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Chainspec,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
         Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
         ProtoBlock, Timestamp,
     },
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-    GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    RpcServerAnnouncement,
 };
 use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
@@ -366,6 +367,12 @@ impl<REv> EffectBuilder<REv> {
     /// Creates a new effect builder.
     pub fn new(event_queue_handle: EventQueueHandle<REv>) -> Self {
         EffectBuilder(event_queue_handle)
+    }
+
+    /// Extract the event queue handle out of the effect builder.
+    #[cfg(test)]
+    pub fn into_inner(self) -> EventQueueHandle<REv> {
+        self.0
     }
 
     /// Performs a request.
@@ -658,6 +665,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce upgrade activation point read.
+    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    where
+        REv: From<ChainspecLoaderAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Puts the given block into the linear block store.
     pub(crate) async fn put_block_to_storage(self, block: Box<Block>) -> bool
     where
@@ -678,6 +698,39 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlock {
                 block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested signatures for a given block hash.
+    pub(crate) async fn get_signatures_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockSignatures {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the requested finality signatures into storage.
+    pub(crate) async fn put_signatures_to_storage(self, signatures: BlockSignatures) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockSignatures {
+                signatures,
                 responder,
             },
             QueueKind::Regular,
@@ -850,6 +903,56 @@ impl<REv> EffectBuilder<REv> {
                 deploy_hash,
                 responder,
             },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its associated metadata.
+    pub(crate) async fn get_block_at_height_with_metadata_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<(Block, BlockSignatures)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block by hash with its associated metadata.
+    pub(crate) async fn get_block_with_metadata_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<(Block, BlockSignatures)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHash {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get the highest block with its associated metadata.
+    pub(crate) async fn get_highest_block_with_metadata_from_storage(
+        self,
+    ) -> Option<(Block, BlockSignatures)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestBlockWithMetadata { responder },
             QueueKind::Regular,
         )
         .await
@@ -1124,21 +1227,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
             .await
-    }
-
-    /// Requests to check config dir to see if a new upgrade point is available, and if so, returns
-    /// its activation point.
-    // TODO - remove once used.
-    #[allow(unused)]
-    pub(crate) async fn next_upgrade_activation_point(self) -> Option<ActivationPoint>
-    where
-        REv: From<ChainspecLoaderRequest> + Send,
-    {
-        self.make_request(
-            ChainspecLoaderRequest::NextUpgradeActivationPoint,
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Loads potentially previously stored state from storage.

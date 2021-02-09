@@ -1,8 +1,12 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +17,7 @@ use crate::components::consensus::EraId;
 use crate::testing::TestRng;
 
 /// The era whose end will trigger the upgrade process.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct ActivationPoint {
     pub(crate) era_id: EraId,
 }

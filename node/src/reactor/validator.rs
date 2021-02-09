@@ -45,9 +45,9 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -183,6 +183,9 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+    /// Chainspec loader announcement.
+    #[from]
+    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
 }
 
 impl From<RpcRequest<NodeId>> for Event {
@@ -279,6 +282,9 @@ impl Display for Event {
                 write!(f, "address gossiper announcement: {}", ann)
             }
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
+            Event::ChainspecLoaderAnnouncement(ann) => {
+                write!(f, "chainspec loader announcement: {}", ann)
+            }
         }
     }
 }
@@ -295,6 +301,24 @@ pub struct ValidatorInitConfig {
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) network_identity: NetworkIdentity,
+}
+
+#[cfg(test)]
+impl ValidatorInitConfig {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
+    }
+}
+
+impl Debug for ValidatorInitConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "ValidatorInitConfig {{ .. }}")
+    }
 }
 
 /// Validator node reactor.
@@ -333,6 +357,10 @@ impl Reactor {
     /// Inspect consensus.
     pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
     }
 }
 
@@ -384,6 +412,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
+            registry,
             small_network_identity,
             genesis_config_hash,
             true,
@@ -796,17 +825,18 @@ impl reactor::Reactor for Reactor {
                 source: _,
             }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
-                let mut reactor_event_dispatch = |dbe: block_proposer::Event| {
-                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(dbe))
-                };
-
                 match consensus_announcement {
                     ConsensusAnnouncement::Finalized(block) => {
-                        let effects =
-                            reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
+                        let reactor_event =
+                            Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
                                 block: block.proto_block().clone(),
                                 height: block.height(),
                             });
+                        let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                        let reactor_event =
+                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
                     ConsensusAnnouncement::Handled(_) => {
@@ -889,6 +919,20 @@ impl reactor::Reactor for Reactor {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::ChainspecLoaderAnnouncement(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+            ) => {
+                let reactor_event = Event::ChainspecLoader(
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
+                );
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
+                    next_upgrade.activation_point(),
+                ));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
         }
     }

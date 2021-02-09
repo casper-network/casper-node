@@ -19,6 +19,11 @@ impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send
 pub(crate) trait ConsensusValueT:
     Eq + Clone + Debug + Hash + Serialize + DeserializeOwned + Send + DataSize
 {
+    type Hash: HashT;
+
+    /// Returns hash of self.
+    fn hash(&self) -> Self::Hash;
+
     /// Returns whether the consensus value needs validation.
     fn needs_validation(&self) -> bool;
 }

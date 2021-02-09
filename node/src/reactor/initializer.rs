@@ -1,5 +1,7 @@
 //! Reactor used to initialize a node.
 
+#[cfg(test)]
+use std::env;
 use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
@@ -9,7 +11,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 #[cfg(test)]
-use crate::types::Chainspec;
+use crate::{
+    components::network::ENABLE_SMALL_NET_ENV_VAR, testing::network::NetworkedReactor,
+    types::Chainspec,
+};
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
@@ -20,6 +25,7 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::ChainspecLoaderAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
@@ -62,6 +68,12 @@ impl From<ContractRuntimeRequest> for Event {
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(_request: NetworkRequest<NodeId, Message>) -> Self {
         unreachable!("no network traffic happens during initialization")
+    }
+}
+
+impl From<ChainspecLoaderAnnouncement> for Event {
+    fn from(_announcement: ChainspecLoaderAnnouncement) -> Self {
+        unreachable!("no chainspec announcements happen during initialization")
     }
 }
 
@@ -164,6 +176,14 @@ impl Reactor {
     }
 }
 
+#[cfg(test)]
+impl Reactor {
+    /// Inspect storage.
+    pub fn storage(&self) -> &Storage {
+        &self.storage
+    }
+}
+
 impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = WithDir<validator::Config>;
@@ -209,5 +229,17 @@ impl reactor::Reactor for Reactor {
 
     fn is_stopped(&mut self) -> bool {
         self.chainspec_loader.is_stopped()
+    }
+}
+
+#[cfg(test)]
+impl NetworkedReactor for Reactor {
+    type NodeId = NodeId;
+    fn node_id(&self) -> Self::NodeId {
+        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+            NodeId::from(&self.small_network_identity)
+        } else {
+            NodeId::from(&self.network_identity)
+        }
     }
 }

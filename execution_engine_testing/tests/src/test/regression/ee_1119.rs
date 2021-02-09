@@ -38,6 +38,8 @@ static VALIDATOR_1: Lazy<PublicKey> =
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 
+const VESTING_WEEKS: u64 = 14;
+
 #[ignore]
 #[test]
 fn should_run_ee_1119_dont_slash_delegated_validators() {
@@ -115,7 +117,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     // Partial unbond through undelegate on other genesis validator
     //
 
-    let unbond_amount = U512::from(VALIDATOR_1_STAKE) - 1;
+    let unbond_amount = U512::from(VALIDATOR_1_STAKE / VESTING_WEEKS);
 
     let undelegate_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

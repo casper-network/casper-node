@@ -51,7 +51,6 @@ where
     pub(crate) round_exp: u8,
     /// Units that this one claims are endorsed.
     /// All of these must be cited (directly or indirectly) by the panorama.
-    #[data_size(skip)] // TODO: impl DataSize for BTreeSet
     pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 

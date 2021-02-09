@@ -1,5 +1,7 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
+use assert_matches::assert_matches;
+use num_traits::One;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -11,10 +13,17 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::{
+        engine_state::{self, genesis::GenesisAccount},
+        execution,
+    },
+    shared::motes::Motes,
+};
 use casper_types::{
     self,
     account::AccountHash,
+    api_error::ApiError,
     auction::{
         Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
@@ -63,8 +72,6 @@ static ACCOUNT_1_PK: Lazy<PublicKey> =
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
-const ACCOUNT_1_WITHDRAW_1: u64 = 55_000;
-const ACCOUNT_1_WITHDRAW_2: u64 = 45_000;
 
 static ACCOUNT_2_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([202; SecretKey::ED25519_LENGTH]).into());
@@ -129,7 +136,6 @@ fn should_run_add_bid() {
         U512::from(ADD_BID_AMOUNT_1)
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
-    assert!(!active_bid.is_locked());
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -552,13 +558,17 @@ fn should_get_first_seigniorage_recipients() {
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
     assert_eq!(
-        founding_validator_1.release_timestamp_millis(),
+        founding_validator_1
+            .vesting_schedule()
+            .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
         Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
     );
 
     let founding_validator_2 = bids.get(&ACCOUNT_2_PK).expect("should have account 2 pk");
     assert_eq!(
-        founding_validator_2.release_timestamp_millis(),
+        founding_validator_2
+            .vesting_schedule()
+            .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
         Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
     );
 
@@ -629,7 +639,84 @@ fn should_get_first_seigniorage_recipients() {
 #[ignore]
 #[test]
 fn should_release_founder_stake() {
-    assert_eq!(ACCOUNT_1_WITHDRAW_1 + ACCOUNT_1_WITHDRAW_2, ACCOUNT_1_BOND);
+    const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+
+    // ACCOUNT_1_BOND / 14 = 7_142
+    const EXPECTED_WEEKLY_RELEASE: u64 = 7_142;
+
+    const EXPECTED_REMAINDER: u64 = 12;
+
+    const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
+        92858, 85716, 78574, 71432, 64290, 57148, 50006, 42864, 35722, 28580, 21438, 14296, 7154, 0,
+    ];
+
+    let expected_locked_amounts: Vec<U512> = EXPECTED_LOCKED_AMOUNTS
+        .iter()
+        .cloned()
+        .map(U512::from)
+        .collect();
+
+    const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    const WEEK_TIMESTAMPS: [u64; 14] = [
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + WEEK_MILLIS,
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 2),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 3),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 4),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 5),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 6),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 7),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 8),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 9),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 10),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 11),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
+        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
+    ];
+
+    let expect_unbond_success = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+        let partial_unbond = ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            CONTRACT_WITHDRAW_BID,
+            runtime_args! {
+                ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
+                ARG_AMOUNT => U512::from(amount),
+            },
+        )
+        .build();
+
+        builder.exec(partial_unbond).commit().expect_success();
+    };
+
+    let expect_unbond_failure = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+        let full_unbond = ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            CONTRACT_WITHDRAW_BID,
+            runtime_args! {
+                ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
+                ARG_AMOUNT => U512::from(amount),
+            },
+        )
+        .build();
+
+        builder.exec(full_unbond).commit();
+
+        let error = {
+            let response = builder
+                .get_exec_results()
+                .last()
+                .expect("should have last exec result");
+            let exec_response = response.last().expect("should have response");
+            exec_response.as_error().expect("should have error")
+        };
+        assert_matches!(
+            error,
+            engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(15)))
+        );
+    };
+
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::new(
@@ -644,181 +731,117 @@ fn should_release_founder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
-    let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
-        .expect("should have account 1");
-
     let auction = builder.get_auction_contract_hash();
 
-    let transfer_request_1 = ExecuteRequestBuilder::standard(
+    let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
             "target" => SYSTEM_ADDR,
-            // This test needs a bit more tokens to run auction multiple times under `use-system-contracts` feature flag
             ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE / 10)
         },
     )
     .build();
 
-    let auction_hash = builder.get_auction_contract_hash();
-    let genesis_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_eq!(genesis_bids.len(), 1);
-    let entry = genesis_bids.get(&ACCOUNT_1_PK).unwrap();
-    assert_eq!(
-        entry.release_timestamp_millis(),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
-    );
+    builder.exec(fund_system_account).commit().expect_success();
 
-    builder.exec(transfer_request_1).commit().expect_success();
+    // Check bid and its vesting schedule
+    {
+        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        assert_eq!(bids.len(), 1);
 
-    builder.run_auction(timestamp_millis);
-    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+        let entry = bids.get(&ACCOUNT_1_PK).unwrap();
+        let vesting_schedule = entry.vesting_schedule().unwrap();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_eq!(bids.len(), 1);
-    let (founding_validator, entry) = bids.into_iter().next().unwrap();
-    assert_eq!(
-        builder.get_purse_balance(*entry.bonding_purse()),
-        ACCOUNT_1_BOND.into()
-    );
-    assert_eq!(founding_validator, *ACCOUNT_1_PK);
+        let initial_release = vesting_schedule.initial_release_timestamp_millis();
+        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
 
-    // withdraw unlocked funds with partial amounts
-    let withdraw_bid_request_1 = ExecuteRequestBuilder::standard(
-        *ACCOUNT_1_ADDR,
-        CONTRACT_WITHDRAW_BID,
-        runtime_args! {
-            ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
-            ARG_AMOUNT => U512::from(ACCOUNT_1_WITHDRAW_1),
-        },
-    )
-    .build();
-    let withdraw_bid_request_2 = ExecuteRequestBuilder::standard(
-        *ACCOUNT_1_ADDR,
-        CONTRACT_WITHDRAW_BID,
-        runtime_args! {
-            ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
-            ARG_AMOUNT => U512::from(ACCOUNT_1_WITHDRAW_2),
-        },
-    )
-    .build();
-
-    let pre_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert_eq!(pre_unbond_purses.len(), 0);
-
-    //
-    // founder does withdraw request 1 in INITIAL_ERA_ID
-    //
-
-    builder
-        .exec(withdraw_bid_request_1)
-        .commit()
-        .expect_success();
-
-    let post_bids_1: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_ne!(post_bids_1, genesis_bids);
-    assert_eq!(
-        *post_bids_1[&ACCOUNT_1_PK].staked_amount(),
-        U512::from(ACCOUNT_1_BOND - ACCOUNT_1_WITHDRAW_1)
-    );
-
-    // run auction to increase ERA ID
-    builder.run_auction(timestamp_millis);
-    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
-
-    //
-    // founder does withdraw request 2 in INITIAL_ERA_ID + 1
-    //
-    builder
-        .exec(withdraw_bid_request_2)
-        .commit()
-        .expect_success();
-
-    let post_bids_2: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_ne!(post_bids_2, genesis_bids);
-    assert_ne!(post_bids_2, post_bids_1);
-    assert!(post_bids_2.is_empty());
-
-    // original bonding purse is not updated (yet)
-    assert_eq!(
-        builder.get_purse_balance(*entry.bonding_purse()),
-        ACCOUNT_1_BOND.into()
-    );
-
-    let pre_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert_eq!(pre_unbond_purses.len(), 1);
-    let pre_unbond_list = pre_unbond_purses
-        .get(&ACCOUNT_1_PK)
-        .expect("should have unbond");
-    assert_eq!(pre_unbond_list.len(), 2);
-    assert_eq!(pre_unbond_list[0].validator_public_key(), &*ACCOUNT_1_PK);
-    assert_eq!(pre_unbond_list[0].amount(), &ACCOUNT_1_WITHDRAW_1.into());
-    assert_eq!(pre_unbond_list[1].validator_public_key(), &*ACCOUNT_1_PK);
-    assert_eq!(pre_unbond_list[1].amount(), &ACCOUNT_1_WITHDRAW_2.into());
-
-    // Funds are not transferred yet from the original bonding purse
-    // assert_eq!(
-    //     builder.get_purse_balance(*pre_unbond_list[0].unbonding_purse()),
-    //     U512::zero(),
-    // );
-    // assert_eq!(
-    //     builder.get_purse_balance(*pre_unbond_list[1].unbonding_purse()),
-    //     U512::zero(),
-    // );
-    // check that bids are updated for given validator
-
-    let account_1_balance_before = builder.get_purse_balance(account_1.main_purse());
-
-    for _ in 0..DEFAULT_UNBONDING_DELAY {
-        builder.run_auction(timestamp_millis);
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+        let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
+        assert!(locked_amounts.is_none());
     }
 
-    // Should pay out withdraw_bid request from INITIAL_ERA_ID
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS);
 
-    let account_1_unlocked_funds_1 = account_1_balance_before + U512::from(ACCOUNT_1_WITHDRAW_1);
+    {
+        // Attempt unbond of one mote
+        expect_unbond_failure(&mut builder, u64::one());
+    }
 
-    //
-    // Funds are transferred from the original bonding purse to the unbonding purses
-    //
-    assert_eq!(
-        builder.get_purse_balance(account_1.main_purse()), // still valid
-        account_1_unlocked_funds_1,
-    );
-    assert_eq!(
-        builder.get_purse_balance(account_1.main_purse()), // still valid
-        account_1_unlocked_funds_1,
-    );
+    builder.run_auction(WEEK_TIMESTAMPS[0]);
 
-    //
-    // Pays out withdraw_bid request that happened in INITIAL_ERA_ID + 1
-    //
-    builder.run_auction(timestamp_millis);
-    let account_1_unlocked_funds_2 = account_1_unlocked_funds_1 + U512::from(ACCOUNT_1_WITHDRAW_2);
+    // Check bid and its vesting schedule
+    {
+        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        assert_eq!(bids.len(), 1);
 
-    assert_eq!(
-        builder.get_purse_balance(account_1.main_purse()), // still valid ref
-        account_1_unlocked_funds_2,
-    );
-    assert_eq!(
-        builder.get_purse_balance(account_1.main_purse()), // still valid ref
-        account_1_unlocked_funds_2,
-    );
+        let entry = bids.get(&ACCOUNT_1_PK).unwrap();
+        let vesting_schedule = entry.vesting_schedule().unwrap();
 
-    let post_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert_eq!(post_unbond_purses.len(), 0);
+        let initial_release = vesting_schedule.initial_release_timestamp_millis();
+        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
 
-    let post_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert_ne!(post_bids, genesis_bids);
-    assert!(post_bids.is_empty());
+        let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
+        assert_eq!(locked_amounts, Some(expected_locked_amounts));
+    }
+
+    let mut total_unbonded = 0;
+
+    {
+        // Attempt full unbond
+        expect_unbond_failure(&mut builder, ACCOUNT_1_BOND);
+
+        // Attempt unbond of released amount
+        expect_unbond_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
+
+        total_unbonded += EXPECTED_WEEKLY_RELEASE;
+
+        assert_eq!(ACCOUNT_1_BOND - total_unbonded, EXPECTED_LOCKED_AMOUNTS[0])
+    }
+
+    for i in 1..13 {
+        // Run auction forward by almost a week
+        builder.run_auction(WEEK_TIMESTAMPS[i] - 1);
+
+        // Attempt unbond of 1 mote
+        expect_unbond_failure(&mut builder, u64::one());
+
+        // Run auction forward by one millisecond
+        builder.run_auction(WEEK_TIMESTAMPS[i]);
+
+        // Attempt unbond of more than weekly release
+        expect_unbond_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
+
+        // Attempt unbond of released amount
+        expect_unbond_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
+
+        total_unbonded += EXPECTED_WEEKLY_RELEASE;
+
+        assert_eq!(ACCOUNT_1_BOND - total_unbonded, EXPECTED_LOCKED_AMOUNTS[i])
+    }
+
+    {
+        // Run auction forward by almost a week
+        builder.run_auction(WEEK_TIMESTAMPS[13] - 1);
+
+        // Attempt unbond of 1 mote
+        expect_unbond_failure(&mut builder, u64::one());
+
+        // Run auction forward by one millisecond
+        builder.run_auction(WEEK_TIMESTAMPS[13]);
+
+        // Attempt unbond of released amount + remainder
+        expect_unbond_success(&mut builder, EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER);
+
+        total_unbonded += EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER;
+
+        assert_eq!(ACCOUNT_1_BOND - total_unbonded, EXPECTED_LOCKED_AMOUNTS[13])
+    }
+
+    assert_eq!(ACCOUNT_1_BOND, total_unbonded);
 }
 
 #[ignore]

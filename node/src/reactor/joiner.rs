@@ -10,6 +10,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
@@ -24,6 +25,8 @@ use crate::components::{
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
 };
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_executor::{self, BlockExecutor},
@@ -46,8 +49,9 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+            BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+            NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -70,9 +74,8 @@ use crate::{
     NodeRng,
 };
 
-use memory_metrics::MemoryMetrics;
-
 /// Top-level event for the reactor.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {
@@ -211,6 +214,10 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+
+    /// Chainspec loader announcement.
+    #[from]
+    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
@@ -313,6 +320,9 @@ impl Display for Event {
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
+            Event::ChainspecLoaderAnnouncement(ann) => {
+                write!(f, "chainspec loader announcement: {}", ann)
+            }
         }
     }
 }
@@ -402,6 +412,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
+            registry,
             small_network_identity,
             genesis_config_hash,
             false,
@@ -429,7 +440,10 @@ impl reactor::Reactor for Reactor {
                 if Timestamp::now() > chainspec.network_config.timestamp + era_duration {
                     error!(
                         "Node started with no trusted hash after the expected end of \
-                        the genesis era! Please specify a trusted hash and restart."
+                         the genesis era! Please specify a trusted hash and restart. \
+                         Time: {}, End of genesis era: {}",
+                        Timestamp::now(),
+                        chainspec.network_config.timestamp + era_duration
                     );
                     panic!("should have trusted hash after genesis era")
                 }
@@ -855,6 +869,20 @@ impl reactor::Reactor for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
+            Event::ChainspecLoaderAnnouncement(
+                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+            ) => {
+                let reactor_event = Event::ChainspecLoader(
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
+                );
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
+                    next_upgrade.activation_point(),
+                ));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
+            }
         }
     }
 
@@ -890,5 +918,29 @@ impl Reactor {
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
         config
+    }
+}
+
+#[cfg(test)]
+impl NetworkedReactor for Reactor {
+    type NodeId = NodeId;
+    fn node_id(&self) -> Self::NodeId {
+        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+            self.small_network.node_id()
+        } else {
+            self.network.node_id()
+        }
+    }
+}
+
+#[cfg(test)]
+impl Reactor {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
     }
 }

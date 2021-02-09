@@ -101,6 +101,15 @@ do
     esac
 done
 
-main "${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT}" \
-     "${BATCH_COUNT:-5}" \
-     "${BATCH_SIZE:-200}" 
+AMOUNT=${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
+BATCH_COUNT=${BATCH_COUNT:-5}
+BATCH_SIZE=${BATCH_SIZE:-200}
+
+log "Preparing batch of wasm transfers:"
+log "... # of batches: $BATCH_COUNT"
+log "... batch size: $BATCH_SIZE"
+log "... amount per transfer: $AMOUNT"
+
+main "$AMOUNT" \
+     "$BATCH_COUNT" \
+     "$BATCH_SIZE" 

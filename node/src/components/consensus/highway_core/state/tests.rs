@@ -65,6 +65,12 @@ impl ConsensusValueT for u32 {
     fn needs_validation(&self) -> bool {
         false
     }
+
+    type Hash = u32;
+
+    fn hash(&self) -> Self::Hash {
+        *self
+    }
 }
 
 impl Context for TestContext {
@@ -122,7 +128,7 @@ impl<C: Context> SignedWireUnit<C> {
     }
 }
 
-fn test_params(seed: u64) -> Params {
+pub(crate) fn test_params(seed: u64) -> Params {
     Params::new(
         seed,
         TEST_BLOCK_REWARD,

@@ -1,3 +1,5 @@
+mod vesting;
+
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +11,8 @@ use crate::{
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
+pub use vesting::VestingSchedule;
+
 /// An entry in a founding validator map.
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Bid {
@@ -18,9 +22,8 @@ pub struct Bid {
     staked_amount: U512,
     /// Delegation rate
     delegation_rate: DelegationRate,
-    /// Timestamp (in milliseconds since epoch format) at which a given bid is unlocked.  If
-    /// `None`, bid is unlocked.
-    release_timestamp_millis: Option<u64>,
+    /// Vesting schedule for a genesis validator. `None` if non-genesis validator.
+    vesting_schedule: Option<VestingSchedule>,
     /// This validator's delegators, indexed by their public keys
     delegators: BTreeMap<PublicKey, Delegator>,
     /// This validator's seigniorage reward
@@ -31,14 +34,14 @@ impl Bid {
     /// Creates new instance of a bid with locked funds.
     pub fn locked(bonding_purse: URef, staked_amount: U512, release_timestamp_millis: u64) -> Self {
         let delegation_rate = 0;
-        let release_timestamp_millis = Some(release_timestamp_millis);
+        let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let delegators = BTreeMap::new();
         let reward = U512::zero();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
-            release_timestamp_millis,
+            vesting_schedule,
             delegators,
             reward,
         }
@@ -50,14 +53,14 @@ impl Bid {
         staked_amount: U512,
         delegation_rate: DelegationRate,
     ) -> Self {
-        let release_timestamp_millis = None;
+        let vesting_schedule = None;
         let delegators = BTreeMap::new();
         let reward = U512::zero();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
-            release_timestamp_millis,
+            vesting_schedule,
             delegators,
             reward,
         }
@@ -78,15 +81,16 @@ impl Bid {
         &self.delegation_rate
     }
 
-    /// Returns `true` if the provided bid is locked.
-    pub fn is_locked(&self) -> bool {
-        self.release_timestamp_millis.is_some()
+    /// Returns a reference to the vesting schedule of the provided bid.  `None` if a non-genesis
+    /// validator.
+    pub fn vesting_schedule(&self) -> Option<&VestingSchedule> {
+        self.vesting_schedule.as_ref()
     }
 
-    /// Returns the timestamp (in milliseconds since epoch format) at which a given bid is unlocked.
-    /// If `None`, bid is unlocked.
-    pub fn release_timestamp_millis(&self) -> Option<u64> {
-        self.release_timestamp_millis
+    /// Returns a mutable reference to the vesting schedule of the provided bid.  `None` if a
+    /// non-genesis validator.
+    pub fn vesting_schedule_mut(&mut self) -> Option<&mut VestingSchedule> {
+        self.vesting_schedule.as_mut()
     }
 
     /// Returns a reference to the delegators of the provided bid
@@ -105,19 +109,38 @@ impl Bid {
     }
 
     /// Decreases the stake of the provided bid
-    pub fn decrease_stake(&mut self, amount: U512) -> Result<U512, Error> {
-        if self.is_locked() {
-            return Err(Error::ValidatorFundsLocked);
-        }
-
+    pub fn decrease_stake(
+        &mut self,
+        amount: U512,
+        era_end_timestamp_millis: u64,
+    ) -> Result<U512, Error> {
         let updated_staked_amount = self
             .staked_amount
             .checked_sub(amount)
-            .ok_or(Error::InvalidAmount)?;
+            .ok_or(Error::UnbondTooLarge)?;
 
-        self.staked_amount = updated_staked_amount;
+        let vesting_schedule = match self.vesting_schedule {
+            Some(vesting_sechdule) => vesting_sechdule,
+            None => {
+                self.staked_amount = updated_staked_amount;
+                return Ok(updated_staked_amount);
+            }
+        };
 
-        Ok(updated_staked_amount)
+        match vesting_schedule.locked_amount(era_end_timestamp_millis) {
+            Some(locked_amount) if updated_staked_amount < locked_amount => {
+                Err(Error::ValidatorFundsLocked)
+            }
+            None => {
+                // If `None`, then the locked amounts table has yet to be initialized (likely
+                // pre-90 day mark)
+                Err(Error::ValidatorFundsLocked)
+            }
+            Some(_) => {
+                self.staked_amount = updated_staked_amount;
+                Ok(updated_staked_amount)
+            }
+        }
     }
 
     /// Increases the stake of the provided bid
@@ -155,20 +178,22 @@ impl Bid {
         self
     }
 
-    /// Unlocks the provided bid if the provided timestamp is greater than or equal to the bid's
-    /// release timestamp.
+    /// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
+    /// or equal to the bid's initial release timestamp and the bid is owned by a genesis
+    /// validator.
     ///
-    /// Returns `true` if the provided bid was unlocked.
-    pub fn unlock(&mut self, era_end_timestamp_millis: u64) -> bool {
-        let release_timestamp_millis = match self.release_timestamp_millis {
-            Some(release_timestamp_millis) => release_timestamp_millis,
+    /// Returns `true` if the provided bid's vesting schedule was initialized.
+    pub fn process(&mut self, timestamp_millis: u64) -> bool {
+        // Put timestamp-sensitive processing logic in here
+        let staked_amount = self.staked_amount;
+        let vesting_schedule = match self.vesting_schedule_mut() {
+            Some(vesting_schedule) => vesting_schedule,
             None => return false,
         };
-        if era_end_timestamp_millis < release_timestamp_millis {
+        if timestamp_millis < vesting_schedule.initial_release_timestamp_millis() {
             return false;
         }
-        self.release_timestamp_millis = None;
-        true
+        vesting_schedule.initialize(staked_amount)
     }
 
     /// Returns the total staked amount of validator + all delegators
@@ -195,7 +220,7 @@ impl ToBytes for Bid {
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.release_timestamp_millis.to_bytes()?);
+        result.extend(self.vesting_schedule.to_bytes()?);
         result.extend(self.delegators.to_bytes()?);
         result.extend(self.reward.to_bytes()?);
         Ok(result)
@@ -205,7 +230,7 @@ impl ToBytes for Bid {
         self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
-            + self.release_timestamp_millis.serialized_length()
+            + self.vesting_schedule.serialized_length()
             + self.delegators.serialized_length()
             + self.reward.serialized_length()
     }
@@ -216,7 +241,7 @@ impl FromBytes for Bid {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
-        let (release_timestamp_millis, bytes) = FromBytes::from_bytes(bytes)?;
+        let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegators, bytes) = FromBytes::from_bytes(bytes)?;
         let (reward, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
@@ -224,7 +249,7 @@ impl FromBytes for Bid {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                release_timestamp_millis,
+                vesting_schedule,
                 delegators,
                 reward,
             },
@@ -238,7 +263,7 @@ mod tests {
     use alloc::collections::BTreeMap;
 
     use crate::{
-        auction::{Bid, DelegationRate},
+        auction::{bid::VestingSchedule, Bid, DelegationRate},
         bytesrepr, AccessRights, URef, U512,
     };
 
@@ -248,7 +273,7 @@ mod tests {
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
-            release_timestamp_millis: Some(u64::max_value() - 1),
+            vesting_schedule: Some(VestingSchedule::default()),
             delegators: BTreeMap::default(),
             reward: U512::one(),
         };

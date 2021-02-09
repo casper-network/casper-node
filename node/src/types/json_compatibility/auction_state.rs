@@ -12,7 +12,7 @@ use casper_types::{
     AccessRights, PublicKey, SecretKey, URef, U512,
 };
 
-use crate::{crypto::hash::Digest, rpcs::docs::DocExample, types::Timestamp};
+use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
@@ -92,8 +92,6 @@ pub struct JsonBid {
     staked_amount: U512,
     /// The delegation rate.
     delegation_rate: DelegationRate,
-    /// Timestamp at which a given bid is unlocked.  If `None`, bid is unlocked.
-    release_timestamp: Option<Timestamp>,
     /// The delegators.
     delegators: Vec<JsonDelegator>,
     /// This validator's seigniorage reward.
@@ -113,7 +111,6 @@ impl From<Bid> for JsonBid {
             bonding_purse: *bid.bonding_purse(),
             staked_amount: *bid.staked_amount(),
             delegation_rate: *bid.delegation_rate(),
-            release_timestamp: bid.release_timestamp_millis().map(Timestamp::from),
             delegators: json_delegators,
             reward: *bid.reward(),
         }
