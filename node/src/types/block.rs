@@ -63,10 +63,25 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
 
+    let next_era_validator_weights = {
+        let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        next_era_validator_weights.insert(public_key_1, U512::from(123));
+        next_era_validator_weights.insert(
+            PublicKey::from(&SecretKey::ed25519([5u8; SecretKey::ED25519_LENGTH])),
+            U512::from(456),
+        );
+        next_era_validator_weights.insert(
+            PublicKey::from(&SecretKey::ed25519([6u8; SecretKey::ED25519_LENGTH])),
+            U512::from(789),
+        );
+        next_era_validator_weights
+    };
+
     EraEnd {
         equivocators,
         rewards,
         inactive_validators,
+        next_era_validator_weights,
     }
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
@@ -306,6 +321,7 @@ impl ToBytes for EraEnd {
         buffer.extend(self.equivocators.to_bytes()?);
         buffer.extend(self.rewards.to_bytes()?);
         buffer.extend(self.inactive_validators.to_bytes()?);
+        buffer.extend(self.next_era_validator_weights.to_bytes()?);
         Ok(buffer)
     }
 
@@ -313,6 +329,7 @@ impl ToBytes for EraEnd {
         self.equivocators.serialized_length()
             + self.rewards.serialized_length()
             + self.inactive_validators.serialized_length()
+            + self.next_era_validator_weights.serialized_length()
     }
 }
 
@@ -321,10 +338,13 @@ impl FromBytes for EraEnd {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
         let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
         let (inactive_validators, remainder) = Vec::<PublicKey>::from_bytes(remainder)?;
+        let (next_era_validator_weights, remainder) =
+            BTreeMap::<PublicKey, U512>::from_bytes(remainder)?;
         let era_end = EraEnd {
             equivocators,
             rewards,
             inactive_validators,
+            next_era_validator_weights,
         };
         Ok((era_end, remainder))
     }
@@ -435,6 +455,7 @@ impl FinalizedBlock {
                 })
                 .take(inactive_count)
                 .collect(),
+                next_era_validator_weights: BTreeMap::default(),
             })
         } else {
             None
@@ -587,7 +608,6 @@ pub struct BlockHeader {
     era_id: EraId,
     height: u64,
     proposer: PublicKey,
-    next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
 }
 
 impl BlockHeader {
@@ -658,7 +678,13 @@ impl BlockHeader {
 
     /// The validators for the upcoming era and their respective weights.
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
-        self.next_era_validator_weights.as_ref()
+        match &self.era_end {
+            Some(era_end) => {
+                let validator_weights = &era_end.next_era_validator_weights;
+                Some(validator_weights)
+            }
+            None => None,
+        }
     }
 
     /// Returns true if block is Genesis' child.
@@ -717,7 +743,6 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.era_id.to_bytes()?);
         buffer.extend(self.height.to_bytes()?);
         buffer.extend(self.proposer.to_bytes()?);
-        buffer.extend(self.next_era_validator_weights.to_bytes()?);
         Ok(buffer)
     }
 
@@ -734,7 +759,6 @@ impl ToBytes for BlockHeader {
             + self.era_id.serialized_length()
             + self.height.serialized_length()
             + self.proposer.serialized_length()
-            + self.next_era_validator_weights.serialized_length()
     }
 }
 
@@ -752,8 +776,6 @@ impl FromBytes for BlockHeader {
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
         let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
-        let (next_era_validator_weights, remainder) =
-            Option::<BTreeMap<PublicKey, U512>>::from_bytes(remainder)?;
         let block_header = BlockHeader {
             parent_hash,
             state_root_hash,
@@ -767,7 +789,6 @@ impl FromBytes for BlockHeader {
             era_id,
             height,
             proposer,
-            next_era_validator_weights,
         };
         Ok((block_header, remainder))
     }
@@ -878,6 +899,14 @@ impl Block {
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 
+        let era_end = match finalized_block.era_end {
+            Some(mut era_end) => {
+                era_end.next_era_validator_weights = next_era_validator_weights.unwrap();
+                Some(era_end)
+            }
+            None => None,
+        };
+
         let mut accumulated_seed = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
@@ -895,12 +924,11 @@ impl Block {
             transfer_hashes: finalized_block.proto_block.transfers,
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
-            era_end: finalized_block.era_end,
+            era_end,
             timestamp: finalized_block.timestamp,
             era_id,
             height,
             proposer: finalized_block.proposer,
-            next_era_validator_weights,
         };
 
         let hash = header.hash();
@@ -978,13 +1006,17 @@ impl Block {
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
+        let next_era_validator_weights = match finalized_block.era_end {
+            Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
+            None => None,
+        };
 
         Block::new(
             parent_hash,
             parent_seed,
             state_root_hash,
             finalized_block,
-            None,
+            next_era_validator_weights,
         )
     }
 }
@@ -1148,6 +1180,7 @@ pub(crate) mod json_compatibility {
         equivocators: Vec<PublicKey>,
         rewards: Vec<Reward>,
         inactive_validators: Vec<PublicKey>,
+        next_era_validator_weights: Vec<ValidatorWeight>,
     }
 
     impl From<EraEnd> for JsonEraEnd {
@@ -1160,6 +1193,11 @@ pub(crate) mod json_compatibility {
                     .map(|(validator, amount)| Reward { validator, amount })
                     .collect(),
                 inactive_validators: era_end.inactive_validators,
+                next_era_validator_weights: era_end
+                    .next_era_validator_weights
+                    .into_iter()
+                    .map(|(validator, weight)| ValidatorWeight { validator, weight })
+                    .collect(),
             }
         }
     }
@@ -1173,10 +1211,16 @@ pub(crate) mod json_compatibility {
                 .map(|reward| (reward.validator, reward.amount))
                 .collect();
             let inactive_validators = era_end.inactive_validators;
+            let next_era_validator_weights = era_end
+                .next_era_validator_weights
+                .into_iter()
+                .map(|validator_weight| (validator_weight.validator, validator_weight.weight))
+                .collect();
             EraEnd {
                 equivocators,
                 rewards,
                 inactive_validators,
+                next_era_validator_weights,
             }
         }
     }
@@ -1196,19 +1240,10 @@ pub(crate) mod json_compatibility {
         era_id: EraId,
         height: u64,
         proposer: PublicKey,
-        next_era_validator_weights: Option<Vec<ValidatorWeight>>,
     }
 
     impl From<BlockHeader> for JsonBlockHeader {
         fn from(block_header: BlockHeader) -> Self {
-            let next_era_validator_weights: Option<Vec<ValidatorWeight>> =
-                block_header.next_era_validator_weights.map(|weights| {
-                    weights
-                        .into_iter()
-                        .map(|(validator, weight)| ValidatorWeight { validator, weight })
-                        .collect()
-                });
-
             JsonBlockHeader {
                 parent_hash: block_header.parent_hash,
                 state_root_hash: block_header.state_root_hash,
@@ -1222,21 +1257,12 @@ pub(crate) mod json_compatibility {
                 era_id: block_header.era_id,
                 height: block_header.height,
                 proposer: block_header.proposer,
-                next_era_validator_weights,
             }
         }
     }
 
     impl From<JsonBlockHeader> for BlockHeader {
         fn from(block_header: JsonBlockHeader) -> Self {
-            let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
-                block_header.next_era_validator_weights.map(|weights| {
-                    weights
-                        .into_iter()
-                        .map(|ValidatorWeight { validator, weight }| (validator, weight))
-                        .collect()
-                });
-
             BlockHeader {
                 parent_hash: block_header.parent_hash,
                 state_root_hash: block_header.state_root_hash,
@@ -1250,7 +1276,6 @@ pub(crate) mod json_compatibility {
                 era_id: block_header.era_id,
                 height: block_header.height,
                 proposer: block_header.proposer,
-                next_era_validator_weights,
             }
         }
     }

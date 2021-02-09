@@ -765,6 +765,7 @@ where
                     rewards: tbd.rewards,
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
+                    next_era_validator_weights: BTreeMap::default(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.into(),
