@@ -386,13 +386,13 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             true,
         )?;
-        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
-            genesis_config_hash,
+            network_name,
             true,
         )?;
 
