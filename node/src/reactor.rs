@@ -332,27 +332,10 @@ impl Drop for RunnerMetrics {
 }
 
 /// Exit status of a runner instance.
-pub enum RunnerExitStatus {
-    /// Runner finished work without errors.
-    Ok,
-    /// Runner finished with an error.
-    Err(u8),
-}
+pub type RunnerExitStatus = Result<(), u8>;
 
-impl RunnerExitStatus {
-    /// Exit code indicating that node should shut down for a scheduled upgrade.
-    pub const UPGRADE_EXIT_CODE: u8 = 0;
-
-    /// Returns whether runner finished without errors.
-    pub fn is_ok(&self) -> bool {
-        matches!(self, RunnerExitStatus::Ok)
-    }
-
-    /// Returns whether runner failed.
-    pub fn is_err(&self) -> bool {
-        matches!(self, RunnerExitStatus::Err(_))
-    }
-}
+/// Exit code indicating that node should shut down for a scheduled upgrade.
+pub const UPGRADE_EXIT_CODE: u8 = 0;
 
 impl<R> Runner<R>
 where
@@ -611,11 +594,11 @@ where
     pub async fn run(&mut self, rng: &mut NodeRng) -> RunnerExitStatus {
         while !self.reactor.is_stopped() {
             if self.reactor.needs_upgrade() {
-                return RunnerExitStatus::Err(RunnerExitStatus::UPGRADE_EXIT_CODE);
+                return RunnerExitStatus::Err(UPGRADE_EXIT_CODE);
             }
             self.crank(rng).await;
         }
-        RunnerExitStatus::Ok
+        RunnerExitStatus::Ok(())
     }
 
     /// Returns a reference to the reactor.

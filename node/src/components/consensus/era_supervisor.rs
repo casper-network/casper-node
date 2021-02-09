@@ -557,7 +557,7 @@ where
         if faulty_num == old_faulty_num {
             info!(era = era_id.0, "stop voting in era");
             era.consensus.deactivate_validator();
-            if self.should_upgrade(&era_id) {
+            if self.should_upgrade_after(&era_id) {
                 // If the next era is at or after the upgrade activation point, stop the node.
                 info!(era = era_id.0, "shutting down for upgrade");
                 self.era_supervisor.stop_for_upgrade = true;
@@ -917,7 +917,7 @@ where
             .ignore()
     }
 
-    pub(super) fn should_upgrade(&self, era_id: &EraId) -> bool {
+    pub(super) fn should_upgrade_after(&self, era_id: &EraId) -> bool {
         match self.era_supervisor.next_upgrade_activation_point {
             None => false,
             Some(upgrade_point) => upgrade_point.should_upgrade(&era_id),

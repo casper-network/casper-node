@@ -434,7 +434,7 @@ where
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
-                    network_name: self.network_name.clone()
+                    network_name: self.network_name.clone(),
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
