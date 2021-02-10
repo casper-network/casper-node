@@ -33,7 +33,7 @@ use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use casper_types::{PublicKey, U512};
 
@@ -531,7 +531,7 @@ where
                 effects
             }
             Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
-                debug!(?next_upgrade_activation_point, "new activation point");
+                trace!(?next_upgrade_activation_point, "new activation point");
                 self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
                 Effects::new()
             }
