@@ -491,12 +491,18 @@ impl reactor::Reactor for Reactor {
             .collect();
 
         let linear_chain_sync = {
+            let maybe_state =
+                linear_chain_sync::read_init_state(&storage, chainspec_loader.chainspec())?;
+            if let Some(state) = maybe_state {
+                LinearChainSync::from_state(registry, chainspec_loader.chainspec(), state)?
+            } else {
                 LinearChainSync::new(
                     registry,
                     chainspec_loader.chainspec(),
                     init_hash,
                     validator_weights.clone(),
                 )?
+            }
         };
 
         // Used to decide whether era should be activated.

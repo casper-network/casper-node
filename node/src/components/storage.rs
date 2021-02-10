@@ -340,6 +340,22 @@ impl Storage {
         }
     }
 
+    /// Reads from the state storage DB.
+    /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
+    /// May also fail with storage errors.
+    pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let txn = self.env.begin_ro_txn()?;
+        let bytes = match txn.get(self.state_store_db, &key) {
+            Ok(slice) => Some(slice.to_owned()),
+            Err(lmdb::Error::NotFound) => None,
+            Err(err) => return Err(err.into()),
+        };
+        Ok(bytes)
+    }
+
     /// Handles a storage request.
     fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where

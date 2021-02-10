@@ -39,7 +39,12 @@ use casper_types::{PublicKey, U512};
 
 use self::event::{BlockByHashResult, DeploysResult};
 
-use super::{consensus::EraId, fetcher::FetchResult, Component};
+use super::{
+    consensus::EraId,
+    fetcher::FetchResult,
+    storage::{self, Storage},
+    Component,
+};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{ActivationPoint, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock},
@@ -87,12 +92,44 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             state_key,
         })
     }
+
+    /// Initialize `LinearChainSync` component from preloaded `State`.
+    pub fn from_state(
+        registry: &Registry,
+        chainspec: &Chainspec,
+        state: State,
+    ) -> Result<Self, prometheus::Error> {
+        let state_key = state_key(&chainspec);
+        let state_status = match &state {
+            State::SyncingTrustedHash {
+                trusted_hash,
+                highest_block_seen,
+                ..
+            } => format!(
+                "syncing trusted hash: {:?}, highest block seen: {:?}",
+                trusted_hash, highest_block_seen
+            ),
+            State::SyncingDescendants {
+                trusted_hash,
+                latest_block,
+                ..
+            } => format!(
+                "syncing descendants of {:?}, latest block hash={:?}, height={:?}, era={:?}",
+                trusted_hash,
+                latest_block.hash(),
+                latest_block.height(),
+                latest_block.era_id(),
+            ),
+            _ => panic!("unexpected initial state: {:?}", &state),
+        };
+        info!(?state_status, "reusing previous state");
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
             next_upgrade_activation_point: None,
             stop_for_upgrade: false,
+            state_key,
         })
     }
 
@@ -670,4 +707,29 @@ where
 /// Returns key in the Global State under which the LinearChainSync's state is stored.
 fn state_key(chainspec: &Chainspec) -> Vec<u8> {
     chainspec.network_config.name.clone().into()
+}
+
+/// Deserialized vector of bytes into `LinearChainSync::State`.
+/// Panics on deserialization errors.
+fn deserialize_state(serialized_state: &[u8]) -> State {
+    bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+        panic!(
+            "could not deserialize state from storage type name err {:?}",
+            error
+        )
+    })
+}
+
+/// Reads the `LinearChainSync's` state from storage, if any.
+/// Panics on deserialization errors.
+pub(crate) fn read_init_state(
+    storage: &Storage,
+    chainspec: &Chainspec,
+) -> Result<Option<State>, storage::Error> {
+    let key = state_key(&chainspec);
+    if let Some(bytes) = storage.read_state_store(&key)? {
+        Ok(Some(deserialize_state(&bytes)))
+    } else {
+        Ok(None)
+    }
 }
