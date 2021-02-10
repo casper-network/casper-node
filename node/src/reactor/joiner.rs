@@ -57,7 +57,7 @@ use crate::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -189,6 +189,10 @@ pub enum Event {
     ProtoBlockValidatorRequest(
         #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
     ),
+
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -323,6 +327,7 @@ impl Display for Event {
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
+            Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
         }
     }
 }
@@ -485,8 +490,14 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync =
-            LinearChainSync::new(registry, init_hash, validator_weights.clone())?;
+        let linear_chain_sync = {
+                LinearChainSync::new(
+                    registry,
+                    chainspec_loader.chainspec(),
+                    init_hash,
+                    validator_weights.clone(),
+                )?
+        };
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -886,6 +897,9 @@ impl reactor::Reactor for Reactor {
                     ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
+            }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
             }
         }
     }

@@ -11,6 +11,8 @@ pub enum Event<I> {
     NewPeerConnected(I),
     BlockHandled(Box<BlockHeader>),
     GotUpgradeActivationPoint(ActivationPoint),
+    InitUpgradeShutdown,
+    Shutdown(bool),
 }
 
 #[derive(Debug)]
@@ -63,6 +65,12 @@ where
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
+            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiatied"),
+            Event::Shutdown(upgrade) => write!(
+                f,
+                "linear chain sync is ready for shutdown. upgrade: {}",
+                upgrade
+            ),
         }
     }
 }

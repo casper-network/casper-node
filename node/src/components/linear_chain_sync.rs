@@ -42,7 +42,7 @@ use self::event::{BlockByHashResult, DeploysResult};
 use super::{consensus::EraId, fetcher::FetchResult, Component};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{ActivationPoint, BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    types::{ActivationPoint, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -63,17 +63,30 @@ pub(crate) struct LinearChainSync<I> {
     /// we need to shut down for an upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
     stop_for_upgrade: bool,
+    /// Key for storing the linear chain sync state.
+    state_key: Vec<u8>,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     pub fn new(
         registry: &Registry,
+        chainspec: &Chainspec,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Self, prometheus::Error> {
         let state = init_hash.map_or(State::None, |init_hash| {
             State::sync_trusted_hash(init_hash, genesis_validator_weights)
         });
+        let state_key = state_key(&chainspec);
+        Ok(LinearChainSync {
+            peers: PeersState::new(),
+            state,
+            metrics: LinearChainSyncMetrics::new(registry)?,
+            next_upgrade_activation_point: None,
+            stop_for_upgrade: false,
+            state_key,
+        })
+    }
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
@@ -158,8 +171,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         trace!(%hash, %height, "downloaded linear chain block.");
         if block_header.switch_block() && self.should_upgrade(block_header.era_id()) {
             info!(era = block_header.era_id().0, "shutting down for upgrade");
-            self.stop_for_upgrade = true;
-            return Effects::new();
+            return effect_builder
+                .immediately()
+                .event(|_| Event::InitUpgradeShutdown);
         }
         // Reset peers before creating new requests.
         self.peers.reset(rng);
@@ -302,6 +316,26 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 panic!("Tried fetching block when in {:?} state", self.state)
             }
         }
+    }
+
+    fn handle_upgrade_shutdown<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<I>>
+    where
+        I: Send + 'static,
+        REv: ReactorEventT<I>,
+    {
+        if self.state.is_done() || self.state.is_none() {
+            error!(state=?self.state, "shutdown for upgrade initiated when in wrong state");
+            panic!(
+                "shutdown for upgrade initiated when in wrong state: {}",
+                self.state,
+            )
+        }
+        effect_builder
+            .save_state(self.state_key.clone().into(), self.state.clone())
+            .event(|_| Event::Shutdown(true))
     }
 
     fn latest_block(&self) -> Option<&BlockHeader> {
@@ -535,6 +569,16 @@ where
                 self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
                 Effects::new()
             }
+            Event::InitUpgradeShutdown => {
+                info!("shutdown initiated");
+                // Serialize and store state.
+                self.handle_upgrade_shutdown(effect_builder)
+            }
+            Event::Shutdown(upgrade) => {
+                info!(?upgrade, "ready for shutdown");
+                self.stop_for_upgrade = upgrade;
+                Effects::new()
+            }
         }
     }
 }
@@ -621,4 +665,9 @@ where
             },
             move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
         )
+}
+
+/// Returns key in the Global State under which the LinearChainSync's state is stored.
+fn state_key(chainspec: &Chainspec) -> Vec<u8> {
+    chainspec.network_config.name.clone().into()
 }

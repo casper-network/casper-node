@@ -1,11 +1,12 @@
 use std::{collections::BTreeMap, fmt::Display};
 
 use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::{BlockHash, BlockHeader};
 use casper_types::{PublicKey, U512};
 
-#[derive(DataSize, Debug)]
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub enum State {
     /// No syncing of the linear chain configured.
     None,
@@ -102,5 +103,15 @@ impl State {
                 }
             }
         };
+    }
+
+    /// Returns whether in `Done` state.
+    pub(crate) fn is_done(&self) -> bool {
+        matches!(self, State::Done)
+    }
+
+    /// Returns whether in `None` state.
+    pub(crate) fn is_none(&self) -> bool {
+        matches!(self, State::None)
     }
 }
