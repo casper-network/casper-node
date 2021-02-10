@@ -15,10 +15,14 @@ use casper_types::{PublicKey, U512};
 
 use self::event::{BlockByHashResult, DeploysResult};
 
-use super::{fetcher::FetchResult, Component};
+use super::{
+    fetcher::FetchResult,
+    storage::{self, Storage},
+    Component,
+};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    types::{BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -40,6 +44,7 @@ pub(crate) struct LinearChainFastSync<I> {
 impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
     pub fn new(
         registry: &Registry,
+        _chainspec: &Chainspec,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Self, prometheus::Error> {
@@ -51,6 +56,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
         })
+    }
+
+    /// Initialize `LinearChainSync` component from preloaded `State`.
+    pub fn from_state(
+        _registry: &Registry,
+        _chainspec: &Chainspec,
+        _state: State,
+    ) -> Result<Self, prometheus::Error> {
+        panic!("not implemented yet for fast sync")
     }
 
     /// Add new block to linear chain.
@@ -601,4 +615,13 @@ where
             },
             move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
         )
+}
+
+/// Reads the `LinearChainSync's` state from storage, if any.
+/// Panics on deserialization errors.
+pub(crate) fn read_init_state(
+    _storage: &Storage,
+    _chainspec: &Chainspec,
+) -> Result<Option<State>, storage::Error> {
+    panic!("not yet implemented for fast sync")
 }
