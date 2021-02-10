@@ -164,7 +164,7 @@ where
             stop_for_upgrade: false,
         };
 
-        let results = era_supervisor.new_era(
+        let outcomes = era_supervisor.new_era(
             EraId(0),
             timestamp,
             validators,
@@ -176,7 +176,7 @@ where
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, &mut rng)
-            .handle_consensus_results(EraId(0), results);
+            .handle_consensus_outcomes(EraId(0), outcomes);
 
         Ok((era_supervisor, effects))
     }
@@ -406,8 +406,8 @@ where
                 Effects::new()
             }
             Some(era) => {
-                let results = f(&mut *era.consensus, self.rng);
-                self.handle_consensus_results(era_id, results)
+                let outcomes = f(&mut *era.consensus, self.rng);
+                self.handle_consensus_outcomes(era_id, outcomes)
             }
         }
     }
@@ -603,7 +603,7 @@ where
         let seed =
             EraSupervisor::<I>::era_seed(booking_block_hash, block_header.accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
-        let results = self.era_supervisor.new_era(
+        let outcomes = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
@@ -613,7 +613,7 @@ where
             block_header.height() + 1,
             *block_header.state_root_hash(),
         );
-        let mut effects = self.handle_consensus_results(era_id, results);
+        let mut effects = self.handle_consensus_outcomes(era_id, outcomes);
         effects.extend(
             self.effect_builder
                 .announce_block_handled(block_header)
@@ -653,11 +653,11 @@ where
         effects
     }
 
-    fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
+    fn handle_consensus_outcomes<T>(&mut self, era_id: EraId, outcomes: T) -> Effects<Event<I>>
     where
         T: IntoIterator<Item = ProtocolOutcome<I, ClContext>>,
     {
-        results
+        outcomes
             .into_iter()
             .flat_map(|result| self.handle_consensus_result(era_id, result))
             .collect()
@@ -886,8 +886,8 @@ where
     }
 
     pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
-        let results = self.era_supervisor.finished_joining(now);
-        self.handle_consensus_results(self.era_supervisor.current_era, results)
+        let outcomes = self.era_supervisor.finished_joining(now);
+        self.handle_consensus_outcomes(self.era_supervisor.current_era, outcomes)
     }
 
     /// Handles registering an upgrade activation point.

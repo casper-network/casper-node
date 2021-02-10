@@ -588,7 +588,7 @@ where
         rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C> {
         if valid {
-            let mut results = self
+            let mut outcomes = self
                 .pending_values
                 .remove(&value.hash())
                 .into_iter()
@@ -598,9 +598,9 @@ where
                     self.add_valid_vertex(vv, rng, now)
                 })
                 .collect_vec();
-            results.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
-            results.extend(self.detect_finality());
-            results
+            outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
+            outcomes.extend(self.detect_finality());
+            outcomes
         } else {
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
