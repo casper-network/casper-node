@@ -156,7 +156,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let height = block_header.height();
         let hash = block_header.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
-        if self.should_upgrade(block_header.era_id()) {
+        if block_header.switch_block() && self.should_upgrade(block_header.era_id()) {
             info!(era = block_header.era_id().0, "shutting down for upgrade");
             self.stop_for_upgrade = true;
             return Effects::new();

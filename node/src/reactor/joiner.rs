@@ -764,14 +764,12 @@ impl reactor::Reactor for Reactor {
             Event::ConsensusAnnouncement(announcement) => match announcement {
                 ConsensusAnnouncement::Handled(block_header) => {
                     let mut effects = Effects::new();
-                    if block_header.switch_block() {
-                        let reactor_event =
-                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                    }
                     let reactor_event = Event::LinearChainSync(
                         linear_chain_sync::Event::BlockHandled(block_header),
                     );
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    let reactor_event =
+                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                     effects
                 }
