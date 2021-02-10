@@ -654,6 +654,767 @@ fn should_withdraw_bids_after_distribute() {
 
 #[ignore]
 #[test]
+fn should_distribute_rewards_after_restaking_delegated_funds() {
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let participant_portion = Ratio::new(U512::one(), U512::from(3));
+    let remainders = Ratio::from(U512::zero());
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => *VALIDATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => *VALIDATOR_1,
+            ARG_DELEGATOR => *DELEGATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
+            ARG_VALIDATOR => *VALIDATOR_1,
+            ARG_DELEGATOR => *DELEGATOR_2,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        validator_1_fund_request,
+        delegator_1_fund_request,
+        delegator_2_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_delegate_request,
+        delegator_2_delegate_request,
+    ];
+
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // initial token supply
+    let initial_supply_1 = builder.total_supply(None);
+    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply_1;
+    let expected_total_reward_1_integer = expected_total_reward_1.to_integer();
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    let reward_factors: BTreeMap<PublicKey, u64> = {
+        let mut tmp = BTreeMap::new();
+        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp
+    };
+
+    let distribute_request_1 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request_1).commit().expect_success();
+
+    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        .expect("should have validator bid")
+        .staked_amount();
+    let delegator_1_staked_amount_1 =
+        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+    let delegator_2_staked_amount_1 =
+        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+
+    let validator_1_updated_stake_1 = {
+        let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
+        let validator_stake_after = validator_1_staked_amount_1;
+
+        validator_stake_after - validator_stake_before
+    };
+
+    let expected_validator_1_balance_ratio_1 =
+        expected_total_reward_1 * participant_portion + remainders;
+    let expected_validator_1_payout_1 = expected_validator_1_balance_ratio_1.to_integer();
+    assert_eq!(
+        validator_1_updated_stake_1, expected_validator_1_payout_1,
+        "rhs {}",
+        expected_validator_1_balance_ratio_1
+    );
+
+    let delegator_1_updated_stake_1 = {
+        let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
+        let delegator_stake_after = delegator_1_staked_amount_1;
+
+        delegator_stake_after - delegator_stake_before
+    };
+    let expected_delegator_1_payout_1 =
+        (expected_total_reward_1 * participant_portion).to_integer();
+    assert_eq!(delegator_1_updated_stake_1, expected_delegator_1_payout_1);
+
+    let delegator_2_updated_stake_1 = {
+        let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
+        let delegator_stake_after = delegator_2_staked_amount_1;
+        delegator_stake_after - delegator_stake_before
+    };
+    let expected_delegator_2_payout_1 =
+        (expected_total_reward_1 * participant_portion).to_integer();
+    assert_eq!(delegator_2_updated_stake_1, expected_delegator_2_payout_1);
+
+    let total_payout_1 =
+        validator_1_updated_stake_1 + delegator_1_updated_stake_1 + delegator_2_updated_stake_1;
+    assert_eq!(total_payout_1, expected_total_reward_1_integer);
+
+    let era_info_1 = {
+        let era = builder.get_era();
+
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
+            .expect("should have value");
+
+        era_info_value
+            .as_era_info()
+            .cloned()
+            .expect("should be era info")
+    };
+
+    assert!(matches!(
+        era_info_1.select(*VALIDATOR_1).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout_1
+    ));
+
+    assert!(matches!(
+        era_info_1.select(*DELEGATOR_1).next(),
+        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
+        if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_payout_1
+    ));
+
+    assert!(matches!(
+        era_info_1.select(*DELEGATOR_2).next(),
+        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
+        if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_2_payout_1
+    ));
+
+    // Next round of rewards
+    for _ in 0..5 {
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    let distribute_request_2 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors,
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request_2).commit().expect_success();
+
+    let total_supply_2 = builder.total_supply(None);
+    assert!(total_supply_2 > initial_supply_1);
+
+    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE
+        * (initial_supply_1
+            + expected_validator_1_payout_1
+            + expected_delegator_1_payout_1
+            + expected_delegator_2_payout_1);
+
+    let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
+
+    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        .expect("should have validator bid")
+        .staked_amount();
+    let delegator_1_staked_amount_2 =
+        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+    let delegator_2_staked_amount_2 =
+        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+
+    let validator_1_updated_stake_2 = {
+        let validator_stake_before = validator_1_staked_amount_1;
+        let validator_stake_after = validator_1_staked_amount_2;
+        validator_stake_after - validator_stake_before
+    };
+
+    let delegator_1_updated_stake_2 = {
+        let delegator_stake_before = delegator_1_staked_amount_1;
+        let delegator_stake_after = delegator_1_staked_amount_2;
+
+        delegator_stake_after - delegator_stake_before
+    };
+    let expected_delegator_1_payout_2 =
+        (expected_total_reward_2 * participant_portion).to_integer();
+    assert_eq!(delegator_1_updated_stake_2, expected_delegator_1_payout_2);
+
+    let delegator_2_updated_stake_2 = {
+        let delegator_stake_before = delegator_2_staked_amount_1;
+        let delegator_stake_after = delegator_2_staked_amount_2;
+        delegator_stake_after - delegator_stake_before
+    };
+    let expected_delegator_2_payout_2 =
+        (expected_total_reward_2 * participant_portion).to_integer();
+    assert_eq!(delegator_2_updated_stake_2, expected_delegator_2_payout_2);
+
+    // Ensure that paying out next set of rewards gives higher payouts than previous time.
+    assert!(validator_1_updated_stake_2 > validator_1_updated_stake_1);
+    assert!(delegator_1_updated_stake_2 > delegator_1_updated_stake_1);
+    assert!(delegator_2_updated_stake_2 > delegator_2_updated_stake_1);
+
+    let total_payout_2 =
+        validator_1_updated_stake_2 + delegator_1_updated_stake_2 + delegator_2_updated_stake_2;
+    assert_eq!(total_payout_2, expected_total_reward_2_integer);
+    assert!(total_payout_2 > total_payout_1);
+
+    let era_info_2 = {
+        let era = builder.get_era();
+
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
+            .expect("should have value");
+
+        era_info_value
+            .as_era_info()
+            .cloned()
+            .expect("should be era info")
+    };
+    assert_ne!(era_info_2, era_info_1);
+
+    let expected_validator_1_balance_ratio_2 =
+        expected_total_reward_2 * participant_portion + remainders;
+
+    assert!(expected_validator_1_balance_ratio_2 > expected_validator_1_balance_ratio_1);
+
+    let expected_validator_1_payout_2 = expected_validator_1_balance_ratio_2.to_integer();
+
+    assert!(matches!(
+        era_info_2.select(*VALIDATOR_1).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount, .. })
+        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout_2
+    ));
+
+    assert!(matches!(
+        era_info_2.select(*DELEGATOR_1).next(),
+        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
+        if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_payout_2
+    ));
+
+    assert!(matches!(
+        era_info_2.select(*DELEGATOR_2).next(),
+        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
+        if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_2_payout_2
+    ));
+
+    // Withdraw delegator rewards
+    let delegator_1_rewards = delegator_1_updated_stake_1 + delegator_1_updated_stake_2;
+    assert!(delegator_1_rewards > U512::from(DELEGATOR_1_STAKE));
+    undelegate(
+        &mut builder,
+        *DELEGATOR_1_ADDR,
+        *DELEGATOR_1,
+        *VALIDATOR_1,
+        delegator_1_rewards,
+    );
+    let remaining_delegator_1_bid = get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_1)
+        .expect("should have delegator bid");
+    assert_eq!(
+        *remaining_delegator_1_bid.staked_amount(),
+        U512::from(DELEGATOR_1_STAKE)
+    );
+
+    let delegator_2_rewards = delegator_2_updated_stake_1 + delegator_2_updated_stake_2;
+    assert!(delegator_2_rewards > U512::from(DELEGATOR_2_STAKE));
+    undelegate(
+        &mut builder,
+        *DELEGATOR_2_ADDR,
+        *DELEGATOR_2,
+        *VALIDATOR_1,
+        delegator_2_rewards,
+    );
+    let remaining_delegator_2_bid = get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_2)
+        .expect("should have delegator bid");
+    assert_eq!(
+        *remaining_delegator_2_bid.staked_amount(),
+        U512::from(DELEGATOR_2_STAKE)
+    );
+
+    // Withdraw validator rewards
+    let validator_1_rewards = validator_1_updated_stake_1 + validator_1_updated_stake_2;
+    assert!(validator_1_rewards > U512::from(VALIDATOR_1_STAKE));
+    withdraw_bid(
+        &mut builder,
+        *VALIDATOR_1_ADDR,
+        *VALIDATOR_1,
+        validator_1_rewards,
+    );
+    let remaining_validator_1_bid =
+        get_validator_bid(&mut builder, *VALIDATOR_1).expect("should have validator bid");
+    assert_eq!(
+        *remaining_validator_1_bid.staked_amount(),
+        U512::from(VALIDATOR_1_STAKE)
+    );
+}
+
+#[ignore]
+#[test]
+fn should_distribute_reinvested_rewards_by_different_factor() {
+    const VALIDATOR_1_STAKE: u64 = 4_000_000;
+    const VALIDATOR_2_STAKE: u64 = 2_000_000;
+    const VALIDATOR_3_STAKE: u64 = 1_000_000;
+
+    const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
+
+    const VALIDATOR_1_REWARD_FACTOR_1: u64 = 333333333334;
+    const VALIDATOR_2_REWARD_FACTOR_1: u64 = 333333333333;
+    const VALIDATOR_3_REWARD_FACTOR_1: u64 = 333333333333;
+
+    const VALIDATOR_1_REWARD_FACTOR_2: u64 = 333333333333;
+    const VALIDATOR_2_REWARD_FACTOR_2: u64 = 333333333333;
+    const VALIDATOR_3_REWARD_FACTOR_2: u64 = 333333333334;
+
+    let one_third = Ratio::new(U512::one(), U512::from(3));
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_3_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_3_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
+            ARG_PUBLIC_KEY => *VALIDATOR_1,
+        },
+    )
+    .build();
+
+    let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_2_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
+            ARG_PUBLIC_KEY => *VALIDATOR_2,
+        },
+    )
+    .build();
+
+    let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_3_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
+            ARG_PUBLIC_KEY => *VALIDATOR_3,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        validator_1_fund_request,
+        validator_2_fund_request,
+        validator_3_fund_request,
+        validator_1_add_bid_request,
+        validator_2_add_bid_request,
+        validator_3_add_bid_request,
+    ];
+
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // initial token supply
+    let initial_supply = builder.total_supply(None);
+    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let expected_total_reward_1_integer = expected_total_reward_1.to_integer();
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    let reward_factors_1: BTreeMap<PublicKey, u64> = {
+        let mut tmp = BTreeMap::new();
+        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR_1);
+        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR_1);
+        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR_1);
+        tmp
+    };
+
+    let distribute_request_1 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors_1,
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request_1).commit().expect_success();
+
+    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        .expect("should have validator bid")
+        .staked_amount();
+
+    let validator_2_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        .expect("should have validator bid")
+        .staked_amount();
+
+    let validator_3_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        .expect("should have validator bid")
+        .staked_amount();
+
+    let validator_1_updated_stake_1 = {
+        let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
+        let validator_stake_after = validator_1_staked_amount_1;
+        validator_stake_after - validator_stake_before
+    };
+    let expected_validator_1_payout = (expected_total_reward_1 * one_third).to_integer();
+    assert_eq!(validator_1_updated_stake_1, expected_validator_1_payout);
+
+    let rounded_amount = U512::one();
+
+    let validator_2_updated_stake_1 = {
+        let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
+        let validator_stake_after = validator_2_staked_amount_1;
+        validator_stake_after - validator_stake_before
+    };
+    let expected_validator_2_payout_1 =
+        (expected_total_reward_1 * one_third - rounded_amount).to_integer();
+    assert_eq!(validator_2_updated_stake_1, expected_validator_2_payout_1);
+
+    let validator_3_updated_stake_1 = {
+        let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
+        let validator_stake_after = validator_3_staked_amount_1;
+        validator_stake_after - validator_stake_before
+    };
+    let expected_validator_3_payout_1 =
+        (expected_total_reward_1 * one_third - rounded_amount).to_integer();
+    assert_eq!(validator_3_updated_stake_1, expected_validator_3_payout_1);
+
+    let total_payout =
+        validator_1_updated_stake_1 + validator_2_updated_stake_1 + expected_validator_3_payout_1;
+    let rounded_amount = U512::from(2);
+    assert_eq!(
+        total_payout,
+        expected_total_reward_1_integer - rounded_amount
+    );
+
+    let era_info_1 = {
+        let era = builder.get_era();
+
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
+            .expect("should have value");
+
+        era_info_value
+            .as_era_info()
+            .cloned()
+            .expect("should be era info")
+    };
+
+    assert!(matches!(
+        era_info_1.select(*VALIDATOR_1).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+    ));
+
+    assert!(matches!(
+        era_info_1.select(*VALIDATOR_2).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout_1
+    ));
+
+    assert!(matches!(
+        era_info_1.select(*VALIDATOR_3).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout_1
+    ));
+
+    // New rewards
+
+    for _ in 0..5 {
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    let reward_factors_2 = {
+        let mut tmp = BTreeMap::new();
+        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR_2);
+        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR_2);
+        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR_2);
+        tmp
+    };
+
+    let distribute_request_2 = ExecuteRequestBuilder::standard(
+        SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors_2,
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request_2).commit().expect_success();
+
+    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE
+        * (initial_supply
+            + validator_1_staked_amount_1
+            + validator_2_staked_amount_1
+            + validator_3_staked_amount_1);
+    let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
+
+    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        .expect("should have validator bid")
+        .staked_amount();
+
+    let validator_2_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        .expect("should have validator bid")
+        .staked_amount();
+
+    let validator_3_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        .expect("should have validator bid")
+        .staked_amount();
+
+    let rounded_amount = U512::one();
+
+    let validator_1_updated_stake_2 = {
+        let validator_stake_before = validator_1_staked_amount_1;
+        let validator_stake_after = validator_1_staked_amount_2;
+        validator_stake_after - validator_stake_before
+    };
+    let expected_validator_1_payout_2 =
+        (expected_total_reward_2 * one_third - rounded_amount).to_integer();
+    assert_eq!(validator_1_updated_stake_2, expected_validator_1_payout_2);
+
+    let validator_2_updated_stake_2 = {
+        let validator_stake_before = validator_2_staked_amount_1;
+        let validator_stake_after = validator_2_staked_amount_2;
+        validator_stake_after - validator_stake_before
+    };
+    let expected_validator_2_payout_2 =
+        (expected_total_reward_2 * one_third - rounded_amount).to_integer();
+    assert_eq!(validator_2_updated_stake_2, expected_validator_2_payout_2);
+
+    let validator_3_updated_stake_2 = {
+        let validator_stake_before = validator_3_staked_amount_1;
+        let validator_stake_after = validator_3_staked_amount_2;
+        validator_stake_after - validator_stake_before
+    };
+    let expected_validator_3_payout_2 = (expected_total_reward_2 * one_third).to_integer();
+    assert_eq!(validator_3_updated_stake_2, expected_validator_3_payout_2);
+
+    assert!(validator_1_updated_stake_2 > validator_1_updated_stake_1);
+    assert!(validator_2_updated_stake_2 > validator_2_updated_stake_1);
+    assert!(validator_3_updated_stake_2 > validator_3_updated_stake_1);
+
+    let total_payout_2 =
+        validator_1_updated_stake_2 + validator_2_updated_stake_2 + expected_validator_3_payout_2;
+    let rounded_amount = U512::from(2);
+    assert_eq!(
+        total_payout_2,
+        expected_total_reward_2_integer - rounded_amount
+    );
+
+    let era_info_2 = {
+        let era = builder.get_era();
+
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
+            .expect("should have value");
+
+        era_info_value
+            .as_era_info()
+            .cloned()
+            .expect("should be era info")
+    };
+
+    assert_ne!(era_info_1, era_info_2);
+
+    assert!(matches!(
+        era_info_2.select(*VALIDATOR_1).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout_2
+    ));
+
+    assert!(matches!(
+        era_info_2.select(*VALIDATOR_2).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout_2
+    ));
+
+    assert!(matches!(
+        era_info_2.select(*VALIDATOR_3).next(),
+        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout_2
+    ));
+
+    // Ensure validators can withdraw their reinvested rewards
+    let validator_1_reward = validator_1_updated_stake_1 + validator_1_updated_stake_2;
+    assert!(validator_1_reward > U512::from(VALIDATOR_1_STAKE));
+    withdraw_bid(
+        &mut builder,
+        *VALIDATOR_1_ADDR,
+        *VALIDATOR_1,
+        validator_1_reward,
+    );
+    let remaining_validator_1_bid =
+        get_validator_bid(&mut builder, *VALIDATOR_1).expect("should have validator bid");
+    assert_eq!(
+        *remaining_validator_1_bid.staked_amount(),
+        U512::from(VALIDATOR_1_STAKE)
+    );
+
+    let validator_2_reward = validator_2_updated_stake_1 + validator_2_updated_stake_2;
+    assert!(validator_2_reward > U512::from(VALIDATOR_2_STAKE));
+    withdraw_bid(
+        &mut builder,
+        *VALIDATOR_2_ADDR,
+        *VALIDATOR_2,
+        validator_2_reward,
+    );
+    let remaining_validator_2_bid =
+        get_validator_bid(&mut builder, *VALIDATOR_2).expect("should have validator bid");
+    assert_eq!(
+        *remaining_validator_2_bid.staked_amount(),
+        U512::from(VALIDATOR_2_STAKE)
+    );
+
+    let validator_3_reward = validator_3_updated_stake_1 + validator_3_updated_stake_2;
+    assert!(validator_3_reward > U512::from(VALIDATOR_3_STAKE));
+    withdraw_bid(
+        &mut builder,
+        *VALIDATOR_3_ADDR,
+        *VALIDATOR_3,
+        validator_3_reward,
+    );
+    let remaining_validator_3_bid =
+        get_validator_bid(&mut builder, *VALIDATOR_3).expect("should have validator bid");
+    assert_eq!(
+        *remaining_validator_3_bid.staked_amount(),
+        U512::from(VALIDATOR_3_STAKE)
+    );
+}
+
+#[ignore]
+#[test]
 fn should_distribute_delegation_rate_half() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
