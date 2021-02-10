@@ -24,7 +24,9 @@ use crate::{
         EffectBuilder, EffectExt, EffectOptionExt, EffectResultExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
+    types::{
+        Block, BlockByHeight, BlockHash, BlockSignatures, DeployHash, FinalitySignature, Timestamp,
+    },
     NodeRng,
 };
 
@@ -421,6 +423,9 @@ where
             } => {
                 self.latest_block = Some(*block.clone());
 
+                let completion_duration = Timestamp::now().millis() - block.header().timestamp().millis();
+                self.metrics.block_completion_duration.set(completion_duration as i64);
+
                 let block_header = block.take_header();
                 let block_hash = block_header.hash();
                 let era_id = block_header.era_id();
@@ -604,21 +609,20 @@ where
 
 #[derive(Debug)]
 struct LinearChainMetrics {
-    /// Time in milliseconds since the unix epoch that the last block was added.
-    time_of_last_added_block: IntGauge,
+    block_completion_duration: IntGauge,
     /// Prometheus registry used to publish metrics.
     registry: Registry,
 }
 
 impl LinearChainMetrics {
     pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let time_of_last_added_block = IntGauge::new(
-            "time_of_last_added_block",
-            "time in milliseconds since the unix epoch that the last block was added",
+        let block_completion_duration = IntGauge::new(
+            "block_completion_duration",
+            "duration of time from consensus through execution for a block",
         )?;
-        registry.register(Box::new(time_of_last_added_block.clone()))?;
+        registry.register(Box::new(block_completion_duration.clone()))?;
         Ok(Self {
-            time_of_last_added_block,
+            block_completion_duration,
             registry: registry.clone(),
         })
     }
@@ -626,9 +630,9 @@ impl LinearChainMetrics {
 impl Drop for LinearChainMetrics {
     fn drop(&mut self) {
         self.registry
-            .unregister(Box::new(self.time_of_last_added_block.clone()))
+            .unregister(Box::new(self.block_completion_duration.clone()))
             .unwrap_or_else(
-                |err| warn!(%err, "did not expect unregister of time_of_last_added_block to fail"),
+                |err| warn!(%err, "did not expect unregister of block_completion_duration to fail"),
             );
     }
 }
