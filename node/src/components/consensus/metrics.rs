@@ -1,4 +1,4 @@
-use prometheus::{Gauge, IntCounter, IntGauge, Registry};
+use prometheus::{Gauge, IntGauge, Registry};
 
 use crate::types::{FinalizedBlock, Timestamp};
 
@@ -8,7 +8,7 @@ pub struct ConsensusMetrics {
     /// Gauge to track time between proposal and finalization.
     finalization_time: Gauge,
     /// Amount of finalized blocks.
-    finalized_block_count: IntCounter,
+    finalized_block_count: IntGauge,
     /// Timestamp of the most recently accepted proto block.
     time_of_last_proposed_block: IntGauge,
     /// Timestamp of the most recently finalized block.
@@ -26,7 +26,7 @@ impl ConsensusMetrics {
             "the amount of time, in milliseconds, between proposal and finalization of a block",
         )?;
         let finalized_block_count =
-            IntCounter::new("amount_of_blocks", "the number of blocks finalized so far")?;
+            IntGauge::new("amount_of_blocks", "the number of blocks finalized so far")?;
         let time_of_last_proposed_block = IntGauge::new(
             "time_of_last_proto_block",
             "timestamp of the most recently accepted proto block",
@@ -57,7 +57,8 @@ impl ConsensusMetrics {
         self.finalization_time.set(time_since_proto_block);
         self.time_of_last_finalized_block
             .set(finalized_block.timestamp().millis() as i64);
-        self.finalized_block_count.inc();
+        self.finalized_block_count
+            .set(finalized_block.height() as i64);
     }
 
     /// Updates the metrics and records a newly proposed block.
