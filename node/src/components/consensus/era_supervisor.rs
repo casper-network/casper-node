@@ -104,7 +104,7 @@ pub struct EraSupervisor<I> {
     finished_joining: bool,
     /// The path to the folder where unit hash files will be stored.
     unit_hashes_folder: PathBuf,
-    /// The next upgrade activation point.  When the era immediately before the activation point is
+    /// The next upgrade activation point. When the era immediately before the activation point is
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
@@ -553,14 +553,10 @@ where
         if faulty_num == old_faulty_num {
             info!(era = era_id.0, "stop voting in era");
             era.consensus.deactivate_validator();
-            if let Some(upgrade_activation_point) =
-                self.era_supervisor.next_upgrade_activation_point
-            {
+            if self.should_upgrade_after(&era_id) {
                 // If the next era is at or after the upgrade activation point, stop the node.
-                if upgrade_activation_point.should_upgrade(&era_id) {
-                    info!(era = era_id.0, "shutting down for upgrade");
-                    self.era_supervisor.stop_for_upgrade = true;
-                }
+                info!(era = era_id.0, "shutting down for upgrade");
+                self.era_supervisor.stop_for_upgrade = true;
             }
             Effects::new()
         } else {
@@ -911,6 +907,13 @@ where
         self.effect_builder
             .announce_disconnect_from_peer(sender)
             .ignore()
+    }
+
+    pub(super) fn should_upgrade_after(&self, era_id: &EraId) -> bool {
+        match self.era_supervisor.next_upgrade_activation_point {
+            None => false,
+            Some(upgrade_point) => upgrade_point.should_upgrade(&era_id),
+        }
     }
 }
 

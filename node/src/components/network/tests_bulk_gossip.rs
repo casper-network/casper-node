@@ -13,7 +13,7 @@ use tracing::info;
 
 use casper_node_macros::reactor;
 
-use super::ENABLE_SMALL_NET_ENV_VAR;
+use super::ENABLE_LIBP2P_NET_ENV_VAR;
 use crate::{
     components::{
         collector::Collectable,
@@ -133,8 +133,8 @@ impl Display for DummyPayload {
 async fn send_large_message_across_network() {
     testing::init_logging();
 
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
-        eprintln!("{} set, skipping test", ENABLE_SMALL_NET_ENV_VAR);
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
+        eprintln!("{} set, skipping test", ENABLE_LIBP2P_NET_ENV_VAR);
         return;
     }
 

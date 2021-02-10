@@ -193,6 +193,13 @@ pub trait Reactor: Sized {
         false
     }
 
+    /// Indicates that the reactor shut down due to the restart.
+    /// Should no longer dispatch events.
+    #[inline]
+    fn needs_upgrade(&mut self) -> bool {
+        false
+    }
+
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
@@ -323,6 +330,12 @@ impl Drop for RunnerMetrics {
             .expect("did not expect deregistering event_dispatch_duration to fail");
     }
 }
+
+/// Exit status of a runner instance.
+pub type RunnerExitStatus = Result<(), u8>;
+
+/// Exit code indicating that node should shut down for a scheduled upgrade.
+pub const UPGRADE_EXIT_CODE: u8 = 0;
 
 impl<R> Runner<R>
 where
@@ -578,10 +591,14 @@ where
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) {
+    pub async fn run(&mut self, rng: &mut NodeRng) -> RunnerExitStatus {
         while !self.reactor.is_stopped() {
+            if self.reactor.needs_upgrade() {
+                return RunnerExitStatus::Err(UPGRADE_EXIT_CODE);
+            }
             self.crank(rng).await;
         }
+        RunnerExitStatus::Ok(())
     }
 
     /// Returns a reference to the reactor.

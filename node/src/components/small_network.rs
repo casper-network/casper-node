@@ -85,9 +85,8 @@ use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
     components::{
-        network::ENABLE_SMALL_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
+        network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
     },
-    crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -154,9 +153,9 @@ where
     pending: HashSet<SocketAddr>,
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
-    /// The hash of the chainspec.  We only remain connected to peers with the same
-    /// `genesis_config_hash` as us.
-    genesis_config_hash: Digest,
+    /// Name of the network we participate in. We only remain connected to peers with the same
+    /// network name as us.
+    network_name: String,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -191,7 +190,7 @@ where
         cfg: Config,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
-        genesis_config_hash: Digest,
+        network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         // Assert we have at least one known address in the config.
@@ -209,9 +208,9 @@ where
 
         let net_metrics = NetworkingMetrics::new(&registry)?;
 
-        // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without starting the
+        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
                 certificate,
                 secret_key,
@@ -224,7 +223,7 @@ where
                 pending: HashSet::new(),
                 blocklist: HashSet::new(),
                 gossip_interval: cfg.gossip_interval,
-                genesis_config_hash,
+                network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
@@ -285,7 +284,7 @@ where
             pending: HashSet::new(),
             blocklist: HashSet::new(),
             gossip_interval: cfg.gossip_interval,
-            genesis_config_hash,
+            network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -435,7 +434,7 @@ where
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
-                    genesis_config_hash: self.genesis_config_hash,
+                    network_name: self.network_name.clone(),
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -534,7 +533,7 @@ where
         let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
         let handshake = Message::Handshake {
-            genesis_config_hash: self.genesis_config_hash,
+            network_name: self.network_name.clone(),
         };
         let peer_id_cloned = peer_id.clone();
         effects.extend(
@@ -678,25 +677,30 @@ where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
         match msg {
-            Message::Handshake {
-                genesis_config_hash,
-            } => {
-                if genesis_config_hash != self.genesis_config_hash {
+            Message::Handshake { network_name } => {
+                if network_name != self.network_name {
                     info!(
                         our_id=%self.our_id,
                         %peer_id,
-                        our_hash=?self.genesis_config_hash,
-                        their_hash=?genesis_config_hash,
-                        "dropping connection due to genesis config hash mismatch"
+                        our_network=?self.network_name,
+                        their_network=?network_name,
+                        "dropping connection due to network name mismatch"
                     );
-                    return self.remove(effect_builder, &peer_id, false);
+                    let remove = self.remove(effect_builder, &peer_id, false);
+                    self.update_peers_metric();
+                    return remove;
                 }
+                self.update_peers_metric();
                 Effects::new()
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
                 .ignore(),
         }
+    }
+
+    fn update_peers_metric(&mut self) {
+        self.net_metrics.peers.set(self.peers().len() as i64);
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
@@ -817,7 +821,7 @@ where
                     Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
                     Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
                 }
-            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+            } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
         }

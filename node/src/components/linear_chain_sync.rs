@@ -39,10 +39,10 @@ use casper_types::{PublicKey, U512};
 
 use self::event::{BlockByHashResult, DeploysResult};
 
-use super::{fetcher::FetchResult, Component};
+use super::{consensus::EraId, fetcher::FetchResult, Component};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockByHeight, BlockHash, FinalizedBlock},
+    types::{ActivationPoint, Block, BlockByHeight, BlockHash, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -58,6 +58,11 @@ pub(crate) struct LinearChainSync<I> {
     state: State,
     #[data_size(skip)]
     metrics: LinearChainSyncMetrics,
+    /// The next upgrade activation point.
+    /// When we download the switch block of an era immediately before the activation point,
+    /// we need to shut down for an upgrade.
+    next_upgrade_activation_point: Option<ActivationPoint>,
+    stop_for_upgrade: bool,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
@@ -73,6 +78,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
+            next_upgrade_activation_point: None,
+            stop_for_upgrade: false,
         })
     }
 
@@ -88,6 +95,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
         matches!(self.state, State::None | State::Done)
+    }
+
+    /// Returns `true` if we should stop for upgrade.
+    pub fn stopped_for_upgrade(&self) -> bool {
+        self.stop_for_upgrade
     }
 
     fn block_downloaded<REv>(
@@ -144,6 +156,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let height = block.height();
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
+        if block.header().switch_block() && self.should_upgrade(block.header().era_id()) {
+            info!(era = block.header().era_id().0, "shutting down for upgrade");
+            self.stop_for_upgrade = true;
+            return Effects::new();
+        }
         // Reset peers before creating new requests.
         self.peers.reset(rng);
         let block_height = block.height();
@@ -292,6 +309,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
             State::Done | State::None => None,
+        }
+    }
+
+    fn should_upgrade(&self, era_id: EraId) -> bool {
+        match self.next_upgrade_activation_point {
+            None => false,
+            Some(activation_point) => activation_point.should_upgrade(&era_id),
         }
     }
 }
@@ -505,6 +529,11 @@ where
                 let effects = self.block_handled(rng, effect_builder, *block);
                 trace!(%block_height, %block_hash, "block handled");
                 effects
+            }
+            Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
+                trace!(?next_upgrade_activation_point, "new activation point");
+                self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
+                Effects::new()
             }
         }
     }
