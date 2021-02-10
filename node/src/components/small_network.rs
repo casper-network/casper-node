@@ -452,8 +452,6 @@ where
                     .open_connections
                     .set(self.incoming.len() as i64);
 
-                self.net_metrics.peers.set(self.peers().len() as i64);
-
                 // If the connection is now complete, announce the new peer before starting reader.
                 effects.extend(self.check_connection_complete(effect_builder, peer_id.clone()));
 
@@ -690,12 +688,17 @@ where
                     );
                     return self.remove(effect_builder, &peer_id, false);
                 }
+                self.update_peers_metric();
                 Effects::new()
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
                 .ignore(),
         }
+    }
+
+    fn update_peers_metric(&mut self) {
+        self.net_metrics.peers.set(self.peers().len() as i64);
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
