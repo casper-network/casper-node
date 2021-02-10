@@ -413,13 +413,18 @@ where
                         trace!("received `Start` event when in {} state.", self.state);
                         Effects::new()
                     }
-                    State::Done | State::SyncingDescendants { .. } => {
+                    State::Done => {
                         // Illegal states for syncing start.
-                        error!(
-                            "should not have received `Start` event when in {} state.",
-                            self.state
-                        );
+                        error!("should not have received `Start` event when in `Done` state.",);
                         Effects::new()
+                    }
+                    State::SyncingDescendants {
+                        ref latest_block, ..
+                    } => {
+                        let next_block_height = latest_block.height() + 1;
+                        info!(?next_block_height, "start synchronization");
+                        self.metrics.reset_start_time();
+                        fetch_block_at_height(effect_builder, init_peer, next_block_height)
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
                         trace!(?trusted_hash, "start synchronization");
