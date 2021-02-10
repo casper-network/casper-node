@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{PublicKey, U512};
 
@@ -65,6 +65,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
         matches!(self.state, State::None | State::Done)
+    }
+
+    /// Fast sync won't shut down for an upgrade.
+    pub fn stopped_for_upgrade(&self) -> bool {
+        false
     }
 
     fn block_downloaded<REv>(
@@ -502,6 +507,13 @@ where
                 let effects = self.block_handled(rng, effect_builder, *header);
                 trace!(%block_height, %block_hash, "block handled.");
                 effects
+            }
+            Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
+                debug!(
+                    ?next_upgrade_activation_point,
+                    "new activation point ignored"
+                );
+                Effects::new()
             }
         }
     }

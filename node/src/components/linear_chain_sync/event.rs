@@ -1,4 +1,4 @@
-use crate::types::{Block, BlockHash, BlockHeader};
+use crate::types::{ActivationPoint, Block, BlockHash, BlockHeader};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
@@ -10,6 +10,7 @@ pub enum Event<I> {
     StartDownloadingDeploys,
     NewPeerConnected(I),
     BlockHandled(Box<BlockHeader>),
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 #[derive(Debug)]
@@ -58,6 +59,9 @@ where
             }
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
             }
         }
     }

@@ -241,7 +241,7 @@ impl Display for LinearChainAnnouncement {
 /// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
 pub enum ChainspecLoaderAnnouncement {
-    /// New finality signature received.
+    /// New upgrade recognized.
     UpgradeActivationPointRead(NextUpgrade),
 }
 
