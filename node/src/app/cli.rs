@@ -144,7 +144,7 @@ impl Cli {
                 setup_signal_hooks();
 
                 let validator_config = Self::init(&config, config_ext)?;
-                info!(version = %env!("CARGO_PKG_VERSION"), "node starting up");
+                info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
