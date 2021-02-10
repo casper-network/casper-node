@@ -475,7 +475,7 @@ impl reactor::Reactor for Reactor {
 
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
 
-        let linear_chain = linear_chain::LinearChain::new();
+        let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()

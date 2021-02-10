@@ -448,7 +448,7 @@ impl reactor::Reactor for Reactor {
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
             .with_parent_map(latest_block);
         let (proto_block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
-        let linear_chain = LinearChain::new();
+        let linear_chain = LinearChain::new(registry)?;
 
         effects.extend(reactor::wrap_effects(
             Event::ProtoBlockValidator,
