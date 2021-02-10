@@ -144,18 +144,6 @@ impl Bid {
         Ok(updated_staked_amount)
     }
 
-    // /// Increases the seigniorage reward of the provided bid
-    // pub fn increase_reward(&mut self, amount: U512) -> Result<U512, Error> {
-    //     let updated_reward = self
-    //         .reward
-    //         .checked_add(amount)
-    //         .ok_or(Error::InvalidAmount)?;
-
-    //     self.reward = updated_reward;
-
-    //     Ok(updated_reward)
-    // }
-
     /// Updates the delegation rate of the provided bid
     pub fn with_delegation_rate(&mut self, delegation_rate: DelegationRate) -> &mut Self {
         self.delegation_rate = delegation_rate;
