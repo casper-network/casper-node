@@ -1279,6 +1279,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
             + validator_1_staked_amount_1
             + validator_2_staked_amount_1
             + validator_3_staked_amount_1);
+    assert!(expected_total_reward_2 > expected_total_reward_1);
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
 
     let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_1)
@@ -1300,6 +1301,8 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         let validator_stake_after = validator_1_staked_amount_2;
         validator_stake_after - validator_stake_before
     };
+    assert!(validator_1_updated_stake_2 > validator_1_updated_stake_1);
+
     let expected_validator_1_payout_2 =
         (expected_total_reward_2 * one_third - rounded_amount).to_integer();
     assert_eq!(validator_1_updated_stake_2, expected_validator_1_payout_2);
@@ -1309,6 +1312,8 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         let validator_stake_after = validator_2_staked_amount_2;
         validator_stake_after - validator_stake_before
     };
+    assert!(validator_2_updated_stake_2 > validator_2_updated_stake_1);
+
     let expected_validator_2_payout_2 =
         (expected_total_reward_2 * one_third - rounded_amount).to_integer();
     assert_eq!(validator_2_updated_stake_2, expected_validator_2_payout_2);
@@ -1320,6 +1325,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     };
     let expected_validator_3_payout_2 = (expected_total_reward_2 * one_third).to_integer();
     assert_eq!(validator_3_updated_stake_2, expected_validator_3_payout_2);
+    assert!(validator_3_updated_stake_2 > validator_3_updated_stake_1);
 
     assert!(validator_1_updated_stake_2 > validator_1_updated_stake_1);
     assert!(validator_2_updated_stake_2 > validator_2_updated_stake_1);
