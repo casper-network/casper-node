@@ -686,7 +686,9 @@ where
                         their_network=?network_name,
                         "dropping connection due to network name mismatch"
                     );
-                    return self.remove(effect_builder, &peer_id, false);
+                    let remove = self.remove(effect_builder, &peer_id, false);
+                    self.update_peers_metric();
+                    return remove;
                 }
                 self.update_peers_metric();
                 Effects::new()
