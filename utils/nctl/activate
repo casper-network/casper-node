@@ -8,8 +8,12 @@
 export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Set casper-node root.
-export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
+NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
 export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
+
+# Set casper-node-launcher root.
+NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
+export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
 
 # Set type of daemon to run.
 export NCTL_DAEMON_TYPE=${NCTL_DAEMON_TYPE:-supervisord}
@@ -34,6 +38,7 @@ alias nctl-assets-teardown='source $NCTL/sh/assets/teardown.sh'
 alias nctl-compile='source $NCTL/sh/assets/compile.sh'
 alias nctl-compile-client='source $NCTL/sh/assets/compile_client.sh'
 alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
+alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
 
 # Node control.
 alias nctl-clean='source $NCTL/sh/node/clean.sh'
