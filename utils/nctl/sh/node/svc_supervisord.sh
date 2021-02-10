@@ -79,7 +79,7 @@ function do_node_status()
     do_supervisord_start
 
     # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME"
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME" || true
 }
 
 #######################################
@@ -93,7 +93,7 @@ function do_node_status_all()
     do_supervisord_start
 
     # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" status all
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" status all || true
 }
 
 #######################################
