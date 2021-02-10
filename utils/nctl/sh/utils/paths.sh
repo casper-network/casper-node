@@ -55,6 +55,14 @@ function get_path_to_net()
 }
 
 #######################################
+# Returns path to a network's binary folder.
+#######################################
+function get_path_to_net_bin()
+{
+    echo "$(get_path_to_net)"/bin
+}
+
+#######################################
 # Returns path to a network's dump folder.
 # Globals:
 #   NCTL - path to nctl home directory.
@@ -94,6 +102,16 @@ function get_path_to_node()
     local NODE_ID=${1} 
 
     echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"
+}
+
+#######################################
+# Returns path to a node's binary folder.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_bin()
+{
+    echo "$(get_path_to_node "$1")"/bin
 }
 
 #######################################
