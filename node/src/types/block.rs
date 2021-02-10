@@ -777,6 +777,21 @@ impl BlockBody {
     pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
         &self.transfer_hashes
     }
+
+    /// Compute the body hash
+    pub(crate) fn hash(&self) -> Digest {
+        let serialized_body = self
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+        hash::hash(&serialized_body)
+    }
+}
+
+impl Display for BlockBody {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self)?;
+        Ok(())
+    }
 }
 
 impl ToBytes for BlockBody {
@@ -911,9 +926,7 @@ impl Block {
             finalized_block.proto_block.wasm_deploys().clone(),
             finalized_block.proto_block.transfers().clone(),
         );
-        let serialized_body = Self::serialize_body(&body)
-            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        let body_hash = hash::hash(&serialized_body);
+        let body_hash = body.hash();
 
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
@@ -940,8 +953,11 @@ impl Block {
             next_era_validator_weights,
         };
 
-        let hash = header.hash();
+        Self::new_from_header_and_body(header, body)
+    }
 
+    pub(crate) fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
+        let hash = header.hash();
         Block { hash, header, body }
     }
 
@@ -981,14 +997,9 @@ impl Block {
         self.header.height()
     }
 
-    fn serialize_body(body: &BlockBody) -> Result<Vec<u8>, bytesrepr::Error> {
-        body.to_bytes()
-    }
-
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let serialized_body = Block::serialize_body(&self.body)?;
-        let actual_body_hash = hash::hash(&serialized_body);
+        let actual_body_hash = self.body.hash();
         if self.header.body_hash != actual_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 expected_by_block_header: self.header.body_hash,
@@ -1009,6 +1020,7 @@ impl Block {
     #[cfg(test)]
     pub fn set_height(&mut self, height: u64) -> &mut Self {
         self.header.height = height;
+        self.hash = self.header.hash();
         self
     }
 
@@ -1517,9 +1529,7 @@ mod tests {
         let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_hash;
 
-        let serialized_body =
-            Block::serialize_body(&block.body).expect("Could not serialize block body");
-        let actual_body_hash = hash::hash(&serialized_body);
+        let actual_body_hash = block.body.hash();
 
         // No Eq trait for BlockValidationError, so pattern match
         match block.verify() {

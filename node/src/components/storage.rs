@@ -59,7 +59,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 
 use super::Component;
 #[cfg(test)]
@@ -71,7 +71,10 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, Chainspec, Deploy, DeployHash, DeployMetadata},
+    types::{
+        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, DeployHash,
+        DeployMetadata,
+    },
     utils::WithDir,
     NodeRng,
 };
@@ -172,9 +175,9 @@ pub struct Storage {
     /// Environment holding LMDB databases.
     #[data_size(skip)]
     env: Environment,
-    /// The block database.
+    /// The block header database.
     #[data_size(skip)]
-    block_db: Database,
+    block_header_db: Database,
     /// The block metadata db.
     #[data_size(skip)]
     block_metadata_db: Database,
@@ -257,7 +260,7 @@ impl Storage {
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
 
-        let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
+        let block_header_db = env.create_db(Some("block_header"), DatabaseFlags::empty())?;
         let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
@@ -269,19 +272,19 @@ impl Storage {
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
         let block_txn = env.begin_ro_txn()?;
-        let mut cursor = block_txn.open_ro_cursor(block_db)?;
+        let mut cursor = block_txn.open_ro_cursor(block_header_db)?;
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
-            let block: Block = lmdb_ext::deserialize(raw_val)?;
+            let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,
                 block.hash().as_ref(),
                 "found corrupt block in database"
             );
-            insert_to_block_indices(
+            insert_to_block_header_indices(
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
                 &block,
@@ -294,7 +297,7 @@ impl Storage {
         Ok(Storage {
             root,
             env,
-            block_db,
+            block_header_db,
             block_metadata_db,
             deploy_db,
             deploy_metadata_db,
@@ -351,14 +354,33 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.block_db, block.hash(), &block, true)?;
+                if !txn.put_value(
+                    // It's not really appropriate to put block bodes in the metadata database,
+                    // but we have too many databases in storage and we can't make any more.
+
+                    // We can't put this in the block_header_db because we scan it to make our
+                    // indices at startup, so everything in that database must be a block header.
+                    self.block_metadata_db,
+                    block.header().body_hash(),
+                    block.body(),
+                    true,
+                )? {
+                    error!("Could not insert block body for block: {}", block);
+                    txn.abort();
+                    return Ok(responder.respond(false).ignore());
+                }
+                if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
+                    error!("Could not insert block header for block: {}", block);
+                    txn.abort();
+                    return Ok(responder.respond(false).ignore());
+                }
                 txn.commit()?;
-                insert_to_block_indices(
+                insert_to_block_header_indices(
                     &mut self.block_height_index,
                     &mut self.switch_block_era_id_index,
-                    block.as_ref(),
+                    block.header(),
                 )?;
-                responder.respond(outcome).ignore()
+                responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
                 block_hash,
@@ -666,7 +688,31 @@ impl Storage {
         tx: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, LmdbExtError> {
-        tx.get_value(self.block_db, &block_hash)
+        let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
+        let found_block_header_hash = block_header.hash();
+        if found_block_header_hash != *block_hash {
+            return Err(LmdbExtError::BlockHeaderNotStoredUnderItsHash {
+                queried_block_hash: *block_hash,
+                found_block_header_hash,
+            });
+        }
+        let block_body: BlockBody =
+            match tx.get_value(self.block_metadata_db, block_header.body_hash())? {
+                Some(block_header) => block_header,
+                None => return Ok(None),
+            };
+        let found_block_body_hash = block_body.hash();
+        if found_block_body_hash != *block_header.body_hash() {
+            return Err(LmdbExtError::BlockBodyNotStoredUnderItsHash {
+                queried_block_body_hash: *block_header.body_hash(),
+                found_block_body_hash,
+            });
+        }
+        let block = Block::new_from_header_and_body(block_header, block_body);
+        Ok(Some(block))
     }
 
     /// Retrieves a set of deploys from storage.
@@ -724,39 +770,40 @@ impl Storage {
 /// Inserts the relevant entries to the two indices.
 ///
 /// If a duplicate entry is encountered, neither index is updated and an error is returned.
-fn insert_to_block_indices(
+fn insert_to_block_header_indices(
     block_height_index: &mut BTreeMap<u64, BlockHash>,
     switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
-    block: &Block,
+    block_header: &BlockHeader,
 ) -> Result<(), Error> {
-    if let Some(first) = block_height_index.get(&block.height()) {
-        if first != block.hash() {
+    let block_hash = block_header.hash();
+    if let Some(first) = block_height_index.get(&block_header.height()) {
+        if *first != block_hash {
             return Err(Error::DuplicateBlockIndex {
-                height: block.height(),
+                height: block_header.height(),
                 first: *first,
-                second: *block.hash(),
+                second: block_hash,
             });
         }
     }
 
-    if block.header().switch_block() {
-        match switch_block_era_id_index.entry(block.header().era_id()) {
+    if block_header.switch_block() {
+        match switch_block_era_id_index.entry(block_header.era_id()) {
             Entry::Vacant(entry) => {
-                let _ = entry.insert(*block.hash());
+                let _ = entry.insert(block_hash);
             }
             Entry::Occupied(entry) => {
-                if entry.get() != block.hash() {
+                if *entry.get() != block_hash {
                     return Err(Error::DuplicateEraIdIndex {
-                        era_id: block.header().era_id(),
+                        era_id: block_header.era_id(),
                         first: *entry.get(),
-                        second: *block.hash(),
+                        second: block_hash,
                     });
                 }
             }
         }
     }
 
-    let _ = block_height_index.insert(block.height(), *block.hash());
+    let _ = block_height_index.insert(block_header.height(), block_hash);
     Ok(())
 }
 
