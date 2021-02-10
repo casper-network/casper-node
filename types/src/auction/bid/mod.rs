@@ -28,6 +28,8 @@ pub struct Bid {
     delegators: BTreeMap<PublicKey, Delegator>,
     /// This validator's seigniorage reward
     reward: U512,
+    /// `true` if validator has been "evicted"
+    inactive: bool,
 }
 
 impl Bid {
@@ -37,6 +39,7 @@ impl Bid {
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let delegators = BTreeMap::new();
         let reward = U512::zero();
+        let inactive = false;
         Self {
             bonding_purse,
             staked_amount,
@@ -44,6 +47,7 @@ impl Bid {
             vesting_schedule,
             delegators,
             reward,
+            inactive,
         }
     }
 
@@ -56,6 +60,7 @@ impl Bid {
         let vesting_schedule = None;
         let delegators = BTreeMap::new();
         let reward = U512::zero();
+        let inactive = false;
         Self {
             bonding_purse,
             staked_amount,
@@ -63,6 +68,7 @@ impl Bid {
             vesting_schedule,
             delegators,
             reward,
+            inactive,
         }
     }
 
@@ -106,6 +112,11 @@ impl Bid {
     /// Returns the seigniorage reward of the provided bid
     pub fn reward(&self) -> &U512 {
         &self.reward
+    }
+
+    /// Returns `true` if validator is inactive
+    pub fn inactive(&self) -> bool {
+        self.inactive
     }
 
     /// Decreases the stake of the provided bid
@@ -196,6 +207,18 @@ impl Bid {
         vesting_schedule.initialize(staked_amount)
     }
 
+    /// Sets given bid's `inactive` field to `false`
+    pub fn activate(&mut self) -> bool {
+        self.inactive = false;
+        false
+    }
+
+    /// Sets given bid's `inactive` field to `true`
+    pub fn deactivate(&mut self) -> bool {
+        self.inactive = true;
+        true
+    }
+
     /// Returns the total staked amount of validator + all delegators
     pub fn total_staked_amount(&self) -> Result<U512, Error> {
         self.delegators
@@ -223,6 +246,7 @@ impl ToBytes for Bid {
         result.extend(self.vesting_schedule.to_bytes()?);
         result.extend(self.delegators.to_bytes()?);
         result.extend(self.reward.to_bytes()?);
+        result.extend(self.inactive.to_bytes()?);
         Ok(result)
     }
 
@@ -233,6 +257,7 @@ impl ToBytes for Bid {
             + self.vesting_schedule.serialized_length()
             + self.delegators.serialized_length()
             + self.reward.serialized_length()
+            + self.inactive.serialized_length()
     }
 }
 
@@ -244,6 +269,7 @@ impl FromBytes for Bid {
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegators, bytes) = FromBytes::from_bytes(bytes)?;
         let (reward, bytes) = FromBytes::from_bytes(bytes)?;
+        let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
                 bonding_purse,
@@ -252,6 +278,7 @@ impl FromBytes for Bid {
                 vesting_schedule,
                 delegators,
                 reward,
+                inactive,
             },
             bytes,
         ))
@@ -276,6 +303,7 @@ mod tests {
             vesting_schedule: Some(VestingSchedule::default()),
             delegators: BTreeMap::default(),
             reward: U512::one(),
+            inactive: true,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

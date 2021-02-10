@@ -26,8 +26,9 @@ use tracing::{debug, error};
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
-        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_REWARD_FACTORS,
+        ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY,
+        VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -1947,6 +1948,14 @@ where
                     args.insert(
                         ARG_ERA_END_TIMESTAMP_MILLIS,
                         step_request.era_end_timestamp_millis,
+                    )?;
+                    args.insert(
+                        ARG_EVICTED_VALIDATORS,
+                        step_request
+                            .evict_items
+                            .iter()
+                            .map(|item| item.validator_id)
+                            .collect::<Vec<PublicKey>>(),
                     )?;
                     Ok(())
                 });

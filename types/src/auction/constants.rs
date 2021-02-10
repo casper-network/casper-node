@@ -55,6 +55,8 @@ pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 /// Named constant for `era_end_timestamp_millis`;
 pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
+/// Named constant for `evicted_validators`;
+pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
@@ -80,6 +82,8 @@ pub const METHOD_WITHDRAW_DELEGATOR_REWARD: &str = "withdraw_delegator_reward";
 pub const METHOD_WITHDRAW_VALIDATOR_REWARD: &str = "withdraw_validator_reward";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
+/// Named constant for method `activate_bid`.
+pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
 
 /// Storage for `UnbondingPurses`
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";

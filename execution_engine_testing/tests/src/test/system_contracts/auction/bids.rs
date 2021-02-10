@@ -27,7 +27,8 @@ use casper_types::{
     auction::{
         Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_VALIDATOR, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID, UNBONDING_PURSES_KEY,
+        ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
+        METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -56,6 +57,10 @@ const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 const DELEGATE_AMOUNT_1: u64 = 125_000;
 const DELEGATE_AMOUNT_2: u64 = 15_000;
 const UNDELEGATE_AMOUNT_1: u64 = 35_000;
+
+const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
+
+const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
 
 static NON_FOUNDER_VALIDATOR_1_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
@@ -451,7 +456,10 @@ fn should_calculate_era_validators() {
     let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(pre_era_id, 0);
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        Vec::new(),
+    );
 
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, 1);
@@ -575,7 +583,10 @@ fn should_get_first_seigniorage_recipients() {
     builder.exec(transfer_request_1).commit().expect_success();
 
     // run_auction should be executed first
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        Vec::new(),
+    );
 
     // read seigniorage recipients
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -639,8 +650,6 @@ fn should_get_first_seigniorage_recipients() {
 #[ignore]
 #[test]
 fn should_release_founder_stake() {
-    const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
-
     // ACCOUNT_1_BOND / 14 = 7_142
     const EXPECTED_WEEKLY_RELEASE: u64 = 7_142;
 
@@ -764,14 +773,14 @@ fn should_release_founder_stake() {
         assert!(locked_amounts.is_none());
     }
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS);
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS, Vec::new());
 
     {
         // Attempt unbond of one mote
         expect_unbond_failure(&mut builder, u64::one());
     }
 
-    builder.run_auction(WEEK_TIMESTAMPS[0]);
+    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
 
     // Check bid and its vesting schedule
     {
@@ -804,13 +813,13 @@ fn should_release_founder_stake() {
 
     for i in 1..13 {
         // Run auction forward by almost a week
-        builder.run_auction(WEEK_TIMESTAMPS[i] - 1);
+        builder.run_auction(WEEK_TIMESTAMPS[i] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
         expect_unbond_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
-        builder.run_auction(WEEK_TIMESTAMPS[i]);
+        builder.run_auction(WEEK_TIMESTAMPS[i], Vec::new());
 
         // Attempt unbond of more than weekly release
         expect_unbond_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
@@ -825,13 +834,13 @@ fn should_release_founder_stake() {
 
     {
         // Run auction forward by almost a week
-        builder.run_auction(WEEK_TIMESTAMPS[13] - 1);
+        builder.run_auction(WEEK_TIMESTAMPS[13] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
         expect_unbond_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
-        builder.run_auction(WEEK_TIMESTAMPS[13]);
+        builder.run_auction(WEEK_TIMESTAMPS[13], Vec::new());
 
         // Attempt unbond of released amount + remainder
         expect_unbond_success(&mut builder, EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER);
@@ -1014,7 +1023,10 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.exec(add_bid_request_2).commit().expect_success();
 
     // run auction and compute validators for new era
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        Vec::new(),
+    );
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
         .get_validator_weights(new_era)
@@ -1049,8 +1061,6 @@ fn should_calculate_era_validators_multiple_new_bids() {
 #[ignore]
 #[test]
 fn undelegated_funds_should_be_released() {
-    const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -1123,7 +1133,7 @@ fn undelegated_funds_should_be_released() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1158,7 +1168,7 @@ fn undelegated_funds_should_be_released() {
             delegator_1_undelegate_purse_balance
         );
 
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1247,7 +1257,7 @@ fn fully_undelegated_funds_should_be_released() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1281,7 +1291,7 @@ fn fully_undelegated_funds_should_be_released() {
             delegator_1_undelegate_purse_balance,
             delegator_1_purse_balance_before
         );
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1292,4 +1302,169 @@ fn fully_undelegated_funds_should_be_released() {
         delegator_1_undelegate_purse_after - delegator_1_purse_balance_before,
         U512::from(DELEGATE_AMOUNT_1)
     )
+}
+
+#[ignore]
+#[test]
+fn should_handle_evictions() {
+    let activate_bid = |builder: &mut InMemoryWasmTestBuilder, validator_public_key: PublicKey| {
+        let auction = builder.get_auction_contract_hash();
+        let run_request = ExecuteRequestBuilder::contract_call_by_hash(
+            AccountHash::from(&validator_public_key),
+            auction,
+            METHOD_ACTIVATE_BID,
+            runtime_args! {
+                ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
+            },
+        )
+        .build();
+        builder.exec(run_request).commit().expect_success();
+    };
+
+    let latest_validators = |builder: &mut InMemoryWasmTestBuilder| {
+        let era_validators: EraValidators = builder.get_era_validators();
+        let validators = era_validators
+            .iter()
+            .rev()
+            .next()
+            .map(|(_era_id, validators)| validators)
+            .expect("should have validators");
+        validators.keys().cloned().collect::<BTreeSet<PublicKey>>()
+    };
+
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::new(
+            *ACCOUNT_1_PK,
+            *ACCOUNT_1_ADDR,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let account_2 = GenesisAccount::new(
+            *ACCOUNT_2_PK,
+            *ACCOUNT_2_ADDR,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BOND.into()),
+        );
+        let account_3 = GenesisAccount::new(
+            *BID_ACCOUNT_1_PK,
+            *BID_ACCOUNT_1_ADDR,
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            Motes::new(300_000.into()),
+        );
+        let account_4 = GenesisAccount::new(
+            *BID_ACCOUNT_2_PK,
+            *BID_ACCOUNT_2_ADDR,
+            Motes::new(BID_ACCOUNT_2_BALANCE.into()),
+            Motes::new(400_000.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(account_3);
+        tmp.push(account_4);
+        tmp
+    };
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let mut timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    builder.exec(system_fund_request).commit().expect_success();
+
+    // No evictions
+    builder.run_auction(timestamp, Vec::new());
+    timestamp += WEEK_MILLIS;
+
+    assert_eq!(
+        latest_validators(&mut builder),
+        BTreeSet::from_iter(vec![
+            *ACCOUNT_1_PK,
+            *ACCOUNT_2_PK,
+            *BID_ACCOUNT_1_PK,
+            *BID_ACCOUNT_2_PK
+        ])
+    );
+
+    // Evict BID_ACCOUNT_1_PK and BID_ACCOUNT_2_PK
+    builder.run_auction(timestamp, vec![*BID_ACCOUNT_1_PK, *BID_ACCOUNT_2_PK]);
+    timestamp += WEEK_MILLIS;
+
+    assert_eq!(
+        latest_validators(&mut builder),
+        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK,])
+    );
+
+    // Activate BID_ACCOUNT_1_PK
+    activate_bid(&mut builder, *BID_ACCOUNT_1_PK);
+    builder.run_auction(timestamp, Vec::new());
+    timestamp += WEEK_MILLIS;
+
+    assert_eq!(
+        latest_validators(&mut builder),
+        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK, *BID_ACCOUNT_1_PK])
+    );
+
+    // Activate BID_ACCOUNT_2_PK
+    activate_bid(&mut builder, *BID_ACCOUNT_2_PK);
+    builder.run_auction(timestamp, Vec::new());
+    timestamp += WEEK_MILLIS;
+
+    assert_eq!(
+        latest_validators(&mut builder),
+        BTreeSet::from_iter(vec![
+            *ACCOUNT_1_PK,
+            *ACCOUNT_2_PK,
+            *BID_ACCOUNT_1_PK,
+            *BID_ACCOUNT_2_PK
+        ])
+    );
+
+    // Evict all validators
+    builder.run_auction(
+        timestamp,
+        vec![
+            *ACCOUNT_1_PK,
+            *ACCOUNT_2_PK,
+            *BID_ACCOUNT_1_PK,
+            *BID_ACCOUNT_2_PK,
+        ],
+    );
+    timestamp += WEEK_MILLIS;
+
+    assert_eq!(latest_validators(&mut builder), BTreeSet::new());
+
+    // Activate all validators
+    for validator in &[
+        *ACCOUNT_1_PK,
+        *ACCOUNT_2_PK,
+        *BID_ACCOUNT_1_PK,
+        *BID_ACCOUNT_2_PK,
+    ] {
+        activate_bid(&mut builder, *validator);
+    }
+    builder.run_auction(timestamp, Vec::new());
+
+    assert_eq!(
+        latest_validators(&mut builder),
+        BTreeSet::from_iter(vec![
+            *ACCOUNT_1_PK,
+            *ACCOUNT_2_PK,
+            *BID_ACCOUNT_1_PK,
+            *BID_ACCOUNT_2_PK
+        ])
+    );
 }

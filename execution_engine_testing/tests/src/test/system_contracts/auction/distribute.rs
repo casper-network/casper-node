@@ -247,7 +247,7 @@ fn should_distribute_delegation_rate_zero() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -476,7 +476,7 @@ fn should_distribute_delegation_rate_half() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -669,7 +669,7 @@ fn should_distribute_delegation_rate_full() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -867,7 +867,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1065,7 +1065,7 @@ fn should_distribute_by_factor() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1260,7 +1260,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1456,7 +1456,7 @@ fn should_distribute_by_factor_uneven() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -1721,7 +1721,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -2035,7 +2035,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -2297,7 +2297,7 @@ fn should_prevent_theft_of_validator_reward() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -2427,7 +2427,7 @@ fn should_prevent_theft_of_delegator_reward() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -2648,7 +2648,7 @@ fn should_increase_total_supply_after_distribute() {
 
     // run auction
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -2794,7 +2794,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
@@ -2878,7 +2878,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 

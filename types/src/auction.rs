@@ -308,7 +308,11 @@ pub trait Auction:
     /// (number of auction slots) bidders and replaces era_validators with these.
     ///
     /// Accessed by: node
-    fn run_auction(&mut self, era_end_timestamp_millis: u64) -> Result<()> {
+    fn run_auction(
+        &mut self,
+        era_end_timestamp_millis: u64,
+        evicted_validators: Vec<PublicKey>,
+    ) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
@@ -324,15 +328,19 @@ pub trait Auction:
 
         // Process bids
         let mut bids_modified = false;
-        for bid in bids.values_mut() {
-            bids_modified = bid.process(era_end_timestamp_millis)
+        for (validator_public_key, bid) in bids.iter_mut() {
+            bids_modified = bid.process(era_end_timestamp_millis);
+
+            if evicted_validators.contains(validator_public_key) {
+                bids_modified = bid.deactivate()
+            }
         }
 
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let founder_weights: ValidatorWeights = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some())
+                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some() && !bid.inactive())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((*public_key, total_staked_amount))
@@ -342,7 +350,7 @@ pub trait Auction:
             // We collect these into a vec for sorting
             let mut non_founder_weights: Vec<(PublicKey, U512)> = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none())
+                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none() && !bid.inactive())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((*public_key, total_staked_amount))
@@ -595,5 +603,27 @@ pub trait Auction:
     /// Reads current era id.
     fn read_era_id(&mut self) -> Result<EraId> {
         detail::get_era_id(self)
+    }
+
+    /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
+    /// by consensus (aka "evicted").
+    fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<()> {
+        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+        if self.get_caller() != account_hash {
+            return Err(Error::InvalidPublicKey);
+        }
+
+        let mut bids = detail::get_bids(self)?;
+
+        let bid = match bids.get_mut(&validator_public_key) {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
+        };
+
+        bid.activate();
+
+        detail::set_bids(self, bids)?;
+
+        Ok(())
     }
 }
