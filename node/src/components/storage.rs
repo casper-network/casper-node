@@ -100,7 +100,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 6;
+const MAX_DB_COUNT: u32 = 7;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -178,6 +178,9 @@ pub struct Storage {
     /// The block header database.
     #[data_size(skip)]
     block_header_db: Database,
+    /// The block body database.
+    #[data_size(skip)]
+    block_body_db: Database,
     /// The block metadata db.
     #[data_size(skip)]
     block_metadata_db: Database,
@@ -266,6 +269,7 @@ impl Storage {
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
+        let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
@@ -298,6 +302,7 @@ impl Storage {
             root,
             env,
             block_header_db,
+            block_body_db,
             block_metadata_db,
             deploy_db,
             deploy_metadata_db,
@@ -355,12 +360,7 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
                 if !txn.put_value(
-                    // It's not really appropriate to put block bodes in the metadata database,
-                    // but we have too many databases in storage and we can't make any more.
-
-                    // We can't put this in the block_header_db because we scan it to make our
-                    // indices at startup, so everything in that database must be a block header.
-                    self.block_metadata_db,
+                    self.block_body_db,
                     block.header().body_hash(),
                     block.body(),
                     true,
@@ -700,7 +700,7 @@ impl Storage {
             });
         }
         let block_body: BlockBody =
-            match tx.get_value(self.block_metadata_db, block_header.body_hash())? {
+            match tx.get_value(self.block_body_db, block_header.body_hash())? {
                 Some(block_header) => block_header,
                 None => return Ok(None),
             };
