@@ -154,7 +154,7 @@ where
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
     /// Name of the network we participate in. We only remain connected to peers with the same
-    /// `genesis_config_hash` as us.
+    /// network name as us.
     network_name: String,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
