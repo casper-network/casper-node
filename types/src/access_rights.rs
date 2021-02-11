@@ -2,6 +2,10 @@ use alloc::vec::Vec;
 
 use bitflags::bitflags;
 use datasize::DataSize;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::bytesrepr;
@@ -108,6 +112,22 @@ impl<'de> Deserialize<'de> for AccessRights {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bits = u8::deserialize(deserializer)?;
         AccessRights::from_bits(bits).ok_or_else(|| SerdeError::custom("invalid bits"))
+    }
+}
+
+impl Distribution<AccessRights> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccessRights {
+        let mut result = AccessRights::NONE;
+        if rng.gen() {
+            result |= AccessRights::READ;
+        }
+        if rng.gen() {
+            result |= AccessRights::WRITE;
+        }
+        if rng.gen() {
+            result |= AccessRights::ADD;
+        }
+        result
     }
 }
 

@@ -11,6 +11,10 @@ use core::{
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -376,6 +380,20 @@ impl FromBytes for Key {
                 Ok((Key::EraInfo(era_id), rem))
             }
             _ => Err(Error::Formatting),
+        }
+    }
+}
+
+impl Distribution<Key> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
+        match rng.gen_range(0, 6) {
+            0 => Key::Account(rng.gen()),
+            1 => Key::Hash(rng.gen()),
+            2 => Key::URef(rng.gen()),
+            3 => Key::Transfer(rng.gen()),
+            4 => Key::DeployInfo(rng.gen()),
+            5 => Key::EraInfo(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }
