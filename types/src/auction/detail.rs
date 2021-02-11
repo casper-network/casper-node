@@ -6,7 +6,7 @@ use num_rational::Ratio;
 use crate::{
     account::AccountHash,
     auction::{
-        constants::*, Auction, Bid, Bids, EraId, RuntimeProvider, SeigniorageAllocation,
+        constants::*, Auction, Bids, EraId, RuntimeProvider, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
     },
     bytesrepr::{FromBytes, ToBytes},
@@ -231,15 +231,22 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     Ok(remaining_bond)
 }
 
-/// Update validator reward map.
+/// Reinvests delegator reward by increasing its stake.
 pub fn reinvest_delegator_rewards(
-    bid: &mut Bid,
+    bids: &mut Bids,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<(U512, Vec<(U512, URef)>)> {
-    let mut total_delegator_payout = U512::zero();
-    let mut updated_delegator_rewards = Vec::new();
+) -> Result<Vec<(U512, URef)>> {
+    let mut delegator_payouts = Vec::new();
+
+    let bid = match bids.get_mut(&validator_public_key) {
+        Some(bid) => bid,
+        None => {
+            // Validator has been slashed
+            return Ok(delegator_payouts);
+        }
+    };
 
     let delegators = bid.delegators_mut();
 
@@ -252,9 +259,8 @@ pub fn reinvest_delegator_rewards(
         let delegator_reward_trunc = delegator_reward.to_integer();
 
         delegator.increase_stake(delegator_reward_trunc)?;
-        updated_delegator_rewards.push((delegator_reward_trunc, *delegator.bonding_purse()));
 
-        total_delegator_payout += delegator_reward_trunc;
+        delegator_payouts.push((delegator_reward_trunc, *delegator.bonding_purse()));
 
         let allocation = SeigniorageAllocation::delegator(
             delegator_key,
@@ -265,22 +271,29 @@ pub fn reinvest_delegator_rewards(
         seigniorage_allocations.push(allocation);
     }
 
-    Ok((total_delegator_payout, updated_delegator_rewards))
+    Ok(delegator_payouts)
 }
 
-/// Update validator reward map.
+/// Reinvests validator reward by increasing its stake and returns its bonding purse.
 pub fn reinvest_validator_reward(
-    bid: &mut Bid,
+    bids: &mut Bids,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<()> {
-    // Automatically reinvest the reward by increasing validator's stake.
+) -> Result<Option<URef>> {
+    let bid = match bids.get_mut(&validator_public_key) {
+        Some(bid) => bid,
+        None => {
+            // Validator has been slashed
+            return Ok(None);
+        }
+    };
+
     bid.increase_stake(amount)?;
 
     let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
 
     seigniorage_allocations.push(allocation);
 
-    Ok(())
+    Ok(Some(*bid.bonding_purse()))
 }
