@@ -374,11 +374,15 @@ where
         self.stop_for_upgrade
     }
 
+    /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
+    /// block execution has caught up with finalization.
     fn executed_block(&mut self, block_header: &BlockHeader) {
         self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
         self.update_consensus_pause();
     }
 
+    /// Pauses or unpauses consensus: Whenever the last executed block is too far behind the last
+    /// finalized block, we suspend consensus.
     fn update_consensus_pause(&mut self) {
         let paused = self
             .next_block_height
