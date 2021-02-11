@@ -143,6 +143,24 @@ pub enum DeployValidationFailure {
         /// The approval validation error.
         error_msg: String,
     },
+
+    /// Excessive length of deploy's session args.
+    #[error("serialized session code runtime args of {got} exceeds limit of {max_length}")]
+    ExcessiveSessionArgsLength {
+        /// The byte size limit of session arguments.
+        max_length: usize,
+        /// The received length of session arguments.
+        got: usize,
+    },
+
+    /// Excessive length of deploy's payment args.
+    #[error("serialized payment code runtime args of {got} exceeds limit of {max_length}")]
+    ExcessivePaymentArgsLength {
+        /// The byte size limit of payment arguments.
+        max_length: usize,
+        /// The received length of payment arguments.
+        got: usize,
+    },
 }
 
 /// Errors other than validation failures relating to `Deploy`s.
@@ -630,6 +648,32 @@ impl Deploy {
             return Err(DeployValidationFailure::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: header.ttl(),
+            });
+        }
+        
+        let payment_args_length = self.payment().args().serialized_length();
+        if payment_args_length > config.payment_args_max_length as usize {
+            warn!(
+                payment_args_length,
+                payment_args_max_length = config.payment_args_max_length,
+                "payment args excessive"
+            );
+            return Err(DeployValidationFailure::ExcessivePaymentArgsLength {
+                max_length: config.payment_args_max_length as usize,
+                got: payment_args_length,
+            });
+        }
+
+        let session_args_length = self.session().args().serialized_length();
+        if session_args_length > config.session_args_max_length as usize {
+            warn!(
+                session_args_length,
+                session_args_max_length = config.session_args_max_length,
+                "session args excessive"
+            );
+            return Err(DeployValidationFailure::ExcessiveSessionArgsLength {
+                max_length: config.session_args_max_length as usize,
+                got: session_args_length,
             });
         }
 
