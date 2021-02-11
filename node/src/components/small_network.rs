@@ -103,7 +103,8 @@ pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
-static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> = Lazy::new(|| Duration::from_secs(60 * 10).into());
+static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
+    Lazy::new(|| Duration::from_secs(60 * 10).into());
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
