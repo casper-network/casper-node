@@ -26,8 +26,6 @@ pub struct Bid {
     vesting_schedule: Option<VestingSchedule>,
     /// This validator's delegators, indexed by their public keys
     delegators: BTreeMap<PublicKey, Delegator>,
-    /// This validator's seigniorage reward
-    reward: U512,
 }
 
 impl Bid {
@@ -36,14 +34,12 @@ impl Bid {
         let delegation_rate = 0;
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let delegators = BTreeMap::new();
-        let reward = U512::zero();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
             vesting_schedule,
             delegators,
-            reward,
         }
     }
 
@@ -55,14 +51,12 @@ impl Bid {
     ) -> Self {
         let vesting_schedule = None;
         let delegators = BTreeMap::new();
-        let reward = U512::zero();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
             vesting_schedule,
             delegators,
-            reward,
         }
     }
 
@@ -101,11 +95,6 @@ impl Bid {
     /// Returns a mutable reference to the delegators of the provided bid
     pub fn delegators_mut(&mut self) -> &mut BTreeMap<PublicKey, Delegator> {
         &mut self.delegators
-    }
-
-    /// Returns the seigniorage reward of the provided bid
-    pub fn reward(&self) -> &U512 {
-        &self.reward
     }
 
     /// Decreases the stake of the provided bid
@@ -153,23 +142,6 @@ impl Bid {
         self.staked_amount = updated_staked_amount;
 
         Ok(updated_staked_amount)
-    }
-
-    /// Increases the seigniorage reward of the provided bid
-    pub fn increase_reward(&mut self, amount: U512) -> Result<U512, Error> {
-        let updated_reward = self
-            .reward
-            .checked_add(amount)
-            .ok_or(Error::InvalidAmount)?;
-
-        self.reward = updated_reward;
-
-        Ok(updated_reward)
-    }
-
-    /// Zeros the seigniorage reward of the provided bid
-    pub fn zero_reward(&mut self) {
-        self.reward = U512::zero()
     }
 
     /// Updates the delegation rate of the provided bid
@@ -222,7 +194,6 @@ impl ToBytes for Bid {
         result.extend(self.delegation_rate.to_bytes()?);
         result.extend(self.vesting_schedule.to_bytes()?);
         result.extend(self.delegators.to_bytes()?);
-        result.extend(self.reward.to_bytes()?);
         Ok(result)
     }
 
@@ -232,7 +203,6 @@ impl ToBytes for Bid {
             + self.delegation_rate.serialized_length()
             + self.vesting_schedule.serialized_length()
             + self.delegators.serialized_length()
-            + self.reward.serialized_length()
     }
 }
 
@@ -243,7 +213,6 @@ impl FromBytes for Bid {
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegators, bytes) = FromBytes::from_bytes(bytes)?;
-        let (reward, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
                 bonding_purse,
@@ -251,7 +220,6 @@ impl FromBytes for Bid {
                 delegation_rate,
                 vesting_schedule,
                 delegators,
-                reward,
             },
             bytes,
         ))
@@ -275,7 +243,6 @@ mod tests {
             delegation_rate: DelegationRate::max_value(),
             vesting_schedule: Some(VestingSchedule::default()),
             delegators: BTreeMap::default(),
-            reward: U512::one(),
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
