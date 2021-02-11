@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Display};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BlockHash, BlockHeader};
+use crate::types::{Block, BlockHash};
 use casper_types::{PublicKey, U512};
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
@@ -19,10 +19,10 @@ pub enum State {
         highest_block_seen: u64,
         /// Chain of downloaded blocks from the linear chain.
         /// We will `pop()` when executing blocks.
-        linear_chain: Vec<BlockHeader>,
+        linear_chain: Vec<Block>,
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
-        latest_block: Box<Option<BlockHeader>>,
+        latest_block: Box<Option<Block>>,
         /// The weights of the validators for latest block being added.
         validator_weights: BTreeMap<PublicKey, U512>,
     },
@@ -31,7 +31,7 @@ pub enum State {
         trusted_hash: BlockHash,
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
-        latest_block: Box<BlockHeader>,
+        latest_block: Box<Block>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -58,9 +58,9 @@ impl Display for State {
                 f,
                 "SyncingDescendants(trusted_hash={}, latest_block_hash={}, latest_block_height={}, latest_block_era={})",
                 trusted_hash,
-            latest_block.hash(),
-            latest_block.height(),
-            latest_block.era_id(),
+                latest_block.header().hash(),
+                latest_block.header().height(),
+                latest_block.header().era_id(),
             ),
         }
     }
@@ -82,7 +82,7 @@ impl State {
 
     pub fn sync_descendants(
         trusted_hash: BlockHash,
-        latest_block: BlockHeader,
+        latest_block: Block,
         validators_for_latest_block: BTreeMap<PublicKey, U512>,
     ) -> Self {
         State::SyncingDescendants {
@@ -93,7 +93,7 @@ impl State {
         }
     }
 
-    pub fn block_downloaded(&mut self, block: &BlockHeader) {
+    pub fn block_downloaded(&mut self, block: &Block) {
         match self {
             State::None | State::Done => {}
             State::SyncingTrustedHash {
