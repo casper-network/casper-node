@@ -46,17 +46,22 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             State::None => write!(f, "None"),
-            State::SyncingTrustedHash { trusted_hash, .. } => {
-                write!(f, "SyncingTrustedHash(trusted_hash: {:?})", trusted_hash)
-            }
+            State::Done => write!(f, "Done"),
+            State::SyncingTrustedHash { trusted_hash, highest_block_seen, .. } => {
+                write!(f, "SyncingTrustedHash(trusted_hash={}, highest_block_seen={})", trusted_hash, highest_block_seen)
+            },
             State::SyncingDescendants {
-                highest_block_seen, ..
+                trusted_hash,
+                latest_block,
+                ..
             } => write!(
                 f,
-                "SyncingDescendants(highest_block_seen: {})",
-                highest_block_seen
+                "SyncingDescendants(trusted_hash={}, latest_block_hash={}, latest_block_height={}, latest_block_era={})",
+                trusted_hash,
+            latest_block.hash(),
+            latest_block.height(),
+            latest_block.era_id(),
             ),
-            State::Done => write!(f, "Done"),
         }
     }
 }

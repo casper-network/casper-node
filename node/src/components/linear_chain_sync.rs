@@ -100,29 +100,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         state: State,
     ) -> Result<Self, prometheus::Error> {
         let state_key = state_key(&chainspec);
-        let state_status = match &state {
-            State::SyncingTrustedHash {
-                trusted_hash,
-                highest_block_seen,
-                ..
-            } => format!(
-                "syncing trusted hash: {:?}, highest block seen: {:?}",
-                trusted_hash, highest_block_seen
-            ),
-            State::SyncingDescendants {
-                trusted_hash,
-                latest_block,
-                ..
-            } => format!(
-                "syncing descendants of {:?}, latest block hash={:?}, height={:?}, era={:?}",
-                trusted_hash,
-                latest_block.hash(),
-                latest_block.height(),
-                latest_block.era_id(),
-            ),
-            _ => panic!("unexpected initial state: {:?}", &state),
-        };
-        info!(?state_status, "reusing previous state");
+        info!(?state, "reusing previous state");
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
@@ -709,7 +687,7 @@ where
         )
 }
 
-/// Returns key in the Global State under which the LinearChainSync's state is stored.
+/// Returns key in the database, under which the LinearChainSync's state is stored.
 fn state_key(chainspec: &Chainspec) -> Vec<u8> {
     chainspec.network_config.name.clone().into()
 }
@@ -719,7 +697,7 @@ fn state_key(chainspec: &Chainspec) -> Vec<u8> {
 fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
     bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
         panic!(
-            "could not deserialize state from storage type name err {:?}",
+            "could not deserialize state from storage, error {:?}",
             error
         )
     })

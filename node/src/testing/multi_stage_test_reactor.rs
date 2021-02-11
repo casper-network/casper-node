@@ -401,8 +401,7 @@ impl Reactor for MultiStageTestReactor {
                     let node_id = joiner_reactor.node_id();
                     effects.extend(joiner_reactor.into_validator_config().boxed().event(
                         |res_validator_init_config| {
-                            let validator_init_config = res_validator_init_config
-                                .unwrap_or_else(|err| panic!("failed {:?}", err));
+                            let validator_init_config = res_validator_init_config.unwrap();
                             MultiStageTestEvent::JoinerFinalized(Box::new(validator_init_config))
                         },
                     ));
