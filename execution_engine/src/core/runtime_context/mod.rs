@@ -248,6 +248,10 @@ where
                 // Users cannot remove era infos from global state
                 Ok(())
             }
+            Key::Balance(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -649,6 +653,7 @@ where
             Key::Transfer(_) => true,
             Key::DeployInfo(_) => true,
             Key::EraInfo(_) => true,
+            Key::Balance(_) => false,
         }
     }
 
@@ -660,6 +665,7 @@ where
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
+            Key::Balance(_) => false,
         }
     }
 
@@ -671,6 +677,7 @@ where
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
+            Key::Balance(_) => false,
         }
     }
 
