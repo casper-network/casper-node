@@ -2,7 +2,7 @@
 
 source "$NCTL"/sh/utils/main.sh
 
-log "dumping transient assets ... please wait"
+log "transient asset dump ... starts"
 
 # Set paths.
 PATH_TO_NET=$(get_path_to_net)
@@ -33,12 +33,16 @@ cp "$PATH_TO_NET"/faucet/secret_key.pem "$PATH_TO_DUMP"/faucet-secret_key.pem
 for NODE_ID in $(seq 1 "$(get_count_of_genesis_nodes)")
 do
     PATH_TO_NODE=$(get_path_to_node "$NODE_ID")
-    cp "$PATH_TO_NODE"/config/node-config.toml "$PATH_TO_DUMP"/node-"$NODE_ID"-config.toml
-    cp "$PATH_TO_NODE"/keys/public_key_hex "$PATH_TO_DUMP"/node-"$NODE_ID"-public_key_hex
-    cp "$PATH_TO_NODE"/keys/public_key.pem "$PATH_TO_DUMP"/node-"$NODE_ID"-public_key.pem
-    cp "$PATH_TO_NODE"/keys/secret_key.pem "$PATH_TO_DUMP"/node-"$NODE_ID"-secret_key.pem
-    cp "$PATH_TO_NODE"/logs/stderr.log "$PATH_TO_DUMP"/node-"$NODE_ID"-stderr.log
-    cp "$PATH_TO_NODE"/logs/stdout.log "$PATH_TO_DUMP"/node-"$NODE_ID"-stdout.log
+    PATH_TO_NODE_KEYS=$(get_path_to_node_keys "$NODE_ID")
+    PATH_TO_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
+    PATH_TO_NODE_CFG=$(get_path_to_node_config "$NODE_ID")
+
+    cp "$PATH_TO_NODE_CFG"/1_0_0/config.toml "$PATH_TO_DUMP"/node-"$NODE_ID"-config.toml
+    cp "$PATH_TO_NODE_KEYS"/public_key_hex "$PATH_TO_DUMP"/node-"$NODE_ID"-public_key_hex
+    cp "$PATH_TO_NODE_KEYS"/public_key.pem "$PATH_TO_DUMP"/node-"$NODE_ID"-public_key.pem
+    cp "$PATH_TO_NODE_KEYS"/secret_key.pem "$PATH_TO_DUMP"/node-"$NODE_ID"-secret_key.pem
+    cp "$PATH_TO_NODE_LOGS"/stderr.log "$PATH_TO_DUMP"/node-"$NODE_ID"-stderr.log
+    cp "$PATH_TO_NODE_LOGS"/stdout.log "$PATH_TO_DUMP"/node-"$NODE_ID"-stdout.log
 done
 
 # Dump users.
@@ -49,3 +53,5 @@ do
     cp "$PATH_TO_USER"/public_key.pem "$PATH_TO_DUMP"/user-"$USER_ID"-public_key.pem
     cp "$PATH_TO_USER"/secret_key.pem "$PATH_TO_DUMP"/user-"$USER_ID"-secret_key.pem
 done
+
+log "transient asset dump ... complete"

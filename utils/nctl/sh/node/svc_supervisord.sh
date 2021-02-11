@@ -13,16 +13,15 @@ function do_node_start()
     local PATH_TO_NODE_CONFIG
     local PROCESS_NAME
 
-    # Ensure daemon is up.
-    do_supervisord_start
+    if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
+        do_supervisord_start
+    fi
 
-    # Inject trusted hash.
     if [ -n "$TRUSTED_HASH" ]; then
-        PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/node-config.toml
+        PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/1_0_0/config.toml
         _update_node_config_on_start "$PATH_TO_NODE_CONFIG" "$TRUSTED_HASH"
     fi
 
-    # Signal to supervisorctl.
     PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
     supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$PROCESS_NAME"  > /dev/null 2>&1
 }
@@ -36,12 +35,10 @@ function do_node_start()
 #######################################
 function do_node_start_all()
 {
-    # Step 1: start bootstraps.
     log "... starting genesis bootstraps"
     do_node_start_group "$NCTL_PROCESS_GROUP_1"
     sleep 1.0
 
-    # Step 2: start non-bootstraps.
     log "... starting genesis non-bootstraps"
     do_node_start_group "$NCTL_PROCESS_GROUP_2"
 }
@@ -56,10 +53,10 @@ function do_node_start_group()
 {
     local GROUP_ID=${1}
 
-    # Ensure daemon is up.
-    do_supervisord_start
+    if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
+        do_supervisord_start
+    fi
 
-    # Signal to supervisorctl.
     supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$GROUP_ID":*  > /dev/null 2>&1
 }
 
@@ -73,12 +70,11 @@ function do_node_status()
     local NODE_ID=${1}
     local NODE_PROCESS_NAME
     
+    if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
+        do_supervisord_start
+    fi
+
     NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-
-    # Ensure daemon is up.
-    do_supervisord_start
-
-    # Signal to supervisorctl.
     supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME" || true
 }
 
@@ -89,11 +85,11 @@ function do_node_status()
 #######################################
 function do_node_status_all()
 {
-    # Ensure daemon is up.
-    do_supervisord_start
-
-    # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" status all || true
+    if [ -e "$(get_path_net_supervisord_sock)" ]; then
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" status all || true
+    else
+        log "supervisord is not running - have you started the network ?"
+    fi
 }
 
 #######################################
@@ -107,12 +103,10 @@ function do_node_stop()
     local NODE_ID=${1}
     local NODE_PROCESS_NAME
     
-    # Ensure daemon is up.
-    do_supervisord_start
-    
-    # Signal to supervisorctl.
-    NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME"  > /dev/null 2>&1
+    if [ -e "$(get_path_net_supervisord_sock)" ]; then
+        NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME"  > /dev/null 2>&1
+    fi
 }
 
 #######################################
@@ -120,11 +114,9 @@ function do_node_stop()
 #######################################
 function do_node_stop_all()
 {
-    # Ensure daemon is up.
-    do_supervisord_start
-    
-    # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all  > /dev/null 2>&1
+    if [ -e "$(get_path_net_supervisord_sock)" ]; then
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all  > /dev/null 2>&1
+    fi
 }
 
 #######################################
@@ -134,7 +126,6 @@ function do_node_stop_all()
 #######################################
 function do_supervisord_start()
 {
-    # If sock file not found then start daemon.
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
         supervisord -c "$(get_path_net_supervisord_cfg)"
         sleep 2.0
@@ -148,7 +139,6 @@ function do_supervisord_start()
 #######################################
 function do_supervisord_kill()
 {
-    # If sock file exists then stop daemon.
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
         supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all &>/dev/null
         supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown &>/dev/null
@@ -156,7 +146,7 @@ function do_supervisord_kill()
 }
 
 #######################################
-# Sets entry in node's config.toml.
+# Sets entry in node's config file.
 # Arguments:
 #   Node ordinal identifier.
 #   A trused block hash from which to build chain state.

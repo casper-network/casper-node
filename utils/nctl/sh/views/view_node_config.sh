@@ -14,4 +14,4 @@ do
     esac
 done
 
-less "$(get_path_to_node "${NODE_ID:-1}")"/config/node-config.toml
+less "$(get_path_to_node "${NODE_ID:-1}")"/config/1_0_0/config.toml
