@@ -15,15 +15,13 @@ use casper_types::{
     auction::{
         Bid, Bids, DelegationRate, EraId, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY,
-        ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
-        DELEGATOR_REWARD_PURSE_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_VALIDATOR, AUCTION_DELAY_KEY, BIDS_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
         INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID,
         METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+        METHOD_WITHDRAW_BID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
@@ -619,24 +617,6 @@ where
 
         let mut named_keys = NamedKeys::new();
 
-        let validator_reward_purse = self.create_purse(
-            U512::zero(),
-            DeployHash::new(self.genesis_config_hash.value()),
-        )?;
-        named_keys.insert(
-            VALIDATOR_REWARD_PURSE_KEY.into(),
-            Key::URef(validator_reward_purse),
-        );
-
-        let delegator_reward_purse = self.create_purse(
-            U512::zero(),
-            DeployHash::new(self.genesis_config_hash.value()),
-        )?;
-        named_keys.insert(
-            DELEGATOR_REWARD_PURSE_KEY.into(),
-            Key::URef(delegator_reward_purse),
-        );
-
         let genesis_validators: BTreeMap<PublicKey, U512> = self
             .exec_config
             .accounts()
@@ -1207,27 +1187,6 @@ where
                     value: Box::new(CLType::U64),
                 },
             )],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_WITHDRAW_DELEGATOR_REWARD,
-            vec![
-                Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey),
-                Parameter::new(ARG_DELEGATOR_PUBLIC_KEY, CLType::PublicKey),
-            ],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_WITHDRAW_VALIDATOR_REWARD,
-            vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Contract,

@@ -43,15 +43,15 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
-        ProtoBlock, Timestamp,
+        ActivationPoint, BlockHash, BlockLike, FinalitySignature, FinalizedBlock, ProtoBlock,
+        Timestamp,
     },
     utils::WithDir,
     NodeRng,
 };
 
 pub use self::era::{Era, EraId};
-use crate::components::consensus::config::ProtocolConfig;
+use crate::{components::consensus::config::ProtocolConfig, types::Block};
 
 mod era;
 
@@ -104,7 +104,7 @@ pub struct EraSupervisor<I> {
     finished_joining: bool,
     /// The path to the folder where unit hash files will be stored.
     unit_hashes_folder: PathBuf,
-    /// The next upgrade activation point.  When the era immediately before the activation point is
+    /// The next upgrade activation point. When the era immediately before the activation point is
     /// deactivated, the era supervisor indicates that the node should stop running to allow an
     /// upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
@@ -493,16 +493,16 @@ where
 
     pub(super) fn handle_linear_chain_block(
         &mut self,
-        block_header: BlockHeader,
+        block: Block,
         responder: Responder<Option<FinalitySignature>>,
     ) -> Effects<Event<I>> {
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
-        let era_id = block_header.era_id();
+        let era_id = block.header().era_id();
         let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
-            let block_hash = block_header.hash();
+            let block_hash = block.hash();
             Some(FinalitySignature::new(
-                block_hash,
+                *block_hash,
                 era_id,
                 &our_sk,
                 our_pk,
@@ -516,7 +516,7 @@ where
             trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
-        if block_header.switch_block() {
+        if block.header().switch_block() {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
@@ -525,18 +525,14 @@ where
                 .effect_builder
                 .get_block_at_height_from_storage(booking_block_height)
                 .event(move |booking_block| Event::CreateNewEra {
-                    block_header: Box::new(block_header),
+                    block: Box::new(block),
                     booking_block_hash: booking_block
                         .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
                 });
             effects.extend(effect);
         } else {
             // if it's not a switch block, we can already declare it handled
-            effects.extend(
-                self.effect_builder
-                    .announce_block_handled(block_header)
-                    .ignore(),
-            );
+            effects.extend(self.effect_builder.announce_block_handled(block).ignore());
         }
         effects
     }
@@ -557,14 +553,10 @@ where
         if faulty_num == old_faulty_num {
             info!(era = era_id.0, "stop voting in era");
             era.consensus.deactivate_validator();
-            if let Some(upgrade_activation_point) =
-                self.era_supervisor.next_upgrade_activation_point
-            {
+            if self.should_upgrade_after(&era_id) {
                 // If the next era is at or after the upgrade activation point, stop the node.
-                if upgrade_activation_point.should_upgrade(&era_id) {
-                    info!(era = era_id.0, "shutting down for upgrade");
-                    self.era_supervisor.stop_for_upgrade = true;
-                }
+                info!(era = era_id.0, "shutting down for upgrade");
+                self.era_supervisor.stop_for_upgrade = true;
             }
             Effects::new()
         } else {
@@ -579,12 +571,12 @@ where
 
     pub(super) fn handle_create_new_era(
         &mut self,
-        block_header: BlockHeader,
+        block: Block,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
         let (era_end, next_era_validators_weights) = match (
-            block_header.era_end(),
-            block_header.next_era_validator_weights(),
+            block.header().era_end(),
+            block.header().next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
                 (era_end, next_era_validator_weights)
@@ -593,15 +585,15 @@ where
                 return fatal!(
                     self.effect_builder,
                     "attempted to create a new era with a non-switch block header: {}",
-                    block_header
+                    block
                 )
             }
         };
         let newly_slashed = era_end.equivocators.clone();
-        let era_id = block_header.era_id().successor();
+        let era_id = block.header().era_id().successor();
         info!(era = era_id.0, "era created");
         let seed =
-            EraSupervisor::<I>::era_seed(booking_block_hash, block_header.accumulated_seed());
+            EraSupervisor::<I>::era_seed(booking_block_hash, block.header().accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let results = self.era_supervisor.new_era(
             era_id,
@@ -609,16 +601,12 @@ where
             next_era_validators_weights.clone(),
             newly_slashed,
             seed,
-            block_header.timestamp(),
-            block_header.height() + 1,
-            *block_header.state_root_hash(),
+            block.header().timestamp(),
+            block.height() + 1,
+            *block.state_root_hash(),
         );
         let mut effects = self.handle_consensus_results(era_id, results);
-        effects.extend(
-            self.effect_builder
-                .announce_block_handled(block_header)
-                .ignore(),
-        );
+        effects.extend(self.effect_builder.announce_block_handled(block).ignore());
         effects
     }
 
@@ -919,6 +907,13 @@ where
         self.effect_builder
             .announce_disconnect_from_peer(sender)
             .ignore()
+    }
+
+    pub(super) fn should_upgrade_after(&self, era_id: &EraId) -> bool {
+        match self.era_supervisor.next_upgrade_activation_point {
+            None => false,
+            Some(upgrade_point) => upgrade_point.should_upgrade(&era_id),
+        }
     }
 }
 
