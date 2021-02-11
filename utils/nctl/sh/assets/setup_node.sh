@@ -90,7 +90,7 @@ function _setup_config()
 
     PATH_TO_CFG=$(get_path_to_node "$NODE_ID")/config
     PATH_TO_CFG_SEMVAR="$PATH_TO_CFG"/1_0_0
-    PATH_TO_FILE="$PATH_TO_CFG_SEMVAR"/node-config.toml
+    PATH_TO_FILE="$PATH_TO_CFG_SEMVAR"/config.toml
 
     cp "$NCTL_CASPER_HOME"/resources/local/config.toml "$PATH_TO_FILE"
 

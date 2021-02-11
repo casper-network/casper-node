@@ -96,27 +96,12 @@ alias nctl-view-node-finalisation-time='source $NCTL/sh/views/view_node_metrics.
 
 # Views #4: faucet.
 alias nctl-view-faucet-account='source $NCTL/sh/views/view_faucet_account.sh'
-alias nctl-view-faucet-account-hash='source $NCTL/sh/views/view_faucet_account_hash.sh'
-alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_faucet_account_key.sh'
-alias nctl-view-faucet-balance='source $NCTL/sh/views/view_faucet_balance.sh'
-alias nctl-view-faucet-main-purse-uref='source $NCTL/sh/views/view_faucet_main_purse_uref.sh'
-alias nctl-view-faucet-secret-key-path='source $NCTL/sh/views/view_faucet_secret_key_path.sh'
 
 # Views #5: user.
 alias nctl-view-user-account='source $NCTL/sh/views/view_user_account.sh'
-alias nctl-view-user-account-hash='source $NCTL/sh/views/view_user_account_hash.sh'
-alias nctl-view-user-account-key='source $NCTL/sh/views/view_user_account_key.sh'
-alias nctl-view-user-balance='source $NCTL/sh/views/view_user_balance.sh'
-alias nctl-view-user-main-purse-uref='source $NCTL/sh/views/view_user_main_purse_uref.sh'
-alias nctl-view-user-secret-key-path='source $NCTL/sh/views/view_user_secret_key_path.sh'
 
 # Views #6: validator.
 alias nctl-view-validator-account='source $NCTL/sh/views/view_validator_account.sh'
-alias nctl-view-validator-account-hash='source $NCTL/sh/views/view_validator_account_hash.sh'
-alias nctl-view-validator-account-key='source $NCTL/sh/views/view_validator_account_key.sh'
-alias nctl-view-validator-balance='source $NCTL/sh/views/view_validator_balance.sh'
-alias nctl-view-validator-main-purse-uref='source $NCTL/sh/views/view_validator_main_purse_uref.sh'
-alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_secret_key_path.sh'
 
 # Contracts #1: Transfers.
 alias nctl-transfer='source $NCTL/sh/contracts-transfers/do_dispatch_native.sh'

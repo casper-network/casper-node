@@ -169,13 +169,13 @@ function _set_nodes()
 #######################################
 function _set_node_chainspecs()
 {
-    local COUNT_NODES=${1}
+    local COUNT_GENESIS_NODES=${1}
     local PATH_TO_NET
     local PATH_TO_NODE
 
     PATH_TO_NET=$(get_path_to_net)
 
-    for NODE_ID in $(seq 1 $COUNT_NODES)
+    for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         PATH_TO_NODE=$(get_path_to_node "$NODE_ID")
         cp "$PATH_TO_NET"/chainspec/* "$PATH_TO_NODE"/config/1_0_0

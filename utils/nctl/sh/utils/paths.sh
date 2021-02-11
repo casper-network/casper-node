@@ -121,9 +121,17 @@ function get_path_to_node_bin()
 #######################################
 function get_path_to_node_config()
 {
-    local NODE_ID=${1} 
+    echo "$(get_path_to_node "$1")"/config
+}
 
-    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"/config/node-config.toml
+#######################################
+# Returns path to a node's keys directory.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_keys()
+{
+    echo "$(get_path_to_node "$1")"/keys
 }
 
 #######################################
@@ -133,9 +141,7 @@ function get_path_to_node_config()
 #######################################
 function get_path_to_node_logs()
 {
-    local NODE_ID=${1} 
-
-    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"/logs
+    echo "$(get_path_to_node "$1")"/logs
 }
 
 #######################################
@@ -145,9 +151,7 @@ function get_path_to_node_logs()
 #######################################
 function get_path_to_node_storage()
 {
-    local NODE_ID=${1} 
-
-    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"/storage
+    echo "$(get_path_to_node "$1")"/storage
 }
 
 #######################################
@@ -157,7 +161,6 @@ function get_path_to_node_storage()
 #######################################
 function get_path_to_node_secret_key()
 {
-
     local NODE_ID=${1} 
 
     get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
