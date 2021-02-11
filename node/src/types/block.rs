@@ -750,7 +750,7 @@ pub struct BlockBody {
 }
 
 impl BlockBody {
-    /// Create a new body from deploy and transfer hashes.
+    /// Creates a new body from deploy and transfer hashes.
     pub(crate) fn new(
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
@@ -768,17 +768,17 @@ impl BlockBody {
         &self.proposer
     }
 
-    /// Retrieve the deploy hashes within the block.
+    /// Retrieves the deploy hashes within the block.
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
         &self.deploy_hashes
     }
 
-    /// Retrieve the transfer hashes within the block.
+    /// Retrieves the transfer hashes within the block.
     pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
         &self.transfer_hashes
     }
 
-    /// Compute the body hash
+    /// Computes the body hash
     pub(crate) fn hash(&self) -> Digest {
         let serialized_body = self
             .to_bytes()
