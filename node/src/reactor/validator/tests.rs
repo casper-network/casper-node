@@ -138,7 +138,7 @@ impl TestChain {
                     .await?;
             let _ = joiner_runner.run(rng).await;
 
-            let config = joiner_runner.into_inner().into_validator_config().await;
+            let config = joiner_runner.into_inner().into_validator_config().await?;
 
             network
                 .add_node_with_config(config, rng)

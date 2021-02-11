@@ -929,7 +929,12 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> ValidatorInitConfig {
+    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+        // Clean the state of the linear_chain_sync before shutting it down.
+        linear_chain_sync::clean_linear_chain_state(
+            &self.storage,
+            self.chainspec_loader.chainspec(),
+        )?;
         let config = ValidatorInitConfig {
             chainspec_loader: self.chainspec_loader,
             config: self.config,
@@ -945,7 +950,7 @@ impl Reactor {
         self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
-        config
+        Ok(config)
     }
 }
 

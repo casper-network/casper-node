@@ -13,8 +13,6 @@ pub enum Event<I> {
     GotUpgradeActivationPoint(ActivationPoint),
     InitUpgradeShutdown,
     Shutdown(bool),
-    CleanState,
-    Done,
 }
 
 #[derive(Debug)]
@@ -73,8 +71,6 @@ where
                 "linear chain sync is ready for shutdown. upgrade: {}",
                 upgrade
             ),
-            Event::CleanState => write!(f, "clean snapshot state of linear chain sync"),
-            Event::Done => write!(f, "finished synchronizing"),
         }
     }
 }

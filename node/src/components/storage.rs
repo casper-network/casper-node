@@ -358,6 +358,20 @@ impl Storage {
         Ok(bytes)
     }
 
+    /// Writes value to the state storage DB.
+    /// May also fail with storage errors.
+    #[cfg(not(feature = "fast-sync"))]
+    pub(crate) fn write_state_store<K, V>(&self, key: &K, value: V) -> Result<(), Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        let mut txn = self.env.begin_rw_txn()?;
+        txn.put(self.state_store_db, &key, &value, WriteFlags::default())?;
+        txn.commit()?;
+        Ok(())
+    }
+
     /// Handles a storage request.
     fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where

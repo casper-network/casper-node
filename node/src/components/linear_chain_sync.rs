@@ -106,7 +106,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 ..
             } => format!(
-                "syncing descendants of trusted hash: {:?}, highest block seen: {:?}",
+                "syncing trusted hash: {:?}, highest block seen: {:?}",
                 trusted_hash, highest_block_seen
             ),
             State::SyncingDescendants {
@@ -371,7 +371,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             )
         }
         effect_builder
-            .save_state(self.state_key.clone().into(), self.state.clone())
+            .save_state(self.state_key.clone().into(), Some(self.state.clone()))
             .event(|_| Event::Shutdown(true))
     }
 
@@ -446,7 +446,8 @@ where
                                 // We have synchronized all, currently existing, descendants of
                                 // trusted hash.
                                 info!("finished synchronizing descendants of the trusted hash. cleaning state.");
-                                effect_builder.immediately().event(|_| Event::CleanState)
+                                self.mark_done();
+                                Effects::new()
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
@@ -620,13 +621,6 @@ where
                 self.stop_for_upgrade = upgrade;
                 Effects::new()
             }
-            Event::CleanState => effect_builder
-                .save_state::<Vec<u8>>(self.state_key.clone().into(), vec![])
-                .event(|_| Event::Done),
-            Event::Done => {
-                self.mark_done();
-                Effects::new()
-            }
         }
     }
 }
@@ -722,7 +716,7 @@ fn state_key(chainspec: &Chainspec) -> Vec<u8> {
 
 /// Deserialized vector of bytes into `LinearChainSync::State`.
 /// Panics on deserialization errors.
-fn deserialize_state(serialized_state: &[u8]) -> State {
+fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
     bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
         panic!(
             "could not deserialize state from storage type name err {:?}",
@@ -739,8 +733,20 @@ pub(crate) fn read_init_state(
 ) -> Result<Option<State>, storage::Error> {
     let key = state_key(&chainspec);
     if let Some(bytes) = storage.read_state_store(&key)? {
-        Ok(Some(deserialize_state(&bytes)))
+        Ok(deserialize_state(&bytes))
     } else {
         Ok(None)
     }
+}
+
+/// Cleans the linear chain state storage.
+/// May fail with storage error.
+pub(crate) fn clean_linear_chain_state(
+    storage: &Storage,
+    chainspec: &Chainspec,
+) -> Result<(), storage::Error> {
+    let key = state_key(&chainspec);
+    let none: Option<State> = None;
+    let bytes = bincode::serialize(&none).unwrap_or_else(|_| panic!("failed to serialize None."));
+    storage.write_state_store(&key, bytes)
 }

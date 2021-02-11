@@ -199,7 +199,7 @@ impl Cli {
 
                 info!("finished joining");
 
-                let config = joiner_runner.into_inner().into_validator_config().await;
+                let config = joiner_runner.into_inner().into_validator_config().await?;
 
                 let mut validator_runner =
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;

@@ -625,3 +625,12 @@ pub(crate) fn read_init_state(
 ) -> Result<Option<State>, storage::Error> {
     panic!("not yet implemented for fast sync")
 }
+
+/// Cleans the linear chain state storage.
+/// May fail with storage error.
+pub(crate) fn clean_linear_chain_state(
+    _storage: &Storage,
+    _chainspec: &Chainspec,
+) -> Result<(), storage::Error> {
+    panic!("not yet implemented for fast sync")
+}
