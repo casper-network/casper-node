@@ -445,9 +445,8 @@ where
                                 // `block_height` not found on any of the peers.
                                 // We have synchronized all, currently existing, descendants of
                                 // trusted hash.
-                                self.mark_done();
-                                info!("finished synchronizing descendants of the trusted hash.");
-                                Effects::new()
+                                info!("finished synchronizing descendants of the trusted hash. cleaning state.");
+                                effect_builder.immediately().event(|_| Event::CleanState)
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
@@ -619,6 +618,13 @@ where
             Event::Shutdown(upgrade) => {
                 info!(?upgrade, "ready for shutdown");
                 self.stop_for_upgrade = upgrade;
+                Effects::new()
+            }
+            Event::CleanState => effect_builder
+                .save_state::<Vec<u8>>(self.state_key.clone().into(), vec![])
+                .event(|_| Event::Done),
+            Event::Done => {
+                self.mark_done();
                 Effects::new()
             }
         }
