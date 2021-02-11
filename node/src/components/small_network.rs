@@ -84,18 +84,26 @@ use tracing::{debug, error, info, trace, warn};
 
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
-use crate::{NodeRng, components::{
+use crate::{
+    components::{
         network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
-    }, effect::{
+    },
+    effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, EffectResultExt, Effects,
-    }, fatal, reactor::{EventQueueHandle, Finalize, QueueKind}, tls::{self, TlsCert, ValidationError}, types::NodeId, types::TimeDiff, types::Timestamp, utils};
+    },
+    fatal,
+    reactor::{EventQueueHandle, Finalize, QueueKind},
+    tls::{self, TlsCert, ValidationError},
+    types::{NodeId, TimeDiff, Timestamp},
+    utils, NodeRng,
+};
 pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
-const BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> = Lazy::new(|| Duration::from_secs(120).into());
+static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> = Lazy::new(|| Duration::from_secs(60 * 10).into());
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -610,7 +618,8 @@ where
             let peer_ip = format!("{}", outgoing.peer_address.ip());
             if add_to_blocklist && !self.known_addresses.contains(&peer_ip) {
                 info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
-                self.blocklist.insert(outgoing.peer_address, Timestamp::now());
+                self.blocklist
+                    .insert(outgoing.peer_address, Timestamp::now());
             }
         }
         self.terminate_if_isolated(effect_builder)
@@ -704,7 +713,8 @@ where
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
-        self.blocklist.retain(|_,ts| *ts > Timestamp::now() + *BLOCKLIST_RETAIN_DURATION);
+        self.blocklist
+            .retain(|_, ts| *ts > Timestamp::now() + *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
