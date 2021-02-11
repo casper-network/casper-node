@@ -15,7 +15,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{self, genesis::GenesisAccount},
+        engine_state::{self, genesis::GenesisAccount, Error},
         execution,
     },
     shared::motes::Motes,
@@ -25,7 +25,7 @@ use casper_types::{
     account::AccountHash,
     api_error::ApiError,
     auction::{
-        Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
+        self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
         METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
@@ -34,6 +34,7 @@ use casper_types::{
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
+const ARG_TARGET: &str = "target";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
@@ -95,6 +96,21 @@ static BID_ACCOUNT_2_PK: Lazy<PublicKey> =
 static BID_ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_2_PK));
 const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_2_BOND: u64 = 0;
+
+static VALIDATOR_1: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static DELEGATOR_1: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([205; SecretKey::ED25519_LENGTH]).into());
+static DELEGATOR_2: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
+static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
+static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
+const VALIDATOR_1_STAKE: u64 = 1_000_000;
+const DELEGATOR_1_STAKE: u64 = 1_000_000;
+const DELEGATOR_2_STAKE: u64 = 1_000_000;
+
+const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
 #[ignore]
 #[test]
@@ -228,7 +244,7 @@ fn should_run_delegate_and_undelegate() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -238,7 +254,7 @@ fn should_run_delegate_and_undelegate() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -405,7 +421,7 @@ fn should_calculate_era_validators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -414,7 +430,7 @@ fn should_calculate_era_validators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -554,7 +570,7 @@ fn should_get_first_seigniorage_recipients() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -750,7 +766,7 @@ fn should_release_founder_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE / 10)
         },
     )
@@ -989,7 +1005,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
             *DEFAULT_ACCOUNT_ADDR,
             CONTRACT_TRANSFER_TO_ACCOUNT,
             runtime_args! {
-                "target" => *target,
+                ARG_TARGET => *target,
                 ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
             },
         )
@@ -1065,7 +1081,7 @@ fn undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
@@ -1075,7 +1091,7 @@ fn undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1085,7 +1101,7 @@ fn undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *BID_ACCOUNT_1_ADDR,
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1189,7 +1205,7 @@ fn fully_undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
@@ -1199,7 +1215,7 @@ fn fully_undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1209,7 +1225,7 @@ fn fully_undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *BID_ACCOUNT_1_ADDR,
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1302,6 +1318,163 @@ fn fully_undelegated_funds_should_be_released() {
         delegator_1_undelegate_purse_after - delegator_1_purse_balance_before,
         U512::from(DELEGATE_AMOUNT_1)
     )
+}
+
+#[ignore]
+#[test]
+fn should_demonstrate_that_withdraw_bid_removes_delegator_bids() {
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => *VALIDATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => *VALIDATOR_1,
+            ARG_DELEGATOR => *DELEGATOR_1,
+        },
+    )
+    .build();
+
+    let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
+            ARG_VALIDATOR => *VALIDATOR_1,
+            ARG_DELEGATOR => *DELEGATOR_2,
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        validator_1_fund_request,
+        delegator_1_fund_request,
+        delegator_2_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_delegate_request,
+        delegator_2_delegate_request,
+    ];
+
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..5 {
+        builder.run_auction(timestamp_millis, Vec::new());
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    let bids_before: Bids =
+        builder.get_value(builder.get_auction_contract_hash(), auction::BIDS_KEY);
+    let validator_1_bid = bids_before
+        .get(&*VALIDATOR_1)
+        .expect("should have validator 1 bid");
+    assert_eq!(
+        validator_1_bid
+            .delegators()
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(vec![*DELEGATOR_1, *DELEGATOR_2])
+    );
+    let validator_1_withdraw_bid = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_WITHDRAW_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+        },
+    )
+    .build();
+    builder
+        .exec(validator_1_withdraw_bid)
+        .commit()
+        .expect_success();
+
+    let auction = builder.get_auction_contract_hash();
+    let bids_after: Bids = builder.get_value(auction, auction::BIDS_KEY);
+    assert!(
+        bids_after.get(&VALIDATOR_1).is_none(),
+        "does not have validator 1 bid and delegator bids are removed as well"
+    );
+
+    let delegator_2_undelegate = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
+            ARG_VALIDATOR => *VALIDATOR_1,
+            ARG_DELEGATOR => *DELEGATOR_1,
+        },
+    )
+    .build();
+    builder.exec(delegator_2_undelegate).commit();
+    let results = builder.get_exec_results();
+    let last_response = results.last().expect("should have last exec response");
+    let exec_result = last_response.get(0).expect("should have first result");
+    let error = exec_result.as_error().unwrap();
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(7)))
+    ));
 }
 
 #[ignore]

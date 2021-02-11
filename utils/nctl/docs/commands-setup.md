@@ -17,11 +17,13 @@ Compiles casper node, client + client contracts using `make` + `cargo`.
 
 Compiles casper node using `make` + `cargo`.  
 
+### nctl-compile-node-launcher
+
+Compiles casper node lanucher using `cargo`.  
 
 ### nctl-compile-client
 
 Compiles casper client + client contracts using `make` + `cargo`.  
-
 
 ## Managing network assets
 

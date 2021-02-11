@@ -1742,34 +1742,6 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey,
-            // delegator_public_key: PublicKey, target_purse: URef) -> Result<(), Error>`
-            auction::METHOD_WITHDRAW_DELEGATOR_REWARD => (|| {
-                runtime.charge_system_contract_call(auction_costs.withdraw_delegator_reward)?;
-
-                let validator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
-                let delegator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_PUBLIC_KEY)?;
-                runtime
-                    .withdraw_delegator_reward(validator_public_key, delegator_public_key)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)
-            })(),
-
-            // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey, target_purse:
-            // URef) -> Result<(), Error>`
-            auction::METHOD_WITHDRAW_VALIDATOR_REWARD => (|| {
-                runtime.charge_system_contract_call(auction_costs.withdraw_validator_reward)?;
-
-                let validator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
-                runtime
-                    .withdraw_validator_reward(validator_public_key)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)
-            })(),
-
             // Type: `fn read_era_id() -> Result<EraId, Error>`
             auction::METHOD_READ_ERA_ID => (|| {
                 runtime.charge_system_contract_call(auction_costs.read_era_id)?;
