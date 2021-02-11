@@ -350,7 +350,6 @@ impl Storage {
     {
         let txn = self.env.begin_ro_txn()?;
         let bytes = match txn.get(self.state_store_db, &key) {
-            Ok(&[]) => None,
             Ok(slice) => Some(slice.to_owned()),
             Err(lmdb::Error::NotFound) => None,
             Err(err) => return Err(err.into()),
@@ -358,16 +357,14 @@ impl Storage {
         Ok(bytes)
     }
 
-    /// Writes value to the state storage DB.
-    /// May also fail with storage errors.
+    /// Deletes value living under the key from the state storage DB.
     #[cfg(not(feature = "fast-sync"))]
-    pub(crate) fn write_state_store<K, V>(&self, key: &K, value: V) -> Result<(), Error>
+    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<(), Error>
     where
         K: AsRef<[u8]>,
-        V: AsRef<[u8]>,
     {
         let mut txn = self.env.begin_rw_txn()?;
-        txn.put(self.state_store_db, &key, &value, WriteFlags::default())?;
+        txn.del(self.state_store_db, &key, None)?;
         txn.commit()?;
         Ok(())
     }

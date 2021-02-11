@@ -89,7 +89,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             let state = init_hash.map_or(State::None, |init_hash| {
                 State::sync_trusted_hash(init_hash, genesis_validator_weights)
             });
-            let state_key = state_key(&chainspec);
+            let state_key = create_state_key(&chainspec);
             Ok(LinearChainSync {
                 peers: PeersState::new(),
                 state,
@@ -107,7 +107,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         chainspec: &Chainspec,
         state: State,
     ) -> Result<Self, prometheus::Error> {
-        let state_key = state_key(&chainspec);
+        let state_key = create_state_key(&chainspec);
         info!(?state, "reusing previous state");
         Ok(LinearChainSync {
             peers: PeersState::new(),
@@ -696,8 +696,12 @@ where
 }
 
 /// Returns key in the database, under which the LinearChainSync's state is stored.
-fn state_key(chainspec: &Chainspec) -> Vec<u8> {
-    chainspec.network_config.name.clone().into()
+fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
+    format!(
+        "linear_chain_sync:network_name={}",
+        chainspec.network_config.name.clone()
+    )
+    .into()
 }
 
 /// Deserialized vector of bytes into `LinearChainSync::State`.
@@ -717,7 +721,7 @@ pub(crate) fn read_init_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<Option<State>, storage::Error> {
-    let key = state_key(&chainspec);
+    let key = create_state_key(&chainspec);
     if let Some(bytes) = storage.read_state_store(&key)? {
         Ok(deserialize_state(&bytes))
     } else {
@@ -731,8 +735,6 @@ pub(crate) fn clean_linear_chain_state(
     storage: &Storage,
     chainspec: &Chainspec,
 ) -> Result<(), storage::Error> {
-    let key = state_key(&chainspec);
-    let none: Option<State> = None;
-    let bytes = bincode::serialize(&none).unwrap_or_else(|_| panic!("failed to serialize None."));
-    storage.write_state_store(&key, bytes)
+    let key = create_state_key(&chainspec);
+    storage.del_state_store(key)
 }
