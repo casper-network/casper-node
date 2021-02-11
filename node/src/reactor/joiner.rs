@@ -490,7 +490,7 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync = LinearChainSync::new(
+        let linear_chain_sync = LinearChainSync::new::<Error>(
             registry,
             chainspec_loader.chainspec(),
             &storage,

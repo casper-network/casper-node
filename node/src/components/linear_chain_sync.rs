@@ -73,13 +73,16 @@ pub(crate) struct LinearChainSync<I> {
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    pub fn new(
+    pub fn new<Err>(
         registry: &Registry,
         chainspec: &Chainspec,
         storage: &Storage,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Result<Self, prometheus::Error> {
+    ) -> Result<Self, Err>
+    where
+        Err: From<prometheus::Error> + From<storage::Error>,
+    {
         if let Some(state) = read_init_state(storage, chainspec)? {
             Ok(LinearChainSync::from_state(registry, chainspec, state)?)
         } else {
