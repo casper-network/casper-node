@@ -350,6 +350,7 @@ impl Storage {
     {
         let txn = self.env.begin_ro_txn()?;
         let bytes = match txn.get(self.state_store_db, &key) {
+            Ok(slice) if slice.is_empty() => None,
             Ok(slice) => Some(slice.to_owned()),
             Err(lmdb::Error::NotFound) => None,
             Err(err) => return Err(err.into()),
