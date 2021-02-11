@@ -755,8 +755,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // initial token supply
-    let initial_supply_1 = builder.total_supply(None);
-    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply_1;
+    let initial_supply = builder.total_supply(None);
+    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_1_integer = expected_total_reward_1.to_integer();
 
     for request in post_genesis_requests {
@@ -870,6 +870,9 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let total_supply_2 = builder.total_supply(None);
+    assert!(total_supply_2 > initial_supply);
+
     let distribute_request_2 = ExecuteRequestBuilder::standard(
         SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
@@ -882,14 +885,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     builder.exec(distribute_request_2).commit().expect_success();
 
-    let total_supply_2 = builder.total_supply(None);
-    assert!(total_supply_2 > initial_supply_1);
-
-    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE
-        * (initial_supply_1
-            + expected_validator_1_payout_1
-            + expected_delegator_1_payout_1
-            + expected_delegator_2_payout_1);
+    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
 
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
 
@@ -1254,6 +1250,9 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let total_supply_2 = builder.total_supply(None);
+    assert!(total_supply_2 > initial_supply);
+
     let reward_factors_2 = {
         let mut tmp = BTreeMap::new();
         tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR_2);
@@ -1274,11 +1273,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 
     builder.exec(distribute_request_2).commit().expect_success();
 
-    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE
-        * (initial_supply
-            + validator_1_staked_amount_1
-            + validator_2_staked_amount_1
-            + validator_3_staked_amount_1);
+    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
     assert!(expected_total_reward_2 > expected_total_reward_1);
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
 
