@@ -106,7 +106,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 ..
             } => format!(
-                "syncing trusted hash: {:?}, highest block seen: {:?}",
+                "syncing descendants of trusted hash: {:?}, highest block seen: {:?}",
                 trusted_hash, highest_block_seen
             ),
             State::SyncingDescendants {
