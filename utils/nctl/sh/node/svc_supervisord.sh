@@ -75,7 +75,7 @@ function do_node_status()
     fi
 
     NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME"
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME" || true
 }
 
 #######################################
@@ -86,7 +86,7 @@ function do_node_status()
 function do_node_status_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" status all
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" status all || true
     else
         log "supervisord is not running - have you started the network ?"
     fi
