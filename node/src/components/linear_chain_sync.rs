@@ -76,21 +76,26 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     pub fn new(
         registry: &Registry,
         chainspec: &Chainspec,
+        storage: &Storage,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Result<Self, prometheus::Error> {
-        let state = init_hash.map_or(State::None, |init_hash| {
-            State::sync_trusted_hash(init_hash, genesis_validator_weights)
-        });
-        let state_key = state_key(&chainspec);
-        Ok(LinearChainSync {
-            peers: PeersState::new(),
-            state,
-            metrics: LinearChainSyncMetrics::new(registry)?,
-            next_upgrade_activation_point: None,
-            stop_for_upgrade: false,
-            state_key,
-        })
+        if let Some(state) = read_init_state(storage, chainspec)? {
+            Ok(LinearChainSync::from_state(registry, chainspec, state)?)
+        } else {
+            let state = init_hash.map_or(State::None, |init_hash| {
+                State::sync_trusted_hash(init_hash, genesis_validator_weights)
+            });
+            let state_key = state_key(&chainspec);
+            Ok(LinearChainSync {
+                peers: PeersState::new(),
+                state,
+                metrics: LinearChainSyncMetrics::new(registry)?,
+                next_upgrade_activation_point: None,
+                stop_for_upgrade: false,
+                state_key,
+            })
+        }
     }
 
     /// Initialize `LinearChainSync` component from preloaded `State`.

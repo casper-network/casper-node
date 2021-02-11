@@ -490,20 +490,13 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync = {
-            let maybe_state =
-                linear_chain_sync::read_init_state(&storage, chainspec_loader.chainspec())?;
-            if let Some(state) = maybe_state {
-                LinearChainSync::from_state(registry, chainspec_loader.chainspec(), state)?
-            } else {
-                LinearChainSync::new(
-                    registry,
-                    chainspec_loader.chainspec(),
-                    init_hash,
-                    validator_weights.clone(),
-                )?
-            }
-        };
+        let linear_chain_sync = LinearChainSync::new(
+            registry,
+            chainspec_loader.chainspec(),
+            &storage,
+            init_hash,
+            validator_weights.clone(),
+        )?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -931,6 +924,7 @@ impl Reactor {
     /// socket.
     pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
         // Clean the state of the linear_chain_sync before shutting it down.
+        #[cfg(not(feature = "fast-sync"))]
         linear_chain_sync::clean_linear_chain_state(
             &self.storage,
             self.chainspec_loader.chainspec(),
