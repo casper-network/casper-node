@@ -62,6 +62,7 @@ use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
+use once_cell::sync::Lazy;
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
@@ -83,25 +84,18 @@ use tracing::{debug, error, info, trace, warn};
 
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
-use crate::{
-    components::{
+use crate::{NodeRng, components::{
         network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
-    },
-    effect::{
+    }, effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, EffectResultExt, Effects,
-    },
-    fatal,
-    reactor::{EventQueueHandle, Finalize, QueueKind},
-    tls::{self, TlsCert, ValidationError},
-    types::NodeId,
-    utils, NodeRng,
-};
+    }, fatal, reactor::{EventQueueHandle, Finalize, QueueKind}, tls::{self, TlsCert, ValidationError}, types::NodeId, types::TimeDiff, types::Timestamp, utils};
 pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
+const BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> = Lazy::new(|| Duration::from_secs(120).into());
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -146,8 +140,8 @@ where
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
 
-    /// List of addresses which this node will avoid connecting to.
-    blocklist: HashSet<SocketAddr>,
+    /// List of addresses which this node will avoid connecting to and the time they were added.
+    blocklist: HashMap<SocketAddr, Timestamp>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashSet<SocketAddr>,
@@ -173,6 +167,9 @@ where
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: NetworkingMetrics,
+
+    /// Known addresses for this node.
+    known_addresses: Vec<String>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -212,6 +209,7 @@ where
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
+                known_addresses: cfg.known_addresses.clone(),
                 certificate,
                 secret_key,
                 public_address,
@@ -221,7 +219,7 @@ where
                 incoming: HashMap::new(),
                 outgoing: HashMap::new(),
                 pending: HashSet::new(),
-                blocklist: HashSet::new(),
+                blocklist: HashMap::new(),
                 gossip_interval: cfg.gossip_interval,
                 network_name,
                 shutdown_sender: None,
@@ -273,6 +271,7 @@ where
         ));
 
         let mut model = SmallNetwork {
+            known_addresses: cfg.known_addresses.clone(),
             certificate,
             secret_key,
             public_address,
@@ -282,7 +281,7 @@ where
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
             pending: HashSet::new(),
-            blocklist: HashSet::new(),
+            blocklist: HashMap::new(),
             gossip_interval: cfg.gossip_interval,
             network_name,
             shutdown_sender: Some(server_shutdown_sender),
@@ -608,9 +607,10 @@ where
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
-            if add_to_blocklist {
-                info!(our_id=%self.our_id, %peer_id, "blacklisting peer");
-                self.blocklist.insert(outgoing.peer_address);
+            let peer_ip = format!("{}", outgoing.peer_address.ip());
+            if add_to_blocklist && !self.known_addresses.contains(&peer_ip) {
+                info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
+                self.blocklist.insert(outgoing.peer_address, Timestamp::now());
             }
         }
         self.terminate_if_isolated(effect_builder)
@@ -704,8 +704,9 @@ where
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
+        self.blocklist.retain(|_,ts| *ts > Timestamp::now() + *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains(&peer_address)
-            || self.blocklist.contains(&peer_address)
+            || self.blocklist.contains_key(&peer_address)
             || self
                 .outgoing
                 .iter()
