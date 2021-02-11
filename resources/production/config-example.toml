@@ -36,6 +36,10 @@ unit_hashes_folder = "/var/lib/casper/casper-node"
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '30min'
 
+# The maximum number of blocks by which execution is allowed to lag behind finalization.
+# If it is more than that, consensus will pause, and resume once the executor has caught up.
+max_execution_delay = 3
+
 
 # ====================================
 # Configuration options for networking

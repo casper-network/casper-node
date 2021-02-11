@@ -72,6 +72,7 @@ where
         secret_key_path: Default::default(),
         unit_hashes_folder: Default::default(),
         pending_vertex_timeout: "1min".parse().unwrap(),
+        max_execution_delay: 3,
     };
     let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),

@@ -383,7 +383,7 @@ where
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
-            > 3;
+            > self.config.max_execution_delay;
         match self.active_eras.get_mut(&self.current_era) {
             Some(era) => era.set_paused(paused),
             None => error!(era = self.current_era.0, "current era not initialized"),
