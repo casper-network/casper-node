@@ -9,7 +9,6 @@ use crate::{
     types::Timestamp,
     NodeRng,
 };
-use casper_types::U512;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -51,8 +50,6 @@ pub struct EraEnd<VID> {
     pub(crate) rewards: BTreeMap<VID, u64>,
     /// Validators that haven't produced any unit during the era.
     pub(crate) inactive_validators: Vec<VID>,
-    /// The validator weights for the next Era.
-    pub(crate) next_era_validator_weights: BTreeMap<VID, U512>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
