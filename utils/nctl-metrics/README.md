@@ -35,3 +35,16 @@ Each has a `node` label indicating which node's memory usage is shown.
 * Why am I not getting any memory metrics?
 
 Check the logs `memory-stats-collector.log`. If there are messages stating `AF_UNIX path too long`, the root path of your `casper-node/utils/nctl/assets/...`, which contains the `supervisord.sock` directory is too long.
+
+* Why is podman complaining about `policy.json`?
+
+You can either read up on how `policy.json` works or throw caution to the wind (like Docker) and place the following into `~/.config/containers/policy.json`:
+
+```json
+{
+    "default": [ { "type": "insecureAcceptAnything" } ],
+    "transports": {
+      "docker-daemon": { "": [{"type":"insecureAcceptAnything"}] }
+    }
+}
+```
