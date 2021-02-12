@@ -395,7 +395,6 @@ kind: pipeline
 type: docker
 name: nightly-tests-cron
 
-
 steps:
 - name: nctl-nighly-script
   image: casperlabs/node-build-u1804
