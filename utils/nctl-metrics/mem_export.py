@@ -14,10 +14,12 @@ from prometheus_client import start_http_server, Summary, Gauge
 import psutil
 import sys
 
+
 class UnixStreamHTTPConnection(HTTPConnection):
     def connect(self):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.connect(self.host)
+
 
 class UnixStreamTransport(client.Transport, object):
     def __init__(self, socket_path):
@@ -27,26 +29,37 @@ class UnixStreamTransport(client.Transport, object):
     def make_connection(self, host):
         return UnixStreamHTTPConnection(self.socket_path)
 
-sock_addr = sys.argv[1]
-num_nodes = int(sys.argv[2])
-net_name = 'net-1'
+
+net_name = "net-1"
+sock_addr = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "nctl",
+    "assets",
+    net_name,
+    "daemon",
+    "socket",
+    "supervisord.sock",
+)
 delay = 1
 
 gauges = {
-        'rss': Gauge('os_mem_rss_bytes', 'Resident Set Size', ['node']),
-        'vms': Gauge('os_mem_vms_bytes', 'Virtual Memory Size', ['node']),
-        'shared': Gauge('os_mem_shared_bytes', 'Shared memory size', ['node']),
-        'text': Gauge('os_mem_text_bytes', 'Text memory size', ['node']),
-        'lib': Gauge('os_mem_lib_bytes', 'Lib memory size', ['node']),
-        'data': Gauge('os_mem_data_bytes', 'Data memory size', ['node']),
-        'dirty': Gauge('os_mem_dirty_bytes', 'Dirty memory size', ['node']),
-    }
+    "rss": Gauge("os_mem_rss_bytes", "Resident Set Size", ["node"]),
+    "vms": Gauge("os_mem_vms_bytes", "Virtual Memory Size", ["node"]),
+    "shared": Gauge("os_mem_shared_bytes", "Shared memory size", ["node"]),
+    "text": Gauge("os_mem_text_bytes", "Text memory size", ["node"]),
+    "lib": Gauge("os_mem_lib_bytes", "Lib memory size", ["node"]),
+    "data": Gauge("os_mem_data_bytes", "Data memory size", ["node"]),
+    "dirty": Gauge("os_mem_dirty_bytes", "Dirty memory size", ["node"]),
+}
 
 while True:
     print("Retrieving data for {} nodes from {}".format(num_nodes, sock_addr))
 
     try:
-        proxy = client.ServerProxy('http://localhost', transport=UnixStreamTransport(sock_addr))
+        proxy = client.ServerProxy(
+            "http://localhost", transport=UnixStreamTransport(sock_addr)
+        )
 
         all_proc_info = proxy.supervisor.getAllProcessInfo()
 
