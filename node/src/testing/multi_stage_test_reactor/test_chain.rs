@@ -110,6 +110,8 @@ impl TestChain {
 
         chainspec.core_config.minimum_era_height = 4;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.highway_config.maximum_round_exponent =
+            chainspec.highway_config.minimum_round_exponent;
         chainspec.core_config.era_duration = 10.into();
 
         // Assign a port for the first node (TODO: this has a race condition)

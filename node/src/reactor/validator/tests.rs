@@ -71,8 +71,10 @@ impl TestChain {
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
         chainspec.network_config.timestamp = Timestamp::now() + 45000.into();
 
-        chainspec.core_config.minimum_era_height = 4;
+        chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.highway_config.maximum_round_exponent =
+            chainspec.highway_config.minimum_round_exponent;
         chainspec.core_config.era_duration = 10.into();
 
         TestChain {
@@ -207,7 +209,6 @@ async fn run_validator_network() {
         .await;
 }
 
-// TODO: fix this test
 #[tokio::test]
 async fn run_equivocator_network() {
     testing::init_logging();

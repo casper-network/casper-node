@@ -1,6 +1,6 @@
 use datasize::DataSize;
 
-use super::Timestamp;
+use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
 #[derive(Debug, DataSize, Clone)]
@@ -113,6 +113,12 @@ impl Params {
     /// Returns the minimum timestamp of the last block.
     pub(crate) fn end_timestamp(&self) -> Timestamp {
         self.end_timestamp
+    }
+
+    /// Returns the timestamp corresponding to one round with maximum possible length having passed
+    /// since the start of the era.
+    pub(crate) fn one_max_round_after(&self, timestamp: Timestamp) -> Timestamp {
+        timestamp + TimeDiff::from(1 << self.max_round_exp)
     }
 
     /// Returns the maximum number of additional units included in evidence for conflicting
