@@ -205,7 +205,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     unbonder_public_key: PublicKey,
     bonding_purse: URef,
     amount: U512,
-) -> Result<U512> {
+) -> Result<()> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
         return Err(Error::UnbondTooLarge);
     }
@@ -225,10 +225,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         .push(new_unbonding_purse);
     set_unbonding_purses(provider, unbonding_purses)?;
 
-    // Remaining motes in the validator's bid purse
-    let remaining_bond = provider.get_balance(bonding_purse)?.unwrap_or_default();
-
-    Ok(remaining_bond)
+    Ok(())
 }
 
 /// Reinvests delegator reward by increasing its stake.
