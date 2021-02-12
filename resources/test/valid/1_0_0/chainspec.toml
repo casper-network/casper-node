@@ -31,6 +31,8 @@ max_block_size = 12
 block_max_deploy_count = 125
 block_max_transfer_count = 1000
 block_gas_limit = 13
+payment_args_max_length = 1024
+session_args_max_length = 1024
 
 [wasm]
 max_memory = 17
