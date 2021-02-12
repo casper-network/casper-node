@@ -743,7 +743,8 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
-    let mut state = State::new_test(WEIGHTS, 0);
+    let params = test_params(0).with_max_round_exp(TEST_MIN_ROUND_EXP + 1);
+    let mut state = State::new(WEIGHTS, params, vec![]);
     let mut rng = crate::new_rng();
 
     let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
@@ -761,6 +762,24 @@ fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(TEST_ERA_HEIGHT - 1, state.block(&a3).height);
     let a4 = add_unit!(state, rng, ALICE, None; a3, b0, c0)?;
     assert!(!state.is_terminal_block(&a4)); // not a block
+    Ok(())
+}
+
+#[test]
+fn is_terminal_block_min_round_len() -> Result<(), AddUnitError<TestContext>> {
+    let params = test_params(0).with_max_round_exp(TEST_MIN_ROUND_EXP + 5);
+    let mut state = State::new(WEIGHTS, params, vec![]);
+    let mut rng = crate::new_rng();
+
+    // This is identical to the previous test, but with a higher maximum round length. This time a3
+    // will not be a terminal block because less than one max round length has passed since a0.
+    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0x01; a0, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0x02; a0, b0, N)?;
+    let a1 = add_unit!(state, rng, ALICE, 0x03; a0, b0, c0)?;
+    let a2 = add_unit!(state, rng, ALICE, None; a1, b0, c0)?;
+    let a3 = add_unit!(state, rng, ALICE, 0x04; a2, b0, c0)?;
+    assert!(!state.is_terminal_block(&a3));
     Ok(())
 }
 
