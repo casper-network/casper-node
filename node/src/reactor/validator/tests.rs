@@ -71,7 +71,7 @@ impl TestChain {
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
         chainspec.network_config.timestamp = Timestamp::now() + 45000.into();
 
-        chainspec.core_config.minimum_era_height = 1;
+        chainspec.core_config.minimum_era_height = 4;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
         chainspec.core_config.era_duration = 10.into();
 
@@ -125,7 +125,7 @@ impl TestChain {
                 self.chainspec.clone(),
             )
             .await?;
-            initializer_runner.run(rng).await;
+            let _ = initializer_runner.run(rng).await;
 
             // Now we can construct the actual node.
             let initializer = initializer_runner.into_inner();
@@ -136,7 +136,7 @@ impl TestChain {
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
-            joiner_runner.run(rng).await;
+            let _ = joiner_runner.run(rng).await;
 
             let config = joiner_runner.into_inner().into_validator_config().await;
 
@@ -207,6 +207,7 @@ async fn run_validator_network() {
         .await;
 }
 
+// TODO: fix this test
 #[tokio::test]
 async fn run_equivocator_network() {
     testing::init_logging();

@@ -157,7 +157,7 @@ impl CLTyped for SeigniorageAllocation {
     }
 }
 
-/// Auction metdata.  Intended to be recorded at each era.
+/// Auction metadata.  Intended to be recorded at each era.
 #[derive(Debug, Default, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

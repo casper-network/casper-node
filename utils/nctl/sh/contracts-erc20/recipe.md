@@ -4,7 +4,7 @@ nctl-start
 
 # Await for the faucet to be funded.
 sleep 30.0
-nctl-view-faucet-balance
+nctl-view-faucet-accounts
 
 # Fund user accounts.
 nctl-do-fund-users

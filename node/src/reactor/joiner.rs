@@ -69,7 +69,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHeader, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -133,7 +133,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<BlockHeader, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -174,7 +174,7 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<BlockHeader, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
 
     /// Block executor request.
     #[from]
@@ -340,7 +340,7 @@ pub struct Reactor {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) linear_chain_fetcher: Fetcher<Block>,
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<BlockHeader, NodeId>,
+    pub(super) block_validator: BlockValidator<Block, NodeId>,
     pub(super) deploy_fetcher: Fetcher<Deploy>,
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
@@ -408,13 +408,13 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             false,
         )?;
-        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             registry,
             small_network_identity,
-            genesis_config_hash,
+            network_name,
             false,
         )?;
 
@@ -475,7 +475,7 @@ impl reactor::Reactor for Reactor {
 
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
 
-        let linear_chain = linear_chain::LinearChain::new();
+        let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
@@ -762,14 +762,16 @@ impl reactor::Reactor for Reactor {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block_header) => reactor::wrap_effects(
-                    Event::LinearChainSync,
-                    self.linear_chain_sync.handle_event(
-                        effect_builder,
-                        rng,
-                        linear_chain_sync::Event::BlockHandled(block_header),
-                    ),
-                ),
+                ConsensusAnnouncement::Handled(block) => {
+                    let mut effects = Effects::new();
+                    let reactor_event =
+                        Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    let reactor_event =
+                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    effects
+                }
                 ConsensusAnnouncement::Finalized(_) => {
                     // A block was finalized.
                     Effects::new()
@@ -877,9 +879,10 @@ impl reactor::Reactor for Reactor {
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
-                    next_upgrade.activation_point(),
-                ));
+                let reactor_event =
+                    Event::LinearChainSync(linear_chain_sync::Event::GotUpgradeActivationPoint(
+                        next_upgrade.activation_point(),
+                    ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
@@ -888,6 +891,10 @@ impl reactor::Reactor for Reactor {
 
     fn is_stopped(&mut self) -> bool {
         self.linear_chain_sync.is_synced()
+    }
+
+    fn needs_upgrade(&mut self) -> bool {
+        self.linear_chain_sync.stopped_for_upgrade()
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {

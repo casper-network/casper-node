@@ -971,7 +971,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
+    HandleLinearBlock(Box<Block>, Responder<Option<FinalitySignature>>),
     /// Check whether validator identifying with the public key is bonded.
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }

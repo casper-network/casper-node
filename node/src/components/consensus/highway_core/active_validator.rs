@@ -65,7 +65,7 @@ where
     C: Context,
 {
     /// Our own validator index.
-    pub(crate) vidx: ValidatorIndex,
+    vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
     /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
@@ -81,6 +81,8 @@ where
     /// The target fault tolerance threshold. The validator pauses (i.e. doesn't create new units)
     /// if not enough validators are online to finalize values at this FTT.
     target_ftt: Weight,
+    /// If this flag is set we don't create new units and just send pings instead.
+    paused: bool,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -89,6 +91,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
             .field("vidx", &self.vidx)
             .field("next_round_exp", &self.next_round_exp)
             .field("next_timer", &self.next_timer)
+            .field("paused", &self.paused)
             .finish()
     }
 }
@@ -125,6 +128,7 @@ impl<C: Context> ActiveValidator<C> {
             unit_hash_file,
             own_last_unit,
             target_ftt,
+            paused: false,
         };
         let effects = av.schedule_timer(start_time, state);
         (av, effects)
@@ -169,6 +173,11 @@ impl<C: Context> ActiveValidator<C> {
         self.next_round_exp = new_round_exp;
     }
 
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        self.paused = paused
+    }
+
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
     pub(crate) fn handle_timer(
@@ -191,7 +200,7 @@ impl<C: Context> ActiveValidator<C> {
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         // Only create new units if enough validators are online.
-        if self.enough_validators_online(state, timestamp) {
+        if !self.paused && self.enough_validators_online(state, timestamp) {
             if timestamp == r_id && state.leader(r_id) == self.vidx {
                 effects.extend(self.request_new_block(state, instance_id, timestamp, rng));
                 return effects;
