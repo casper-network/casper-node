@@ -126,7 +126,8 @@ impl Params {
 
     /// Returns the minimum lenght of the era.
     pub(crate) fn min_era_length(&self) -> TimeDiff {
-        TimeDiff::from(1 << self.min_round_exp) * self.end_height
+        (TimeDiff::from(1 << self.min_round_exp) * self.end_height)
+            .max(self.end_timestamp - self.start_timestamp)
     }
 }
 
