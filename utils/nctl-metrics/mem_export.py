@@ -5,14 +5,15 @@
 # Requirements: `prometheus_client`, `psutil`
 
 from http.client import HTTPConnection
+import os
 from pprint import pprint
 import socket
+import sys
 import time
 from xmlrpc import client
 
 from prometheus_client import start_http_server, Summary, Gauge
 import psutil
-import sys
 
 
 class UnixStreamHTTPConnection(HTTPConnection):
@@ -54,7 +55,7 @@ gauges = {
 }
 
 while True:
-    print("Retrieving data for {} nodes from {}".format(num_nodes, sock_addr))
+    print("Retrieving data for from {}".format(sock_addr))
 
     try:
         proxy = client.ServerProxy(
