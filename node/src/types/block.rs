@@ -49,7 +49,7 @@ use crate::{
     utils::DisplayIter,
 };
 
-static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
+static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519([0; 32]);
     let public_key_1 = PublicKey::from(&secret_key_1);
     let equivocators = vec![public_key_1];
@@ -63,13 +63,13 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
 
-    EraEnd {
+    EraReport {
         equivocators,
         rewards,
         inactive_validators,
     }
 });
-static SWITCH_BLOCK_DATA: Lazy<SwitchBlockData> = Lazy::new(|| {
+static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519([0; 32]);
     let public_key_1 = PublicKey::from(&secret_key_1);
     let next_era_validator_weights = {
@@ -86,15 +86,15 @@ static SWITCH_BLOCK_DATA: Lazy<SwitchBlockData> = Lazy::new(|| {
         next_era_validator_weights
     };
 
-    let era_end = EraEnd::doc_example().clone();
-    SwitchBlockData::new(era_end, next_era_validator_weights)
+    let era_end = EraReport::doc_example().clone();
+    EraEnd::new(era_end, next_era_validator_weights)
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let proto_block = ProtoBlock::new(deploy_hashes, vec![], random_bit);
     let timestamp = *Timestamp::doc_example();
-    let era_end = Some(EraEnd::doc_example().clone());
+    let era_end = Some(EraReport::doc_example().clone());
     let era: u64 = 1;
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -306,9 +306,9 @@ impl BlockLike for ProtoBlock {
 }
 
 /// Equivocation and reward information to be included in the terminal finalized block.
-pub type EraEnd = consensus::EraEnd<PublicKey>;
+pub type EraReport = consensus::EraReport<PublicKey>;
 
-impl Display for EraEnd {
+impl Display for EraReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let slashings = DisplayIter::new(&self.equivocators);
         let rewards = DisplayIter::new(
@@ -320,7 +320,7 @@ impl Display for EraEnd {
     }
 }
 
-impl ToBytes for EraEnd {
+impl ToBytes for EraReport {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.equivocators.to_bytes()?);
@@ -336,24 +336,24 @@ impl ToBytes for EraEnd {
     }
 }
 
-impl FromBytes for EraEnd {
+impl FromBytes for EraReport {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
         let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
         let (inactive_validators, remainder) = Vec::<PublicKey>::from_bytes(remainder)?;
 
-        let era_end = EraEnd {
+        let era_report = EraReport {
             equivocators,
             rewards,
             inactive_validators,
         };
-        Ok((era_end, remainder))
+        Ok((era_report, remainder))
     }
 }
 
-impl DocExample for EraEnd {
+impl DocExample for EraReport {
     fn doc_example() -> &'static Self {
-        &*ERA_END
+        &*ERA_REPORT
     }
 }
 
@@ -363,7 +363,7 @@ impl DocExample for EraEnd {
 pub struct FinalizedBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
-    era_end: Option<EraEnd>,
+    era_report: Option<EraReport>,
     era_id: EraId,
     height: u64,
     proposer: PublicKey,
@@ -373,7 +373,7 @@ impl FinalizedBlock {
     pub(crate) fn new(
         proto_block: ProtoBlock,
         timestamp: Timestamp,
-        era_end: Option<EraEnd>,
+        era_report: Option<EraReport>,
         era_id: EraId,
         height: u64,
         proposer: PublicKey,
@@ -381,7 +381,7 @@ impl FinalizedBlock {
         FinalizedBlock {
             proto_block,
             timestamp,
-            era_end,
+            era_report,
             era_id,
             height,
             proposer,
@@ -400,8 +400,8 @@ impl FinalizedBlock {
 
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
     /// its era.
-    pub(crate) fn era_end(&self) -> Option<&EraEnd> {
-        self.era_end.as_ref()
+    pub(crate) fn era_report(&self) -> Option<&EraReport> {
+        self.era_report.as_ref()
     }
 
     /// Returns the ID of the era this block belongs to.
@@ -436,11 +436,11 @@ impl FinalizedBlock {
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let era_end = if rng.gen_bool(0.1) {
+        let era_report = if rng.gen_bool(0.1) {
             let equivocators_count = rng.gen_range(0, 5);
             let rewards_count = rng.gen_range(0, 5);
             let inactive_count = rng.gen_range(0, 5);
-            Some(EraEnd {
+            Some(EraReport {
                 equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
                     .take(equivocators_count)
                     .collect(),
@@ -467,7 +467,7 @@ impl FinalizedBlock {
         FinalizedBlock::new(
             proto_block,
             timestamp,
-            era_end,
+            era_report,
             EraId(era),
             era * 10 + rng.gen_range(0, 10),
             public_key,
@@ -489,15 +489,15 @@ impl From<Block> for FinalizedBlock {
             block.header.random_bit,
         );
 
-        let era_end = match block.header.switch_block_data {
-            Some(data) => Some(data.era_end),
+        let era_report = match block.header.era_end {
+            Some(data) => Some(data.era_report),
             None => None,
         };
 
         FinalizedBlock {
             proto_block,
             timestamp: block.header.timestamp,
-            era_end,
+            era_report,
             era_id: block.header.era_id,
             height: block.header.height,
             proposer: block.body.proposer,
@@ -518,7 +518,7 @@ impl Display for FinalizedBlock {
             self.proto_block.random_bit,
             self.timestamp,
         )?;
-        if let Some(ee) = &self.era_end {
+        if let Some(ee) = &self.era_report {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -601,60 +601,63 @@ impl FromBytes for BlockHash {
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
-pub struct SwitchBlockData {
+pub struct EraEnd {
     /// The era end information.
-    era_end: EraEnd,
+    era_report: EraReport,
     /// The validator weights for the next era.
     next_era_validator_weights: BTreeMap<PublicKey, U512>,
 }
 
-impl SwitchBlockData {
-    pub fn new(era_end: EraEnd, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
-        SwitchBlockData {
-            era_end,
+impl EraEnd {
+    pub fn new(
+        era_report: EraReport,
+        next_era_validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Self {
+        EraEnd {
+            era_report,
             next_era_validator_weights,
         }
     }
 
-    pub fn era_end(&self) -> &EraEnd {
-        &self.era_end
+    pub fn era_report(&self) -> &EraReport {
+        &self.era_report
     }
 }
 
-impl ToBytes for SwitchBlockData {
+impl ToBytes for EraEnd {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.era_end.to_bytes()?);
+        buffer.extend(self.era_report.to_bytes()?);
         buffer.extend(self.next_era_validator_weights.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.era_end.serialized_length() + self.next_era_validator_weights.serialized_length()
+        self.era_report.serialized_length() + self.next_era_validator_weights.serialized_length()
     }
 }
 
-impl FromBytes for SwitchBlockData {
+impl FromBytes for EraEnd {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (era_end, bytes) = EraEnd::from_bytes(bytes)?;
+        let (era_report, bytes) = EraReport::from_bytes(bytes)?;
         let (next_era_validator_weights, bytes) = BTreeMap::<PublicKey, U512>::from_bytes(bytes)?;
-        let switch_block_data = SwitchBlockData {
-            era_end,
+        let era_end = EraEnd {
+            era_report,
             next_era_validator_weights,
         };
-        Ok((switch_block_data, bytes))
+        Ok((era_end, bytes))
     }
 }
 
-impl Display for SwitchBlockData {
+impl Display for EraEnd {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "era_end: {} ", self.era_end)
+        write!(formatter, "era_report: {} ", self.era_report)
     }
 }
 
-impl DocExample for SwitchBlockData {
+impl DocExample for EraEnd {
     fn doc_example() -> &'static Self {
-        &*SWITCH_BLOCK_DATA
+        &*ERA_END
     }
 }
 
@@ -666,7 +669,7 @@ pub struct BlockHeader {
     body_hash: Digest,
     random_bit: bool,
     accumulated_seed: Digest,
-    switch_block_data: Option<SwitchBlockData>,
+    era_end: Option<EraEnd>,
     timestamp: Timestamp,
     era_id: EraId,
     height: u64,
@@ -704,16 +707,16 @@ impl BlockHeader {
     }
 
     /// Returns reward and slashing information if this is the era's last block.
-    pub fn era_end(&self) -> Option<&EraEnd> {
-        match &self.switch_block_data {
-            Some(data) => Some(data.era_end()),
+    pub fn era_end(&self) -> Option<&EraReport> {
+        match &self.era_end {
+            Some(data) => Some(data.era_report()),
             None => None,
         }
     }
 
     /// Returns `true` if this block is the last one in the current era.
     pub fn switch_block(&self) -> bool {
-        self.switch_block_data.is_some()
+        self.era_end.is_some()
     }
 
     /// Era ID in which this block was created.
@@ -728,7 +731,7 @@ impl BlockHeader {
 
     /// The validators for the upcoming era and their respective weights.
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
-        match &self.switch_block_data {
+        match &self.era_end {
             Some(era_end) => {
                 let validator_weights = &era_end.next_era_validator_weights;
                 Some(validator_weights)
@@ -769,7 +772,7 @@ impl Display for BlockHeader {
             self.accumulated_seed,
             self.timestamp,
         )?;
-        if let Some(ee) = &self.switch_block_data {
+        if let Some(ee) = &self.era_end {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -784,7 +787,7 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.body_hash.to_bytes()?);
         buffer.extend(self.random_bit.to_bytes()?);
         buffer.extend(self.accumulated_seed.to_bytes()?);
-        buffer.extend(self.switch_block_data.to_bytes()?);
+        buffer.extend(self.era_end.to_bytes()?);
         buffer.extend(self.timestamp.to_bytes()?);
         buffer.extend(self.era_id.to_bytes()?);
         buffer.extend(self.height.to_bytes()?);
@@ -797,7 +800,7 @@ impl ToBytes for BlockHeader {
             + self.body_hash.serialized_length()
             + self.random_bit.serialized_length()
             + self.accumulated_seed.serialized_length()
-            + self.switch_block_data.serialized_length()
+            + self.era_end.serialized_length()
             + self.timestamp.serialized_length()
             + self.era_id.serialized_length()
             + self.height.serialized_length()
@@ -811,7 +814,7 @@ impl FromBytes for BlockHeader {
         let (body_hash, remainder) = Digest::from_bytes(remainder)?;
         let (random_bit, remainder) = bool::from_bytes(remainder)?;
         let (accumulated_seed, remainder) = Digest::from_bytes(remainder)?;
-        let (switch_block_data, remainder) = Option::<SwitchBlockData>::from_bytes(remainder)?;
+        let (era_end, remainder) = Option::<EraEnd>::from_bytes(remainder)?;
         let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
@@ -821,7 +824,7 @@ impl FromBytes for BlockHeader {
             body_hash,
             random_bit,
             accumulated_seed,
-            switch_block_data,
+            era_end,
             timestamp,
             era_id,
             height,
@@ -1020,11 +1023,8 @@ impl Block {
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 
-        let switch_block_data = match finalized_block.era_end {
-            Some(era_end) => Some(SwitchBlockData::new(
-                era_end,
-                next_era_validator_weights.unwrap(),
-            )),
+        let era_end = match finalized_block.era_report {
+            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
             None => None,
         };
 
@@ -1043,7 +1043,7 @@ impl Block {
             body_hash,
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
-            switch_block_data,
+            era_end,
             timestamp: finalized_block.timestamp,
             era_id,
             height,
@@ -1127,7 +1127,7 @@ impl Block {
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
-        let next_era_validator_weights = match finalized_block.era_end {
+        let next_era_validator_weights = match finalized_block.era_report {
             Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
             None => None,
         };
@@ -1163,7 +1163,7 @@ impl Display for Block {
             self.header.era_id.0,
             self.header.height,
         )?;
-        if let Some(ee) = &self.header.switch_block_data {
+        if let Some(ee) = &self.header.era_end {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -1286,36 +1286,36 @@ pub(crate) mod json_compatibility {
     /// Equivocation and reward information to be included in the terminal block.
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
-    struct JsonEraEnd {
+    struct JsonEraReport {
         equivocators: Vec<PublicKey>,
         rewards: Vec<Reward>,
         inactive_validators: Vec<PublicKey>,
     }
 
-    impl From<EraEnd> for JsonEraEnd {
-        fn from(era_end: EraEnd) -> Self {
-            JsonEraEnd {
-                equivocators: era_end.equivocators,
-                rewards: era_end
+    impl From<EraReport> for JsonEraReport {
+        fn from(era_report: EraReport) -> Self {
+            JsonEraReport {
+                equivocators: era_report.equivocators,
+                rewards: era_report
                     .rewards
                     .into_iter()
                     .map(|(validator, amount)| Reward { validator, amount })
                     .collect(),
-                inactive_validators: era_end.inactive_validators,
+                inactive_validators: era_report.inactive_validators,
             }
         }
     }
 
-    impl From<JsonEraEnd> for EraEnd {
-        fn from(era_end: JsonEraEnd) -> Self {
-            let equivocators = era_end.equivocators;
-            let rewards = era_end
+    impl From<JsonEraReport> for EraReport {
+        fn from(era_report: JsonEraReport) -> Self {
+            let equivocators = era_report.equivocators;
+            let rewards = era_report
                 .rewards
                 .into_iter()
                 .map(|reward| (reward.validator, reward.amount))
                 .collect();
-            let inactive_validators = era_end.inactive_validators;
-            EraEnd {
+            let inactive_validators = era_report.inactive_validators;
+            EraReport {
                 equivocators,
                 rewards,
                 inactive_validators,
@@ -1325,14 +1325,14 @@ pub(crate) mod json_compatibility {
 
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
-    struct JsonSwitchBlockData {
-        era_end: JsonEraEnd,
+    struct JsonEraEnd {
+        era_report: JsonEraReport,
         next_era_validator_weights: Vec<ValidatorWeight>,
     }
 
-    impl From<SwitchBlockData> for JsonSwitchBlockData {
-        fn from(data: SwitchBlockData) -> Self {
-            let json_era_end = JsonEraEnd::from(data.era_end);
+    impl From<EraEnd> for JsonEraEnd {
+        fn from(data: EraEnd) -> Self {
+            let json_era_end = JsonEraReport::from(data.era_report);
             let json_validator_weights = data
                 .next_era_validator_weights
                 .iter()
@@ -1341,22 +1341,22 @@ pub(crate) mod json_compatibility {
                     weight: *weight,
                 })
                 .collect();
-            JsonSwitchBlockData {
-                era_end: json_era_end,
+            JsonEraEnd {
+                era_report: json_era_end,
                 next_era_validator_weights: json_validator_weights,
             }
         }
     }
 
-    impl From<JsonSwitchBlockData> for SwitchBlockData {
-        fn from(json_data: JsonSwitchBlockData) -> Self {
-            let era_end = EraEnd::from(json_data.era_end);
+    impl From<JsonEraEnd> for EraEnd {
+        fn from(json_data: JsonEraEnd) -> Self {
+            let era_end = EraReport::from(json_data.era_report);
             let validator_weights = json_data
                 .next_era_validator_weights
                 .iter()
                 .map(|validator_weight| (validator_weight.validator, validator_weight.weight))
                 .collect();
-            SwitchBlockData::new(era_end, validator_weights)
+            EraEnd::new(era_end, validator_weights)
         }
     }
 
@@ -1368,7 +1368,7 @@ pub(crate) mod json_compatibility {
         body_hash: Digest,
         random_bit: bool,
         accumulated_seed: Digest,
-        switch_block_data: Option<JsonSwitchBlockData>,
+        era_end: Option<JsonEraEnd>,
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
@@ -1382,9 +1382,7 @@ pub(crate) mod json_compatibility {
                 body_hash: block_header.body_hash,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
-                switch_block_data: block_header
-                    .switch_block_data
-                    .map(JsonSwitchBlockData::from),
+                era_end: block_header.era_end.map(JsonEraEnd::from),
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
@@ -1400,7 +1398,7 @@ pub(crate) mod json_compatibility {
                 body_hash: block_header.body_hash,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
-                switch_block_data: block_header.switch_block_data.map(SwitchBlockData::from),
+                era_end: block_header.era_end.map(EraEnd::from),
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
@@ -1619,24 +1617,24 @@ mod tests {
     }
 
     #[test]
-    fn bytesrepr_roundtrip_era_end() {
+    fn bytesrepr_roundtrip_era_report() {
         let mut rng = TestRng::new();
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
             let finalized_block = FinalizedBlock::random(&mut rng);
-            if let Some(era_end) = finalized_block.era_end() {
-                bytesrepr::test_serialization_roundtrip(era_end);
+            if let Some(era_report) = finalized_block.era_report() {
+                bytesrepr::test_serialization_roundtrip(era_report);
             }
         }
     }
 
     #[test]
-    fn bytesrepr_roundtrip_switch_block_data() {
+    fn bytesrepr_roundtrip_era_end() {
         let mut rng = TestRng::new();
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
             let block = Block::random(&mut rng);
-            if let Some(data) = block.header.switch_block_data {
+            if let Some(data) = block.header.era_end {
                 bytesrepr::test_serialization_roundtrip(&data)
             }
         }

@@ -44,7 +44,7 @@ use crate::{
 
 use crate::types::Block;
 pub use config::Config;
-pub(crate) use consensus_protocol::{BlockContext, EraEnd};
+pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
