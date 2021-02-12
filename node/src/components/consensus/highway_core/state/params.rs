@@ -115,10 +115,9 @@ impl Params {
         self.end_timestamp
     }
 
-    /// Returns the timestamp corresponding to one round with maximum possible length having passed
-    /// since the start of the era.
-    pub(crate) fn one_max_round_after(&self, timestamp: Timestamp) -> Timestamp {
-        timestamp + TimeDiff::from(1 << self.max_round_exp)
+    /// Returns the maximum round length, corresponding to the maximum round exponent.
+    pub(crate) fn max_round_length(&self) -> TimeDiff {
+        TimeDiff::from(1 << self.max_round_exp)
     }
 
     /// Returns the maximum number of additional units included in evidence for conflicting

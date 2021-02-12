@@ -787,21 +787,26 @@ impl<C: Context> State<C> {
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
+    ///
+    /// A block is considered terminal if it has both the configured minimum height and minimum
+    /// timestamp, and is at least one maximum round length after the first block. The latter is
+    /// required because validators with panorama entry `None` in the last block are reported as
+    /// inactive, so they need at least one round to have a chance to create a unit.
+    ///
+    /// Note that a malicious block proposer could still choose to ignore units and cause someone
+    /// to get reported as inactive, so it is recommended to configure a sufficient minimum height.
     pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
-        let unit = self.unit(bhash);
-        let is_late_enough_after_first_block = self
-            .find_ancestor(bhash, 0)
-            .map(|first_block| {
-                unit.timestamp
-                    >= self
-                        .params
-                        .one_max_round_after(self.unit(first_block).timestamp)
-            })
-            .unwrap_or(false);
         self.blocks.get(bhash).map_or(false, |block| {
+            let unit = self.unit(bhash);
             block.height + 1 >= self.params.end_height()
                 && unit.timestamp >= self.params.end_timestamp()
-                && is_late_enough_after_first_block
+                && self
+                    .find_ancestor(bhash, 0)
+                    .map(|first_block| {
+                        unit.timestamp
+                            >= self.unit(first_block).timestamp + self.params.max_round_length()
+                    })
+                    .unwrap_or(false)
         })
     }
 
