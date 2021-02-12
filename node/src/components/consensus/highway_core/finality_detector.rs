@@ -170,13 +170,25 @@ impl<C: Context> FinalityDetector<C> {
         unit: &Unit<C>,
         highway: &Highway<C>,
     ) -> TerminalBlockData<C> {
-        let state = highway.state();
-        // Index exists, since we have units from them.
         let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
+        let state = highway.state();
+
+        // Compute the rewards, and replace each validator index with the validator ID.
         let rewards = rewards::compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
         let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
-        let inactive_validators = unit.panorama.iter_none().map(to_id).collect();
+
+        // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
+        // if at least one maximum-length round passed between the first and last block.
+        let first_bhash = state.find_ancestor(bhash, 0).unwrap();
+        let sufficient_time_for_activity =
+            unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();
+        let inactive_validators = if sufficient_time_for_activity {
+            unit.panorama.iter_none().map(to_id).collect()
+        } else {
+            Vec::new()
+        };
+
         TerminalBlockData {
             rewards,
             inactive_validators,
