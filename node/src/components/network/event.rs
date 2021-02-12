@@ -23,6 +23,7 @@ const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<Message>>();
 const_assert!(_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
+#[repr(u8)]
 pub enum Event<P> {
     // ========== Events triggered by the libp2p network behavior ==========
     /// A connection to the given peer has been opened.
@@ -96,32 +97,18 @@ pub enum Event<P> {
     #[from]
     NetworkRequest {
         #[serde(skip_serializing)]
-        request: Box<NetworkRequest<NodeId, P>>,
+        request: NetworkRequest<NodeId, P>,
     },
 
     /// Incoming network info request.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]
-        info_request: Box<NetworkInfoRequest<NodeId>>,
+        info_request: NetworkInfoRequest<NodeId>,
     },
 }
 
-impl From<NetworkRequest<NodeId, Message>> for Event<Message> {
-    fn from(req: NetworkRequest<NodeId, Message>) -> Self {
-        Event::NetworkRequest {
-            request: Box::new(req),
-        }
-    }
-}
 
-impl From<NetworkInfoRequest<NodeId>> for Event<Message> {
-    fn from(request: NetworkInfoRequest<NodeId>) -> Self {
-        Self::NetworkInfoRequest {
-            info_request: Box::new(request),
-        }
-    }
-}
 
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

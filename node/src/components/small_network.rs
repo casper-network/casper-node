@@ -875,12 +875,12 @@ where
                         responder,
                     } => {
                         // We're given a message to send out.
-                        self.send_message(dest, Message::Payload(payload));
+                        self.send_message(*dest, Message::Payload(*payload));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.
-                        self.broadcast_message(Message::Payload(payload));
+                        self.broadcast_message(Message::Payload(*payload));
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Gossip {
@@ -891,7 +891,7 @@ where
                     } => {
                         // We're given a message to gossip.
                         let sent_to =
-                            self.gossip_message(rng, Message::Payload(payload), count, exclude);
+                            self.gossip_message(rng, Message::Payload(*payload), count, exclude);
                         responder.respond(sent_to).ignore()
                     }
                 }

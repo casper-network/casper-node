@@ -54,6 +54,7 @@ use crate::{
     utils::DisplayIter,
     Chainspec,
 };
+use crate::types::NodeId;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
@@ -78,6 +79,9 @@ impl Display for MetricsRequest {
     }
 }
 
+const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<NodeId, String>>();
+const_assert!(_NETWORK_EVENT_SIZE < 89);
+
 /// A networking request.
 #[derive(Debug, Serialize)]
 #[must_use]
@@ -85,9 +89,9 @@ pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         /// Message destination.
-        dest: I,
+        dest: Box<I>,
         /// Message payload.
-        payload: P,
+        payload: Box<P>,
         /// Responder to be called when the message is queued.
         #[serde(skip_serializing)]
         responder: Responder<()>,
@@ -97,7 +101,7 @@ pub enum NetworkRequest<I, P> {
     ///       implementation is likely to implement broadcast support.
     Broadcast {
         /// Message payload.
-        payload: P,
+        payload: Box<P>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
         responder: Responder<()>,
@@ -105,7 +109,7 @@ pub enum NetworkRequest<I, P> {
     /// Gossip a message to a random subset of peers.
     Gossip {
         /// Payload to gossip.
-        payload: P,
+        payload: Box<P>,
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
@@ -132,11 +136,11 @@ impl<I, P> NetworkRequest<I, P> {
                 responder,
             } => NetworkRequest::SendMessage {
                 dest,
-                payload: wrap_payload(payload),
+                payload: Box::new(wrap_payload(*payload)),
                 responder,
             },
             NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
-                payload: wrap_payload(payload),
+                payload: Box::new(wrap_payload(*payload)),
                 responder,
             },
             NetworkRequest::Gossip {
@@ -145,7 +149,7 @@ impl<I, P> NetworkRequest<I, P> {
                 exclude,
                 responder,
             } => NetworkRequest::Gossip {
-                payload: wrap_payload(payload),
+                payload: Box::new(wrap_payload(*payload)),
                 count,
                 exclude,
                 responder,

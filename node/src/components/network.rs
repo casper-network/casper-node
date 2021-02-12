@@ -816,17 +816,17 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 debug!(%error, "{}: non-fatal listener error", self.our_id);
                 Effects::new()
             }
-            Event::NetworkRequest { request } => match *request {
+            Event::NetworkRequest { request } => match request {
                 NetworkRequest::SendMessage {
                     dest,
                     payload,
                     responder,
                 } => {
-                    self.send_message(dest, payload);
+                    self.send_message(*dest, *payload);
                     responder.respond(()).ignore()
                 }
                 NetworkRequest::Broadcast { payload, responder } => {
-                    self.gossip_message(payload);
+                    self.gossip_message(*payload);
                     responder.respond(()).ignore()
                 }
                 NetworkRequest::Gossip {
@@ -835,11 +835,11 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     exclude,
                     responder,
                 } => {
-                    let sent_to = self.send_message_to_n_peers(rng, payload, count, exclude);
+                    let sent_to = self.send_message_to_n_peers(rng, *payload, count, exclude);
                     responder.respond(sent_to).ignore()
                 }
             },
-            Event::NetworkInfoRequest { info_request } => match *info_request {
+            Event::NetworkInfoRequest { info_request } => match info_request {
                 NetworkInfoRequest::GetPeers { responder } => {
                     let peers = self
                         .peers

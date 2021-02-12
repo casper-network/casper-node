@@ -391,13 +391,14 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                matches!(
-                    event,
-                    ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                        payload: Message::GetRequest { .. },
-                        ..
-                    })
-                )
+                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage { payload, .. }) = event {
+                    matches!(
+                    **payload,
+                    Message::GetRequest { .. }
+                    )
+                } else {
+                    false
+                }
             },
             TIMEOUT,
         )
@@ -409,13 +410,14 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                matches!(
-                    event,
-                    ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                        payload: Message::GetResponse { .. },
-                        ..
-                    })
-                )
+                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {payload, .. }) = event {
+                    matches!(
+                    **payload,
+                    Message::GetResponse { .. }
+                    )
+                } else {
+                    false
+                }
             },
             TIMEOUT,
         )

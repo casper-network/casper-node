@@ -434,9 +434,15 @@ async fn should_get_from_alternate_source() {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage {
                 dest,
-                payload: NodeMessage::DeployGossiper(Message::GossipResponse { .. }),
+                payload,
                 ..
-            }) => dest == &node_id_0,
+            }) => {
+                if let NodeMessage::DeployGossiper(Message::GossipResponse { .. }) = **payload {
+                    &**dest == &node_id_0
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     };

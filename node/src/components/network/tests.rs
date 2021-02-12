@@ -45,11 +45,6 @@ impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, String>> for NetworkEvent<String> {
-    fn from(_req: NetworkRequest<NodeId, String>) -> Self {
-        unreachable!()
-    }
-}
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
