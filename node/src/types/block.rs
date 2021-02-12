@@ -86,15 +86,15 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
         next_era_validator_weights
     };
 
-    let era_end = EraReport::doc_example().clone();
-    EraEnd::new(era_end, next_era_validator_weights)
+    let era_report = EraReport::doc_example().clone();
+    EraEnd::new(era_report, next_era_validator_weights)
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let proto_block = ProtoBlock::new(deploy_hashes, vec![], random_bit);
     let timestamp = *Timestamp::doc_example();
-    let era_end = Some(EraReport::doc_example().clone());
+    let era_report = Some(EraReport::doc_example().clone());
     let era: u64 = 1;
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -102,7 +102,7 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     FinalizedBlock::new(
         proto_block,
         timestamp,
-        era_end,
+        era_report,
         EraId(era),
         era * 10,
         public_key,
@@ -1350,13 +1350,13 @@ pub(crate) mod json_compatibility {
 
     impl From<JsonEraEnd> for EraEnd {
         fn from(json_data: JsonEraEnd) -> Self {
-            let era_end = EraReport::from(json_data.era_report);
+            let era_report = EraReport::from(json_data.era_report);
             let validator_weights = json_data
                 .next_era_validator_weights
                 .iter()
                 .map(|validator_weight| (validator_weight.validator, validator_weight.weight))
                 .collect();
-            EraEnd::new(era_end, validator_weights)
+            EraEnd::new(era_report, validator_weights)
         }
     }
 
