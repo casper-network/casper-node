@@ -32,7 +32,7 @@ use crate::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
         consensus_protocol::{
-            BlockContext, ConsensusProtocol, EraEnd, FinalizedBlock as CpFinalizedBlock,
+            BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
             ProtocolOutcome,
         },
         metrics::ConsensusMetrics,
@@ -773,7 +773,7 @@ where
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets slashed.
-                let era_end = terminal_block_data.map(|tbd| EraEnd {
+                let era_end = terminal_block_data.map(|tbd| EraReport {
                     rewards: tbd.rewards,
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
@@ -795,7 +795,7 @@ where
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
                 self.era_supervisor.next_block_height = finalized_block.height() + 1;
-                if finalized_block.era_end().is_some() {
+                if finalized_block.era_report().is_some() {
                     // This was the era's last block. Schedule deactivating this era.
                     let delay = Timestamp::now().saturating_diff(timestamp).into();
                     let faulty_num = era.consensus.validators_with_evidence().len();

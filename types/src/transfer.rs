@@ -9,6 +9,10 @@ use core::{
 };
 
 use datasize::DataSize;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -97,6 +101,12 @@ impl<'de> Deserialize<'de> for DeployHash {
             <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
         };
         Ok(DeployHash(bytes))
+    }
+}
+
+impl Distribution<DeployHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DeployHash {
+        DeployHash::new(rng.gen())
     }
 }
 
@@ -372,6 +382,12 @@ impl FromBytes for TransferAddr {
 impl AsRef<[u8]> for TransferAddr {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
+    }
+}
+
+impl Distribution<TransferAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransferAddr {
+        TransferAddr::new(rng.gen())
     }
 }
 
