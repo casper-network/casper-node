@@ -780,6 +780,7 @@ fn is_terminal_block_min_round_len() -> Result<(), AddUnitError<TestContext>> {
     let a2 = add_unit!(state, rng, ALICE, None; a1, b0, c0)?;
     let a3 = add_unit!(state, rng, ALICE, 0x04; a2, b0, c0)?;
     assert!(!state.is_terminal_block(&a3));
+    assert!(state.maybe_block(&a3).is_some());
     Ok(())
 }
 
