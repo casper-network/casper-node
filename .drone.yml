@@ -403,5 +403,22 @@ steps:
   - "apt update && apt install lsof -y"
   - "bash -i ci/nightly-test.sh"
 
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+    - |
+      Nightly Test Run Status: *{{ uppercasefirst build.status }}*
+      Author: {{ build.author }}
+      Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+  when:
+    status:
+    - failure
+  depends_on:
+  - nctl-nighly-script
+
 trigger:
   cron: [ nightly-tests-cron ]
