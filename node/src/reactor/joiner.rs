@@ -69,7 +69,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHeader, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -133,7 +133,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<BlockHeader, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -174,7 +174,7 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<BlockHeader, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
 
     /// Block executor request.
     #[from]
@@ -340,7 +340,7 @@ pub struct Reactor {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) linear_chain_fetcher: Fetcher<Block>,
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<BlockHeader, NodeId>,
+    pub(super) block_validator: BlockValidator<Block, NodeId>,
     pub(super) deploy_fetcher: Fetcher<Deploy>,
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
@@ -762,11 +762,10 @@ impl reactor::Reactor for Reactor {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block_header) => {
+                ConsensusAnnouncement::Handled(block) => {
                     let mut effects = Effects::new();
-                    let reactor_event = Event::LinearChainSync(
-                        linear_chain_sync::Event::BlockHandled(block_header),
-                    );
+                    let reactor_event =
+                        Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                     let reactor_event =
                         Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);

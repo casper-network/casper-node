@@ -426,22 +426,22 @@ where
                 let completion_duration = Timestamp::now().millis() - block.header().timestamp().millis();
                 self.metrics.block_completion_duration.set(completion_duration as i64);
 
-                let block_header = block.take_header();
-                let block_hash = block_header.hash();
-                let era_id = block_header.era_id();
-                let height = block_header.height();
+
+                let block_hash = block.header().hash();
+                let era_id = block.header().era_id();
+                let height = block.header().height();
                 info!(%block_hash, %era_id, %height, "linear chain block stored");
                 let mut effects = effect_builder
                     .put_execution_results_to_storage(block_hash, execution_results)
                     .ignore();
                 effects.extend(
                     effect_builder
-                        .handle_linear_chain_block(block_header.clone())
+                        .handle_linear_chain_block(*block.clone())
                         .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
                 );
                 effects.extend(
                     effect_builder
-                        .announce_block_added(block_hash, block_header)
+                        .announce_block_added(block_hash, block.take_header())
                         .ignore(),
                 );
                 effects
