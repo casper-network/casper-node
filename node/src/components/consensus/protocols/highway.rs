@@ -671,6 +671,11 @@ where
             .collect()
     }
 
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    fn set_paused(&mut self, paused: bool) {
+        self.highway.set_paused(paused);
+    }
+
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
         self.highway.validators_with_evidence().collect()
     }

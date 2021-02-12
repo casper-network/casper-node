@@ -23,7 +23,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{AsymmetricType, PublicKey, SecretKey, U512};
 
@@ -43,8 +43,8 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockLike, FinalitySignature, FinalizedBlock, ProtoBlock,
-        Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
+        ProtoBlock, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -98,6 +98,8 @@ pub struct EraSupervisor<I> {
     /// This value could be obtained from the consensus instance in a relevant era, but caching it
     /// here is the easiest way of achieving the desired effect.
     next_block_height: u64,
+    /// The height of the next block to be executed. If this falls too far behind, we pause.
+    next_executed_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
     // TODO: discuss this quick fix
@@ -162,6 +164,7 @@ where
             unit_hashes_folder,
             next_upgrade_activation_point: None,
             stop_for_upgrade: false,
+            next_executed_height: 0,
         };
 
         let results = era_supervisor.new_era(
@@ -370,6 +373,26 @@ where
     pub(crate) fn stop_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
     }
+
+    /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
+    /// block execution has caught up with finalization.
+    fn executed_block(&mut self, block_header: &BlockHeader) {
+        self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
+        self.update_consensus_pause();
+    }
+
+    /// Pauses or unpauses consensus: Whenever the last executed block is too far behind the last
+    /// finalized block, we suspend consensus.
+    fn update_consensus_pause(&mut self) {
+        let paused = self
+            .next_block_height
+            .saturating_sub(self.next_executed_height)
+            > self.config.max_execution_delay;
+        match self.active_eras.get_mut(&self.current_era) {
+            Some(era) => era.set_paused(paused),
+            None => error!(era = self.current_era.0, "current era not initialized"),
+        }
+    }
 }
 
 /// A mutable `EraSupervisor` reference, together with an `EffectBuilder`.
@@ -499,6 +522,7 @@ where
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
+        self.era_supervisor.executed_block(block.header());
         let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block.hash();
             Some(FinalitySignature::new(
@@ -784,6 +808,7 @@ where
                 }
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
+                self.era_supervisor.update_consensus_pause();
                 effects
             }
             ProtocolOutcome::ValidateConsensusValue(sender, candidate_block, timestamp) => {
