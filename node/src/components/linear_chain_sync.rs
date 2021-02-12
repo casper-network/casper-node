@@ -39,10 +39,15 @@ use casper_types::{PublicKey, U512};
 
 use self::event::{BlockByHashResult, DeploysResult};
 
-use super::{consensus::EraId, fetcher::FetchResult, Component};
+use super::{
+    consensus::EraId,
+    fetcher::FetchResult,
+    storage::{self, Storage},
+    Component,
+};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{ActivationPoint, Block, BlockByHeight, BlockHash, FinalizedBlock},
+    types::{ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -63,23 +68,54 @@ pub(crate) struct LinearChainSync<I> {
     /// we need to shut down for an upgrade.
     next_upgrade_activation_point: Option<ActivationPoint>,
     stop_for_upgrade: bool,
+    /// Key for storing the linear chain sync state.
+    state_key: Vec<u8>,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    pub fn new(
+    pub fn new<Err>(
         registry: &Registry,
+        chainspec: &Chainspec,
+        storage: &Storage,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Result<Self, Err>
+    where
+        Err: From<prometheus::Error> + From<storage::Error>,
+    {
+        if let Some(state) = read_init_state(storage, chainspec)? {
+            Ok(LinearChainSync::from_state(registry, chainspec, state)?)
+        } else {
+            let state = init_hash.map_or(State::None, |init_hash| {
+                State::sync_trusted_hash(init_hash, genesis_validator_weights)
+            });
+            let state_key = create_state_key(&chainspec);
+            Ok(LinearChainSync {
+                peers: PeersState::new(),
+                state,
+                metrics: LinearChainSyncMetrics::new(registry)?,
+                next_upgrade_activation_point: None,
+                stop_for_upgrade: false,
+                state_key,
+            })
+        }
+    }
+
+    /// Initialize `LinearChainSync` component from preloaded `State`.
+    pub fn from_state(
+        registry: &Registry,
+        chainspec: &Chainspec,
+        state: State,
     ) -> Result<Self, prometheus::Error> {
-        let state = init_hash.map_or(State::None, |init_hash| {
-            State::sync_trusted_hash(init_hash, genesis_validator_weights)
-        });
+        let state_key = create_state_key(&chainspec);
+        info!(?state, "reusing previous state");
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
             next_upgrade_activation_point: None,
             stop_for_upgrade: false,
+            state_key,
         })
     }
 
@@ -158,8 +194,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         trace!(%hash, %height, "downloaded linear chain block.");
         if block.header().switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(era = block.header().era_id().0, "shutting down for upgrade");
-            self.stop_for_upgrade = true;
-            return Effects::new();
+            return effect_builder
+                .immediately()
+                .event(|_| Event::InitUpgradeShutdown);
         }
         // Reset peers before creating new requests.
         self.peers.reset(rng);
@@ -304,6 +341,26 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
+    fn handle_upgrade_shutdown<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<I>>
+    where
+        I: Send + 'static,
+        REv: ReactorEventT<I>,
+    {
+        if self.state.is_done() || self.state.is_none() {
+            error!(state=?self.state, "shutdown for upgrade initiated when in wrong state");
+            panic!(
+                "shutdown for upgrade initiated when in wrong state: {}",
+                self.state,
+            )
+        }
+        effect_builder
+            .save_state(self.state_key.clone().into(), Some(self.state.clone()))
+            .event(|_| Event::Shutdown(true))
+    }
+
     fn latest_block(&self) -> Option<&Block> {
         match &self.state {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
@@ -342,13 +399,18 @@ where
                         trace!("received `Start` event when in {} state.", self.state);
                         Effects::new()
                     }
-                    State::Done | State::SyncingDescendants { .. } => {
+                    State::Done => {
                         // Illegal states for syncing start.
-                        error!(
-                            "should not have received `Start` event when in {} state.",
-                            self.state
-                        );
+                        error!("should not have received `Start` event when in `Done` state.",);
                         Effects::new()
+                    }
+                    State::SyncingDescendants {
+                        ref latest_block, ..
+                    } => {
+                        let next_block_height = latest_block.height() + 1;
+                        info!(?next_block_height, "start synchronization");
+                        self.metrics.reset_start_time();
+                        fetch_block_at_height(effect_builder, init_peer, next_block_height)
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
                         trace!(?trusted_hash, "start synchronization");
@@ -369,8 +431,8 @@ where
                                 // `block_height` not found on any of the peers.
                                 // We have synchronized all, currently existing, descendants of
                                 // trusted hash.
+                                info!("finished synchronizing descendants of the trusted hash. cleaning state.");
                                 self.mark_done();
-                                info!("finished synchronizing descendants of the trusted hash.");
                                 Effects::new()
                             }
                             Some(peer) => {
@@ -535,6 +597,16 @@ where
                 self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
                 Effects::new()
             }
+            Event::InitUpgradeShutdown => {
+                info!("shutdown initiated");
+                // Serialize and store state.
+                self.handle_upgrade_shutdown(effect_builder)
+            }
+            Event::Shutdown(upgrade) => {
+                info!(?upgrade, "ready for shutdown");
+                self.stop_for_upgrade = upgrade;
+                Effects::new()
+            }
         }
     }
 }
@@ -621,4 +693,48 @@ where
             },
             move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
         )
+}
+
+/// Returns key in the database, under which the LinearChainSync's state is stored.
+fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
+    format!(
+        "linear_chain_sync:network_name={}",
+        chainspec.network_config.name.clone()
+    )
+    .into()
+}
+
+/// Deserialized vector of bytes into `LinearChainSync::State`.
+/// Panics on deserialization errors.
+fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
+    bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+        panic!(
+            "could not deserialize state from storage, error {:?}",
+            error
+        )
+    })
+}
+
+/// Reads the `LinearChainSync's` state from storage, if any.
+/// Panics on deserialization errors.
+pub(crate) fn read_init_state(
+    storage: &Storage,
+    chainspec: &Chainspec,
+) -> Result<Option<State>, storage::Error> {
+    let key = create_state_key(&chainspec);
+    if let Some(bytes) = storage.read_state_store(&key)? {
+        Ok(deserialize_state(&bytes))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Cleans the linear chain state storage.
+/// May fail with storage error.
+pub(crate) fn clean_linear_chain_state(
+    storage: &Storage,
+    chainspec: &Chainspec,
+) -> Result<bool, storage::Error> {
+    let key = create_state_key(&chainspec);
+    storage.del_state_store(key)
 }
