@@ -1,5 +1,7 @@
 use datasize::DataSize;
 
+use crate::types::TimeDiff;
+
 use super::Timestamp;
 
 /// Protocol parameters for Highway.
@@ -120,6 +122,11 @@ impl Params {
     /// than this, you get away with it and are not marked faulty.
     pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
         self.endorsement_evidence_limit
+    }
+
+    /// Returns the minimum lenght of the era.
+    pub(crate) fn min_era_length(&self) -> TimeDiff {
+        TimeDiff::from(1 << self.min_round_exp) * self.end_height
     }
 }
 

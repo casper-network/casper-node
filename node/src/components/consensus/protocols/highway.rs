@@ -143,10 +143,22 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let outcomes = vec![ProtocolOutcome::ScheduleTimer(
+        let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
             Timestamp::now() + config.pending_vertex_timeout,
             TIMER_ID_PURGE_VERTICES,
         )];
+
+        // If there's a chance that we start after the era is finished…
+        if Timestamp::now() > (params.start_timestamp() + params.min_era_length()) {
+            // … request the latest state from peers on startup, in case we joined the era
+            // late and we wouldn't get any consensus units otherwise.
+            let latest_state_request =
+                HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
+
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+                (&latest_state_request).serialize(),
+            ));
+        }
 
         let min_round_exp = params.min_round_exp();
         let max_round_exp = params.max_round_exp();
