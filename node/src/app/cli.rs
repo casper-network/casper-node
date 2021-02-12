@@ -4,7 +4,11 @@
 
 pub mod arglang;
 
-use std::{env, fs, path::PathBuf, str::FromStr};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::{self, bail, Context};
 use regex::Regex;
@@ -20,6 +24,11 @@ use casper_node::{
     utils::WithDir,
 };
 use prometheus::Registry;
+
+// We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
+// env var.
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
@@ -44,6 +53,24 @@ pub enum Cli {
         /// Overrides and extensions for configuration file entries in the form
         /// <SECTION>.<KEY>=<VALUE>.  For example, '-C=node.chainspec_config_path=chainspec.toml'
         config_ext: Vec<ConfigExt>,
+    },
+    /// Migrate modified values from the old config as required after an upgrade.
+    MigrateConfig {
+        /// Path to configuration file of previous version of node.
+        #[structopt(long)]
+        old_config: PathBuf,
+        /// Path to configuration file of this version of node.
+        #[structopt(long)]
+        new_config: PathBuf,
+    },
+    /// Migrate any stored data as required after an upgrade.
+    MigrateData {
+        /// Path to configuration file of previous version of node.
+        #[structopt(long)]
+        old_config: PathBuf,
+        /// Path to configuration file of this version of node.
+        #[structopt(long)]
+        new_config: PathBuf,
     },
 }
 
@@ -116,32 +143,8 @@ impl Cli {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();
 
-                // Determine the parent directory of the configuration file, if any.
-                // Otherwise, we default to `/`.
-                let root = config
-                    .parent()
-                    .map(|path| path.to_owned())
-                    .unwrap_or_else(|| "/".into());
-
-                // The app supports running without a config file, using default values.
-                let config_raw: String = fs::read_to_string(&config)
-                    .context("could not read configuration file")
-                    .with_context(|| config.display().to_string())?;
-
-                // Get the TOML table version of the config indicated from CLI args, or from a new
-                // defaulted config instance if one is not provided.
-                let mut config_table: Value = toml::from_str(&config_raw)?;
-
-                // If any command line overrides to the config values are passed, apply them.
-                for item in config_ext {
-                    item.update_toml_table(&mut config_table)?;
-                }
-
-                // Create validator config, including any overridden values.
-                let validator_config: validator::Config = config_table.try_into()?;
-                logging::init_with_config(&validator_config.logging)?;
-                info!(version = %env!("CARGO_PKG_VERSION"), "node starting up");
-                trace!("{}", config::to_string(&validator_config)?);
+                let validator_config = Self::init(&config, config_ext)?;
+                info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -153,7 +156,7 @@ impl Cli {
                 let registry = Registry::new();
 
                 let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
-                    WithDir::new(root.clone(), validator_config),
+                    validator_config,
                     &mut rng,
                     &registry,
                 )
@@ -167,7 +170,10 @@ impl Cli {
                 // .await?;
                 // initializer2_runner.run(&mut rng).await;
 
-                initializer_runner.run(&mut rng).await;
+                let initializer_exit = initializer_runner.run(&mut rng).await;
+                if initializer_exit.is_err() {
+                    return Result::Ok(());
+                }
 
                 info!("finished initialization");
 
@@ -176,24 +182,102 @@ impl Cli {
                     bail!("failed to initialize successfully");
                 }
 
+                let root = config
+                    .parent()
+                    .map(|path| path.to_owned())
+                    .unwrap_or_else(|| "/".into());
                 let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
                     WithDir::new(root, initializer),
                     &mut rng,
                     &registry,
                 )
                 .await?;
-                joiner_runner.run(&mut rng).await;
+                let joiner_exit = joiner_runner.run(&mut rng).await;
+                if joiner_exit.is_err() {
+                    return Result::Ok(());
+                }
 
                 info!("finished joining");
 
-                let config = joiner_runner.into_inner().into_validator_config().await;
+                let config = joiner_runner.into_inner().into_validator_config().await?;
 
                 let mut validator_runner =
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
-                validator_runner.run(&mut rng).await;
+                // We're ignoring validator runner exit status as we would exit the node app anyway.
+                let _validator_exit = validator_runner.run(&mut rng).await;
+            }
+            Cli::MigrateConfig {
+                old_config,
+                new_config,
+            } => {
+                let new_config = Self::init(&new_config, vec![])?;
+
+                let old_root = old_config
+                    .parent()
+                    .map(|path| path.to_owned())
+                    .unwrap_or_else(|| "/".into());
+                let encoded_old_config = fs::read_to_string(&old_config)
+                    .context("could not read old configuration file")
+                    .with_context(|| old_config.display().to_string())?;
+                let old_config = toml::from_str(&encoded_old_config)?;
+
+                info!(version = %env!("CARGO_PKG_VERSION"), "migrating config");
+                casper_node::migrate_config(WithDir::new(old_root, old_config), new_config)?;
+            }
+            Cli::MigrateData {
+                old_config,
+                new_config,
+            } => {
+                let new_config = Self::init(&new_config, vec![])?;
+
+                let old_root = old_config
+                    .parent()
+                    .map(|path| path.to_owned())
+                    .unwrap_or_else(|| "/".into());
+                let encoded_old_config = fs::read_to_string(&old_config)
+                    .context("could not read old configuration file")
+                    .with_context(|| old_config.display().to_string())?;
+                let old_config = toml::from_str(&encoded_old_config)?;
+
+                info!(version = %env!("CARGO_PKG_VERSION"), "migrating data");
+                casper_node::migrate_data(WithDir::new(old_root, old_config), new_config)?;
             }
         }
 
         Ok(())
+    }
+
+    /// Parses the config file for the current version of casper-node, and initializes logging.
+    fn init(
+        config: &Path,
+        config_ext: Vec<ConfigExt>,
+    ) -> anyhow::Result<WithDir<validator::Config>> {
+        // Determine the parent directory of the configuration file, if any.
+        // Otherwise, we default to `/`.
+        let root = config
+            .parent()
+            .map(|path| path.to_owned())
+            .unwrap_or_else(|| "/".into());
+
+        // The app supports running without a config file, using default values.
+        let encoded_config = fs::read_to_string(&config)
+            .context("could not read configuration file")
+            .with_context(|| config.display().to_string())?;
+
+        // Get the TOML table version of the config indicated from CLI args, or from a new
+        // defaulted config instance if one is not provided.
+        let mut config_table: Value = toml::from_str(&encoded_config)?;
+
+        // If any command line overrides to the config values are passed, apply them.
+        for item in config_ext {
+            item.update_toml_table(&mut config_table)?;
+        }
+
+        // Create validator config, including any overridden values.
+        let validator_config: validator::Config = config_table.try_into()?;
+        logging::init_with_config(&validator_config.logging)?;
+        trace!("{}", config::to_string(&validator_config)?);
+
+        Ok(WithDir::new(root, validator_config))
     }
 }

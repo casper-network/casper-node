@@ -92,6 +92,8 @@ pub enum Error {
     KeyIsNotAURef(Key),
     #[error("Unexpected variant of a stored value")]
     UnexpectedStoredValueVariant,
+    #[error("A locked contract cannot be upgraded")]
+    LockedContract(ContractPackageHash),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

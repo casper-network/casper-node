@@ -34,5 +34,6 @@ source "$NCTL"/sh/contracts-auction/do_bid_withdraw.sh \
 if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
     log "awaiting 4 eras"
     await_n_eras 4 true
+    log "node-$NODE_ID: stopping node ... "
     do_node_stop "$NODE_ID"
 fi

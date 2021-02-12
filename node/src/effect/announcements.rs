@@ -13,7 +13,11 @@ use serde::Serialize;
 use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
-    components::{consensus::EraId, small_network::GossipedAddress},
+    components::{
+        chainspec_loader::NextUpgrade, consensus::EraId, deploy_acceptor::Error,
+        small_network::GossipedAddress,
+    },
+    effect::Responder,
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
         FinalizedBlock, Item, Timestamp,
@@ -68,13 +72,15 @@ pub enum RpcServerAnnouncement {
     DeployReceived {
         /// The received deploy.
         deploy: Box<Deploy>,
+        /// A client responder in the case where a client submits a deploy.
+        responder: Option<Responder<Result<(), Error>>>,
     },
 }
 
 impl Display for RpcServerAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RpcServerAnnouncement::DeployReceived { deploy } => {
+            RpcServerAnnouncement::DeployReceived { deploy, .. } => {
                 write!(formatter, "api server received {}", deploy.id())
             }
         }
@@ -123,7 +129,7 @@ pub enum ConsensusAnnouncement<I> {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
     /// A linear chain block has been handled.
-    Handled(Box<BlockHeader>),
+    Handled(Box<Block>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -146,11 +152,11 @@ where
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(block_header) => write!(
+            ConsensusAnnouncement::Handled(block) => write!(
                 formatter,
                 "Linear chain block has been handled by consensus, height={}, hash={}",
-                block_header.height(),
-                block_header.hash()
+                block.height(),
+                block.hash()
             ),
             ConsensusAnnouncement::Fault {
                 era_id,
@@ -227,6 +233,23 @@ impl Display for LinearChainAnnouncement {
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)
+            }
+        }
+    }
+}
+
+/// A chainspec loader announcement.
+#[derive(Debug, Serialize)]
+pub enum ChainspecLoaderAnnouncement {
+    /// New upgrade recognized.
+    UpgradeActivationPointRead(NextUpgrade),
+}
+
+impl Display for ChainspecLoaderAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
+                write!(f, "read {}", next_upgrade)
             }
         }
     }

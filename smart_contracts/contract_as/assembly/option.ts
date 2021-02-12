@@ -40,8 +40,9 @@ export class Option{
 	 *
 	 * @returns The inner value, or `null` if there was none.
 	 */
-    unwrap(): Uint8Array | null{
-        return this.bytes;
+    unwrap(): Uint8Array{
+        assert(this.isSome());
+        return <Uint8Array>this.bytes;
     }
 
 	/**

@@ -56,26 +56,17 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::NewURef))
     }
 
-    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(
-        &mut self,
-        key: K,
-        value: V,
-    ) -> Result<(), Error> {
-        let key_bytes = key.to_bytes().map_err(|_| Error::Serialize)?;
-        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
+    fn write_balance_entry(&mut self, purse_key: URef, balance_uref: URef) -> Result<(), Error> {
+        let cl_value = CLValue::from_t(Key::URef(balance_uref)).map_err(|_| Error::CLValue)?;
         self.context
-            .write_ls(&key_bytes, cl_value)
+            .write_purse_uref(purse_key, cl_value)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::WriteLocal))
     }
 
-    fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
-        &mut self,
-        key: &K,
-    ) -> Result<Option<V>, Error> {
-        let key_bytes = key.to_bytes().map_err(|_| Error::Serialize)?;
+    fn read_balance_entry(&mut self, purse_key: &URef) -> Result<Option<Key>, Error> {
         let maybe_value = self
             .context
-            .read_ls(&key_bytes)
+            .read_purse_uref(purse_key)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
         match maybe_value {
             Some(value) => {

@@ -1,7 +1,10 @@
 use casper_types::{
     account,
     account::AccountHash,
-    auction::{Auction, EraInfo, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    auction::{
+        AccountProvider, Auction, EraInfo, MintProvider, RuntimeProvider, StorageProvider,
+        SystemProvider,
+    },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -161,6 +164,20 @@ where
         let mint_contract = self.get_mint_contract();
         self.mint_reduce_total_supply(mint_contract, amount)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))
+    }
+}
+
+impl<'a, R> AccountProvider for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue>,
+    R::Error: Into<execution::Error>,
+{
+    fn get_main_purse(&self) -> Result<URef, Error> {
+        // NOTE: This violates security as system contract is a contract entrypoint and normal
+        // "get_main_purse" won't work for security reasons. But since we're not running it as a
+        // WASM contract, and purses are going to be removed anytime soon, we're making this
+        // exception here.
+        Ok(Runtime::context(self).account().main_purse())
     }
 }
 

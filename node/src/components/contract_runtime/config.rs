@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::utils;
 
-const DEFAULT_USE_SYSTEM_CONTRACTS: bool = false;
 const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_MAX_READERS: u32 = 512;
 
@@ -12,8 +11,6 @@ const DEFAULT_MAX_READERS: u32 = 512;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Whether to use system contracts or not.  Defaults to false.
-    use_system_contracts: Option<bool>,
     /// The maximum size of the database to use for the global state store.
     ///
     /// Defaults to 805,306,368,000 == 750 GiB.
@@ -27,11 +24,6 @@ pub struct Config {
 }
 
 impl Config {
-    pub(crate) fn use_system_contracts(&self) -> bool {
-        self.use_system_contracts
-            .unwrap_or(DEFAULT_USE_SYSTEM_CONTRACTS)
-    }
-
     pub(crate) fn max_global_state_size(&self) -> usize {
         let value = self
             .max_global_state_size
@@ -48,7 +40,6 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            use_system_contracts: Some(DEFAULT_USE_SYSTEM_CONTRACTS),
             max_global_state_size: Some(DEFAULT_MAX_GLOBAL_STATE_SIZE),
             max_readers: Some(DEFAULT_MAX_READERS),
         }

@@ -1,21 +1,23 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, time::Duration};
 
 use futures::{future, TryFutureExt};
-use hyper::Server;
+use hyper::server::{conn::AddrIncoming, Builder};
 use tokio::sync::oneshot;
-use tracing::{debug, info, warn};
+use tower::builder::ServiceBuilder;
+use tracing::{info, warn};
 use warp::Filter;
 
-use super::{filters, Config, ReactorEventT};
-use crate::{effect::EffectBuilder, utils};
+use super::{filters, ReactorEventT};
+use crate::effect::EffectBuilder;
 
 /// Run the REST HTTP server.
 ///
 /// A message received on `shutdown_receiver` will cause the server to exit cleanly.
 pub(super) async fn run<REv: ReactorEventT>(
-    config: Config,
+    builder: Builder<AddrIncoming>,
     effect_builder: EffectBuilder<REv>,
     shutdown_receiver: oneshot::Receiver<()>,
+    qps_limit: u64,
 ) {
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder);
@@ -23,36 +25,13 @@ pub(super) async fn run<REv: ReactorEventT>(
 
     let service = warp_json_rpc::service(rest_status.or(rest_metrics));
 
-    let mut server_address = match utils::resolve_address(&config.address) {
-        Ok(address) => address,
-        Err(error) => {
-            warn!(%error, "failed to start REST server, cannot parse address");
-            return;
-        }
-    };
-
-    // Try to bind to the user's chosen port, or if that fails, try once to bind to any port then
-    // error out if that fails too.
-    let builder = loop {
-        match Server::try_bind(&server_address) {
-            Ok(builder) => {
-                break builder;
-            }
-            Err(error) => {
-                if server_address.port() == 0 {
-                    warn!(%error, "failed to start REST server");
-                    return;
-                } else {
-                    server_address.set_port(0);
-                    debug!(%error, "failed to start REST server. retrying on random port");
-                }
-            }
-        }
-    };
-
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =
         hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
+
+    let make_svc = ServiceBuilder::new()
+        .rate_limit(qps_limit, Duration::from_secs(1))
+        .service(make_svc);
 
     let server = builder.serve(make_svc);
     info!(address = %server.local_addr(), "started REST server");

@@ -31,30 +31,6 @@ pub(super) mod amount {
     }
 }
 
-/// Handles providing the arg for and retrieval of the source purse.
-mod source_purse {
-    use super::*;
-
-    pub(super) const ARG_NAME: &str = "source-purse";
-    const ARG_VALUE_NAME: &str = "UREF";
-    const ARG_HELP: &str =
-        "URef of the source purse. If this is omitted, the main purse of the account creating this \
-        transfer will be used as the source purse";
-
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .required(false)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::TransferSourcePurse as usize)
-    }
-
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
-    }
-}
-
 /// Handles providing the arg for and retrieval of the target account.
 pub(super) mod target_account {
     use super::*;
@@ -76,30 +52,6 @@ pub(super) mod target_account {
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferTargetAccount as usize)
-    }
-
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
-    }
-}
-
-/// Handles providing the arg for and retrieval of the target purse.
-pub(super) mod target_purse {
-    use super::*;
-
-    pub(super) const ARG_NAME: &str = "target-purse";
-    const ARG_VALUE_NAME: &str = "UREF";
-    const ARG_HELP: &str = "URef of the target purse";
-
-    // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.
-    // Don't add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
-    pub(super) fn arg() -> Arg<'static, 'static> {
-        Arg::with_name(ARG_NAME)
-            .long(ARG_NAME)
-            .required(false)
-            .value_name(ARG_VALUE_NAME)
-            .help(ARG_HELP)
-            .display_order(DisplayOrder::TransferTargetPurse as usize)
     }
 
     pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
@@ -142,15 +94,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(amount::arg())
-            .arg(source_purse::arg())
             .arg(target_account::arg())
-            .arg(target_purse::arg())
             .arg(transfer_id::arg())
             // Group the target args to ensure exactly one is required.
             .group(
                 ArgGroup::with_name("required-target-args")
                     .arg(target_account::ARG_NAME)
-                    .arg(target_purse::ARG_NAME)
                     .arg(creation_common::show_arg_examples::ARG_NAME)
                     .required(true),
             );
@@ -162,14 +111,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let amount = amount::get(matches);
-        let source_purse = source_purse::get(matches);
-        let target_purse = target_purse::get(matches);
         let target_account = target_account::get(matches);
         let transfer_id = transfer_id::get(matches);
 
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let verbose = common::verbose::get(matches);
+        let mut verbosity_level = common::verbose::get(matches);
 
         let secret_key = common::secret_key::get(matches);
         let timestamp = creation_common::timestamp::get(matches);
@@ -183,10 +130,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let response = casper_client::transfer(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             amount,
-            source_purse,
-            target_purse,
             target_account,
             transfer_id,
             DeployStrParams {
@@ -200,9 +145,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             payment_str_params,
         )
         .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+
+        if verbosity_level == 0 {
+            verbosity_level += 1
+        }
+        casper_client::pretty_print_at_level(&response, verbosity_level);
     }
 }

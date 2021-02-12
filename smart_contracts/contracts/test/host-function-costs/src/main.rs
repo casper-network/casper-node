@@ -54,9 +54,8 @@ enum Error {
     GetKey = 4,
     NamedKeys = 5,
     ReadOrRevert = 6,
-    ReadLocal = 7,
-    IsValidURef = 8,
-    Transfer = 9,
+    IsValidURef = 7,
+    Transfer = 8,
 }
 
 impl From<Error> for ApiError {
@@ -163,14 +162,6 @@ pub extern "C" fn storage_function() {
     storage::write(uref, VALUE_FOR_ADDITION_1);
     storage::add(uref, VALUE_FOR_ADDITION_2);
 
-    storage::write_local(key_name.clone(), random_bytes.clone());
-    let retrieved_value = storage::read_local(&key_name);
-    if retrieved_value != Ok(Some(random_bytes)) {
-        runtime::revert(Error::ReadLocal);
-    }
-
-    storage::write_local(key_name, VALUE_FOR_ADDITION_1);
-
     let keys_to_return = runtime::list_named_keys();
     runtime::ret(CLValue::from_t(keys_to_return).unwrap_or_revert());
 }
@@ -197,7 +188,7 @@ pub extern "C" fn account_function() {
     system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount, None)
         .unwrap_or_revert();
 
-    let balance = system::get_balance(new_purse).unwrap_or_revert();
+    let balance = system::get_purse_balance(new_purse).unwrap_or_revert();
     if balance != transfer_amount {
         runtime::revert(Error::Transfer);
     }
@@ -231,7 +222,8 @@ pub extern "C" fn account_function() {
 pub extern "C" fn calls_do_nothing_level1() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have key");
+        .expect("should have key")
+        .into();
     runtime::call_versioned_contract(
         contract_package_hash,
         None,
@@ -244,7 +236,8 @@ pub extern "C" fn calls_do_nothing_level1() {
 pub extern "C" fn calls_do_nothing_level2() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have key");
+        .expect("should have key")
+        .into();
     runtime::call_versioned_contract(
         contract_package_hash,
         None,
@@ -256,7 +249,8 @@ pub extern "C" fn calls_do_nothing_level2() {
 fn measure_arg_size(bytes: usize) {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have key");
+        .expect("should have key")
+        .into();
 
     let argument: Vec<u8> = iter::repeat(b'1').take(bytes).collect();
 

@@ -1,4 +1,4 @@
-/var/log/casper/casper-node.log {
+/var/log/casper/casper-node*.log {
   dateext
   dateformat .%Y-%m-%d-%s
   compress

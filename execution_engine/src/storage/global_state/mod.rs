@@ -102,6 +102,27 @@ pub trait StateProvider {
     ) -> Result<Option<ProtocolData>, Self::Error>;
 
     fn empty_root(&self) -> Blake2bHash;
+
+    /// Reads a `Trie` from the state if it is present
+    fn read_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>;
+
+    /// Insert a trie node into the trie
+    fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<Blake2bHash, Self::Error>;
+
+    /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`
+    fn missing_trie_keys(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 
 pub fn commit<'a, R, S, H, E>(

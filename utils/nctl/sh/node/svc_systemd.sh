@@ -11,7 +11,7 @@
 function do_node_start()
 {
     local NODE_ID=${1}
-    local TRUSTED_HASH=${3:-}
+    local TRUSTED_HASH=${2:-}
     local PATH_TO_NET
     local PATH_TO_NET_CHAINSPEC
     local PATH_TO_NODE
@@ -31,7 +31,7 @@ function do_node_start()
 
     # Set node asset paths.
     PATH_TO_NODE=$(get_path_to_node "$NODE_ID")
-    PATH_TO_NODE_CONFIG=$PATH_TO_NODE/config/node-config.toml
+    PATH_TO_NODE_CONFIG=$PATH_TO_NODE/config/config.toml
     PATH_TO_NODE_SECRET_KEY=$PATH_TO_NODE/keys/secret_key.pem
     PATH_TO_NODE_STORAGE=$PATH_TO_NODE/storage
     PATH_TO_NODE_LOG_FILE_STDOUT=$PATH_TO_NODE/logs/stdout.log

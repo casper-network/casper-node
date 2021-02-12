@@ -15,10 +15,12 @@ use std::{
 };
 
 use datasize::DataSize;
+use hyper::server::{conn::AddrIncoming, Builder, Server};
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::warn;
 
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
@@ -40,13 +42,79 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
     }
 });
 
+/// DNS resolution error.
+#[derive(Debug, Error)]
+#[error("could not resolve `{address}`: {kind}")]
+pub struct ResolveAddressError {
+    /// Address that failed to resolve.
+    address: String,
+    /// Reason for resolution failure.
+    kind: ResolveAddressErrorKind,
+}
+
+/// DNS resolution error kind.
+#[derive(Debug)]
+enum ResolveAddressErrorKind {
+    /// Resolve returned an error.
+    ErrorResolving(io::Error),
+    /// Resolution did not yield any address.
+    NoAddressFound,
+}
+
+impl Display for ResolveAddressErrorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ResolveAddressErrorKind::ErrorResolving(err) => {
+                write!(f, "could not run dns resolution: {}", err)
+            }
+            ResolveAddressErrorKind::NoAddressFound => {
+                write!(f, "no addresses found")
+            }
+        }
+    }
+}
+
 /// Parses a network address from a string, with DNS resolution.
-pub(crate) fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
-    addr.to_socket_addrs()?.next().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("could not resolve `{}`", addr),
-        )
+pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddressError> {
+    address
+        .to_socket_addrs()
+        .map_err(|err| ResolveAddressError {
+            address: address.to_string(),
+            kind: ResolveAddressErrorKind::ErrorResolving(err),
+        })?
+        .next()
+        .ok_or_else(|| ResolveAddressError {
+            address: address.to_string(),
+            kind: ResolveAddressErrorKind::NoAddressFound,
+        })
+}
+
+/// An error starting one of the HTTP servers.
+#[derive(Debug, Error)]
+pub enum ListeningError {
+    /// Failed to resolve address.
+    #[error("failed to resolve network address: {0}")]
+    ResolveAddress(ResolveAddressError),
+
+    /// Failed to listen.
+    #[error("failed to listen on {address}: {error}")]
+    Listen {
+        /// The address attempted to listen on.
+        address: SocketAddr,
+        /// The failure reason.
+        error: hyper::Error,
+    },
+}
+
+pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, ListeningError> {
+    let address = resolve_address(address).map_err(|error| {
+        warn!(%error, %address, "failed to start HTTP server, cannot parse address");
+        ListeningError::ResolveAddress(error)
+    })?;
+
+    Server::try_bind(&address).map_err(|error| {
+        warn!(%error, %address, "failed to start HTTP server");
+        ListeningError::Listen { address, error }
     })
 }
 

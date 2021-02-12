@@ -23,7 +23,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{bytesrepr::ToBytes, AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
+use casper_types::{AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
@@ -33,8 +33,6 @@ use crate::{
 
 /// Target for a given transfer.
 pub(crate) enum TransferTarget {
-    /// Transfer to another purse within an account.
-    OwnPurse(URef),
     /// Transfer to another account.
     Account(PublicKey),
 }
@@ -44,7 +42,7 @@ pub(crate) enum TransferTarget {
 pub(crate) struct RpcCall {
     rpc_id: Id,
     node_address: String,
-    verbose: bool,
+    verbosity_level: u64,
 }
 
 /// `RpcCall` encapsulates calls made to the casper node service via JSON-RPC.
@@ -57,8 +55,12 @@ impl RpcCall {
     /// `node_address` identifies the network address of the target node's HTTP server, e.g.
     /// `"http://127.0.0.1:7777"`.
     ///
-    /// When `verbose` is `true`, the request will be printed to `stdout`.
-    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Self {
+    /// When `verbosity_level` is `1`, the request will be printed to `stdout` with long string
+    /// fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char count
+    /// of the field.  When `verbosity_level` is greater than `1`, the request will be printed to
+    /// `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+    /// will not be printed to `stdout`.
+    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -> Self {
         let rpc_id = if maybe_rpc_id.is_empty() {
             Id::from(rand::thread_rng().gen::<i64>())
         } else if let Ok(i64_id) = maybe_rpc_id.parse::<i64>() {
@@ -70,7 +72,7 @@ impl RpcCall {
         Self {
             rpc_id,
             node_address: node_address.trim_end_matches('/').to_string(),
-            verbose,
+            verbosity_level,
         }
     }
 
@@ -194,13 +196,10 @@ impl RpcCall {
                 let target_account_hash = target_account.to_account_hash().value();
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
             }
-            TransferTarget::OwnPurse(target_purse) => {
-                transfer_args.insert(TRANSFER_ARG_TARGET, target_purse)?;
-            }
         }
         transfer_args.insert(TRANSFER_ARG_ID, id)?;
         let session = ExecutableDeployItem::Transfer {
-            args: transfer_args.to_bytes()?.into(),
+            args: transfer_args,
         };
         let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
         let params = PutDeployParams { deploy };
@@ -271,12 +270,7 @@ impl RpcCall {
         let url = format!("{}/{}", self.node_address, RPC_API_PATH);
         let rpc_req = JsonRpc::request_with_params(self.rpc_id, method, params);
 
-        if self.verbose {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&rpc_req).expect("should encode to JSON")
-            );
-        }
+        crate::pretty_print_at_level(&rpc_req, self.verbosity_level);
 
         let client = Client::new();
         let response = client
@@ -287,7 +281,7 @@ impl RpcCall {
             .map_err(Error::FailedToGetResponse)?;
 
         if let Err(error) = response.error_for_status_ref() {
-            if self.verbose {
+            if self.verbosity_level > 0 {
                 println!("Failed Sending {}", error);
             }
             return Err(Error::FailedSending(rpc_req));
@@ -296,7 +290,7 @@ impl RpcCall {
         let rpc_response = response.json().await.map_err(Error::FailedToParseResponse);
 
         if let Err(error) = rpc_response {
-            if self.verbose {
+            if self.verbosity_level > 0 {
                 println!("Failed parsing as a JSON-RPC response: {}", error);
             }
             return Err(error);
@@ -305,20 +299,20 @@ impl RpcCall {
         let rpc_response: JsonRpc = rpc_response?;
 
         if rpc_response.get_result().is_some() {
-            if self.verbose {
+            if self.verbosity_level > 0 {
                 println!("Received successful response:");
             }
             return Ok(rpc_response);
         }
 
         if let Some(error) = rpc_response.get_error() {
-            if self.verbose {
+            if self.verbosity_level > 0 {
                 println!("Response returned an error");
             }
             return Err(Error::ResponseIsError(error.clone()));
         }
 
-        if self.verbose {
+        if self.verbosity_level > 0 {
             println!("Invalid response returned");
         }
         Err(Error::InvalidRpcResponse(rpc_response))

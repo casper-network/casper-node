@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/0.6.0")]
+#![doc(html_root_url = "https://docs.rs/casper-node/0.7.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -25,7 +25,9 @@
 extern crate test;
 
 pub mod components;
+mod config_migration;
 pub mod crypto;
+mod data_migration;
 pub mod effect;
 pub mod logging;
 pub mod protocol;
@@ -44,7 +46,6 @@ use once_cell::sync::Lazy;
 use rand::SeedableRng;
 
 pub use components::{
-    chainspec_loader::{Chainspec, Error as ChainspecError},
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
@@ -56,6 +57,8 @@ pub use components::{
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
+pub use config_migration::{migrate_config, Error as ConfigMigrationError};
+pub use data_migration::{migrate_data, Error as DataMigrationError};
 pub use types::NodeRng;
 pub use utils::OS_PAGE_SIZE;
 
@@ -63,15 +66,7 @@ pub use utils::OS_PAGE_SIZE;
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
-        env!("CARGO_PKG_VERSION").to_string()
-    } else {
-        format!(
-            "{}-{}",
-            env!("VERGEN_SEMVER_LIGHTWEIGHT"),
-            env!("VERGEN_SHA_SHORT"),
-        )
-    };
+    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"));
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

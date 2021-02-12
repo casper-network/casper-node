@@ -79,3 +79,9 @@ pub trait MintProvider {
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;
 }
+
+/// Provider of an account related functionality.
+pub trait AccountProvider {
+    /// Get currently executing account's purse.
+    fn get_main_purse(&self) -> Result<URef, Error>;
+}

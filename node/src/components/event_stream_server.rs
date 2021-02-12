@@ -33,6 +33,7 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
+    utils::{self, ListeningError},
     NodeRng,
 };
 
@@ -55,14 +56,18 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new<REv>(config: Config, _effect_builder: EffectBuilder<REv>) -> Self
+    pub(crate) fn new<REv>(
+        config: Config,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(http_server::run(config, sse_data_receiver));
+        let builder = utils::start_listening(&config.address)?;
+        tokio::spawn(http_server::run(config, builder, sse_data_receiver));
 
-        EventStreamServer { sse_data_sender }
+        Ok(EventStreamServer { sse_data_sender })
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
@@ -86,15 +91,12 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BlockFinalized(finalized_block) => {
-                self.broadcast(SseData::BlockFinalized(*finalized_block))
-            }
             Event::BlockAdded {
                 block_hash,
                 block_header,
             } => self.broadcast(SseData::BlockAdded {
                 block_hash,
-                block_header: *block_header,
+                block_header: Box::new(*block_header),
             }),
             Event::DeployProcessed {
                 deploy_hash,
@@ -102,12 +104,12 @@ where
                 block_hash,
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
-                deploy_hash,
+                deploy_hash: Box::new(deploy_hash),
                 account: *deploy_header.account(),
                 timestamp: deploy_header.timestamp(),
                 ttl: deploy_header.ttl(),
                 dependencies: deploy_header.dependencies().clone(),
-                block_hash,
+                block_hash: Box::new(block_hash),
                 execution_result,
             }),
             Event::Fault {

@@ -16,6 +16,8 @@ if ! type "$DEB_NAME" > /dev/null; then
   exit 1
 fi
 
+cp "$1/resources/production/chainspec.toml" /etc/casper/chainspec.toml
+
 # Replace timestamp with future time in chainspec.toml to not get start after genesis error
 FUTURE_TIME=$(date -d '+1 hour' --utc +%FT%TZ)
 sed -i "/timestamp =/c\timestamp = \'$FUTURE_TIME\'" /etc/casper/chainspec.toml

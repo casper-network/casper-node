@@ -16,35 +16,23 @@ source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/assets/setup_node.sh
 
 #######################################
-# Sets assets pertaining to network binaries.
-# Globals:
-#   NCTL_CASPER_HOME - path to node software github repo.
-#   NCTL_CONTRACTS_SYSTEM - array of system contracts.
-#   NCTL_CONTRACTS_CLIENT - array of client side contracts.
+# Sets network bin folder.
+# Arguments:
+#   Delay in seconds to apply to genesis timestamp.
 #######################################
-function _set_bin()
+function _set_net_bin()
 {
     local PATH_TO_BIN
 
-    # Set directory.
-    PATH_TO_BIN=$(get_path_to_net)/bin
-    mkdir "$PATH_TO_BIN"
+    PATH_TO_BIN="$(get_path_to_net)"/bin
+    mkdir -p "$PATH_TO_BIN"
 
-    # Set executables.
+
     cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_BIN"
-    cp "$NCTL_CASPER_HOME"/target/release/casper-node "$PATH_TO_BIN"
-
-    # Set system contracts.
-	for CONTRACT in "${NCTL_CONTRACTS_SYSTEM[@]}"
-	do
-        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
-	done
-
-    # Set client contracts.
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
 	do
         cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
-	done
+	done    
 }
 
 #######################################
@@ -52,38 +40,34 @@ function _set_bin()
 # Arguments:
 #   Delay in seconds to apply to genesis timestamp.
 #######################################
-function _set_chainspec()
+function _set_net_chainspec()
 {
     local GENESIS_DELAY=${1}
+    local COUNT_GENESIS_NODES=${2}
     local PATH_TO_NET
     local PATH_TO_CHAINSPEC
     local GENESIS_NAME
     local GENESIS_TIMESTAMP
-    
+    local SCRIPT
+
     # Set directory.
     PATH_TO_NET=$(get_path_to_net)
     mkdir "$PATH_TO_NET"/chainspec
 
     # Set file.
-    PATH_TO_CHAINSPEC=$PATH_TO_NET/chainspec/chainspec.toml
-    cp "$NCTL_CASPER_HOME"/resources/local/chainspec.toml.in "$PATH_TO_CHAINSPEC"
+    PATH_TO_CHAINSPEC_FILE=$PATH_TO_NET/chainspec/chainspec.toml
+    cp "$NCTL_CASPER_HOME"/resources/local/chainspec.toml.in "$PATH_TO_CHAINSPEC_FILE"
 
-    # Set config setting: genesis.name.
-    GENESIS_NAME=$(get_chain_name)
-    sed -i "s/casper-example/$GENESIS_NAME/g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
-
-    # Set config setting: genesis.timestamp.
-    GENESIS_TIMESTAMP=$(get_genesis_timestamp "$GENESIS_DELAY")
-    sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${GENESIS_TIMESTAMP}\"/" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
-
-    # Override config settings as all paths need to point relative to nctl's assets dir:
-    #    genesis.accounts_path
-    #    genesis.mint_installer_path
-    #    genesis.pos_installer_path
-    #    genesis.standard_payment_installer_path
-    #    genesis.auction_installer_path    
-    sed -i "s?\${BASEDIR}/target/wasm32-unknown-unknown/release/?../bin/?g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
-    sed -i "s?\${BASEDIR}/resources/local/?./?g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
+    # Write contents.
+    local SCRIPT=(
+        "import toml;"
+        "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
+        "cfg['network']['name']='$(get_chain_name)';"
+        "cfg['network']['timestamp']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
+        "cfg['core']['validator_slots']=$((COUNT_GENESIS_NODES * 2));"
+        "toml.dump(cfg, open('$PATH_TO_CHAINSPEC_FILE', 'w'));"
+    )
+    python3 -c "${SCRIPT[*]}"
 
     # Set accounts.csv.
     touch "$PATH_TO_NET"/chainspec/accounts.csv
@@ -103,10 +87,10 @@ function _set_chainspec_account()
     local INITIAL_WEIGHT=${3:-0}
     local ACCOUNT_KEY
     local PATH_TO_NET
-    
-    PATH_TO_NET=$(get_path_to_net)
 
+    PATH_TO_NET=$(get_path_to_net)
     ACCOUNT_KEY=$(cat "$PATH_TO_ACCOUNT_KEY")
+
 	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
 	${ACCOUNT_KEY},$INITIAL_BALANCE,$INITIAL_WEIGHT
 	EOM
@@ -118,7 +102,7 @@ function _set_chainspec_account()
 #   NCTL - path to nctl home directory.
 #   NCTL_DAEMON_TYPE - type of daemon service manager.
 #######################################
-function _set_daemon()
+function _set_net_daemon()
 {
     local PATH_TO_NET
 
@@ -140,16 +124,16 @@ function _set_daemon()
 # Arguments:
 #   Path to network directory.
 #######################################
-function _set_faucet()
+function _set_net_faucet()
 {
     local PATH_TO_NET
 
     # Set directory.
     PATH_TO_NET=$(get_path_to_net)
-    mkdir "$PATH_TO_NET"/faucet
+    mkdir -p "$PATH_TO_NET"/faucet
 
     # Set keys.
-    "$PATH_TO_NET"/bin/casper-client keygen -f "$PATH_TO_NET"/faucet > /dev/null 2>&1
+    "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/faucet > /dev/null 2>&1
 
     # Set chainspec account.
     _set_chainspec_account \
@@ -175,6 +159,26 @@ function _set_nodes()
     for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         setup_node "$NODE_ID" "$COUNT_GENESIS_NODES"
+    done   
+}
+
+#######################################
+# Sets chainspec assets on a node by node basis.
+# Arguments:
+#   Count of genesis nodes to setup.
+#######################################
+function _set_node_chainspecs()
+{
+    local COUNT_GENESIS_NODES=${1}
+    local PATH_TO_NET
+    local PATH_TO_NODE
+
+    PATH_TO_NET=$(get_path_to_net)
+
+    for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
+    do
+        PATH_TO_NODE=$(get_path_to_node "$NODE_ID")
+        cp "$PATH_TO_NET"/chainspec/* "$PATH_TO_NODE"/config/1_0_0
     done
 }
 
@@ -183,7 +187,7 @@ function _set_nodes()
 # Arguments:
 #   Count of users to setup.
 #######################################
-function _set_users()
+function _set_net_users()
 {
     local COUNT_USERS=${1}
     local PATH_TO_NET
@@ -194,7 +198,7 @@ function _set_users()
 
     for USER_ID in $(seq 1 "$COUNT_USERS")
     do
-        "$PATH_TO_NET"/bin/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+        "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
         _set_chainspec_account \
             "$PATH_TO_NET"/users/user-"$USER_ID"/public_key_hex \
             "$NCTL_INITIAL_BALANCE_VALIDATOR"
@@ -226,24 +230,27 @@ function _main()
 
     log "net-$NET_ID: asset setup begins ... please wait"
 
-    # Set artefacts.    
-    log "... setting binaries"    
-    _set_bin
-
+    # Set artefacts.
     log "... setting chainspec"
-    _set_chainspec "$GENESIS_DELAY"
+    _set_net_chainspec "$GENESIS_DELAY" "$COUNT_NODES"
+
+    log "... setting binaries"
+    _set_net_bin
 
     log "... setting faucet"
-    _set_faucet 
+    _set_net_faucet
 
     log "... setting nodes"
     _set_nodes "$COUNT_NODES"
 
     log "... setting users"
-    _set_users "$COUNT_USERS"
+    _set_net_users "$COUNT_USERS"
 
     log "... setting daemon"
-    _set_daemon
+    _set_net_daemon
+
+    log "... setting node chainspecs"
+    _set_node_chainspecs "$COUNT_NODES"
 
     log "net-$NET_ID: asset setup complete"
 }

@@ -32,13 +32,14 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetAuctionInfo {
     fn run(matches: &ArgMatches<'_>) {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let verbose = common::verbose::get(matches);
+        let mut verbosity_level = common::verbose::get(matches);
 
-        let response = casper_client::get_auction_info(maybe_rpc_id, node_address, verbose)
+        let response = casper_client::get_auction_info(maybe_rpc_id, node_address, verbosity_level)
             .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+
+        if verbosity_level == 0 {
+            verbosity_level += 1
+        }
+        casper_client::pretty_print_at_level(&response, verbosity_level);
     }
 }

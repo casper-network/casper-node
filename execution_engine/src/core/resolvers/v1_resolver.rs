@@ -44,10 +44,6 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::ReadFuncIndex.into(),
             ),
-            "casper_read_value_local" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
-                FunctionIndex::ReadLocalFuncIndex.into(),
-            ),
             "casper_load_named_keys" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::LoadNamedKeysFuncIndex.into(),
@@ -55,10 +51,6 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             "casper_write" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], None),
                 FunctionIndex::WriteFuncIndex.into(),
-            ),
-            "casper_write_local" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], None),
-                FunctionIndex::WriteLocalFuncIndex.into(),
             ),
             "casper_add" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], None),
@@ -161,7 +153,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::ReadHostBufferIndex.into(),
             ),
             "casper_create_contract_package_at_hash" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 2][..], None),
+                Signature::new(&[ValueType::I32; 3][..], None),
                 FunctionIndex::CreateContractPackageAtHash.into(),
             ),
             "casper_create_contract_user_group" => FuncInstance::alloc_host(

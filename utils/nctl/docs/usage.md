@@ -10,7 +10,7 @@ Prior to testing a network ensure that the binary sets are available:
 nctl-compile
 ```
 
-This runs `make setup-rs` and `make build-system-contracts -j`, and compiles both `casper-node` and `casper-client` in release mode.
+This runs `make setup-rs`, and compiles both `casper-node` and `casper-client` in release mode.
 
 ## Step 1: Create network assets.
 
@@ -80,16 +80,6 @@ nctl-start node=1
 
 ```
 nctl-status
-```
-
-- To restart either a single or all daemonised nodes:
-
-```
-# Restart all nodes.
-nctl-restart
-
-# Restart node 1.
-nctl-restart node=1
 ```
 
 - To stop either a single or all daemonised nodes:

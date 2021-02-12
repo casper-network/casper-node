@@ -43,21 +43,40 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::IntoNanoseconds;
+use serde::Serialize;
+use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
+    types::Timestamp,
     utils::{self, WeightedRoundRobin},
     NodeRng,
 };
+#[cfg(test)]
+use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 use quanta::Clock;
 pub use queue_kind::QueueKind;
-use serde::Serialize;
-use tokio::time::{Duration, Instant};
+
+/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
+const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
+static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
+    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
+        .map(|threshold_str| {
+            u64::from_str(&threshold_str).unwrap_or_else(|error| {
+                panic!(
+                    "can't parse env var {}={} as a u64: {}",
+                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
+                )
+            })
+        })
+        .ok()
+});
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -119,6 +138,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns number of events in each of the scheduler's queues.
+    #[inline]
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.0.event_queues_counts()
     }
@@ -173,6 +193,13 @@ pub trait Reactor: Sized {
         false
     }
 
+    /// Indicates that the reactor shut down due to the restart.
+    /// Should no longer dispatch events.
+    #[inline]
+    fn needs_upgrade(&mut self) -> bool {
+        false
+    }
+
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
@@ -188,6 +215,14 @@ pub trait Finalize: Sized {
     fn finalize(self) -> BoxFuture<'static, ()> {
         async move {}.boxed()
     }
+}
+
+/// Represents memory statistics in bytes.
+struct AllocatedMem {
+    /// Total allocated memory in bytes.
+    allocated: u64,
+    /// Total system memory in bytes.
+    total: u64,
 }
 
 /// A runner for a reactor.
@@ -222,6 +257,9 @@ where
 
     /// An accurate, possible TSC-supporting clock.
     clock: Clock,
+
+    /// Last queue dump timestamp
+    last_queue_dump: Option<Timestamp>,
 }
 
 /// Metric data for the Runner
@@ -235,6 +273,12 @@ struct RunnerMetrics {
 
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
+
+    /// Total allocated RAM in bytes, as reported by jemalloc.
+    allocated_ram_bytes: IntGauge,
+
+    /// Total system RAM in bytes, as reported by sys-info.
+    total_ram_bytes: IntGauge,
 }
 
 impl RunnerMetrics {
@@ -271,13 +315,21 @@ impl RunnerMetrics {
             ]),
         )?;
 
+        let allocated_ram_bytes =
+            IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+        let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
+
         registry.register(Box::new(events.clone()))?;
         registry.register(Box::new(event_dispatch_duration.clone()))?;
+        registry.register(Box::new(allocated_ram_bytes.clone()))?;
+        registry.register(Box::new(total_ram_bytes.clone()))?;
 
         Ok(RunnerMetrics {
             events,
             event_dispatch_duration,
             registry: registry.clone(),
+            allocated_ram_bytes,
+            total_ram_bytes,
         })
     }
 }
@@ -290,8 +342,20 @@ impl Drop for RunnerMetrics {
         self.registry
             .unregister(Box::new(self.event_dispatch_duration.clone()))
             .expect("did not expect deregistering event_dispatch_duration to fail");
+        self.registry
+            .unregister(Box::new(self.allocated_ram_bytes.clone()))
+            .expect("did not expect deregistering allocated_ram_bytes to fail");
+        self.registry
+            .unregister(Box::new(self.total_ram_bytes.clone()))
+            .expect("did not expect deregistering total_ram_bytes to fail");
     }
 }
+
+/// Exit status of a runner instance.
+pub type RunnerExitStatus = Result<(), u8>;
+
+/// Exit code indicating that node should shut down for a scheduled upgrade.
+pub const UPGRADE_EXIT_CODE: u8 = 0;
 
 impl<R> Runner<R>
 where
@@ -347,6 +411,7 @@ where
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
             clock: Clock::new(),
+            last_queue_dump: None,
         })
     }
 
@@ -391,28 +456,30 @@ where
                 self.reactor.update_metrics(event_queue);
                 self.last_metrics = now;
             }
+
+            if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
+                debug!(%allocated, %total, "memory allocated");
+                self.metrics.allocated_ram_bytes.set(allocated as i64);
+                self.metrics.total_ram_bytes.set(total as i64);
+                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
+                    let threshold_bytes = threshold_mb * 1024 * 1024;
+                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
+                        info!(
+                            %allocated,
+                            %total,
+                            %threshold_bytes,
+                            "node has allocated enough memory to trigger queue dump"
+                        );
+                        self.dump_queues().await;
+                    }
+                }
+            }
         }
 
         // Dump event queue if requested, stopping the world.
         if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
-            let output_fn = "queue_dump.json";
-            let mut serializer = serde_json::Serializer::pretty(
-                File::create(output_fn).expect("could not create output file for queue snapshot"),
-            );
-
-            self.scheduler
-                .snapshot(&mut serializer)
-                .await
-                .expect("could not serialize snapshot");
-
-            let mut file =
-                File::create("queue_dump_debug.txt").expect("could not create dump file");
-            self.scheduler
-                .debug_dump(&mut file)
-                .await
-                .expect("unable to dump queues to file");
-
+            self.dump_queues().await;
             // Indicate we are done with the dump.
             crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
@@ -458,6 +525,81 @@ where
         self.event_count += 1;
     }
 
+    /// Gets both the allocated and total memory from sys-info + jemalloc
+    fn get_allocated_memory() -> Option<AllocatedMem> {
+        let mem_info = match sys_info::mem_info() {
+            Ok(mem_info) => mem_info,
+            Err(error) => {
+                warn!(%error, "unable to get mem_info using sys-info");
+                return None;
+            }
+        };
+
+        // mem_info gives us kB
+        let total = mem_info.total * 1024;
+
+        // whereas jemalloc_ctl gives us the numbers in bytes
+        match jemalloc_epoch::mib() {
+            Ok(mib) => {
+                // jemalloc_ctl requires you to advance the epoch to update its stats
+                if let Err(advance_error) = mib.advance() {
+                    warn!(%advance_error, "unable to advance jemalloc epoch");
+                }
+            }
+            Err(error) => {
+                warn!(%error, "unable to get epoch::mib from jemalloc");
+                return None;
+            }
+        }
+        let allocated = match jemalloc_allocated::mib() {
+            Ok(allocated_mib) => match allocated_mib.read() {
+                Ok(value) => value as u64,
+                Err(error) => {
+                    warn!(%error, "unable to read allocated mib using jemalloc");
+                    return None;
+                }
+            },
+            Err(error) => {
+                warn!(%error, "unable to get allocated mib using jemalloc");
+                return None;
+            }
+        };
+
+        Some(AllocatedMem { allocated, total })
+    }
+
+    /// Handles dumping queue contents to files in /tmp.
+    async fn dump_queues(&mut self) {
+        let timestamp = Timestamp::now();
+        self.last_queue_dump = Some(timestamp);
+        let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
+        let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
+            Ok(file) => file,
+            Err(error) => {
+                warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
+                return;
+            }
+        });
+
+        if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
+            warn!(%error, "could not serialize snapshot to {}", output_fn);
+            return;
+        }
+
+        let debug_dump_filename = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
+        let mut file = match File::create(&debug_dump_filename) {
+            Ok(file) => file,
+            Err(error) => {
+                warn!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
+                return;
+            }
+        };
+        if let Err(error) = self.scheduler.debug_dump(&mut file).await {
+            warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
+            return;
+        }
+    }
+
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
     pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<()> {
@@ -471,10 +613,14 @@ where
 
     /// Runs the reactor until `is_stopped()` returns true.
     #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) {
+    pub async fn run(&mut self, rng: &mut NodeRng) -> RunnerExitStatus {
         while !self.reactor.is_stopped() {
+            if self.reactor.needs_upgrade() {
+                return RunnerExitStatus::Err(UPGRADE_EXIT_CODE);
+            }
             self.crank(rng).await;
         }
+        RunnerExitStatus::Ok(())
     }
 
     /// Returns a reference to the reactor.
@@ -493,6 +639,41 @@ where
     #[inline]
     pub fn into_inner(self) -> R {
         self.reactor
+    }
+}
+
+#[cfg(test)]
+impl Runner<InitializerReactor> {
+    pub(crate) async fn new_with_chainspec(
+        cfg: <InitializerReactor as Reactor>::Config,
+        chainspec: Chainspec,
+    ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
+        let registry = Registry::new();
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+
+        let event_queue = EventQueueHandle::new(scheduler);
+        let (reactor, initial_effects) =
+            InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
+
+        // Run all effects from component instantiation.
+        let span = debug_span!("process initial effects");
+        process_effects(scheduler, initial_effects)
+            .instrument(span)
+            .await;
+
+        info!("reactor main loop is ready");
+
+        Ok(Runner {
+            scheduler,
+            reactor,
+            event_count: 0,
+            metrics: RunnerMetrics::new(&registry)?,
+            last_metrics: Instant::now(),
+            event_metrics_min_delay: Duration::from_secs(30),
+            event_metrics_threshold: 1000,
+            clock: Clock::new(),
+            last_queue_dump: None,
+        })
     }
 }
 

@@ -16,7 +16,8 @@ pub extern "C" fn call() {
     let contract_hash: ContractHash = runtime::get_key("hello_ext")
         .unwrap_or_revert_with(ApiError::GetKey)
         .into_hash()
-        .unwrap_or_revert();
+        .unwrap_or_revert()
+        .into();
 
     let result: URef = runtime::call_contract(contract_hash, "hello_ext", RuntimeArgs::default());
 

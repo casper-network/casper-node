@@ -1,6 +1,16 @@
 //! Core types for a Merkle Trie
 
-use std::{convert::TryInto, mem::MaybeUninit};
+use std::{
+    convert::TryInto,
+    fmt::{self, Debug, Display, Formatter},
+    mem::MaybeUninit,
+};
+
+use serde::{
+    de::{SeqAccess, Visitor},
+    ser::SerializeSeq,
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 
 use crate::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
@@ -19,7 +29,7 @@ pub const RADIX: usize = 256;
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 
 /// Represents a pointer to the next object in a Merkle Trie
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Pointer {
     LeafPointer(Blake2bHash),
     NodePointer(Blake2bHash),
@@ -27,6 +37,13 @@ pub enum Pointer {
 
 impl Pointer {
     pub fn hash(&self) -> &Blake2bHash {
+        match self {
+            Pointer::LeafPointer(hash) => hash,
+            Pointer::NodePointer(hash) => hash,
+        }
+    }
+
+    pub fn into_hash(self) -> Blake2bHash {
         match self {
             Pointer::LeafPointer(hash) => hash,
             Pointer::NodePointer(hash) => hash,
@@ -85,6 +102,66 @@ pub type PointerBlockArray = [PointerBlockValue; RADIX];
 /// Represents the underlying structure of a node in a Merkle Trie
 #[derive(Copy, Clone)]
 pub struct PointerBlock(PointerBlockArray);
+
+impl Serialize for PointerBlock {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // We are going to use the sparse representation of pointer blocks
+        // non-None entries and their indices will be output
+
+        // Create the sequence serializer, reserving the necessary number of slots
+        let mut seq = {
+            let mut count = 0;
+            for maybe_pointer in &self.0 {
+                if maybe_pointer.is_some() {
+                    count += 1;
+                }
+            }
+            serializer.serialize_seq(Some(count))?
+        };
+
+        // Store the non-None entries with their indices
+        for (idx, maybe_pointer_block) in self.0.iter().enumerate() {
+            if let Some(pointer_block_value) = maybe_pointer_block {
+                seq.serialize_element(&(idx, pointer_block_value))?;
+            }
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for PointerBlock {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct PointerBlockDeserializer;
+
+        impl<'de> Visitor<'de> for PointerBlockDeserializer {
+            type Value = PointerBlock;
+
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                formatter.write_str("Sparse representation of a PointerBlock.")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut ret = PointerBlock::new();
+                // Unpack the sparse representation
+                while let Some(indexed_pointer) = seq.next_element()? {
+                    let (idx, ptr): (u8, Pointer) = indexed_pointer;
+                    ret[idx as usize] = Some(ptr);
+                }
+                Ok(ret)
+            }
+        }
+        deserializer.deserialize_seq(PointerBlockDeserializer)
+    }
+}
 
 impl PointerBlock {
     pub fn new() -> Self {
@@ -242,11 +319,21 @@ impl ::std::fmt::Debug for PointerBlock {
 }
 
 /// Represents a Merkle Trie
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
     Leaf { key: K, value: V },
     Node { pointer_block: Box<PointerBlock> },
     Extension { affix: Bytes, pointer: Pointer },
+}
+
+impl<K, V> Display for Trie<K, V>
+where
+    K: Debug,
+    V: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl<K, V> Trie<K, V> {

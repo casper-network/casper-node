@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, TransferAddr};
 
-use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
+use super::{error, execution_effect::ExecutionEffect, op::Op};
 use crate::{
     shared::{
         additive_map::AdditiveMap, gas::Gas, motes::Motes, newtypes::CorrelationId,
@@ -76,6 +76,8 @@ pub type ExecutionResults = VecDeque<ExecutionResult>;
 pub enum ForcedTransferResult {
     /// Payment code ran out of gas during execution
     InsufficientPayment,
+    /// Gas conversion overflow
+    GasConversionOverflow,
     /// Payment code execution resulted in an error
     PaymentFailure,
 }
@@ -223,14 +225,14 @@ impl ExecutionResult {
     pub fn check_forced_transfer(
         &self,
         payment_purse_balance: Motes,
+        gas_price: u64,
     ) -> Option<ForcedTransferResult> {
-        let payment_result_cost = match Motes::from_gas(self.cost(), CONV_RATE) {
+        let payment_result_cost = match Motes::from_gas(self.cost(), gas_price) {
             Some(cost) => cost,
-            // Multiplying cost by CONV_RATE overflowed the U512 range
-            None => return Some(ForcedTransferResult::InsufficientPayment),
+            None => return Some(ForcedTransferResult::GasConversionOverflow),
         };
         // payment_code_spec_3_b_ii: if (balance of PoS pay purse) < (gas spent during
-        // payment code execution) * conv_rate, no session
+        // payment code execution) * gas_price, no session
         let insufficient_balance_to_continue = payment_purse_balance < payment_result_cost;
 
         match self {
@@ -253,6 +255,7 @@ impl ExecutionResult {
         error: error::Error,
         max_payment_cost: Motes,
         account_main_purse_balance: Motes,
+        gas_cost: Gas,
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
     ) -> Result<ExecutionResult, CLValueError> {
@@ -262,13 +265,12 @@ impl ExecutionResult {
             account_main_purse_balance_key,
             proposer_main_purse_balance_key,
         )?;
-        let cost = Gas::from_motes(max_payment_cost, CONV_RATE).expect("gas overflow");
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
             error,
             effect,
             transfers,
-            cost,
+            cost: gas_cost,
         })
     }
 

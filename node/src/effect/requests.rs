@@ -12,6 +12,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use semver::Version;
 use serde::Serialize;
 use static_assertions::const_assert;
@@ -35,7 +36,6 @@ use casper_types::{
     auction::{EraValidators, ValidatorWeights},
     ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
-use hex_fmt::HexFmt;
 
 use super::Responder;
 use crate::{
@@ -43,18 +43,23 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        deploy_acceptor::Error,
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId,
+        ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
-    Chainspec,
 };
-use crate::types::NodeId;
+use casper_execution_engine::{
+    core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants,
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::trie::Trie,
+};
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
@@ -232,6 +237,18 @@ pub enum StorageRequest {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve switch block with given era ID.
+    GetSwitchBlockAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<Block>>,
+    },
+    /// Retrieve highest switch block.
+    GetHighestSwitchBlock {
+        /// Responder.
+        responder: Responder<Option<Block>>,
+    },
     /// Retrieve block header with given hash.
     GetBlockHeader {
         /// Hash of block to get header of.
@@ -292,6 +309,25 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
+    /// Retrieve block and its metadata by its hash.
+    GetBlockAndMetadataByHash {
+        /// The hash of the block.
+        block_hash: BlockHash,
+        /// The responder to call with the results.
+        responder: Responder<Option<(Block, BlockSignatures)>>,
+    },
+    /// Retrieve block and its metadata at a given height.
+    GetBlockAndMetadataByHeight {
+        /// The height of the block.
+        block_height: BlockHeight,
+        /// The responder to call with the results.
+        responder: Responder<Option<(Block, BlockSignatures)>>,
+    },
+    /// Get the highest block and its metadata.
+    GetHighestBlockWithMetadata {
+        /// The responder to call the results with.
+        responder: Responder<Option<(Block, BlockSignatures)>>,
+    },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
@@ -306,6 +342,21 @@ pub enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<Option<Arc<Chainspec>>>,
     },
+    /// Get finality signatures for a Block hash.
+    GetBlockSignatures {
+        /// The hash for the request
+        block_hash: BlockHash,
+        /// Responder to call with the result.
+        responder: Responder<Option<BlockSignatures>>,
+    },
+    /// Store finality signatures.
+    PutBlockSignatures {
+        /// Signatures that are to be stored.
+        signatures: BlockSignatures,
+        /// Responder to call with the result, if true then the signatures were successfully
+        /// stored.
+        responder: Responder<bool>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -317,6 +368,12 @@ impl Display for StorageRequest {
                 write!(formatter, "get block at height {}", height)
             }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block at era id {}", era_id)
+            }
+            StorageRequest::GetHighestSwitchBlock { .. } => {
+                write!(formatter, "get highest switch block")
+            }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
             }
@@ -338,13 +395,42 @@ impl Display for StorageRequest {
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }
-            StorageRequest::PutChainspec { chainspec, .. } => write!(
-                formatter,
-                "put chainspec {}",
-                chainspec.genesis.protocol_version
-            ),
+            StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block with hash: {}",
+                    block_hash
+                )
+            }
+            StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block at height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::GetHighestBlockWithMetadata { .. } => {
+                write!(formatter, "get highest block with metadata")
+            }
+            StorageRequest::PutChainspec { chainspec, .. } => {
+                write!(
+                    formatter,
+                    "put chainspec {}",
+                    chainspec.protocol_config.version
+                )
+            }
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
+            }
+            StorageRequest::GetBlockSignatures { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get finality signatures for block hash {}",
+                    block_hash
+                )
+            }
+            StorageRequest::PutBlockSignatures { .. } => {
+                write!(formatter, "put finality signatures")
             }
         }
     }
@@ -444,15 +530,15 @@ pub enum RpcRequest<I> {
         /// The deploy to be announced.
         deploy: Box<Deploy>,
         /// Responder to call.
-        responder: Responder<()>,
+        responder: Responder<Result<(), Error>>,
     },
-    /// If `maybe_hash` is `Some`, return the specified block if it exists, else `None`.  If
-    /// `maybe_hash` is `None`, return the latest block.
+    /// If `maybe_identifier` is `Some`, return the specified block if it exists, else `None`.  If
+    /// `maybe_identifier` is `None`, return the latest block.
     GetBlock {
-        /// The hash of the block to be retrieved.
+        /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
-        responder: Responder<Option<LinearBlock>>,
+        responder: Responder<Option<(LinearBlock, BlockSignatures)>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -696,16 +782,39 @@ pub enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
+    /// Read a trie by its hash key
+    ReadTrie {
+        /// The hash of the value to get from the `TrieStore`
+        trie_key: Blake2bHash,
+        /// Responder to call with the result.
+        responder: Responder<Option<Trie<Key, StoredValue>>>,
+    },
+    /// Insert a trie into global storage
+    PutTrie {
+        /// The hash of the value to get from the `TrieStore`
+        trie: Box<Trie<Key, StoredValue>>,
+        /// Responder to call with the result.
+        responder: Responder<Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>>,
+    },
+    /// Get the missing keys under a given trie key in global storage
+    MissingTrieKeys {
+        /// The ancestral hash to use when finding hashes that are missing from the `TrieStore`
+        trie_key: Blake2bHash,
+        /// Responder to call with the result.
+        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => write!(
-                formatter,
-                "commit genesis {}",
-                chainspec.genesis.protocol_version
-            ),
+            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
+                write!(
+                    formatter,
+                    "commit genesis {}",
+                    chainspec.protocol_config.version
+                )
+            }
             ContractRuntimeRequest::Execute {
                 execute_request, ..
             } => write!(
@@ -757,6 +866,19 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
+            ContractRuntimeRequest::ReadTrie { trie_key, .. } => {
+                write!(formatter, "get trie_key: {}", trie_key)
+            }
+            ContractRuntimeRequest::PutTrie { trie, .. } => {
+                write!(formatter, "trie: {:?}", trie)
+            }
+            ContractRuntimeRequest::MissingTrieKeys { trie_key, .. } => {
+                write!(
+                    formatter,
+                    "find missing descendants of trie_key: {}",
+                    trie_key
+                )
+            }
         }
     }
 }
@@ -772,7 +894,7 @@ pub enum FetcherRequest<I, T: Item> {
         /// The peer id of the peer to be asked if the item is not held locally
         peer: I,
         /// Responder to call with the result.
-        responder: Responder<Option<FetchResult<T>>>,
+        responder: Responder<Option<FetchResult<T, I>>>,
     },
 }
 
@@ -861,12 +983,12 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
+    HandleLinearBlock(Box<Block>, Responder<Option<FinalitySignature>>),
     /// Check whether validator identifying with the public key is bonded.
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }
 
-/// ChainspecLoader componenent requests.
+/// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.

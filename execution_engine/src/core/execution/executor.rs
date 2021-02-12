@@ -1,16 +1,12 @@
-use std::{
-    cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use parity_wasm::elements::Module;
 use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, proof_of_stake,
-    AccessRights, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, mint,
+    proof_of_stake, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
     EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
 };
 
@@ -21,13 +17,9 @@ use crate::{
             system_contract_cache::SystemContractCache, EngineConfig,
         },
         execution::{address_generator::AddressGenerator, Error},
-        runtime::{
-            extract_access_rights_from_keys, extract_access_rights_from_urefs, instance_and_memory,
-            Runtime,
-        },
+        runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopy,
-        Address,
     },
     shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
     storage::{global_state::StateReader, protocol_data::ProtocolData},
@@ -184,82 +176,79 @@ impl Executor {
             |uref| runtime_context::uref_has_access_rights(uref, &accounts_access_rights)
         ));
 
-        if !self.config.use_system_contracts() {
-            if runtime.is_mint(base_key) {
-                match runtime.call_host_mint(
-                    protocol_version,
-                    entry_point.name(),
-                    &mut runtime.context().named_keys().to_owned(),
-                    &args,
-                    Default::default(),
-                ) {
-                    Ok(_value) => {
-                        return ExecutionResult::Success {
-                            effect: runtime.context().effect(),
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        };
-                    }
-                    Err(error) => {
-                        return ExecutionResult::Failure {
-                            error: error.into(),
-                            effect: effects_snapshot,
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        };
+        if runtime.is_mint(base_key) {
+            match runtime.call_host_mint(
+                protocol_version,
+                entry_point.name(),
+                &mut runtime.context().named_keys().to_owned(),
+                &args,
+                Default::default(),
+            ) {
+                Ok(_value) => {
+                    return ExecutionResult::Success {
+                        effect: runtime.context().effect(),
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    };
+                }
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    };
+                }
+            }
+        } else if runtime.is_proof_of_stake(base_key) {
+            match runtime.call_host_proof_of_stake(
+                protocol_version,
+                entry_point.name(),
+                &mut runtime.context().named_keys().to_owned(),
+                &args,
+                Default::default(),
+            ) {
+                Ok(_value) => {
+                    return ExecutionResult::Success {
+                        effect: runtime.context().effect(),
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    };
+                }
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    };
+                }
+            }
+        } else if runtime.is_auction(base_key) {
+            match runtime.call_host_auction(
+                protocol_version,
+                entry_point.name(),
+                &mut runtime.context().named_keys().to_owned(),
+                &args,
+                Default::default(),
+            ) {
+                Ok(_value) => {
+                    return ExecutionResult::Success {
+                        effect: runtime.context().effect(),
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
                     }
                 }
-            } else if runtime.is_proof_of_stake(base_key) {
-                match runtime.call_host_proof_of_stake(
-                    protocol_version,
-                    entry_point.name(),
-                    &mut runtime.context().named_keys().to_owned(),
-                    &args,
-                    Default::default(),
-                ) {
-                    Ok(_value) => {
-                        return ExecutionResult::Success {
-                            effect: runtime.context().effect(),
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        };
-                    }
-                    Err(error) => {
-                        return ExecutionResult::Failure {
-                            error: error.into(),
-                            effect: effects_snapshot,
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        };
-                    }
-                }
-            } else if runtime.is_auction(base_key) {
-                match runtime.call_host_auction(
-                    protocol_version,
-                    entry_point.name(),
-                    &mut runtime.context().named_keys().to_owned(),
-                    &args,
-                    Default::default(),
-                ) {
-                    Ok(_value) => {
-                        return ExecutionResult::Success {
-                            effect: runtime.context().effect(),
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        }
-                    }
-                    Err(error) => {
-                        return ExecutionResult::Failure {
-                            error: error.into(),
-                            effect: effects_snapshot,
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        }
+                Err(error) => {
+                    return ExecutionResult::Failure {
+                        error: error.into(),
+                        effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
                     }
                 }
             }
         }
-
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
             runtime.context().gas_counter(),
@@ -271,6 +260,92 @@ impl Executor {
             effect: runtime.context().effect(),
             transfers: runtime.context().transfers().to_owned(),
             cost: runtime.context().gas_counter(),
+        }
+    }
+
+    pub fn exec_standard_payment<R>(
+        &self,
+        system_module: Module,
+        payment_args: RuntimeArgs,
+        payment_base_key: Key,
+        account: &Account,
+        payment_named_keys: &mut NamedKeys,
+        authorization_keys: BTreeSet<AccountHash>,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        payment_gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        correlation_id: CorrelationId,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        phase: Phase,
+        protocol_data: ProtocolData,
+        system_contract_cache: SystemContractCache,
+    ) -> ExecutionResult
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        // use host side standard payment
+        let hash_address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+        let uref_address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+        let transfer_address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+
+        let mut runtime = match self.create_runtime(
+            system_module,
+            EntryPointType::Session,
+            payment_args,
+            payment_named_keys,
+            Default::default(),
+            payment_base_key,
+            &account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            hash_address_generator,
+            uref_address_generator,
+            transfer_address_generator,
+            protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            phase,
+            protocol_data,
+            system_contract_cache,
+        ) {
+            Ok((_instance, runtime)) => runtime,
+            Err(error) => {
+                return ExecutionResult::Failure {
+                    error: error.into(),
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                };
+            }
+        };
+
+        let effects_snapshot = tracking_copy.borrow().effect();
+
+        match runtime.call_host_standard_payment() {
+            Ok(()) => ExecutionResult::Success {
+                effect: runtime.context().effect(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
+            Err(error) => ExecutionResult::Failure {
+                error: error.into(),
+                effect: effects_snapshot,
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
         }
     }
 
@@ -303,7 +378,7 @@ impl Executor {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
-                if protocol_data.auction() != base_key.into_seed() {
+                if Some(protocol_data.auction().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -312,7 +387,7 @@ impl Executor {
             }
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse => {
-                if protocol_data.proof_of_stake() != base_key.into_seed() {
+                if Some(protocol_data.proof_of_stake().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the proof of stake contract",
                         direct_system_contract_call.entry_point_name()
@@ -320,7 +395,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
-                if protocol_data.mint() != base_key.into_seed() {
+                if Some(protocol_data.mint().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the mint contract",
                         direct_system_contract_call.entry_point_name()
@@ -328,7 +403,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::GetEraValidators => {
-                if protocol_data.auction() != base_key.into_seed() {
+                if Some(protocol_data.auction().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -357,7 +432,7 @@ impl Executor {
 
         let transfers = Vec::default();
 
-        let (instance, mut runtime) = match self.create_runtime(
+        let (_, runtime) = match self.create_runtime(
             module,
             EntryPointType::Contract,
             runtime_args.clone(),
@@ -391,92 +466,17 @@ impl Executor {
             }
         };
 
-        if !self.config.use_system_contracts() {
-            let mut inner_named_keys = runtime.context().named_keys().clone();
-            let ret = direct_system_contract_call.host_exec(
-                runtime,
-                protocol_version,
-                &mut inner_named_keys,
-                &runtime_args,
-                extra_keys,
-                effect_snapshot,
-            );
-            *named_keys = inner_named_keys;
-            return ret;
-        }
-
-        let (maybe_ret, maybe_error, revert_effect): (Option<T>, Option<Error>, bool) = {
-            match instance.invoke_export(
-                direct_system_contract_call.entry_point_name(),
-                &[],
-                &mut runtime,
-            ) {
-                Err(error) => match error.as_host_error() {
-                    // NOTE: Downcasting below is assumed safe as the [`Error`] is type erased
-                    Some(host_error) => match host_error.downcast_ref::<Error>() {
-                        Some(Error::Ret(ref ret_urefs)) => match runtime.take_host_buffer() {
-                            Some(result) => match result.into_t() {
-                                Ok(ret) => {
-                                    let ret_urefs_map: HashMap<Address, HashSet<AccessRights>> =
-                                        extract_access_rights_from_urefs(ret_urefs.clone());
-                                    runtime.access_rights_extend(ret_urefs_map);
-
-                                    (Some(ret), None, false)
-                                }
-                                Err(error) => (None, Some(Error::CLValue(error)), false),
-                            },
-                            None => (None, Some(Error::ExpectedReturnValue), false),
-                        },
-                        Some(Error::Revert(api_error)) => {
-                            (None, Some(Error::Revert(*api_error)), true)
-                        }
-                        Some(error) => (None, Some(error.clone()), true),
-                        None => (None, Some(Error::Interpreter(host_error.to_string())), true),
-                    },
-                    None => (None, Some(Error::Interpreter(error.into())), false),
-                },
-                Ok(_) => {
-                    match runtime.take_host_buffer() {
-                        None => (None, None, false), // success, no ret
-                        Some(result) => match result.into_t() {
-                            Ok(ret) => (Some(ret), None, false),
-                            Err(error) => (None, Some(Error::CLValue(error)), false),
-                        },
-                    }
-                }
-            }
-        };
-
-        let runtime_context = runtime.context();
-
-        let cost = runtime_context.gas_counter();
-
-        let effect = if revert_effect {
-            effect_snapshot
-        } else {
-            runtime_context.effect()
-        };
-
-        let transfers = runtime_context.transfers().to_owned();
-
-        let execution_result = match maybe_error {
-            Some(error) => ExecutionResult::Failure {
-                error: error.into(),
-                effect,
-                transfers,
-                cost,
-            },
-            None => ExecutionResult::Success {
-                effect,
-                transfers,
-                cost,
-            },
-        };
-
-        match maybe_ret {
-            Some(ret) => execution_result.take_with_ret(ret),
-            None => execution_result.take_without_ret(),
-        }
+        let mut inner_named_keys = runtime.context().named_keys().clone();
+        let ret = direct_system_contract_call.host_exec(
+            runtime,
+            protocol_version,
+            &mut inner_named_keys,
+            &runtime_args,
+            extra_keys,
+            effect_snapshot,
+        );
+        *named_keys = inner_named_keys;
+        ret
     }
 
     /// Used to execute arbitrary wasm; necessary for running system contract installers / upgraders
@@ -656,12 +656,12 @@ pub enum DirectSystemContractCall {
 impl DirectSystemContractCall {
     fn entry_point_name(&self) -> &str {
         match self {
-            DirectSystemContractCall::Slash => "slash",
-            DirectSystemContractCall::RunAuction => "run_auction",
-            DirectSystemContractCall::DistributeRewards => "distribute",
-            DirectSystemContractCall::FinalizePayment => "finalize_payment",
-            DirectSystemContractCall::CreatePurse => "create",
-            DirectSystemContractCall::Transfer => "transfer",
+            DirectSystemContractCall::Slash => auction::METHOD_SLASH,
+            DirectSystemContractCall::RunAuction => auction::METHOD_RUN_AUCTION,
+            DirectSystemContractCall::DistributeRewards => auction::METHOD_DISTRIBUTE,
+            DirectSystemContractCall::FinalizePayment => proof_of_stake::METHOD_FINALIZE_PAYMENT,
+            DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
+            DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
             DirectSystemContractCall::GetPaymentPurse => proof_of_stake::METHOD_GET_PAYMENT_PURSE,
         }

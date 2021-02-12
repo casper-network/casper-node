@@ -3,10 +3,9 @@
 
 use std::{
     array::TryFromSliceError,
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
-    iter::FromIterator,
 };
 
 use datasize::DataSize;
@@ -27,34 +26,40 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    runtime_args,
     standard_payment::ARG_AMOUNT,
-    AsymmetricType, ExecutionResult, PublicKey, SecretKey, Signature, U512,
+    AsymmetricType, ExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::{block_proposer::DeployType, chainspec_loader::DeployConfig},
+    components::block_proposer::DeployType,
     crypto,
     crypto::{
         hash::{self, Digest},
-        AsymmetricKeyExt, Error as CryptoError,
+        AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
+    types::chainspec::DeployConfig,
     utils::DisplayIter,
     NodeRng,
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
+    let payment_args = runtime_args! {
+        "quantity" => 1000
+    };
     let payment = ExecutableDeployItem::StoredContractByName {
         name: String::from("casper-example"),
         entry_point: String::from("example-entry-point"),
-        args: vec![1, 1].into(),
+        args: payment_args,
     };
-    let session = ExecutableDeployItem::Transfer {
-        args: vec![2, 2].into(),
+    let session_args = runtime_args! {
+        "amount" => 1000
     };
+    let session = ExecutableDeployItem::Transfer { args: session_args };
     let serialized_body = serialize_body(&payment, &session);
     let body_hash = hash::hash(&serialized_body);
 
@@ -92,7 +97,55 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     }
 });
 
-/// Error returned from constructing or validating a `Deploy`.
+/// A representation of the way in which a deploy failed validation checks.
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error)]
+pub enum DeployValidationFailure {
+    /// Invalid chain name.
+    #[error("invalid chain name: expected {expected}, got {got}")]
+    InvalidChainName {
+        /// The expected chain name.
+        expected: String,
+        /// The received chain name.
+        got: String,
+    },
+
+    /// Too many dependencies.
+    #[error("{got} dependencies exceeds limit of {max_dependencies}")]
+    ExcessiveDependencies {
+        /// The dependencies limit.
+        max_dependencies: u8,
+        /// The actual number of dependencies provided.
+        got: usize,
+    },
+
+    /// Excessive time-to-live.
+    #[error("time-to-live of {got} exceeds limit of {max_ttl}")]
+    ExcessiveTimeToLive {
+        /// The time-to-live limit.
+        max_ttl: TimeDiff,
+        /// The received time-to-live.
+        got: TimeDiff,
+    },
+
+    /// The provided body hash does not match the actual hash of the body.
+    #[error("the provided body hash does not match the actual hash of the body")]
+    InvalidBodyHash,
+
+    /// The provided deploy hash does not match the actual hash of the deploy.
+    #[error("the provided hash does not match the actual hash of the deploy")]
+    InvalidDeployHash,
+
+    /// Invalid approval.
+    #[error("the approval at index {index} is invalid: {error_msg}")]
+    InvalidApproval {
+        /// The index of the approval at fault.
+        index: usize,
+        /// The approval validation error.
+        error_msg: String,
+    },
+}
+
+/// Errors other than validation failures relating to `Deploy`s.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error while encoding to JSON.
@@ -102,19 +155,6 @@ pub enum Error {
     /// Error while decoding from JSON.
     #[error("decoding from JSON: {0}")]
     DecodeFromJson(Box<dyn StdError>),
-
-    /// Approval at specified index does not exist.
-    #[error("approval at index {0} does not exist")]
-    NoSuchApproval(usize),
-
-    /// Failed to verify an approval.
-    #[error("failed to verify approval {index}: {error}")]
-    FailedVerification {
-        /// The index of the failed approval.
-        index: usize,
-        /// The verification error.
-        error: CryptoError,
-    },
 
     /// Failed to get "amount" from `payment()`'s runtime args.
     #[error("invalid payment: missing \"amount\" arg")]
@@ -404,7 +444,7 @@ pub struct Deploy {
     session: ExecutableDeployItem,
     approvals: Vec<Approval>,
     #[serde(skip)]
-    is_valid: Option<bool>,
+    is_valid: Option<Result<(), DeployValidationFailure>>,
 }
 
 impl Deploy {
@@ -509,10 +549,10 @@ impl Deploy {
                 // - args to exist
                 // - contain "amount"
                 // - be a valid U512 value.
-                let args = payment_item
-                    .into_runtime_args()
-                    .map_err(|_| Error::InvalidPayment)?;
-                let value = args.get(ARG_AMOUNT).ok_or(Error::InvalidPayment)?;
+                let value = payment_item
+                    .args()
+                    .get(ARG_AMOUNT)
+                    .ok_or(Error::InvalidPayment)?;
                 let value = value
                     .clone()
                     .into_t::<U512>()
@@ -531,17 +571,14 @@ impl Deploy {
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
     ///   * all approvals are valid signatures of the deploy hash
-    ///
-    /// Note: this is a relatively expensive operation, requiring re-serialization of the deploy,
-    ///       hashing, and signature checking, so should be called as infrequently as possible.
-    pub fn is_valid(&mut self) -> bool {
-        match self.is_valid {
+    pub fn is_valid(&mut self) -> Result<(), DeployValidationFailure> {
+        match self.is_valid.as_ref() {
             None => {
                 let validity = validate_deploy(self);
-                self.is_valid = Some(validity);
+                self.is_valid = Some(validity.clone());
                 validity
             }
-            Some(validity) => validity,
+            Some(validity) => validity.clone(),
         }
     }
 
@@ -550,9 +587,12 @@ impl Deploy {
     ///   * the configured parameters are complied with,
     ///   * the deploy is valid
     ///
-    /// Note: if everything else checks out, calls the computationally expensive `is_valid`
-    /// method.
-    pub fn is_acceptable(&mut self, chain_name: String, config: DeployConfig) -> bool {
+    /// Note: if everything else checks out, calls the computationally expensive `is_valid` method.
+    pub fn is_acceptable(
+        &mut self,
+        chain_name: String,
+        config: DeployConfig,
+    ) -> Result<(), DeployValidationFailure> {
         let header = self.header();
         if header.chain_name() != chain_name {
             warn!(
@@ -561,7 +601,10 @@ impl Deploy {
                 chain_name = %header.chain_name(),
                 "invalid chain identifier"
             );
-            return false;
+            return Err(DeployValidationFailure::InvalidChainName {
+                expected: chain_name,
+                got: header.chain_name().to_string(),
+            });
         }
 
         if header.dependencies().len() > config.max_dependencies as usize {
@@ -571,7 +614,10 @@ impl Deploy {
                 max_dependencies = %config.max_dependencies,
                 "deploy dependency ceiling exceeded"
             );
-            return false;
+            return Err(DeployValidationFailure::ExcessiveDependencies {
+                max_dependencies: config.max_dependencies,
+                got: header.dependencies().len(),
+            });
         }
 
         if header.ttl() > config.max_ttl {
@@ -581,10 +627,11 @@ impl Deploy {
                 max_ttl = %config.max_ttl,
                 "deploy ttl excessive"
             );
-            return false;
+            return Err(DeployValidationFailure::ExcessiveTimeToLive {
+                max_ttl: config.max_ttl,
+                got: header.ttl(),
+            });
         }
-
-        // TODO - check if there is more that can be validated here.
 
         self.is_valid()
     }
@@ -648,19 +695,19 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
-fn validate_deploy(deploy: &Deploy) -> bool {
+fn validate_deploy(deploy: &Deploy) -> Result<(), DeployValidationFailure> {
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
         warn!(?deploy, ?body_hash, "invalid deploy body hash");
-        return false;
+        return Err(DeployValidationFailure::InvalidBodyHash);
     }
 
     let serialized_header = serialize_header(&deploy.header);
     let hash = DeployHash::new(hash::hash(&serialized_header));
     if hash != deploy.hash {
         warn!(?deploy, ?hash, "invalid deploy hash");
-        return false;
+        return Err(DeployValidationFailure::InvalidDeployHash);
     }
 
     // We don't need to check for an empty set here. EE checks that the correct number and weight of
@@ -669,11 +716,14 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
-            return false;
+            return Err(DeployValidationFailure::InvalidApproval {
+                index,
+                error_msg: error.to_string(),
+            });
         }
     }
 
-    true
+    Ok(())
 }
 
 impl Item for Deploy {
@@ -703,13 +753,19 @@ impl Display for Deploy {
 
 impl From<Deploy> for DeployItem {
     fn from(deploy: Deploy) -> Self {
-        let account_hash = deploy.header().account().to_account_hash();
+        let address = deploy.header().account().to_account_hash();
+        let authorization_keys = deploy
+            .approvals()
+            .iter()
+            .map(|approval| approval.signer().to_account_hash())
+            .collect();
+
         DeployItem::new(
-            account_hash,
+            address,
             deploy.session().clone(),
             deploy.payment().clone(),
             deploy.header().gas_price(),
-            BTreeSet::from_iter(vec![account_hash]),
+            authorization_keys,
             casper_types::DeployHash::new(deploy.id().inner().to_array()),
         )
     }
@@ -767,7 +823,7 @@ impl FromBytes for Deploy {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{iter, time::Duration};
 
     use casper_types::bytesrepr::Bytes;
 
@@ -803,34 +859,221 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&deploy);
     }
 
-    #[test]
-    fn is_valid() {
-        let mut rng = crate::new_rng();
-        let mut deploy = Deploy::random(&mut rng);
-        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
-        assert!(deploy.is_valid());
-        assert_eq!(deploy.is_valid, Some(true), "is valid should be true");
+    fn create_deploy(
+        rng: &mut TestRng,
+        ttl: TimeDiff,
+        dependency_count: usize,
+        chain_name: &str,
+    ) -> Deploy {
+        let secret_key = SecretKey::random(rng);
+        let dependencies = iter::repeat_with(|| DeployHash::random(rng))
+            .take(dependency_count)
+            .collect();
+        Deploy::new(
+            Timestamp::now(),
+            ttl,
+            1,
+            dependencies,
+            chain_name.to_string(),
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: Bytes::new(),
+                args: RuntimeArgs::new(),
+            },
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::new(),
+            },
+            &secret_key,
+            rng,
+        )
     }
 
     #[test]
-    fn is_not_valid() {
-        let mut deploy = Deploy::new(
-            Timestamp::zero(),
-            TimeDiff::from(Duration::default()),
-            0,
-            vec![],
-            String::default(),
-            ExecutableDeployItem::ModuleBytes {
-                module_bytes: Bytes::new(),
-                args: Bytes::new(),
-            },
-            ExecutableDeployItem::Transfer { args: Bytes::new() },
-            &SecretKey::generate_ed25519().unwrap(),
-            &mut crate::new_rng(),
-        );
-        deploy.header.gas_price = 1;
+    fn is_valid() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
         assert_eq!(deploy.is_valid, None, "is valid should initially be None");
-        assert!(!deploy.is_valid(), "should not be valid");
-        assert_eq!(deploy.is_valid, Some(false), "is valid should be false");
+        deploy.is_valid().expect("should be valid");
+        assert_eq!(deploy.is_valid, Some(Ok(())), "is valid should be true");
+    }
+
+    fn check_is_not_valid(mut invalid_deploy: Deploy, expected_error: DeployValidationFailure) {
+        assert!(
+            invalid_deploy.is_valid.is_none(),
+            "is valid should initially be None"
+        );
+        let actual_error = invalid_deploy.is_valid().unwrap_err();
+
+        // Ignore the `error_msg` field of `InvalidApproval` when comparing to expected error, as
+        // this makes the test too fragile.  Otherwise expect the actual error should exactly match
+        // the expected error.
+        match expected_error {
+            DeployValidationFailure::InvalidApproval {
+                index: expected_index,
+                ..
+            } => match actual_error {
+                DeployValidationFailure::InvalidApproval {
+                    index: actual_index,
+                    ..
+                } => {
+                    assert_eq!(actual_index, expected_index);
+                }
+                _ => panic!("expected {}, got: {}", expected_error, actual_error),
+            },
+            _ => {
+                assert_eq!(actual_error, expected_error,);
+            }
+        }
+
+        // The actual error should have been lazily initialized correctly.
+        assert_eq!(
+            invalid_deploy.is_valid,
+            Some(Err(actual_error)),
+            "is valid should now be Some"
+        );
+    }
+
+    #[test]
+    fn not_valid_due_to_invalid_body_hash() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+
+        deploy.session = ExecutableDeployItem::Transfer {
+            args: runtime_args! {
+                "amount" => 1
+            },
+        };
+        check_is_not_valid(deploy, DeployValidationFailure::InvalidBodyHash);
+    }
+
+    #[test]
+    fn not_valid_due_to_invalid_deploy_hash() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+
+        deploy.header.gas_price = 2;
+        check_is_not_valid(deploy, DeployValidationFailure::InvalidDeployHash);
+    }
+
+    #[test]
+    fn not_valid_due_to_invalid_approval() {
+        let mut rng = crate::new_rng();
+        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+
+        let deploy2 = Deploy::random(&mut rng);
+
+        deploy.approvals.extend(deploy2.approvals);
+        check_is_not_valid(
+            deploy,
+            DeployValidationFailure::InvalidApproval {
+                index: 1,
+                error_msg: String::new(), // This field is ignored in the check.
+            },
+        );
+    }
+
+    #[test]
+    fn is_acceptable() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1".to_string();
+        let deploy_config = DeployConfig::default();
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            &chain_name,
+        );
+        deploy
+            .is_acceptable(chain_name, deploy_config)
+            .expect("should be acceptable");
+    }
+
+    #[test]
+    fn not_acceptable_due_to_invalid_chain_name() {
+        let mut rng = crate::new_rng();
+        let expected_chain_name = "net-1".to_string();
+        let wrong_chain_name = "net-2".to_string();
+        let deploy_config = DeployConfig::default();
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            &wrong_chain_name,
+        );
+
+        let expected_error = DeployValidationFailure::InvalidChainName {
+            expected: expected_chain_name.clone(),
+            got: wrong_chain_name,
+        };
+
+        assert_eq!(
+            deploy.is_acceptable(expected_chain_name, deploy_config),
+            Err(expected_error)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
+    fn not_acceptable_due_to_excessive_dependencies() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1".to_string();
+        let deploy_config = DeployConfig::default();
+
+        let dependency_count = usize::from(deploy_config.max_dependencies + 1);
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            dependency_count,
+            &chain_name,
+        );
+
+        let expected_error = DeployValidationFailure::ExcessiveDependencies {
+            max_dependencies: deploy_config.max_dependencies,
+            got: dependency_count,
+        };
+
+        assert_eq!(
+            deploy.is_acceptable(chain_name, deploy_config),
+            Err(expected_error)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
+    fn not_acceptable_due_to_excessive_ttl() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1".to_string();
+        let deploy_config = DeployConfig::default();
+
+        let ttl = deploy_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            ttl,
+            deploy_config.max_dependencies.into(),
+            &chain_name,
+        );
+
+        let expected_error = DeployValidationFailure::ExcessiveTimeToLive {
+            max_ttl: deploy_config.max_ttl,
+            got: ttl,
+        };
+
+        assert_eq!(
+            deploy.is_acceptable(chain_name, deploy_config),
+            Err(expected_error)
+        );
+        assert!(
+            deploy.is_valid.is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
     }
 }

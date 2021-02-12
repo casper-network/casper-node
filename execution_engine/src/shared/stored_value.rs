@@ -1,4 +1,13 @@
-use std::convert::TryFrom;
+use std::{
+    convert::TryFrom,
+    fmt::{self, Debug, Formatter},
+};
+
+use serde::{
+    de::{self, SeqAccess, Visitor},
+    ser::{Error, SerializeSeq},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 
 use casper_types::{
     auction::EraInfo,
@@ -296,6 +305,87 @@ impl FromBytes for StoredValue {
                 .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+impl Serialize for StoredValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // The JSON representation of a StoredValue is just its bytesrepr
+        // While this makes it harder to inspect, it makes deterministic representation simple.
+        let bytes = self
+            .to_bytes()
+            .map_err(|err| S::Error::custom(format!("{:?}", err)))?;
+
+        let number_of_bytes = bytes.len();
+        let mut seq = serializer.serialize_seq(Some(number_of_bytes))?;
+
+        // First push the number of bytes the StoredValue takes
+        seq.serialize_element(&number_of_bytes)?;
+        for byte in bytes {
+            seq.serialize_element(&byte)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for StoredValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct StoredValueDeserializer;
+
+        impl<'de> Visitor<'de> for StoredValueDeserializer {
+            type Value = StoredValue;
+
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                formatter.write_str("Serialized representation of StoredValue in bytes.")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let number_of_bytes: usize = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::custom("Did not have leading number of bytes"))?;
+                let mut bytes: Vec<u8> = Vec::with_capacity(number_of_bytes);
+                let mut count: usize = 0;
+                while let Some(byte) = seq.next_element()? {
+                    count += 1;
+                    if count > number_of_bytes {
+                        return Err(de::Error::custom(format!(
+                            "Serialization should have {} bytes but exceeds this",
+                            number_of_bytes
+                        )));
+                    }
+                    bytes.push(byte);
+                }
+                if count < number_of_bytes {
+                    return Err(de::Error::custom(format!(
+                        "Serialization should have {} bytes but only has {}",
+                        number_of_bytes, count
+                    )));
+                }
+                let (stored_value, additional_bytes) = StoredValue::from_bytes(&bytes)
+                    .map_err(|err| de::Error::custom(format!("{:?}", err)))?;
+                if !additional_bytes.is_empty() {
+                    return Err(de::Error::custom(format!(
+                        "Parsed stored value as well as unexpected additional bytes.\n\
+                         \n\
+                         Stored value: {:?}\n\
+                         \n\
+                         Unexpected additional bytes: {:?}",
+                        stored_value, additional_bytes
+                    )));
+                }
+                Ok(stored_value)
+            }
+        }
+        deserializer.deserialize_seq(StoredValueDeserializer)
     }
 }
 

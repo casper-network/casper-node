@@ -5,6 +5,7 @@ mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
+#[macro_use]
 mod highway_core;
 mod metrics;
 mod protocols;
@@ -24,25 +25,24 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
-use casper_types::{auction::ValidatorWeights, PublicKey};
+use casper_types::PublicKey;
 
 use crate::{
     components::Component,
-    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
             self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    types::{ActivationPoint, BlockHash, ProtoBlock, Timestamp},
     NodeRng,
 };
 
+use crate::types::Block;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -58,6 +58,16 @@ pub enum ConsensusMessage {
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
+/// An ID to distinguish different timers. What they are used for is specific to each consensus
+/// protocol implementation.
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TimerId(pub u8);
+
+/// An ID to distinguish queued actions. What they are used for is specific to each consensus
+/// protocol implementation.
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ActionId(pub u8);
+
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub enum Event<I> {
@@ -66,7 +76,13 @@ pub enum Event<I> {
     /// We connected to a peer.
     NewPeer(I),
     /// A scheduled event to be handled by a specified era
-    Timer { era_id: EraId, timestamp: Timestamp },
+    Timer {
+        era_id: EraId,
+        timestamp: Timestamp,
+        timer_id: TimerId,
+    },
+    /// A queued action to be handled by a specific era
+    Action { era_id: EraId, action_id: ActionId },
     /// We are receiving the data we require to propose a new block
     NewProtoBlock {
         era_id: EraId,
@@ -80,6 +96,7 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     },
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -92,17 +109,16 @@ pub enum Event<I> {
     /// booking block hash and the seed from the key block
     CreateNewEra {
         /// The header of the switch block
-        block_header: Box<BlockHeader>,
+        block: Box<Block>,
         /// Ok(block_hash) if the booking block was found, Err(height) if not
         booking_block_hash: Result<BlockHash, u64>,
-        /// Ok(seed) if the key block was found, Err(height) if not
-        key_block_seed: Result<Digest, u64>,
-        get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Debug for ConsensusMessage {
@@ -140,11 +156,18 @@ impl<I: Debug> Display for Event<I> {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
             Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
-            Event::Timer { era_id, timestamp } => write!(
+            Event::Timer {
+                era_id,
+                timestamp,
+                timer_id,
+            } => write!(
                 f,
-                "timer for era {:?} scheduled for timestamp {}",
-                era_id, timestamp
+                "timer (ID {}) for era {} scheduled for timestamp {}",
+                timer_id.0, era_id.0, timestamp,
             ),
+            Event::Action { era_id, action_id } => {
+                write!(f, "action (ID {}) for era {}", action_id.0, era_id.0)
+            }
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
@@ -163,11 +186,13 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
             } => write!(
                 f,
-                "Proto-block received from {:?} for {} is {}: {:?}",
+                "Proto-block received from {:?} at {} for {} is {}: {:?}",
                 sender,
+                timestamp,
                 era_id,
                 if *valid { "valid" } else { "invalid" },
                 proto_block
@@ -181,18 +206,18 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                key_block_seed,
-                get_validators_result,
-                ..
+                block,
             } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, key block seed: {:?}, \
-                response to get_validators from the contract runtime: {:?}",
-                booking_block_hash, key_block_seed, get_validators_result
+                "New era should be created; booking block hash: {:?}, switch block: {:?}",
+                booking_block_hash, block
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
                 write!(f, "The node finished joining the network at {}", timestamp)
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
             }
         }
     }
@@ -210,6 +235,7 @@ pub trait ReactorEventT<I>:
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<ChainspecLoaderRequest>
 {
 }
 
@@ -223,6 +249,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
 {
 }
 
@@ -242,7 +269,12 @@ where
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
-            Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
+            Event::Timer {
+                era_id,
+                timestamp,
+                timer_id,
+            } => handling_es.handle_timer(era_id, timestamp, timer_id),
+            Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
@@ -251,63 +283,40 @@ where
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
             Event::ConsensusRequest(requests::ConsensusRequest::HandleLinearBlock(
-                block_header,
+                block,
                 responder,
-            )) => handling_es.handle_linear_chain_block(*block_header, responder),
+            )) => handling_es.handle_linear_chain_block(*block, responder),
             Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
-            } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            } => handling_es.resolve_validity(era_id, sender, proto_block, timestamp, valid),
             Event::DeactivateEra {
                 era_id,
                 faulty_num,
                 delay,
             } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
-                block_header,
+                block,
                 booking_block_hash,
-                key_block_seed,
-                get_validators_result,
             } => {
                 let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
                         "could not find the booking block at height {} for era {}",
                         height,
-                        block_header.era_id().successor()
+                        block.header().era_id().successor()
                     );
                     panic!("couldn't get the booking block hash");
                 });
-                let key_block_seed = key_block_seed.unwrap_or_else(|height| {
-                    error!(
-                        "could not find the key block at height {} for era {}",
-                        height,
-                        block_header.era_id().successor()
-                    );
-                    panic!("couldn't get the seed from the key block");
-                });
-                let validators = match get_validators_result {
-                    Ok(Some(validator_weights)) => validator_weights,
-                    result => {
-                        error!(
-                            ?result,
-                            "get_validators in era {} returned an error: {:?}",
-                            block_header.era_id(),
-                            result
-                        );
-                        panic!("couldn't get validators");
-                    }
-                };
-                handling_es.handle_create_new_era(
-                    *block_header,
-                    booking_block_hash,
-                    key_block_seed,
-                    validators,
-                )
+                handling_es.handle_create_new_era(*block, booking_block_hash)
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                handling_es.got_upgrade_activation_point(activation_point)
+            }
             Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
                 era_id,
                 pk,

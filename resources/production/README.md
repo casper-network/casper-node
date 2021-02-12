@@ -86,9 +86,6 @@ To stop:
 
 ## Local Storage
 
-Unless specified in different location in `config.toml` the data for the node will
-be located in `/var/lib/casper/casper-node`.  
-
 If you need to delete the db for a new run,
 you can use the script in `/etc/casper` with `sudo /etc/casper/delete_local_db.sh`.
 

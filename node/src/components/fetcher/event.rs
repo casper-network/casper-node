@@ -11,12 +11,12 @@ use crate::{
 };
 
 #[derive(Clone, DataSize, Debug, PartialEq)]
-pub enum FetchResult<T> {
+pub enum FetchResult<T, I> {
     FromStorage(Box<T>),
-    FromPeer(Box<T>, NodeId),
+    FromPeer(Box<T>, I),
 }
 
-pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T>>>;
+pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T, NodeId>>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]

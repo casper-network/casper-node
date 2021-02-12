@@ -5,6 +5,7 @@ use std::{
     iter::FromIterator,
 };
 
+use datasize::DataSize;
 use hex_fmt::HexFmt;
 use itertools::Itertools;
 use rand::Rng;
@@ -39,11 +40,19 @@ use crate::{
     NodeRng,
 };
 
-type ConsensusValue = Vec<u32>;
+type ConsensusValue = Vec<u8>;
 
 impl ConsensusValueT for ConsensusValue {
+    type Hash = u64;
+
     fn needs_validation(&self) -> bool {
         !self.is_empty()
+    }
+
+    fn hash(&self) -> Self::Hash {
+        let mut hasher = DefaultHasher::new();
+        std::hash::Hash::hash(&self, &mut hasher);
+        hasher.finish()
     }
 }
 
@@ -215,27 +224,35 @@ impl HighwayValidator {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
-    fn post_hook(&mut self, rng: &mut NodeRng, msg: HighwayMessage) -> Vec<HighwayMessage> {
+    fn post_hook(
+        &mut self,
+        rng: &mut NodeRng,
+        delivery_time: Timestamp,
+        msg: HighwayMessage,
+    ) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
-            None => {
-                // Honest validator.
-                match &msg {
-                    HighwayMessage::NewVertex(_)
-                    | HighwayMessage::Timer(_)
-                    | HighwayMessage::RequestBlock(_) => vec![msg],
-                    HighwayMessage::WeAreFaulty(ev) => {
-                        panic!("validator equivocated unexpectedly: {:?}", ev);
-                    }
-                }
-            }
-            Some(DesFault::Mute) => {
-                // For mute validators we add it to the state but not gossip.
+            Some(DesFault::TemporarilyMute { from, till })
+                if *from <= delivery_time && delivery_time <= *till =>
+            {
+                // For mute validators we add it to the state but not gossip, if the delivery time
+                // is in the interval in which they are muted.
                 match msg {
                     HighwayMessage::NewVertex(_) => {
                         warn!("Validator is mute – won't gossip vertices in response");
                         vec![]
                     }
                     HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::WeAreFaulty(ev) => {
+                        panic!("validator equivocated unexpectedly: {:?}", ev);
+                    }
+                }
+            }
+            None | Some(DesFault::TemporarilyMute { .. }) | Some(DesFault::PermanentlyMute) => {
+                // Honest validator.
+                match &msg {
+                    HighwayMessage::NewVertex(_)
+                    | HighwayMessage::Timer(_)
+                    | HighwayMessage::RequestBlock(_) => vec![msg],
                     HighwayMessage::WeAreFaulty(ev) => {
                         panic!("validator equivocated unexpectedly: {:?}", ev);
                     }
@@ -275,6 +292,12 @@ impl HighwayValidator {
 type HighwayNode = Node<ConsensusValue, HighwayMessage, HighwayValidator>;
 
 type HighwayNet = VirtualNet<ConsensusValue, HighwayMessage, HighwayValidator>;
+
+impl HighwayNode {
+    fn unit_count(&self) -> usize {
+        self.validator().highway.state().unit_count()
+    }
+}
 
 struct HighwayTestHarness<DS>
 where
@@ -353,8 +376,11 @@ where
         Ok(())
     }
 
-    fn next_consensus_value(&mut self) -> ConsensusValue {
-        self.consensus_values.pop_front().unwrap_or_default()
+    fn next_consensus_value(&mut self, height: u64) -> ConsensusValue {
+        self.consensus_values
+            .get(height as usize)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Helper for getting validator from the underlying virtual net.
@@ -367,6 +393,7 @@ where
     fn call_validator<F>(
         &mut self,
         rng: &mut NodeRng,
+        delivery_time: Timestamp,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
@@ -378,9 +405,11 @@ where
         let messages = res
             .into_iter()
             .flat_map(|eff| {
-                validator_node
-                    .validator_mut()
-                    .post_hook(rng, HighwayMessage::from(eff))
+                validator_node.validator_mut().post_hook(
+                    rng,
+                    delivery_time,
+                    HighwayMessage::from(eff),
+                )
             })
             .collect();
         Ok(messages)
@@ -406,7 +435,7 @@ where
 
             match hwm {
                 HighwayMessage::Timer(timestamp) => {
-                    self.call_validator(rng, &validator_id, |consensus, rng| {
+                    self.call_validator(rng, delivery_time, &validator_id, |consensus, rng| {
                         consensus.highway_mut().handle_timer(timestamp, rng)
                     })?
                 }
@@ -434,9 +463,9 @@ where
                     }
                 }
                 HighwayMessage::RequestBlock(block_context) => {
-                    let consensus_value = self.next_consensus_value();
+                    let consensus_value = self.next_consensus_value(block_context.height());
 
-                    self.call_validator(rng, &validator_id, |consensus, rng| {
+                    self.call_validator(rng, delivery_time, &validator_id, |consensus, rng| {
                         consensus
                             .highway_mut()
                             .propose(consensus_value, block_context, rng)
@@ -467,19 +496,23 @@ where
             value,
             timestamp: _,
             height,
-            rewards,
+            terminal_block_data,
             equivocators: _,
             proposer: _,
         } in finalized_values
         {
             trace!(
                 "{}consensus value finalized: {:?}, height: {:?}",
-                if rewards.is_some() { "last " } else { "" },
+                if terminal_block_data.is_some() {
+                    "last "
+                } else {
+                    ""
+                },
                 value,
                 height
             );
-            if let Some(r) = rewards {
-                warn!(?r, "rewards are not verified yet");
+            if let Some(t) = terminal_block_data {
+                warn!(?t.rewards, "rewards and inactive validators are not verified yet");
             }
             recipient.push_finalized(value);
         }
@@ -527,10 +560,12 @@ where
                         .validate_vertex(prevalidated_vertex)
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
-                        Ok(valid_vertex) => self.call_validator(rng, &recipient, |v, rng| {
-                            v.highway_mut()
-                                .add_valid_vertex(valid_vertex, rng, delivery_time)
-                        })?,
+                        Ok(valid_vertex) => {
+                            self.call_validator(rng, delivery_time, &recipient, |v, rng| {
+                                v.highway_mut()
+                                    .add_valid_vertex(valid_vertex, rng, delivery_time)
+                            })?
+                        }
                     }
                 };
 
@@ -586,7 +621,6 @@ where
     // If validator has missing dependencies then we have to add them first.
     // We don't want to test synchronization, and the Highway theory assumes
     // that when units are added then all their dependencies are satisfied.
-    #[allow(clippy::type_complexity)]
     fn synchronize_dependency(
         &mut self,
         rng: &mut NodeRng,
@@ -618,17 +652,40 @@ where
 }
 
 fn crank_until<F, DS: DeliveryStrategy>(
-    htt: &mut HighwayTestHarness<DS>,
+    hth: &mut HighwayTestHarness<DS>,
     rng: &mut NodeRng,
     f: F,
 ) -> TestResult<()>
 where
     F: Fn(&HighwayTestHarness<DS>) -> bool,
 {
-    while !f(htt) {
-        htt.crank(rng)?;
+    while !f(hth) {
+        hth.crank(rng)?;
     }
     Ok(())
+}
+
+fn crank_until_finalized<DS: DeliveryStrategy>(
+    hth: &mut HighwayTestHarness<DS>,
+    rng: &mut NodeRng,
+    cv_count: usize,
+) -> TestResult<()> {
+    crank_until(hth, rng, |hth| {
+        let has_all_finalized = |v: &HighwayNode| v.finalized_count() == cv_count;
+        hth.virtual_net.validators().all(has_all_finalized)
+    })
+}
+
+fn crank_until_time<DS: DeliveryStrategy>(
+    hth: &mut HighwayTestHarness<DS>,
+    rng: &mut NodeRng,
+    timestamp: Timestamp,
+) -> TestResult<()> {
+    crank_until(hth, rng, |hth| {
+        hth.virtual_net
+            .peek_message()
+            .map_or(true, |qe| qe.delivery_time > timestamp)
+    })
 }
 
 struct MutableHandle<'a, DS: DeliveryStrategy>(&'a mut HighwayTestHarness<DS>);
@@ -642,11 +699,33 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
     fn validators(&self) -> impl Iterator<Item = &HighwayNode> {
         self.0.virtual_net.validators()
     }
+
+    fn correct_validators(&self) -> impl Iterator<Item = &HighwayNode> {
+        self.0
+            .virtual_net
+            .validators()
+            .filter(|v| v.validator().fault.is_none())
+    }
 }
 
+fn test_params() -> Params {
+    Params::new(
+        0, // random seed
+        TEST_BLOCK_REWARD,
+        TEST_REDUCED_BLOCK_REWARD,
+        TEST_MIN_ROUND_EXP,
+        TEST_MAX_ROUND_EXP,
+        TEST_MIN_ROUND_EXP,
+        TEST_END_HEIGHT,
+        Timestamp::zero(),
+        Timestamp::zero(), // Length depends only on block number.
+        TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+    )
+}
+
+#[derive(Debug)]
 enum BuilderError {
     WeightLimits,
-    TooManyFaultyNodes(String),
 }
 
 struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
@@ -675,9 +754,8 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     /// Type of discrete distribution of validators' weights.
     /// Defaults to uniform.
     weight_distribution: Distribution,
-    /// Seed for `Highway`.
-    /// Defaults to 0.
-    seed: u64,
+    /// Highway parameters.
+    params: Params,
 }
 
 // Default strategy for message delivery.
@@ -717,7 +795,7 @@ impl HighwayTestHarnessBuilder<InstantDeliveryNoDropping> {
             weight_limits: (1, 100),
             start_time: Timestamp::zero(),
             weight_distribution: Distribution::Uniform,
-            seed: 0,
+            params: test_params(),
         }
     }
 }
@@ -755,13 +833,17 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
+    fn params(mut self, params: Params) -> Self {
+        self.params = params;
+        self
+    }
+
     fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
-        let consensus_values = (0..self.consensus_values_count as u32)
+        let consensus_values = (0..self.consensus_values_count)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();
 
         let instance_id = 0;
-        let seed = self.seed;
         let start_time = self.start_time;
 
         let (lower, upper) = {
@@ -773,13 +855,6 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         };
 
         let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
-            if self.faulty_percent > 33 {
-                return Err(BuilderError::TooManyFaultyNodes(
-                    "Total weight of all malicious validators cannot be more than 33% of all network weight."
-                        .to_string(),
-                ));
-            }
-
             if self.faulty_percent == 0 {
                 // All validators are honest.
                 let validators_num = rng.gen_range(2, self.max_faulty_validators + 1);
@@ -851,26 +926,15 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             .ftt
             .map(|p| p * weights_sum.0 / 100)
             .unwrap_or_else(|| (weights_sum.0 - 1) / 3);
+        let params = self.params;
 
         // Local function creating an instance of `HighwayConsensus` for a single validator.
         let highway_consensus =
             |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
                 let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-                let params = Params::new(
-                    seed,
-                    TEST_BLOCK_REWARD,
-                    TEST_REDUCED_BLOCK_REWARD,
-                    TEST_MIN_ROUND_EXP,
-                    TEST_MAX_ROUND_EXP,
-                    TEST_MIN_ROUND_EXP,
-                    TEST_END_HEIGHT,
-                    Timestamp::zero(),
-                    Timestamp::zero(), // Length depends only on block number.
-                    TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-                );
-                let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, start_time, None);
+                let mut highway = Highway::new(instance_id, validators.clone(), params.clone());
+                let effects = highway.activate_validator(vid, v_sec, start_time, None, Weight(ftt));
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
@@ -929,15 +993,15 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TestContext;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct TestSecret(pub(crate) u64);
 
 // Newtype wrapper for test signature.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
@@ -948,7 +1012,7 @@ impl Debug for SignatureWrapper {
 
 // Newtype wrapper for test hash.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, DataSize, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {
@@ -999,13 +1063,20 @@ impl Context for TestContext {
 mod test_harness {
     use std::{collections::HashSet, fmt::Debug};
 
+    use itertools::Itertools;
+
     use super::{
-        crank_until, ConsensusValue, HighwayTestHarness, HighwayTestHarnessBuilder,
-        InstantDeliveryNoDropping, TestRunError,
+        crank_until, crank_until_finalized, crank_until_time, test_params, ConsensusValue,
+        HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
+        TEST_MIN_ROUND_EXP,
     };
     use crate::{
-        components::consensus::tests::consensus_des_testing::{Fault as DesFault, ValidatorId},
+        components::consensus::{
+            highway_core::state,
+            tests::consensus_des_testing::{Fault as DesFault, ValidatorId},
+        },
         logging,
+        types::Timestamp,
     };
     use logging::{LoggingConfig, LoggingFormat};
 
@@ -1017,7 +1088,6 @@ mod test_harness {
                 .consensus_values_count(1)
                 .weight_limits(100, 120)
                 .build(&mut rng)
-                .ok()
                 .expect("Construction was successful");
 
         highway_test_harness.mutable_handle().clear_message_queue();
@@ -1049,7 +1119,6 @@ mod test_harness {
             .consensus_values_count(cv_count)
             .weight_limits(100, 120)
             .build(&mut rng)
-            .ok()
             .expect("Construction was successful");
 
         crank_until(&mut highway_test_harness, &mut rng, |hth| {
@@ -1112,11 +1181,10 @@ mod test_harness {
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
-            .fault_type(DesFault::Mute)
+            .fault_type(DesFault::PermanentlyMute)
             .consensus_values_count(cv_count)
             .weight_limits(100, 120)
             .build(&mut rng)
-            .ok()
             .expect("Construction was successful");
 
         crank_until(&mut highway_test_harness, &mut rng, |hth| {
@@ -1157,7 +1225,6 @@ mod test_harness {
             .consensus_values_count(cv_count)
             .weight_limits(100, 150)
             .build(&mut rng)
-            .ok()
             .expect("Construction was successful");
 
         crank_until(&mut highway_test_harness, &mut rng, |hth| {
@@ -1196,6 +1263,75 @@ mod test_harness {
         assert_eq_vectors(
             equivocators_seen,
             "Nodes saw different set of equivocators.",
+        );
+    }
+
+    #[test]
+    fn pause_if_too_many_are_offline() {
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
+
+        let mut rng = crate::new_rng();
+        let cv_count = 10u8;
+        let max_round_exp = TEST_MIN_ROUND_EXP + 1;
+        let max_round_len = state::round_len(max_round_exp);
+
+        let start_mute = Timestamp::zero() + max_round_len * 2;
+        let should_start_pause = start_mute + max_round_len * 4;
+        let stop_mute = should_start_pause + max_round_len * 3;
+
+        let params = test_params()
+            .with_max_round_exp(max_round_exp)
+            .with_end_height(cv_count as u64);
+        let mut test_harness = HighwayTestHarnessBuilder::new()
+            .max_faulty_validators(3)
+            .faulty_weight_perc(40) // Too many mute validators to be live...
+            .fault_type(DesFault::TemporarilyMute {
+                from: start_mute,
+                till: stop_mute,
+            }) // ...but just temporarily mute.
+            .consensus_values_count(cv_count)
+            .weight_limits(100, 120)
+            .params(params)
+            .build(&mut rng)
+            .expect("Construction was successful");
+
+        // Three max-length rounds after 40% went silent, the honest validators should stop voting.
+        crank_until_time(&mut test_harness, &mut rng, should_start_pause).unwrap();
+
+        // They should all see the same number of finalized blocks.
+        let handle = test_harness.mutable_handle();
+        let first_validator = handle.correct_validators().next().unwrap();
+        let finalized_before_pause = first_validator.finalized_count();
+        let unit_count_before_pause = first_validator.unit_count();
+        assert_ne!(finalized_before_pause, 0);
+        assert!(finalized_before_pause < cv_count as usize);
+        for v in handle.correct_validators() {
+            assert_eq!(finalized_before_pause, v.finalized_count());
+            assert_eq!(unit_count_before_pause, v.unit_count());
+        }
+
+        // Much later, just before the missing 40% come back online...
+        crank_until_time(&mut test_harness, &mut rng, stop_mute).unwrap();
+
+        // ...there should still be no new unit yet.
+        for v in test_harness.mutable_handle().correct_validators() {
+            assert_eq!(finalized_before_pause, v.finalized_count());
+            assert_eq!(unit_count_before_pause, v.unit_count());
+        }
+
+        // After that, however, the network should resume...
+        crank_until_finalized(&mut test_harness, &mut rng, cv_count as usize).unwrap();
+
+        // ...and finalize the remaining blocks.
+        let finalized_values = test_harness
+            .mutable_handle()
+            .validators()
+            .map(|v| v.finalized_values().cloned().collect_vec())
+            .collect_vec();
+
+        assert_eq_vectors(
+            finalized_values,
+            "Nodes finalized different consensus values.",
         );
     }
 }

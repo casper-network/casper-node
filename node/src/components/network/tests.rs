@@ -11,9 +11,12 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, info};
 
-use super::{Config, Event as NetworkEvent, Network as NetworkComponent, ENABLE_LIBP2P_ENV_VAR};
+use super::{
+    network_is_isolated, Config, Event as NetworkEvent, Network as NetworkComponent,
+    ENABLE_LIBP2P_NET_ENV_VAR,
+};
 use crate::{
-    components::{chainspec_loader::Chainspec, Component},
+    components::{network::NetworkIdentity, Component},
     effect::{
         announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
     },
@@ -24,7 +27,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::NodeId,
+    types::{Chainspec, NodeId},
     NodeRng,
 };
 
@@ -44,7 +47,6 @@ impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
         unreachable!()
     }
 }
-
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -72,8 +74,9 @@ impl Reactor for TestReactor {
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let chainspec = Chainspec::random(rng);
+        let network_identity = NetworkIdentity::new();
         let (network_component, effects) =
-            NetworkComponent::new(event_queue, config, &chainspec, false)?;
+            NetworkComponent::new(event_queue, config, network_identity, &chainspec, false)?;
 
         Ok((
             TestReactor { network_component },
@@ -144,7 +147,12 @@ fn network_is_complete(
     if nodes.len() == 1 {
         let nodes = &nodes.values().collect::<Vec<_>>();
         let network_component = &nodes[0].reactor().inner().network_component;
-        if network_component.is_isolated() {
+        if network_is_isolated(
+            &*network_component
+                .known_addresses_mut
+                .lock()
+                .expect("Could not lock known_addresses_mut"),
+        ) {
             return true;
         }
     }
@@ -174,8 +182,8 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    // If the env var "CASPER_ENABLE_LIBP2P" is not defined, exit without running the test.
-    if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 
@@ -240,8 +248,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
-    // If the env var "CASPER_ENABLE_LIBP2P" is not defined, exit without running the test.
-    if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 
@@ -262,7 +270,7 @@ async fn bind_to_real_network_interface() {
         .ip();
     let port = testing::unused_port_on_localhost();
 
-    let local_net_config = Config::new((local_addr, port).into());
+    let local_net_config = Config::new((local_addr, port).into(), true);
 
     let mut net = Network::<TestReactor>::new();
     net.add_node_with_config(local_net_config, &mut rng)
@@ -285,8 +293,8 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    // If the env var "CASPER_ENABLE_LIBP2P" is not defined, exit without running the test.
-    if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 

@@ -3,9 +3,6 @@
 # ================================
 [node]
 
-# Path (absolute, or relative to this config.toml) to the chainspec configuration file.
-chainspec_config_path = 'chainspec.toml'
-
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
@@ -37,6 +34,12 @@ secret_key_path = 'secret_key.pem'
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "../node-storage"
 
+# The duration for which incoming vertices with missing dependencies should be kept in a queue.
+pending_vertex_timeout = '30min'
+
+# The maximum number of blocks by which execution is allowed to lag behind finalization.
+# If it is more than that, consensus will pause, and resume once the executor has caught up.
+max_execution_delay = 3
 
 # ====================================
 # Configuration options for networking
@@ -87,6 +90,10 @@ systemd_support = false
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
+
 # =============================================
 # Configuration options for the REST HTTP server
 # =============================================
@@ -99,6 +106,10 @@ address = '0.0.0.0:7777'
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:8888'
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
 
 # =============================================
 # Configuration options for the SSE HTTP event stream server
@@ -118,6 +129,10 @@ event_stream_buffer_length = 100
 
 # The capacity of the broadcast channel size.
 broadcast_channel_size = 100
+
+# The global max rate of requests (per second) before they are limited.
+# Request will be delayed to the next 1 second bucket once limited.
+qps_limit = 100
 
 # ===============================================
 # Configuration options for the storage component
@@ -215,10 +230,6 @@ verify_accounts = true
 # Configuration options for the contract runtime component
 # ========================================================
 [contract_runtime]
-
-# Optional setting to use system contracts or not.  If unset, defaults to false.
-#use_system_contracts = false
-
 # Optional setting to enable bonding or not.  If unset, defaults to false.
 #enable_bonding = false
 

@@ -1,6 +1,14 @@
 //! Home of RuntimeArgs for calling contracts
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
+
+use datasize::DataSize;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
@@ -8,8 +16,9 @@ use crate::{
 };
 
 /// Named arguments to a contract
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct NamedArg(String, CLValue);
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug, DataSize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+pub struct NamedArg(#[data_size(skip)] String, CLValue);
 
 impl NamedArg {
     /// ctor
@@ -54,8 +63,11 @@ impl FromBytes for NamedArg {
 }
 
 /// Represents a collection of arguments passed to a smart contract.
-#[derive(PartialEq, Eq, Clone, Debug, Default)]
-pub struct RuntimeArgs(Vec<NamedArg>);
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug, Default, DataSize,
+)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+pub struct RuntimeArgs(#[data_size(skip)] Vec<NamedArg>);
 
 impl RuntimeArgs {
     /// Create an empty [`RuntimeArgs`] instance.
@@ -63,7 +75,7 @@ impl RuntimeArgs {
         RuntimeArgs::default()
     }
 
-    /// A wrapper that lets you easily and safely create runtime arguments.   
+    /// A wrapper that lets you easily and safely create runtime arguments.
     ///
     /// This method is useful when you have to construct a [`RuntimeArgs`] with multiple entries,
     /// but error handling at given call site would require to have a match statement for each

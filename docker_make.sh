@@ -49,8 +49,9 @@ done
 
 if [ -z "$1" ]; then
   echo "make command not given."
-  echo "Using 'list' to show targets."
-  make_command="list"
+#  echo "Using 'list' to show targets."
+#  make_command="list"
+  exit 1
 else
   make_command="$1"
 fi
@@ -64,5 +65,5 @@ docker pull casperlabs/${docker_image}:latest
 
 # Getting user and group to chown/chgrp target folder from root at end.
 # Cannot use the --user trick as cached .cargo in image is owned by root.
-command="cd /casper-node; make ${make_command}; chown -R -f $(id -u):$(id -g) ./target ./target_as ./grpc/casper_casper;"
+command="cd /casper-node; make ${make_command}; chown -R -f $(id -u):$(id -g) ./target ./target_as ./execution_engine_testing/casper_casper;"
 docker run --rm --volume $(pwd):/casper-node casperlabs/${docker_image}:latest /bin/bash -c "${command}"

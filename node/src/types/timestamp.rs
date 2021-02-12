@@ -60,8 +60,13 @@ impl Timestamp {
     }
 
     /// Returns the difference between `self` and `other`, or `0` if `self` is earlier than `other`.
-    pub fn saturating_sub(self, other: Timestamp) -> TimeDiff {
+    pub fn saturating_diff(self, other: Timestamp) -> TimeDiff {
         TimeDiff(self.0.saturating_sub(other.0))
+    }
+
+    /// Returns the difference between `self` and `other`, or `0` if that would be before the epoch.
+    pub fn saturating_sub(self, other: TimeDiff) -> Timestamp {
+        Timestamp(self.0.saturating_sub(other.0))
     }
 
     /// Returns the number of trailing zeros in the number of milliseconds since the epoch.
@@ -188,16 +193,16 @@ impl FromBytes for Timestamp {
     }
 }
 
-#[cfg(test)]
 impl From<u64> for Timestamp {
-    fn from(arg: u64) -> Timestamp {
-        Timestamp(arg)
+    fn from(milliseconds_since_epoch: u64) -> Timestamp {
+        Timestamp(milliseconds_since_epoch)
     }
 }
 
 /// A time difference between two timestamps.
 #[derive(
     Debug,
+    Default,
     Clone,
     Copy,
     DataSize,
@@ -299,7 +304,6 @@ impl FromBytes for TimeDiff {
     }
 }
 
-#[cfg(test)]
 impl From<Duration> for TimeDiff {
     fn from(duration: Duration) -> TimeDiff {
         TimeDiff(duration.as_millis() as u64)

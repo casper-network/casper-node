@@ -16,7 +16,9 @@ use casper_types::PublicKey;
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
+        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        consensus::EraId,
+        rpc_server::rpcs::docs::DocExample,
     },
     crypto::hash::Digest,
     types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
@@ -85,7 +87,7 @@ impl From<Block> for MinimalBlockInfo {
             era_id: block.header().era_id(),
             height: block.header().height(),
             state_root_hash: *block.header().state_root_hash(),
-            creator: *block.header().proposer(),
+            creator: *block.body().proposer(),
         }
     }
 }
@@ -105,6 +107,8 @@ pub struct GetStatusResult {
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
+    /// Information about the next scheduled upgrade.
+    pub next_upgrade: Option<NextUpgrade>,
     /// The compiled node version.
     pub build_version: String,
 }
@@ -133,6 +137,7 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
         let api_version = Version::from((0, 0, 0));
         let peers = PeersMap::from(status_feed.peers);
         let last_added_block_info = status_feed.last_added_block.map(Into::into);
+        let next_upgrade = status_feed.chainspec_info.next_upgrade();
         let build_version = crate::VERSION_STRING.clone();
         GetStatusResult {
             api_version,
@@ -140,6 +145,7 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
             genesis_root_hash,
             peers,
             last_added_block_info,
+            next_upgrade,
             build_version,
         }
     }

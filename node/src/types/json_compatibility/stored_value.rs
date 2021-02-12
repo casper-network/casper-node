@@ -16,14 +16,12 @@ use casper_types::{
     CLValue, DeployInfo, Transfer,
 };
 
-use super::Account;
+use super::{Account, Contract, ContractPackage};
 
 /// Representation of a value stored in global state.
 ///
-/// All variants other than `Account` are formed by serializing the variant using `ToBytes` and hex-
-/// encoding the resulting byte string.
-///
-/// `Account` has its own `json_compatibility` representation (see its docs for further info).
+/// `Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations
+/// (see their docs for further info).
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub enum StoredValue {
@@ -34,9 +32,9 @@ pub enum StoredValue {
     /// A contract's Wasm
     ContractWasm(String),
     /// Methods and type signatures supported by a contract.
-    Contract(String),
+    Contract(Contract),
     /// A contract definition, metadata, and security container.
-    ContractPackage(String),
+    ContractPackage(ContractPackage),
     /// A record of a transfer
     Transfer(Transfer),
     /// A record of a deploy
@@ -56,10 +54,10 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
                 StoredValue::ContractWasm(hex::encode(&contract_wasm.to_bytes()?))
             }
             ExecutionEngineStoredValue::Contract(contract) => {
-                StoredValue::Contract(hex::encode(&contract.to_bytes()?))
+                StoredValue::Contract(contract.into())
             }
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {
-                StoredValue::ContractPackage(hex::encode(&contract_package.to_bytes()?))
+                StoredValue::ContractPackage(contract_package.into())
             }
             ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(*transfer),
             ExecutionEngineStoredValue::DeployInfo(deploy_info) => {

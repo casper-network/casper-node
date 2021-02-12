@@ -12,13 +12,11 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
 # Rust Contracts
 # Directory names should match crate names
-BENCH       = $(shell find ./smart_contracts/contracts/bench       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-CLIENT      = $(shell find ./smart_contracts/contracts/client      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-EXPLORER    = $(shell find ./smart_contracts/contracts/explorer    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-INTEGRATION = $(shell find ./smart_contracts/contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-PROFILING   = $(shell find ./smart_contracts/contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SRE         = $(shell find ./smart_contracts/contracts/SRE         -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SYSTEM      = $(shell find ./smart_contracts/contracts/system      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+BENCH       = $(shell find ./smart_contracts/contracts/bench     -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+CLIENT      = $(shell find ./smart_contracts/contracts/client    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+EXPLORER    = $(shell find ./smart_contracts/contracts/explorer  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+PROFILING   = $(shell find ./smart_contracts/contracts/profiling -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+SRE         = $(shell find ./smart_contracts/contracts/SRE       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 TEST        = $(shell find ./smart_contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
@@ -29,46 +27,26 @@ SRE_CONTRACTS       := $(patsubst %, build-contract-rs/%, $(SRE))
 TEST_CONTRACTS      := $(patsubst %, build-contract-rs/%, $(TEST))
 
 # AssemblyScript Contracts
-CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client   -mindepth 1 -maxdepth 1 -type d)
-TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test     -mindepth 1 -maxdepth 1 -type d)
+CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client -mindepth 1 -maxdepth 1 -type d)
+TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test   -mindepth 1 -maxdepth 1 -type d)
 
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
-
-INTEGRATION += \
-	endless-loop \
-	local-state \
-	modified-system-upgrader \
-	pos-bonding \
-	remove-associated-key \
-	standard-payment \
-	transfer-to-account-u512
 
 HIGHWAY_CONTRACTS += \
 	pos-install \
 	pos
 
-SYSTEM_CONTRACTS          := $(patsubst %, build-contract-rs/%,                 $(SYSTEM))
-SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, $(SYSTEM))
-
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
-PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm auction_install.wasm
-TOOL_TARGET_DIR           = grpc/cargo_casper/target
-TOOL_WASM_DIR             = grpc/cargo_casper/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	grpc/server \
-	grpc/test_support \
+	execution_engine_testing/test_support \
 	node \
 	smart_contracts/contract \
 	types
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
-
-.PHONY: list
-list:
-	@$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
 
 .PHONY: all
 all: build build-contracts
@@ -82,25 +60,15 @@ build-contract-rs/%:
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
 	        --package $* \
 	        --target wasm32-unknown-unknown
-
-build-system-contract-featured-rs/%:
-	$(CARGO) build \
-	        --release $(filter-out --release, $(CARGO_FLAGS)) \
-	        --manifest-path "smart_contracts/contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
-	        --target wasm32-unknown-unknown
+	wasm-strip target/wasm32-unknown-unknown/release/$(subst -,_,$*).wasm 2>/dev/null | true
 
 build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
 	$(CLIENT_CONTRACTS) \
 	$(EXPLORER_CONTRACTS) \
-	$(INTEGRATION_CONTRACTS) \
 	$(PROFILING_CONTRACTS) \
 	$(SRE_CONTRACTS) \
-	$(SYSTEM_CONTRACTS) \
 	$(TEST_CONTRACTS)
-
-.PHONY: build-system-contracts
-build-system-contracts: $(SYSTEM_CONTRACTS)
 
 .PHONY: build-client-contracts
 build-client-contracts: $(CLIENT_CONTRACTS)
@@ -121,7 +89,7 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 	@./$<
 
 .PHONY: test-rs
-test-rs: build-system-contracts resources/local/chainspec.toml
+test-rs: resources/local/chainspec.toml
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=types/Cargo.toml
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=smart_contracts/contract/Cargo.toml
@@ -136,15 +104,18 @@ test: test-rs test-as
 .PHONY: test-contracts-rs
 test-contracts-rs: build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-system-contracts" -- --ignored
 
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "execution_engine_testing/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts-as
+
+.PHONY: test-fast-sync
+test-fast-sync:
+	cd $(CURDIR)/node && $(CARGO) test --lib testing::multi_stage_test_reactor::test_chain --features "fast-sync"
 
 .PHONY: check-format
 check-format:
@@ -160,7 +131,7 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2020-0123
 
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
@@ -193,32 +164,16 @@ check: \
 clean:
 	rm -rf resources/local/chainspec.toml
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
-	rm -rf $(TOOL_TARGET_DIR)
-	rm -rf $(TOOL_WASM_DIR)
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
-build-for-packaging: build-system-contracts build-client-contracts
+build-for-packaging: build-client-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
 deb: setup build-for-packaging
-	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
 	cd client && $(CARGO) deb -p casper-client --no-build
-
-grpc/server/.rpm:
-	cd grpc/server && $(CARGO) rpm init
-
-.PHONY: rpm
-rpm: grpc/server/.rpm
-	cd grpc/server && $(CARGO) rpm build
-
-target/system-contracts.tar.gz: $(SYSTEM_CONTRACTS)
-	tar -czf $@ -C $(CONTRACT_TARGET_DIR) $(PACKAGED_SYSTEM_CONTRACTS)
-
-.PHONY: package-system-contracts
-package-system-contracts: target/system-contracts.tar.gz
 
 .PHONY: package
 package:

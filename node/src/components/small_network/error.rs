@@ -6,7 +6,7 @@ use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_openssl::HandshakeError;
 
-use crate::tls::ValidationError;
+use crate::{tls::ValidationError, utils::ResolveAddressError};
 
 pub(super) type Result<T> = result::Result<T, Error>;
 
@@ -58,7 +58,7 @@ pub enum Error {
     ResolveAddr(
         #[serde(skip_serializing)]
         #[source]
-        io::Error,
+        ResolveAddressError,
     ),
     /// Failed to send message.
     #[error("failed to send message")]
@@ -118,4 +118,11 @@ pub enum Error {
     /// Server has stopped.
     #[error("failed to create outgoing connection as server has stopped")]
     ServerStopped,
+    #[error(transparent)]
+    /// Instantiating metrics failed.
+    MetricsError(
+        #[serde(skip_serializing)]
+        #[from]
+        prometheus::Error,
+    ),
 }

@@ -47,6 +47,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{NodeId, StatusFeed},
+    utils::{self, ListeningError},
     NodeRng,
 };
 
@@ -87,13 +88,17 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct RpcServer {}
 
 impl RpcServer {
-    pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
+    pub(crate) fn new<REv>(
+        config: Config,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
-        tokio::spawn(http_server::run(config, effect_builder));
+        let builder = utils::start_listening(&config.address)?;
+        tokio::spawn(http_server::run(builder, effect_builder, config.qps_limit));
 
-        RpcServer {}
+        Ok(RpcServer {})
     }
 }
 
@@ -176,16 +181,14 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => {
-                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
-                effects.extend(responder.respond(()).ignore());
-                effects
-            }
+            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
+                .announce_deploy_received(deploy, Some(responder))
+                .ignore(),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 responder,
             }) => effect_builder
-                .get_block_from_storage(hash)
+                .get_block_with_metadata_from_storage(hash)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Hash(hash)),
                     result: Box::new(result),
@@ -195,7 +198,7 @@ where
                 maybe_id: Some(BlockIdentifier::Height(height)),
                 responder,
             }) => effect_builder
-                .get_block_at_height(height)
+                .get_block_at_height_with_metadata_from_storage(height)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Height(height)),
                     result: Box::new(result),
@@ -205,7 +208,7 @@ where
                 maybe_id: None,
                 responder,
             }) => effect_builder
-                .get_highest_block()
+                .get_highest_block_with_metadata_from_storage()
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: None,
                     result: Box::new(result),
@@ -261,9 +264,9 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
                 let (last_added_block, peers, chainspec_info) = join!(
-                    effect_builder.get_highest_block(),
+                    effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
-                    effect_builder.get_chainspec_info()
+                    effect_builder.get_chainspec_info(),
                 );
                 let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
                 responder.respond(status_feed).await;

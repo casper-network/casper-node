@@ -1,23 +1,41 @@
 //! Data types for supporting contract headers feature.
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
 
-use crate::{
-    alloc::string::ToString,
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    uref::URef,
-    CLType, ContractHash, ContractPackageHash, ContractWasmHash, Key, ProtocolVersion,
-    KEY_HASH_LENGTH,
-};
 use alloc::{
     collections::{BTreeMap, BTreeSet},
-    string::String,
+    format,
+    string::{String, ToString},
     vec::Vec,
 };
-use core::fmt;
+use core::{
+    array::TryFromSliceError,
+    convert::TryFrom,
+    fmt::{self, Debug, Display, Formatter},
+};
+
+use datasize::DataSize;
+#[cfg(feature = "std")]
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::{
+    account,
+    account::TryFromSliceForAccountHashError,
+    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    contract_wasm::ContractWasmHash,
+    uref,
+    uref::URef,
+    CLType, CLTyped, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
+};
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
+
+const CONTRACT_STRING_PREFIX: &str = "contract-";
+const PACKAGE_STRING_PREFIX: &str = "contract-package-wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq)]
@@ -49,9 +67,82 @@ pub enum Error {
     URefAlreadyExists = 9,
 }
 
+/// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
+#[derive(Debug)]
+pub struct TryFromSliceForContractHashError(());
+
+impl Display for TryFromSliceForContractHashError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "failed to retrieve from slice")
+    }
+}
+
+/// An error from parsing a formatted contract string
+#[derive(Debug)]
+pub enum FromStrError {
+    /// Invalid formatted string prefix.
+    InvalidPrefix,
+    /// Error when decoding a hex string
+    Hex(base16::DecodeError),
+    /// Error when parsing an account
+    Account(TryFromSliceForAccountHashError),
+    /// Error when parsing the hash.
+    Hash(TryFromSliceError),
+    /// Error when parsing an account hash.
+    AccountHash(account::FromStrError),
+    /// Error when parsing an uref.
+    URef(uref::FromStrError),
+}
+
+impl From<base16::DecodeError> for FromStrError {
+    fn from(error: base16::DecodeError) -> Self {
+        FromStrError::Hex(error)
+    }
+}
+
+impl From<TryFromSliceForAccountHashError> for FromStrError {
+    fn from(error: TryFromSliceForAccountHashError) -> Self {
+        FromStrError::Account(error)
+    }
+}
+
+impl From<TryFromSliceError> for FromStrError {
+    fn from(error: TryFromSliceError) -> Self {
+        FromStrError::Hash(error)
+    }
+}
+
+impl From<account::FromStrError> for FromStrError {
+    fn from(error: account::FromStrError) -> Self {
+        FromStrError::AccountHash(error)
+    }
+}
+
+impl From<uref::FromStrError> for FromStrError {
+    fn from(error: uref::FromStrError) -> Self {
+        FromStrError::URef(error)
+    }
+}
+
+impl Display for FromStrError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
+            FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
+            FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
+            FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
+            FromStrError::AccountHash(error) => {
+                write!(f, "account hash from string error: {:?}", error)
+            }
+            FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
+        }
+    }
+}
+
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// assoicated with one or more user groups which are allowed to call it.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Group(String);
 
 impl Group {
@@ -98,7 +189,7 @@ pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
 pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
 
 impl ContractVersionKey {
@@ -168,8 +259,349 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 /// Collection of named groups.
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
+/// A newtype wrapping a `HashAddr` which is the raw bytes of
+/// the ContractHash
+#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ContractHash(HashAddr);
+
+impl ContractHash {
+    /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
+    pub const fn new(value: HashAddr) -> ContractHash {
+        ContractHash(value)
+    }
+
+    /// Returns the raw bytes of the contract hash as an array.
+    pub fn value(&self) -> HashAddr {
+        self.0
+    }
+
+    /// Returns the raw bytes of the contract hash as a `slice`.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Formats the `ContractHash` for users getting and putting.
+    pub fn to_formatted_string(&self) -> String {
+        format!(
+            "{}{}",
+            CONTRACT_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into a
+    /// `ContractHash`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let remainder = input
+            .strip_prefix(CONTRACT_STRING_PREFIX)
+            .ok_or(FromStrError::InvalidPrefix)?;
+        let bytes = HashAddr::try_from(base16::decode(remainder)?.as_ref())?;
+        Ok(ContractHash(bytes))
+    }
+}
+
+impl Display for ContractHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", base16::encode_lower(&self.0))
+    }
+}
+
+impl Debug for ContractHash {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "ContractHash({})", base16::encode_lower(&self.0))
+    }
+}
+
+impl CLTyped for ContractHash {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(KEY_HASH_LENGTH as u32)
+    }
+}
+
+impl ToBytes for ContractHash {
+    #[inline(always)]
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    #[inline(always)]
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for ContractHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((ContractHash::new(bytes), rem))
+    }
+}
+
+impl From<[u8; 32]> for ContractHash {
+    fn from(bytes: [u8; 32]) -> Self {
+        ContractHash(bytes)
+    }
+}
+
+impl Serialize for ContractHash {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContractHash {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            ContractHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let bytes = HashAddr::deserialize(deserializer)?;
+            Ok(ContractHash(bytes))
+        }
+    }
+}
+
+impl AsRef<[u8]> for ContractHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<&[u8]> for ContractHash {
+    type Error = TryFromSliceForContractHashError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
+        HashAddr::try_from(bytes)
+            .map(ContractHash::new)
+            .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+impl TryFrom<&Vec<u8>> for ContractHash {
+    type Error = TryFromSliceForContractHashError;
+
+    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
+        HashAddr::try_from(bytes as &[u8])
+            .map(ContractHash::new)
+            .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for ContractHash {
+    fn schema_name() -> String {
+        String::from("ContractHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("The hash address of the contract".to_string());
+        schema_object.into()
+    }
+}
+
+/// A newtype wrapping a `HashAddr` which is the raw bytes of
+/// the ContractPackageHash
+#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ContractPackageHash(HashAddr);
+
+impl ContractPackageHash {
+    /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
+    pub const fn new(value: HashAddr) -> ContractPackageHash {
+        ContractPackageHash(value)
+    }
+
+    /// Returns the raw bytes of the contract hash as an array.
+    pub fn value(&self) -> HashAddr {
+        self.0
+    }
+
+    /// Returns the raw bytes of the contract hash as a `slice`.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Formats the `ContractPackageHash` for users getting and putting.
+    pub fn to_formatted_string(&self) -> String {
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into a
+    /// `ContractPackageHash`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let remainder = input
+            .strip_prefix(PACKAGE_STRING_PREFIX)
+            .ok_or(FromStrError::InvalidPrefix)?;
+        let bytes = HashAddr::try_from(base16::decode(remainder)?.as_ref())?;
+        Ok(ContractPackageHash(bytes))
+    }
+}
+
+impl Display for ContractPackageHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", base16::encode_lower(&self.0))
+    }
+}
+
+impl Debug for ContractPackageHash {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "ContractPackageHash({})", base16::encode_lower(&self.0))
+    }
+}
+
+impl CLTyped for ContractPackageHash {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(KEY_HASH_LENGTH as u32)
+    }
+}
+
+impl ToBytes for ContractPackageHash {
+    #[inline(always)]
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    #[inline(always)]
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for ContractPackageHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((ContractPackageHash::new(bytes), rem))
+    }
+}
+
+impl From<[u8; 32]> for ContractPackageHash {
+    fn from(bytes: [u8; 32]) -> Self {
+        ContractPackageHash(bytes)
+    }
+}
+
+impl Serialize for ContractPackageHash {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContractPackageHash {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            ContractPackageHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let bytes = HashAddr::deserialize(deserializer)?;
+            Ok(ContractPackageHash(bytes))
+        }
+    }
+}
+
+impl AsRef<[u8]> for ContractPackageHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<&[u8]> for ContractPackageHash {
+    type Error = TryFromSliceForContractHashError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
+        HashAddr::try_from(bytes)
+            .map(ContractPackageHash::new)
+            .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+impl TryFrom<&Vec<u8>> for ContractPackageHash {
+    type Error = TryFromSliceForContractHashError;
+
+    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
+        HashAddr::try_from(bytes as &[u8])
+            .map(ContractPackageHash::new)
+            .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for ContractPackageHash {
+    fn schema_name() -> String {
+        String::from("ContractPackageHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description =
+            Some("The hash address of the contract package".to_string());
+        schema_object.into()
+    }
+}
+
+/// A enum to determine the lock status of the contract package.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum ContractPackageStatus {
+    /// The package is locked and cannot be versioned.
+    Locked,
+    /// The package is unlocked and can be versioned.
+    Unlocked,
+}
+
+impl ContractPackageStatus {
+    /// Create a new status flag based on a boolean value
+    pub fn new(is_locked: bool) -> Self {
+        if is_locked {
+            ContractPackageStatus::Locked
+        } else {
+            ContractPackageStatus::Unlocked
+        }
+    }
+}
+
+impl Default for ContractPackageStatus {
+    fn default() -> Self {
+        Self::Unlocked
+    }
+}
+
+impl ToBytes for ContractPackageStatus {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        match self {
+            ContractPackageStatus::Unlocked => result.append(&mut false.to_bytes()?),
+            ContractPackageStatus::Locked => result.append(&mut true.to_bytes()?),
+        }
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            ContractPackageStatus::Unlocked => false.serialized_length(),
+            ContractPackageStatus::Locked => true.serialized_length(),
+        }
+    }
+}
+
+impl FromBytes for ContractPackageStatus {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (val, bytes) = bool::from_bytes(bytes)?;
+        let status = ContractPackageStatus::new(val);
+        Ok((status, bytes))
+    }
+}
+
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
@@ -182,6 +614,8 @@ pub struct ContractPackage {
     /// version of the contract. A method is callable by any context which
     /// "knows" any of the URefs assoicated with the mthod's user group.
     groups: Groups,
+    /// A flag that determines whether a contract is locked
+    lock_status: ContractPackageStatus,
 }
 
 impl ContractPackage {
@@ -191,12 +625,14 @@ impl ContractPackage {
         versions: ContractVersions,
         disabled_versions: DisabledVersions,
         groups: Groups,
+        lock_status: ContractPackageStatus,
     ) -> Self {
         ContractPackage {
             access_key,
             versions,
             disabled_versions,
             groups,
+            lock_status,
         }
     }
 
@@ -341,6 +777,19 @@ impl ContractPackage {
             None => None,
         }
     }
+
+    /// Return the lock status of the contract package.
+    pub fn is_locked(&self) -> bool {
+        match self.lock_status {
+            ContractPackageStatus::Unlocked => false,
+            ContractPackageStatus::Locked => true,
+        }
+    }
+
+    /// Return the package status itself
+    pub fn get_lock_status(&self) -> ContractPackageStatus {
+        self.lock_status.clone()
+    }
 }
 
 impl ToBytes for ContractPackage {
@@ -351,6 +800,7 @@ impl ToBytes for ContractPackage {
         result.append(&mut self.versions.to_bytes()?);
         result.append(&mut self.disabled_versions.to_bytes()?);
         result.append(&mut self.groups.to_bytes()?);
+        result.append(&mut self.lock_status.to_bytes()?);
 
         Ok(result)
     }
@@ -360,6 +810,7 @@ impl ToBytes for ContractPackage {
             + self.versions.serialized_length()
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
+            + self.lock_status.serialized_length()
     }
 }
 
@@ -369,11 +820,13 @@ impl FromBytes for ContractPackage {
         let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
         let (disabled_versions, bytes) = DisabledVersions::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
+        let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
         let result = ContractPackage {
             access_key,
             versions,
             disabled_versions,
             groups,
+            lock_status,
         };
 
         Ok((result, bytes))
@@ -384,7 +837,7 @@ impl FromBytes for ContractPackage {
 pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
 
 /// Collection of named entry points
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EntryPoints(EntryPointsMap);
 
 impl Default for EntryPoints {
@@ -458,7 +911,7 @@ impl From<Vec<EntryPoint>> for EntryPoints {
 pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -565,6 +1018,11 @@ impl Contract {
         self.named_keys.remove(key)
     }
 
+    /// Set protocol_version.
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
+    }
+
     /// Determines if `Contract` is compatibile with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
         self.protocol_version.value().major == protocol_version.value().major
@@ -616,8 +1074,8 @@ impl Default for Contract {
         Contract {
             named_keys: NamedKeys::default(),
             entry_points: EntryPoints::default(),
-            contract_wasm_hash: [0; KEY_HASH_LENGTH],
-            contract_package_hash: [0; KEY_HASH_LENGTH],
+            contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
+            contract_package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
         }
     }
@@ -625,7 +1083,8 @@ impl Default for Contract {
 
 /// Context of method execution
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
     Session = 0,
@@ -668,7 +1127,8 @@ pub type Parameters = Vec<Parameter>;
 
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
     args: Parameters,
@@ -798,7 +1258,8 @@ impl FromBytes for EntryPoint {
 
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
     Public,
@@ -860,7 +1321,8 @@ impl FromBytes for EntryPointAccess {
 }
 
 /// Parameter to a method
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Parameter {
     name: String,
     cl_type: CLType,
@@ -921,6 +1383,7 @@ mod tests {
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            ContractPackageStatus::default(),
         );
 
         // add groups
@@ -968,7 +1431,8 @@ mod tests {
         let _named_keys = NamedKeys::new();
         let protocol_version = ProtocolVersion::V1_0_0;
 
-        contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
+        contract_package
+            .insert_contract_version(protocol_version.value().major, contract_hash.into());
 
         contract_package
     }
@@ -981,18 +1445,19 @@ mod tests {
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            ContractPackageStatus::default(),
         );
         assert_eq!(contract_package.next_contract_version_for(major), 1);
 
-        let next_version = contract_package.insert_contract_version(major, [123; 32]);
+        let next_version = contract_package.insert_contract_version(major, [123; 32].into());
         assert_eq!(next_version, ContractVersionKey::new(major, 1));
         assert_eq!(contract_package.next_contract_version_for(major), 2);
-        let next_version_2 = contract_package.insert_contract_version(major, [124; 32]);
+        let next_version_2 = contract_package.insert_contract_version(major, [124; 32].into());
         assert_eq!(next_version_2, ContractVersionKey::new(major, 2));
 
         let major = 2;
         assert_eq!(contract_package.next_contract_version_for(major), 1);
-        let next_version_3 = contract_package.insert_contract_version(major, [42; 32]);
+        let next_version_3 = contract_package.insert_contract_version(major, [42; 32].into());
         assert_eq!(next_version_3, ContractVersionKey::new(major, 1));
     }
 
@@ -1017,7 +1482,7 @@ mod tests {
 
     #[test]
     fn should_disable_contract_version() {
-        const CONTRACT_HASH: ContractHash = [123; 32];
+        const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
         let mut contract_package = make_contract_package();
 
         assert_eq!(
@@ -1048,5 +1513,100 @@ mod tests {
             !contract_package.is_version_enabled(next_version),
             "version should not be enabled"
         );
+    }
+
+    #[test]
+    fn contract_hash_from_slice() {
+        let bytes: Vec<u8> = (0..32).collect();
+        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let contract_hash = ContractHash::new(contract_hash);
+        assert_eq!(&bytes, &contract_hash.as_bytes());
+    }
+
+    #[test]
+    fn contract_package_hash_from_slice() {
+        let bytes: Vec<u8> = (0..32).collect();
+        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let contract_hash = ContractPackageHash::new(contract_hash);
+        assert_eq!(&bytes, &contract_hash.as_bytes());
+    }
+
+    #[test]
+    fn contract_hash_from_str() {
+        let contract_hash = ContractHash([3; 32]);
+        let encoded = contract_hash.to_formatted_string();
+        let decoded = ContractHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(contract_hash, decoded);
+
+        let invalid_prefix =
+            "contract--0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr = "contract-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "contract-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "contract-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(ContractHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn contract_package_hash_from_str() {
+        let contract_hash = ContractPackageHash([3; 32]);
+        let encoded = contract_hash.to_formatted_string();
+        let decoded = ContractPackageHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(contract_hash, decoded);
+
+        let invalid_prefix =
+            "contractpackage-0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractPackageHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr =
+            "contract-package-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractPackageHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "contract-package-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractPackageHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "contract-package-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(ContractPackageHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn contract_hash_serde_roundtrip() {
+        let contract_hash = ContractHash([255; 32]);
+        let serialized = bincode::serialize(&contract_hash).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(contract_hash, deserialized)
+    }
+
+    #[test]
+    fn contract_hash_json_roundtrip() {
+        let contract_hash = ContractHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn contract_package_hash_serde_roundtrip() {
+        let contract_hash = ContractPackageHash([255; 32]);
+        let serialized = bincode::serialize(&contract_hash).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(contract_hash, deserialized)
+    }
+
+    #[test]
+    fn contract_package_hash_json_roundtrip() {
+        let contract_hash = ContractPackageHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(contract_hash, decoded)
     }
 }

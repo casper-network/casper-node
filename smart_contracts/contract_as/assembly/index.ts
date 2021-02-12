@@ -444,14 +444,24 @@ export class CreateContractPackageResult {
 export function createContractPackageAtHash(): CreateContractPackageResult {
   let hashAddr = new Uint8Array(KEY_HASH_LENGTH);
   let urefAddr = new Uint8Array(UREF_ADDR_LENGTH);
-  externals.create_contract_package_at_hash(hashAddr.dataStart, urefAddr.dataStart);
+  externals.create_contract_package_at_hash(hashAddr.dataStart, urefAddr.dataStart, false);
   return new CreateContractPackageResult(
     hashAddr,
     new URef(urefAddr, AccessRights.READ_ADD_WRITE),
   );
 }
 
-export function newContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null, hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
+export function createLockedContractPackageAtHash(): CreateContractPackageResult {
+  let hashAddr = new Uint8Array(KEY_HASH_LENGTH);
+  let urefAddr = new Uint8Array(UREF_ADDR_LENGTH);
+  externals.create_contract_package_at_hash(hashAddr.dataStart, urefAddr.dataStart, true);
+  return new CreateContractPackageResult(
+      hashAddr,
+      new URef(urefAddr, AccessRights.READ_ADD_WRITE),
+  );
+}
+
+export function newContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null ,hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
   let result = createContractPackageAtHash();
   if (hashName !== null) {
     putKey(<String>hashName, Key.fromHash(result.packageHash));
@@ -470,6 +480,27 @@ export function newContract(entryPoints: EntryPoints, namedKeys: Array<Pair<Stri
     namedKeys,
   );
 }
+
+export function newLockedContract(entryPoints: EntryPoints, namedKeys: Array<Pair<String, Key>> | null = null ,hashName: String | null = null, urefName: String | null = null): AddContractVersionResult {
+  let result = createLockedContractPackageAtHash();
+  if (hashName !== null) {
+    putKey(<String>hashName, Key.fromHash(result.packageHash));
+  }
+  if (urefName !== null) {
+    putKey(<String>urefName, Key.fromURef(result.accessURef));
+  }
+
+  if (namedKeys === null) {
+    namedKeys = new Array<Pair<String, Key>>();
+  }
+
+  return addContractVersion(
+      result.packageHash,
+      entryPoints,
+      namedKeys,
+  );
+}
+
 
 export function callVersionedContract(packageHash: Uint8Array, contract_version: Option, entryPointName: String, runtimeArgs: RuntimeArgs): Uint8Array {
   let entryPointBytes = toBytesString(entryPointName);

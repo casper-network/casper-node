@@ -121,7 +121,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     fn run(matches: &ArgMatches<'_>) {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let verbose = common::verbose::get(matches);
+        let mut verbosity_level = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
@@ -129,15 +129,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let response = casper_client::get_item(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             state_root_hash,
             &key,
             path,
         )
         .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+
+        if verbosity_level == 0 {
+            verbosity_level += 1
+        }
+        casper_client::pretty_print_at_level(&response, verbosity_level);
     }
 }

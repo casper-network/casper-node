@@ -61,15 +61,6 @@ pub enum Event<P> {
         /// Number of remaining connection attempts that are being tried for this peer.
         attempts_remaining: u32,
     },
-    /// Tried to dial an address but it ended up being unreachable.  Contrary to
-    /// `UnreachableAddress`, we don't know the identity of the peer that we were trying to reach.
-    UnknownPeerUnreachableAddress {
-        /// Address that we failed to reach.
-        address: Multiaddr,
-        /// Error that has been encountered.
-        #[serde(skip_serializing)]
-        error: PendingConnectionError<io::Error>,
-    },
     /// One of our listeners has reported a new local listening address.
     NewListenAddress(Multiaddr),
     /// One of our listeners has reported the expiration of a listening address.
@@ -91,6 +82,16 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         error: io::Error,
     },
+    /// A new entry was added/updated in the Kademlia routing table.
+    RoutingTableUpdated {
+        /// New peer.
+        #[serde(skip_serializing)]
+        peer: libp2p::PeerId,
+        // Note: `addresses` is omitted, as we are not interested in this information currently.
+        /// Potentially evicted peer (to make room in the routing table).
+        #[serde(skip_serializing)]
+        old_peer: Option<libp2p::PeerId>,
+    },
 
     // ========== Other events ==========
     /// A network request made by a different component.
@@ -107,8 +108,6 @@ pub enum Event<P> {
         info_request: NetworkInfoRequest<NodeId>,
     },
 }
-
-
 
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -152,9 +151,6 @@ impl<P: Display> Display for Event<P> {
                 "failed to connect to {} at {}, {} attempts remaining: {}",
                 peer_id, address, attempts_remaining, error
             ),
-            Event::UnknownPeerUnreachableAddress { address, error } => {
-                write!(f, "failed to connect to peer at {}: {}", address, error)
-            }
             Event::NewListenAddress(address) => write!(f, "new listening address {}", address),
             Event::ExpiredListenAddress(address) => {
                 write!(f, "expired listening address {}", address)
@@ -168,6 +164,14 @@ impl<P: Display> Display for Event<P> {
                 reason: Err(error),
             } => write!(f, "closed listener {:?}: {}", addresses, error),
             Event::ListenerError { error } => write!(f, "non-fatal listener error: {}", error),
+            Event::RoutingTableUpdated { peer, old_peer } => {
+                write!(f, "added {} to routing table", peer)?;
+                if let Some(old_peer_id) = old_peer {
+                    write!(f, " (replaces {})", old_peer_id)?;
+                }
+                Ok(())
+            }
+
             Event::NetworkRequest { request } => write!(f, "request: {}", request),
             Event::NetworkInfoRequest { info_request } => {
                 write!(f, "info request: {}", info_request)

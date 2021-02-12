@@ -21,7 +21,7 @@ pub extern "C" fn contract_ext() {
         Some(contract_key) => {
             // Calls a stored contract if exists.
             runtime::call_contract(
-                contract_key.into_hash().expect("should be a hash"),
+                contract_key.into_hash().expect("should be a hash").into(),
                 "contract_ext",
                 RuntimeArgs::default(),
             )

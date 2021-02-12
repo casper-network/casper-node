@@ -3,7 +3,10 @@ use once_cell::sync::Lazy;
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{PublicKey, SecretKey, U512};
 
-use crate::{types::Timestamp, utils::Loadable, Chainspec};
+use crate::{
+    types::{Chainspec, Timestamp},
+    utils::Loadable,
+};
 
 pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]));
@@ -20,18 +23,18 @@ where
     I: IntoIterator<Item = (PublicKey, T)>,
     T: Into<U512>,
 {
-    let mut chainspec = Chainspec::from_resources("test/valid/chainspec.toml");
-    chainspec.genesis.accounts = stakes
+    let mut chainspec = Chainspec::from_resources("test/valid/0_9_0");
+    chainspec.network_config.accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {
             let motes = Motes::new(stake.into());
             GenesisAccount::new(pk, pk.to_account_hash(), motes, motes)
         })
         .collect();
-    chainspec.genesis.timestamp = Timestamp::now();
+    chainspec.network_config.timestamp = Timestamp::now();
 
     // Every era has exactly two blocks.
-    chainspec.genesis.highway_config.minimum_era_height = 2;
-    chainspec.genesis.highway_config.era_duration = 0.into();
+    chainspec.core_config.minimum_era_height = 2;
+    chainspec.core_config.era_duration = 0.into();
     chainspec
 }

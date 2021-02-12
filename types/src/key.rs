@@ -16,6 +16,8 @@ use crate::{
     account::{self, AccountHash, TryFromSliceForAccountHashError},
     auction::EraId,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    contract_wasm::ContractWasmHash,
+    contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, UREF_SERIALIZED_LENGTH},
     DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
 };
@@ -56,13 +58,6 @@ impl From<HashAddr> for Key {
         Key::Hash(addr)
     }
 }
-
-/// An alias for [`Key`]s hash variant.
-pub type ContractHash = HashAddr;
-/// An alias for [`Key`]s hash variant.
-pub type ContractWasmHash = HashAddr;
-/// An alias for [`Key`]s hash variant.
-pub type ContractPackageHash = HashAddr;
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
@@ -242,27 +237,6 @@ impl Key {
         }
     }
 
-    // TODO: remove this nightmare
-    /// Creates the seed of a local key for a context with the given base key.
-    pub fn into_seed(self) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        match self {
-            Key::Account(account_hash) => account_hash.value(),
-            Key::Hash(bytes) => bytes,
-            Key::URef(uref) => uref.addr(),
-            Key::Transfer(transfer_addr) => transfer_addr.value(),
-            Key::DeployInfo(addr) => addr.value(),
-            Key::EraInfo(era_id) => {
-                // stop-gap measure until this method is removed
-                let mut ret = [0u8; BLAKE2B_DIGEST_LENGTH];
-                let era_id_bytes = era_id.to_le_bytes();
-                let era_id_bytes_len = era_id_bytes.len();
-                assert!(era_id_bytes_len < BLAKE2B_DIGEST_LENGTH);
-                ret[..era_id_bytes_len].clone_from_slice(&era_id_bytes);
-                ret
-            }
-        }
-    }
-
     /// Casts a [`Key::URef`] to a [`Key::Hash`]
     pub fn uref_to_hash(&self) -> Option<Key> {
         let uref = self.as_uref()?;
@@ -305,6 +279,24 @@ impl From<AccountHash> for Key {
 impl From<TransferAddr> for Key {
     fn from(transfer_addr: TransferAddr) -> Key {
         Key::Transfer(transfer_addr)
+    }
+}
+
+impl From<ContractHash> for Key {
+    fn from(contract_hash: ContractHash) -> Key {
+        Key::Hash(contract_hash.value())
+    }
+}
+
+impl From<ContractWasmHash> for Key {
+    fn from(wasm_hash: ContractWasmHash) -> Key {
+        Key::Hash(wasm_hash.value())
+    }
+}
+
+impl From<ContractPackageHash> for Key {
+    fn from(package_hash: ContractPackageHash) -> Key {
+        Key::Hash(package_hash.value())
     }
 }
 

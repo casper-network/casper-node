@@ -11,6 +11,9 @@ pub use crate::proof_of_stake::{
     constants::*, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
 };
 
+// A simplified representation of a refund percentage which is currently hardcoded to 0%.
+const REFUND_PERCENTAGE: U512 = U512::zero();
+
 /// Proof of stake functionality implementation.
 pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
     /// Get payment purse.
@@ -53,7 +56,7 @@ mod internal {
         Key, Phase, URef, U512,
     };
 
-    use super::{PAYMENT_PURSE_KEY, REFUND_PURSE_KEY};
+    use super::{PAYMENT_PURSE_KEY, REFUND_PERCENTAGE, REFUND_PURSE_KEY};
 
     /// Account used to run system functions (in particular `finalize_payment`).
     const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
@@ -111,14 +114,23 @@ mod internal {
         if total < amount_spent {
             return Err(Error::InsufficientPaymentForAmountSpent);
         }
-        let refund_amount = total - amount_spent;
+
+        // User's part
+        let refund_amount = (total - amount_spent) * REFUND_PERCENTAGE;
+
+        // Validator reward
+        let validator_reward = total - refund_amount;
+
+        // Makes sure both parts: for user, and for validator sums to the total amount in the
+        // payment's purse.
+        debug_assert_eq!(validator_reward + refund_amount, total);
 
         let refund_purse = get_refund_purse(provider)?;
         provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
 
         // pay target validator
         provider
-            .transfer_purse_to_purse(payment_purse, target, amount_spent)
+            .transfer_purse_to_purse(payment_purse, target, validator_reward)
             .map_err(|_| Error::FailedTransferToRewardsPurse)?;
 
         if refund_amount.is_zero() {

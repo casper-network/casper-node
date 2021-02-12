@@ -44,6 +44,14 @@ pub const U128_SERIALIZED_LENGTH: usize = mem::size_of::<u128>();
 pub const U256_SERIALIZED_LENGTH: usize = U128_SERIALIZED_LENGTH * 2;
 /// The number of bytes in a serialized [`U512`](crate::U512).
 pub const U512_SERIALIZED_LENGTH: usize = U256_SERIALIZED_LENGTH * 2;
+/// The tag representing a `None` value.
+pub const OPTION_NONE_TAG: u8 = 0;
+/// The tag representing a `Some` value.
+pub const OPTION_SOME_TAG: u8 = 1;
+/// The tag representing an `Err` value.
+pub const RESULT_ERR_TAG: u8 = 0;
+/// The tag representing an `Ok` value.
+pub const RESULT_OK_TAG: u8 = 1;
 
 /// A type which can be serialized to a `Vec<u8>`.
 pub trait ToBytes {
@@ -546,10 +554,10 @@ where
 impl<T: ToBytes> ToBytes for Option<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         match self {
-            None => Ok(vec![0]),
+            None => Ok(vec![OPTION_NONE_TAG]),
             Some(v) => {
                 let mut result = allocate_buffer(self)?;
-                result.push(1);
+                result.push(OPTION_SOME_TAG);
 
                 let mut value = v.to_bytes()?;
                 result.append(&mut value);
@@ -572,8 +580,8 @@ impl<T: FromBytes> FromBytes for Option<T> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
-            0 => Ok((None, rem)),
-            1 => {
+            OPTION_NONE_TAG => Ok((None, rem)),
+            OPTION_SOME_TAG => {
                 let (t, rem) = T::from_bytes(rem)?;
                 Ok((Some(t), rem))
             }
@@ -586,8 +594,8 @@ impl<T: ToBytes, E: ToBytes> ToBytes for Result<T, E> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = allocate_buffer(self)?;
         let (variant, mut value) = match self {
-            Err(error) => (0, error.to_bytes()?),
-            Ok(result) => (1, result.to_bytes()?),
+            Err(error) => (RESULT_ERR_TAG, error.to_bytes()?),
+            Ok(result) => (RESULT_OK_TAG, result.to_bytes()?),
         };
         result.push(variant);
         result.append(&mut value);
@@ -607,11 +615,11 @@ impl<T: FromBytes, E: FromBytes> FromBytes for Result<T, E> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (variant, rem) = u8::from_bytes(bytes)?;
         match variant {
-            0 => {
+            RESULT_ERR_TAG => {
                 let (value, rem) = E::from_bytes(rem)?;
                 Ok((Err(value), rem))
             }
-            1 => {
+            RESULT_OK_TAG => {
                 let (value, rem) = T::from_bytes(rem)?;
                 Ok((Ok(value), rem))
             }

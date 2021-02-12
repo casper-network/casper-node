@@ -3,7 +3,7 @@ mod event;
 mod metrics;
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     convert::Infallible,
     fmt::Debug,
 };
@@ -19,11 +19,11 @@ use casper_execution_engine::{
         deploy_item::DeployItem,
         execute_request::ExecuteRequest,
         execution_result::{ExecutionResult as EngineExecutionResult, ExecutionResults},
-        step::{RewardItem, SlashItem, StepRequest, StepResult},
+        step::{EvictItem, RewardItem, SlashItem, StepRequest, StepResult},
     },
     storage::global_state::CommitResult,
 };
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
@@ -180,6 +180,7 @@ impl BlockExecutor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         state: Box<State>,
+        next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Effects<Event> {
         // The state hash of the last execute-commit cycle is used as the block's post state
         // hash.
@@ -188,7 +189,11 @@ impl BlockExecutor {
         self.metrics
             .chain_height
             .set(state.finalized_block.height() as i64);
-        let block = self.create_block(state.finalized_block, state.state_root_hash);
+        let block = self.create_block(
+            state.finalized_block,
+            state.state_root_hash,
+            next_era_validator_weights,
+        );
 
         let mut effects = effect_builder
             .announce_linear_chain_block(block, state.execution_results)
@@ -216,7 +221,9 @@ impl BlockExecutor {
             None => {
                 let era_end = match state.finalized_block.era_end() {
                     Some(era_end) => era_end,
-                    None => return self.finalize_block_execution(effect_builder, state),
+                    // Not at a switch block, so we don't need to have next_era_validators when
+                    // constructing the next block
+                    None => return self.finalize_block_execution(effect_builder, state, None),
                 };
                 let reward_items = era_end
                     .rewards
@@ -228,12 +235,21 @@ impl BlockExecutor {
                     .iter()
                     .map(|&vid| SlashItem::new(vid))
                     .collect();
+                let evict_items = era_end
+                    .inactive_validators
+                    .iter()
+                    .map(|&vid| EvictItem::new(vid))
+                    .collect();
+                let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
                     protocol_version: ProtocolVersion::V1_0_0,
                     reward_items,
                     slash_items,
+                    evict_items,
                     run_auction: true,
+                    next_era_id: state.finalized_block.era_id().successor().into(),
+                    era_end_timestamp_millis,
                 };
                 return effect_builder
                     .run_step(request)
@@ -384,7 +400,12 @@ impl BlockExecutor {
             })
     }
 
-    fn create_block(&mut self, finalized_block: FinalizedBlock, state_root_hash: Digest) -> Block {
+    fn create_block(
+        &mut self,
+        finalized_block: FinalizedBlock,
+        state_root_hash: Digest,
+        next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
+    ) -> Block {
         let (parent_summary_hash, parent_seed) = if finalized_block.is_genesis_child() {
             // Genesis, no parent summary.
             (BlockHash::new(Digest::default()), Digest::default())
@@ -402,6 +423,7 @@ impl BlockExecutor {
             parent_seed,
             state_root_hash,
             finalized_block,
+            next_era_validator_weights,
         );
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
@@ -448,9 +470,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         )
                     })
             }
-            Event::BlockAlreadyExists(block) => effect_builder
-                .handle_linear_chain_block(block.take_header())
-                .ignore(),
+            Event::BlockAlreadyExists(block) => {
+                effect_builder.handle_linear_chain_block(*block).ignore()
+            }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),
@@ -528,9 +550,16 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             Event::RunStepResult { mut state, result } => {
                 trace!(?result, "run step result");
                 match result {
-                    Ok(StepResult::Success { post_state_hash }) => {
+                    Ok(StepResult::Success {
+                        post_state_hash,
+                        next_era_validators,
+                    }) => {
                         state.state_root_hash = post_state_hash.into();
-                        self.finalize_block_execution(effect_builder, state)
+                        self.finalize_block_execution(
+                            effect_builder,
+                            state,
+                            Some(next_era_validators),
+                        )
                     }
                     _ => {
                         // When step fails, the auction process is broken and we should panic.

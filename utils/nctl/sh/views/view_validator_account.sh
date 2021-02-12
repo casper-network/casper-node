@@ -5,8 +5,6 @@ source "$NCTL"/sh/views/utils.sh
 
 #######################################
 # Renders node on-chain account details.
-# Globals:
-#   NCTL_ACCOUNT_TYPE_NODE - node account type literal.
 # Arguments:
 #   Node ordinal identifier.
 #######################################
@@ -18,13 +16,38 @@ function main()
         for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
         do
             echo "------------------------------------------------------------------------------------------------------------------------------------"
-            log "node #$NODE_ID :: on-chain account details:"
-            render_account "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
+            render "$NODE_ID"
         done
     else
-        log "node #$NODE_ID :: on-chain account details:"
-        render_account "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
+        render "$NODE_ID"
     fi
+}
+
+#######################################
+# Validator account details renderer.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_NODE - node account type literal.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function render()
+{
+    local NODE_ID=${1}
+
+    PATH_TO_ACCOUNT_SKEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID")
+    ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID")
+    ACCOUNT_HASH=$(get_account_hash "$ACCOUNT_KEY")
+    STATE_ROOT_HASH=$(get_state_root_hash)
+    PURSE_UREF=$(get_main_purse_uref "$ACCOUNT_KEY" "$STATE_ROOT_HASH")
+    ACCOUNT_BALANCE=$(get_account_balance "$PURSE_UREF" "$STATE_ROOT_HASH")
+
+    log "validator #$NODE_ID a/c secret key    : "$PATH_TO_ACCOUNT_SKEY
+    log "validator #$NODE_ID a/c key           : "$ACCOUNT_KEY
+    log "validator #$NODE_ID a/c hash          : "$ACCOUNT_HASH
+    log "validator #$NODE_ID a/c purse         : "$PURSE_UREF
+    log "validator #$NODE_ID a/c purse balance : "$ACCOUNT_BALANCE
+    log "validator #$NODE_ID on-chain account  : see below"
+    render_account "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
 }
 
 # ----------------------------------------------------------------

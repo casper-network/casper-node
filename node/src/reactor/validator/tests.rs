@@ -17,9 +17,9 @@ use crate::{
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::Timestamp,
+    types::{Chainspec, Timestamp},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
-    Chainspec, NodeRng,
+    NodeRng,
 };
 
 struct TestChain {
@@ -53,10 +53,10 @@ impl TestChain {
         stakes: BTreeMap<PublicKey, u64>,
     ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec: Chainspec = Chainspec::from_resources("local/chainspec.toml");
+        let mut chainspec: Chainspec = Chainspec::from_resources("local");
 
         // Override accounts with those generated from the keys.
-        chainspec.genesis.accounts = stakes
+        chainspec.network_config.accounts = stakes
             .iter()
             .map(|(public_key, bounded_amounts_u64)| {
                 GenesisAccount::new(
@@ -69,11 +69,11 @@ impl TestChain {
             .collect();
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.genesis.timestamp = Timestamp::now() + 45000.into();
+        chainspec.network_config.timestamp = Timestamp::now() + 45000.into();
 
-        chainspec.genesis.highway_config.minimum_era_height = 1;
-        chainspec.genesis.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
-        chainspec.genesis.highway_config.era_duration = 10.into();
+        chainspec.core_config.minimum_era_height = 4;
+        chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.core_config.era_duration = 10.into();
 
         TestChain {
             keys,
@@ -95,11 +95,8 @@ impl TestChain {
             ..Default::default()
         };
 
-        // Set the correct chainspec...
-        cfg.node.chainspec_config_path = External::value(self.chainspec.clone());
-
         // ...and the secret key for our validator.
-        cfg.consensus.secret_key_path = External::value(self.keys[idx].duplicate());
+        cfg.consensus.secret_key_path = External::from_value(self.keys[idx].duplicate());
 
         // Additionally set up storage in a temporary directory.
         let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
@@ -123,9 +120,12 @@ impl TestChain {
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
-            let mut initializer_runner =
-                Runner::<initializer::Reactor>::new(WithDir::new(root.clone(), cfg), rng).await?;
-            initializer_runner.run(rng).await;
+            let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
+                WithDir::new(root.clone(), cfg),
+                self.chainspec.clone(),
+            )
+            .await?;
+            let _ = initializer_runner.run(rng).await;
 
             // Now we can construct the actual node.
             let initializer = initializer_runner.into_inner();
@@ -136,9 +136,9 @@ impl TestChain {
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
-            joiner_runner.run(rng).await;
+            let _ = joiner_runner.run(rng).await;
 
-            let config = joiner_runner.into_inner().into_validator_config().await;
+            let config = joiner_runner.into_inner().into_validator_config().await?;
 
             network
                 .add_node_with_config(config, rng)
@@ -207,6 +207,7 @@ async fn run_validator_network() {
         .await;
 }
 
+// TODO: fix this test
 #[tokio::test]
 async fn run_equivocator_network() {
     testing::init_logging();

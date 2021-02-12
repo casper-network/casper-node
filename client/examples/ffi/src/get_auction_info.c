@@ -6,7 +6,7 @@
 #define ERROR_LEN 255
 #define NODE_ADDRESS "http://localhost:50101"
 #define RPC_ID "1"
-#define VERBOSE false
+#define VERBOSE 0
 
 int main(int argc, char **argv) {
     casper_setup_client();

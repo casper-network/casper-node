@@ -9,7 +9,7 @@ import {CLValue, CLType, CLTypeTag} from "../../../../contract_as/assembly/clval
 import {URef} from "../../../../contract_as/assembly/uref";
 import {toBytesMap} from "../../../../contract_as/assembly/bytesrepr";
 import * as TransferPurseToAccount  from "../../transfer-purse-to-account/assembly";
-import {getPurseBalance, transferFromPurseToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
+import {getBalance, transferFromPurseToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
 import {Pair} from "../../../../contract_as/assembly/pair";
 
 const ENTRY_FUNCTION_NAME = "transfer";

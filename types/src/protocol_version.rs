@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
@@ -9,16 +9,19 @@ use crate::{
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct ProtocolVersion(SemVer);
 
 /// The result of [`ProtocolVersion::check_next_version`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum VersionCheckResult {
-    /// Upgrade possible, installer code is required.
-    CodeIsRequired,
-    /// Upgrade possible, installer code is optional.
-    CodeIsOptional,
+    /// Upgrade possible.
+    Valid {
+        /// Is this a major protocol version upgrade?
+        is_major_version: bool,
+    },
     /// Upgrade is invalid.
     Invalid,
 }
@@ -28,17 +31,15 @@ impl VersionCheckResult {
     ///
     /// Invalid means that a given version can not be followed.
     pub fn is_invalid(&self) -> bool {
-        match self {
-            VersionCheckResult::Invalid => true,
-            VersionCheckResult::CodeIsRequired | VersionCheckResult::CodeIsOptional => false,
-        }
+        matches!(self, VersionCheckResult::Invalid)
     }
 
-    /// Checks if code is required.
-    ///
-    /// Any other variant than [`VersionCheckResult::CodeIsRequired`] returns false.
-    pub fn is_code_required(&self) -> bool {
-        matches!(self, VersionCheckResult::CodeIsRequired)
+    /// Checks if given version is a major protocol version upgrade.
+    pub fn is_major_version(&self) -> bool {
+        match self {
+            VersionCheckResult::Valid { is_major_version } => *is_major_version,
+            VersionCheckResult::Invalid => false,
+        }
     }
 }
 
@@ -51,12 +52,12 @@ impl ProtocolVersion {
     });
 
     /// Constructs a new `ProtocolVersion` from `version`.
-    pub fn new(version: SemVer) -> ProtocolVersion {
+    pub const fn new(version: SemVer) -> ProtocolVersion {
         ProtocolVersion(version)
     }
 
     /// Constructs a new `ProtocolVersion` from the given semver parts.
-    pub fn from_parts(major: u32, minor: u32, patch: u32) -> ProtocolVersion {
+    pub const fn from_parts(major: u32, minor: u32, patch: u32) -> ProtocolVersion {
         let sem_ver = SemVer::new(major, minor, patch);
         Self::new(sem_ver)
     }
@@ -79,7 +80,9 @@ impl ProtocolVersion {
             if next.0.minor != 0 || next.0.patch != 0 {
                 return VersionCheckResult::Invalid;
             }
-            return VersionCheckResult::CodeIsRequired;
+            return VersionCheckResult::Valid {
+                is_major_version: true,
+            };
         }
 
         // Covers the equal major versions
@@ -96,7 +99,9 @@ impl ProtocolVersion {
             if next.0.patch != 0 {
                 return VersionCheckResult::Invalid;
             }
-            return VersionCheckResult::CodeIsOptional;
+            return VersionCheckResult::Valid {
+                is_major_version: false,
+            };
         }
 
         // Code belows covers equal minor versions
@@ -107,7 +112,9 @@ impl ProtocolVersion {
             return VersionCheckResult::Invalid;
         }
 
-        VersionCheckResult::CodeIsOptional
+        VersionCheckResult::Valid {
+            is_major_version: false,
+        }
     }
 
     /// Checks if given protocol version is compatible with current one.
@@ -149,23 +156,27 @@ mod tests {
 
     #[test]
     fn should_follow_version_with_optional_code() {
-        let value = VersionCheckResult::CodeIsOptional;
+        let value = VersionCheckResult::Valid {
+            is_major_version: false,
+        };
         assert!(!value.is_invalid());
-        assert!(!value.is_code_required());
+        assert!(!value.is_major_version());
     }
 
     #[test]
     fn should_follow_version_with_required_code() {
-        let value = VersionCheckResult::CodeIsRequired;
+        let value = VersionCheckResult::Valid {
+            is_major_version: true,
+        };
         assert!(!value.is_invalid());
-        assert!(value.is_code_required());
+        assert!(value.is_major_version());
     }
 
     #[test]
     fn should_not_follow_version_with_invalid_code() {
         let value = VersionCheckResult::Invalid;
         assert!(value.is_invalid());
-        assert!(!value.is_code_required());
+        assert!(!value.is_major_version());
     }
 
     #[test]
@@ -210,9 +221,9 @@ mod tests {
         // of a defaulted protocol version ( 0.0.0 ).
         let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
         let next = ProtocolVersion::new(SemVer::new(2, 0, 0));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsRequired
+        assert!(
+            prev.check_next_version(&next).is_major_version(),
+            "should be major version"
         );
     }
 
@@ -231,10 +242,10 @@ mod tests {
         // Minor version must not decrease within the same major version
         let prev = ProtocolVersion::new(SemVer::new(1, 1, 0));
         let next = ProtocolVersion::new(SemVer::new(1, 2, 0));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsOptional
-        );
+
+        let value = prev.check_next_version(&next);
+        assert!(!value.is_invalid(), "should be valid");
+        assert!(!value.is_major_version(), "should not be a major version");
     }
 
     #[test]
@@ -283,17 +294,15 @@ mod tests {
     fn should_accept_patch_version_update_with_optional_code() {
         let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
         let next = ProtocolVersion::new(SemVer::new(1, 0, 1));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsOptional
-        );
+        let value = prev.check_next_version(&next);
+        assert!(!value.is_invalid(), "should be valid");
+        assert!(!value.is_major_version(), "should not be a major version");
 
         let prev = ProtocolVersion::new(SemVer::new(1, 0, 8));
         let next = ProtocolVersion::new(SemVer::new(1, 0, 42));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsOptional
-        );
+        let value = prev.check_next_version(&next);
+        assert!(!value.is_invalid(), "should be valid");
+        assert!(!value.is_major_version(), "should not be a major version");
     }
 
     #[test]
@@ -301,17 +310,15 @@ mod tests {
         // installer is optional for minor bump
         let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
         let next = ProtocolVersion::new(SemVer::new(1, 1, 0));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsOptional
-        );
+        let value = prev.check_next_version(&next);
+        assert!(!value.is_invalid(), "should be valid");
+        assert!(!value.is_major_version(), "should not be a major version");
 
         let prev = ProtocolVersion::new(SemVer::new(3, 98, 0));
         let next = ProtocolVersion::new(SemVer::new(3, 99, 0));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsOptional
-        );
+        let value = prev.check_next_version(&next);
+        assert!(!value.is_invalid(), "should be valid");
+        assert!(!value.is_major_version(), "should not be a major version");
     }
 
     #[test]
@@ -343,16 +350,16 @@ mod tests {
         // major upgrade requires installer to be present
         let prev = ProtocolVersion::new(SemVer::new(1, 0, 0));
         let next = ProtocolVersion::new(SemVer::new(2, 0, 0));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsRequired
+        assert!(
+            prev.check_next_version(&next).is_major_version(),
+            "should be major version"
         );
 
         let prev = ProtocolVersion::new(SemVer::new(2, 99, 99));
         let next = ProtocolVersion::new(SemVer::new(3, 0, 0));
-        assert_eq!(
-            prev.check_next_version(&next),
-            VersionCheckResult::CodeIsRequired
+        assert!(
+            prev.check_next_version(&next).is_major_version(),
+            "should be major version"
         );
     }
 

@@ -7,8 +7,8 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractVersion, EntryPoints, NamedKeys},
-    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, URef,
-    UREF_SERIALIZED_LENGTH,
+    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
+    URef, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -43,32 +43,6 @@ pub fn read_or_revert<T: CLTyped + FromBytes>(uref: URef) -> T {
         .unwrap_or_revert_with(ApiError::ValueNotFound)
 }
 
-/// Reads the value under `key` in the context-local partition of global state.
-pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
-    key: &K,
-) -> Result<Option<V>, bytesrepr::Error> {
-    let key_bytes = key.to_bytes()?;
-
-    let value_size = {
-        let mut value_size = MaybeUninit::uninit();
-        let ret = unsafe {
-            ext_ffi::casper_read_value_local(
-                key_bytes.as_ptr(),
-                key_bytes.len(),
-                value_size.as_mut_ptr(),
-            )
-        };
-        match api_error::result_from(ret) {
-            Ok(_) => unsafe { value_size.assume_init() },
-            Err(ApiError::ValueNotFound) => return Ok(None),
-            Err(e) => runtime::revert(e),
-        }
-    };
-
-    let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
-    Ok(Some(bytesrepr::deserialize(value_bytes)?))
-}
-
 /// Writes `value` under `uref` in the global state.
 pub fn write<T: CLTyped + ToBytes>(uref: URef, value: T) {
     let key = Key::from(uref);
@@ -79,18 +53,6 @@ pub fn write<T: CLTyped + ToBytes>(uref: URef, value: T) {
 
     unsafe {
         ext_ffi::casper_write(key_ptr, key_size, cl_value_ptr, cl_value_size);
-    }
-}
-
-/// Writes `value` under `key` in the context-local partition of global state.
-pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(key: K, value: V) {
-    let (key_ptr, key_size, _bytes1) = contract_api::to_ptr(key);
-
-    let cl_value = CLValue::from_t(value).unwrap_or_revert();
-    let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
-
-    unsafe {
-        ext_ffi::casper_write_local(key_ptr, key_size, cl_value_ptr, cl_value_size);
     }
 }
 
@@ -124,7 +86,9 @@ pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
     bytesrepr::deserialize(bytes).unwrap_or_revert()
 }
 
-/// Create a new contract stored under a Key::Hash at version 1
+/// Create a new contract stored under a Key::Hash at version 1. You may upgrade this contract in
+/// the future; if you want a contract that is locked (i.e. cannot be upgraded) call
+/// `new_locked_contract` instead.
 /// if `named_keys` are provided, will apply them
 /// if `hash_name` is provided, puts contract hash in current context's named keys under `hash_name`
 /// if `uref_name` is provided, puts access_uref in current context's named keys under `uref_name`
@@ -134,7 +98,31 @@ pub fn new_contract(
     hash_name: Option<String>,
     uref_name: Option<String>,
 ) -> (ContractHash, ContractVersion) {
-    let (contract_package_hash, access_uref) = create_contract_package_at_hash();
+    create_contract(entry_points, named_keys, hash_name, uref_name, false)
+}
+
+/// Create a locked contract stored under a Key::Hash, which can never be upgraded. This is an
+/// irreversible decision; for a contract that can be upgraded use `new_contract` instead.
+/// if `named_keys` are provided, will apply them
+/// if `hash_name` is provided, puts contract hash in current context's named keys under `hash_name`
+/// if `uref_name` is provided, puts access_uref in current context's named keys under `uref_name`
+pub fn new_locked_contract(
+    entry_points: EntryPoints,
+    named_keys: Option<NamedKeys>,
+    hash_name: Option<String>,
+    uref_name: Option<String>,
+) -> (ContractHash, ContractVersion) {
+    create_contract(entry_points, named_keys, hash_name, uref_name, true)
+}
+
+fn create_contract(
+    entry_points: EntryPoints,
+    named_keys: Option<NamedKeys>,
+    hash_name: Option<String>,
+    uref_name: Option<String>,
+    is_locked: bool,
+) -> (ContractHash, ContractVersion) {
+    let (contract_package_hash, access_uref) = create_contract_package(is_locked);
 
     if let Some(hash_name) = hash_name {
         runtime::put_key(&hash_name, contract_package_hash.into());
@@ -156,15 +144,20 @@ pub fn new_contract(
 /// are no versions; a version must be added via `add_contract_version` before
 /// the contract can be executed.
 pub fn create_contract_package_at_hash() -> (ContractPackageHash, URef) {
-    let mut hash_addr = ContractPackageHash::default();
+    create_contract_package(false)
+}
+
+fn create_contract_package(is_locked: bool) -> (ContractPackageHash, URef) {
+    let mut hash_addr: HashAddr = ContractPackageHash::default().value();
     let mut access_addr = [0u8; 32];
     unsafe {
         ext_ffi::casper_create_contract_package_at_hash(
             hash_addr.as_mut_ptr(),
             access_addr.as_mut_ptr(),
+            is_locked,
         );
     }
-    let contract_package_hash = hash_addr;
+    let contract_package_hash: ContractPackageHash = hash_addr.into();
     let access_uref = URef::new(access_addr, AccessRights::READ_ADD_WRITE);
 
     (contract_package_hash, access_uref)

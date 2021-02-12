@@ -76,12 +76,14 @@ run_node() {
         "${CONFIG_TOML_PATH}"
         "-C consensus.secret_key_path=${SECRET_KEY_PATH}"
         "-C storage.path=${STORAGE_DIR}"
-        "-C network.gossip_interval=1000"
         "-C rpc_server.address='0.0.0.0:50101'"
     )
 
     if [[ ${ID} != 1 ]]; then
         CMD+=("-C network.bind_address='0.0.0.0:0'")
+        CMD+=("-C rpc_server.address='0.0.0.0:0'")
+        CMD+=("-C rest_server.address='0.0.0.0:0'")
+        CMD+=("-C event_stream_server.address='0.0.0.0:0'")
     fi
 
     CMD+=("1> >(tee ${DATA_DIR}/node-${ID}.log) 2> >(tee ${DATA_DIR}/node-${ID}.log.stderr)")

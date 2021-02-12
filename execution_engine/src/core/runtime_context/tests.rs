@@ -391,8 +391,8 @@ fn contract_key_addable_valid() {
         .expect("Adding should work.");
 
     let updated_contract = StoredValue::Contract(Contract::new(
-        [0u8; 32],
-        [0u8; 32],
+        [0u8; 32].into(),
+        [0u8; 32].into(),
         iter::once((uref_name, uref)).collect(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
@@ -757,15 +757,21 @@ fn should_verify_ownership_before_setting_action_threshold() {
 fn can_roundtrip_key_value_pairs() {
     let access_rights = HashMap::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
-        let mut rng = rand::thread_rng();
-        let test_key = random_hash(&mut rng).into_hash().expect("should be hash");
+        let deploy_hash = [1u8; 32];
+        let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+        let test_uref = create_uref(&mut uref_address_generator, AccessRights::default())
+            .as_uref()
+            .cloned()
+            .unwrap();
         let test_value = CLValue::from_t("test_value".to_string()).unwrap();
 
         runtime_context
-            .write_ls(&test_key, test_value.clone())
+            .write_purse_uref(test_uref.to_owned(), test_value.clone())
             .expect("should write_ls");
 
-        let result = runtime_context.read_ls(&test_key).expect("should read_ls");
+        let result = runtime_context
+            .read_purse_uref(&test_uref)
+            .expect("should read_ls");
 
         Ok(result == Some(test_value))
     };

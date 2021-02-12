@@ -18,7 +18,7 @@ use crate::storage::{
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         lmdb::LmdbTrieStore,
-        operations::{read, read_with_proof, ReadResult},
+        operations::{missing_trie_keys, put_trie, read, read_with_proof, ReadResult},
     },
 };
 
@@ -184,6 +184,52 @@ impl StateProvider for LmdbGlobalState {
     fn empty_root(&self) -> Blake2bHash {
         self.empty_root_hash
     }
+
+    fn read_trie(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        txn.commit()?;
+        Ok(ret)
+    }
+
+    fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<Blake2bHash, Self::Error> {
+        let mut txn = self.environment.create_read_write_txn()?;
+        let trie_hash = put_trie::<
+            Key,
+            StoredValue,
+            lmdb::RwTransaction,
+            LmdbTrieStore,
+            Self::Error,
+        >(correlation_id, &mut txn, &self.trie_store, trie)?;
+        txn.commit()?;
+        Ok(trie_hash)
+    }
+
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    fn missing_trie_keys(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let missing_descendants =
+            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+                correlation_id,
+                &txn,
+                self.trie_store.deref(),
+                trie_key,
+            )?;
+        txn.commit()?;
+        Ok(missing_descendants)
+    }
 }
 
 #[cfg(test)]
@@ -238,10 +284,10 @@ mod tests {
 
     fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
         let correlation_id = CorrelationId::new();
-        let _temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &_temp_dir.path().to_path_buf(),
+                &temp_dir.path().to_path_buf(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
             )

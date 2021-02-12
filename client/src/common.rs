@@ -11,18 +11,21 @@ pub mod verbose {
 
     pub const ARG_NAME: &str = "verbose";
     const ARG_NAME_SHORT: &str = "v";
-    const ARG_HELP: &str = "Generates verbose output, e.g. prints the RPC request";
+    const ARG_HELP: &str =
+        "Generates verbose output, e.g. prints the RPC request.  If repeated by using '-vv' then \
+        all output will be extra verbose, meaning that large JSON strings will be shown in full";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .short(ARG_NAME_SHORT)
             .required(false)
+            .multiple(true)
             .help(ARG_HELP)
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> bool {
-        matches.is_present(ARG_NAME)
+    pub fn get(matches: &ArgMatches) -> u64 {
+        matches.occurrences_of(ARG_NAME)
     }
 }
 

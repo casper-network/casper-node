@@ -18,9 +18,7 @@ use tracing::debug;
 use super::*;
 use crate::{
     components::{
-        chainspec_loader::Chainspec,
-        contract_runtime,
-        contract_runtime::ContractRuntime,
+        contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
@@ -31,6 +29,7 @@ use crate::{
             RpcServerAnnouncement,
         },
         requests::ContractRuntimeRequest,
+        Responder,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
@@ -38,7 +37,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Deploy, NodeId, Tag},
+    types::{Chainspec, Deploy, NodeId, Tag},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -188,9 +187,7 @@ impl reactor::Reactor for Reactor {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Arc::new(Chainspec::from_resources(
-                    "local/chainspec.toml",
-                ))))
+                .respond(Some(Arc::new(Chainspec::from_resources("local"))))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -272,6 +269,7 @@ impl reactor::Reactor for Reactor {
                         Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
+                            responder: None,
                         })
                     }
                     NodeMessage::DeployGossiper(message) => {
@@ -288,10 +286,14 @@ impl reactor::Reactor for Reactor {
                 // We do not care about new peers in the gossiper test.
                 Effects::new()
             }
-            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
+                deploy,
+                responder,
+            }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
+                    responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -335,8 +337,13 @@ impl NetworkedReactor for Reactor {
 
 fn announce_deploy_received(
     deploy: Box<Deploy>,
+    responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
+    |effect_builder: EffectBuilder<Event>| {
+        effect_builder
+            .announce_deploy_received(deploy, responder)
+            .ignore()
+    }
 }
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
@@ -361,7 +368,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     for deploy in deploys.drain(..) {
         let index: usize = rng.gen_range(0, network_size);
         network
-            .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy))
+            .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy, None))
             .await;
     }
 
@@ -414,7 +421,7 @@ async fn should_get_from_alternate_source() {
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(&node_id, announce_deploy_received(deploy.clone()))
+            .process_injected_effect_on(&node_id, announce_deploy_received(deploy.clone(), None))
             .await;
     }
 
@@ -432,13 +439,9 @@ async fn should_get_from_alternate_source() {
     let node_id_0 = node_ids[0].clone();
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
-            Event::NetworkRequest(NetworkRequest::SendMessage {
-                dest,
-                payload,
-                ..
-            }) => {
+            Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
                 if let NodeMessage::DeployGossiper(Message::GossipResponse { .. }) = **payload {
-                    &**dest == &node_id_0
+                    **dest == node_id_0
                 } else {
                     false
                 }
@@ -499,7 +502,7 @@ async fn should_timeout_gossip_response() {
 
     // Give the deploy to node 0 to be gossiped.
     network
-        .process_injected_effect_on(&node_ids[0], announce_deploy_received(deploy.clone()))
+        .process_injected_effect_on(&node_ids[0], announce_deploy_received(deploy.clone(), None))
         .await;
 
     // Run node 0 until it has sent the gossip requests.

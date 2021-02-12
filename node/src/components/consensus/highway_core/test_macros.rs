@@ -113,7 +113,12 @@ macro_rules! endorse {
             endorse!($state, $rng, creator, $vote);
         }
     };
-    ($state: ident, $rng: ident, $creator: expr, $vote: expr) => {
+    ($state: ident, $rng: ident, $creator: expr, $vote: expr) => {{
+        use crate::components::consensus::highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
+            highway::Endorsements,
+        };
+
         let endorsement: Endorsement<TestContext> = Endorsement::new($vote, ($creator));
         let signature = TestSecret(($creator).0).sign(&endorsement.hash(), &mut $rng);
         let signed_endorsement = SignedEndorsement::new(endorsement, signature);
@@ -124,5 +129,5 @@ macro_rules! endorse {
         for ev in evidence {
             $state.add_evidence(ev);
         }
-    };
+    }};
 }

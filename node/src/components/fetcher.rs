@@ -6,12 +6,14 @@ use std::{collections::HashMap, convert::Infallible, fmt::Debug, time::Duration}
 
 use datasize::DataSize;
 use smallvec::smallvec;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
+
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
     effect::{
-        requests::{LinearChainRequest, NetworkRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
@@ -20,6 +22,8 @@ use crate::{
     NodeRng,
 };
 
+use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
+use casper_types::Key;
 pub use config::Config;
 pub use event::{Event, FetchResult};
 
@@ -28,6 +32,7 @@ pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest>
+    + From<ContractRuntimeRequest>
     // Won't be needed when we implement "get block by height" feature in storage.
     + From<LinearChainRequest<NodeId>>
     + Send
@@ -45,6 +50,7 @@ where
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message>>
         + From<StorageRequest>
+        + From<ContractRuntimeRequest>
         + From<LinearChainRequest<NodeId>>
         + Send
         + 'static,
@@ -128,7 +134,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn signal(
         &mut self,
         id: T::Id,
-        result: Option<FetchResult<T>>,
+        result: Option<FetchResult<T, NodeId>>,
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
@@ -250,11 +256,40 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
         peer: NodeId,
     ) -> Effects<Event<BlockByHeight>> {
         effect_builder
-            .get_block_at_height(id)
+            .get_block_at_height_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
                 maybe_item: Box::new(result.map(Into::into)),
+            })
+    }
+}
+
+type GlobalStorageTrie = Trie<Key, StoredValue>;
+
+impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
+        &mut self.responders
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<GlobalStorageTrie>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: Blake2bHash,
+        peer: NodeId,
+    ) -> Effects<Event<GlobalStorageTrie>> {
+        effect_builder
+            .read_trie(id)
+            .event(move |maybe_trie| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(maybe_trie),
             })
     }
 }
@@ -304,8 +339,14 @@ where
             }
             // We do nothing in the case of having an incoming deploy rejected.
             Event::RejectedRemotely { .. } => Effects::new(),
-            Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
-            Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
+            Event::AbsentRemotely { id, peer } => {
+                info!(%id, %peer, "element absent on the remote node");
+                self.signal(id, None, peer)
+            }
+            Event::TimeoutPeer { id, peer } => {
+                info!(%id, %peer, "request timed out");
+                self.signal(id, None, peer)
+            }
         }
     }
 }

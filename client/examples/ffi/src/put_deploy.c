@@ -6,7 +6,7 @@
 #define ERROR_LEN 255
 #define NODE_ADDRESS "http://localhost:50101"
 #define RPC_ID "1"
-#define VERBOSE false
+#define VERBOSE 0
 
 int main(int argc, char **argv) {
     casper_setup_client();
@@ -28,8 +28,6 @@ int main(int argc, char **argv) {
     payment_params.payment_args_simple_len = 2;
 
     casper_session_params_t session_params = {0};
-    session_params.session_path =
-        "target/wasm32-unknown-unknown/release/standard_payment.wasm";
 
     unsigned char response_buffer[RESPONSE_BUFFER_LEN] = {0};
     casper_error_t success = casper_put_deploy(

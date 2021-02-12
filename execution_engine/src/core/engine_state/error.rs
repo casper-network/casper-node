@@ -4,7 +4,10 @@ use thiserror::Error;
 use casper_types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
 
 use crate::{
-    core::execution,
+    core::{
+        engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
+        execution,
+    },
     shared::{newtypes::Blake2bHash, wasm_prep},
     storage,
 };
@@ -17,8 +20,8 @@ pub enum Error {
     InvalidAccountHashLength { expected: usize, actual: usize },
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    #[error("Invalid upgrade config")]
-    InvalidUpgradeConfig,
+    #[error("Genesis error.")]
+    Genesis(GenesisError),
     #[error("Wasm preprocessing error: {0}")]
     WasmPreprocessing(#[from] wasm_prep::PreprocessingError),
     #[error("Wasm serialization error: {0:?}")]
@@ -31,6 +34,8 @@ pub enum Error {
     Authorization,
     #[error("Insufficient payment")]
     InsufficientPayment,
+    #[error("Gas conversion overflow")]
+    GasConversionOverflow,
     #[error("Deploy error")]
     Deploy,
     #[error("Payment finalization error")]
@@ -43,8 +48,8 @@ pub enum Error {
     Mint(String),
     #[error("Unsupported key type")]
     InvalidKeyVariant,
-    #[error("Invalid upgrade result value")]
-    InvalidUpgradeResult,
+    #[error("Protocol upgrade error: {0}")]
+    ProtocolUpgrade(ProtocolUpgradeError),
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
 }

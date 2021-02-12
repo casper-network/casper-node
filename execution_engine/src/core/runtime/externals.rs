@@ -8,7 +8,7 @@ use casper_types::{
     api_error,
     auction::{EraId, EraInfo},
     bytesrepr::{self, ToBytes},
-    contracts::{EntryPoints, NamedKeys},
+    contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
 };
 
@@ -51,20 +51,6 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
-            FunctionIndex::ReadLocalFuncIndex => {
-                // args(0) = pointer to key in Wasm memory
-                // args(1) = size of key in Wasm memory
-                // args(2) = pointer to output size (output param)
-                let (key_ptr, key_size, output_size_ptr) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.read_value_local,
-                    [key_ptr, key_size, output_size_ptr],
-                )?;
-                scoped_instrumenter.add_property("key_size", key_size);
-                let ret = self.read_local(key_ptr, key_size, output_size_ptr)?;
-                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
-            }
-
             FunctionIndex::LoadNamedKeysFuncIndex => {
                 // args(0) = pointer to amount of keys (output)
                 // args(1) = pointer to amount of serialized bytes (output)
@@ -93,22 +79,6 @@ where
                 )?;
                 scoped_instrumenter.add_property("value_size", value_size);
                 self.write(key_ptr, key_size, value_ptr, value_size)?;
-                Ok(None)
-            }
-
-            FunctionIndex::WriteLocalFuncIndex => {
-                // args(0) = pointer to key in Wasm memory
-                // args(1) = size of key
-                // args(2) = pointer to value
-                // args(3) = size of value
-                let (key_bytes_ptr, key_bytes_size, value_ptr, value_size) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.write_local,
-                    [key_bytes_ptr, key_bytes_size, value_ptr, value_size],
-                )?;
-                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
-                scoped_instrumenter.add_property("value_size", value_size);
-                self.write_local(key_bytes_ptr, key_bytes_size, value_ptr, value_size)?;
                 Ok(None)
             }
 
@@ -554,12 +524,16 @@ where
             FunctionIndex::CreateContractPackageAtHash => {
                 // args(0) = pointer to wasm memory where to write 32-byte Hash address
                 // args(1) = pointer to wasm memory where to write 32-byte access key address
-                let (hash_dest_ptr, access_dest_ptr) = Args::parse(args)?;
+                // args(2) = boolean flag to determine if the contract can be versioned
+                let (hash_dest_ptr, access_dest_ptr, is_locked) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.create_contract_package_at_hash,
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
-                let (hash_addr, access_addr) = self.create_contract_package_at_hash()?;
+                let package_status = ContractPackageStatus::new(is_locked);
+                let (hash_addr, access_addr) =
+                    self.create_contract_package_at_hash(package_status)?;
+
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
                 Ok(None)

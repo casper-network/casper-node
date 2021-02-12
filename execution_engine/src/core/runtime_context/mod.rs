@@ -6,11 +6,6 @@ use std::{
     rc::Rc,
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
-
 use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -27,7 +22,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::execution_effect::ExecutionEffect,
+        engine_state::{execution_effect::ExecutionEffect, SYSTEM_ACCOUNT_ADDR},
         execution::{AddressGenerator, Error},
         tracking_copy::{AddResult, TrackingCopy},
         Address,
@@ -330,30 +325,22 @@ where
 
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
-        let pre_hash_bytes = self.hash_address_generator.borrow_mut().create_address();
-        // NOTE: Unwrap below is assumed safe as output size of `KEY_HASH_LENGTH` is a valid value.
-        let mut hasher = VarBlake2b::new(KEY_HASH_LENGTH).unwrap();
-        hasher.update(&pre_hash_bytes);
-        let mut hash_bytes = [0; KEY_HASH_LENGTH];
-        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
-        Ok(hash_bytes)
+        Ok(self.hash_address_generator.borrow_mut().new_hash_address())
     }
 
     pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
-        let uref = {
-            let addr = self.uref_address_generator.borrow_mut().create_address();
-            URef::new(addr, AccessRights::READ_ADD_WRITE)
-        };
-        let key = Key::URef(uref);
+        let uref = self
+            .uref_address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
         self.insert_uref(uref);
-        self.metered_write_gs(key, value)?;
+        self.metered_write_gs(Key::URef(uref), value)?;
         Ok(uref)
     }
 
     /// Creates a new URef where the value it stores is CLType::Unit.
     pub(crate) fn new_unit_uref(&mut self) -> Result<URef, Error> {
-        let cl_unit = CLValue::from_components(CLType::Unit, Vec::new());
-        self.new_uref(StoredValue::CLValue(cl_unit))
+        self.new_uref(StoredValue::CLValue(CLValue::unit()))
     }
 
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
@@ -375,36 +362,20 @@ where
         Ok(())
     }
 
-    pub fn read_ls(&mut self, key_bytes: &[u8]) -> Result<Option<CLValue>, Error> {
-        let actual_length = key_bytes.len();
-        let hash: [u8; KEY_HASH_LENGTH] =
-            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
-                actual: actual_length,
-                expected: KEY_HASH_LENGTH,
-            })?;
-        let key: Key = hash.into();
-        let maybe_stored_value = self
+    pub fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
+        match self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &key)
-            .map_err(Into::into)?;
-
-        if let Some(stored_value) = maybe_stored_value {
-            Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?))
-        } else {
-            Ok(None)
+            .read(self.correlation_id, &Key::Hash(purse_uref.addr()))
+            .map_err(Into::into)?
+        {
+            Some(stored_value) => Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?)),
+            None => Ok(None),
         }
     }
 
-    pub fn write_ls(&mut self, key_bytes: &[u8], cl_value: CLValue) -> Result<(), Error> {
-        let actual_length = key_bytes.len();
-        let hash: [u8; KEY_HASH_LENGTH] =
-            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
-                actual: actual_length,
-                expected: KEY_HASH_LENGTH,
-            })?;
-        self.metered_write_gs_unsafe(hash, cl_value)?;
-        Ok(())
+    pub fn write_purse_uref(&mut self, purse_uref: URef, cl_value: CLValue) -> Result<(), Error> {
+        self.metered_write_gs_unsafe(Key::Hash(purse_uref.addr()), cl_value)
     }
 
     pub fn read_gs(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
@@ -728,13 +699,44 @@ where
         }
     }
 
+    /// Checks if we are calling a system contract.
+    pub(crate) fn is_system_contract(&self) -> bool {
+        if let Some(hash) = self.base_key().into_hash() {
+            let system_contracts = self.protocol_data().system_contracts();
+            if system_contracts.contains(&hash.into()) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
+        if self.is_system_contract() {
+            // Don't charge storage used while executing a system contract.
+            return Ok(());
+        }
+
         let storage_costs = self.protocol_data().wasm_config().storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
         self.charge_gas(gas_cost)
+    }
+
+    /// Charges gas for using a host system contract's entrypoint.
+    pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), Error>
+    where
+        T: Into<Gas>,
+    {
+        if self.account.account_hash() == SYSTEM_ACCOUNT_ADDR {
+            // Don't try to charge a system account for calling a system contract's entry point.
+            // This will make sure that (for example) calling a mint's transfer from within auction
+            // wouldn't try to incur cost to system account.
+            return Ok(());
+        }
+        let amount: Gas = call_cost.into();
+        self.charge_gas(amount)
     }
 
     /// Writes data to global state with a measurement

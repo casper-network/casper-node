@@ -44,10 +44,9 @@ enum Error {
     GetKey = 4,
     NamedKeys = 5,
     ReadOrRevert = 6,
-    ReadLocal = 7,
-    IsValidURef = 8,
-    Transfer = 9,
-    Revert = 10,
+    IsValidURef = 7,
+    Transfer = 8,
+    Revert = 9,
 }
 
 impl From<Error> for ApiError {
@@ -111,14 +110,6 @@ fn large_function() {
 
     storage::write(uref, VALUE_FOR_ADDITION_1);
     storage::add(uref, VALUE_FOR_ADDITION_2);
-
-    storage::write_local(key_name.clone(), random_bytes.clone());
-    let retrieved_value = storage::read_local(&key_name);
-    if retrieved_value != Ok(Some(random_bytes)) {
-        runtime::revert(Error::ReadLocal);
-    }
-
-    storage::write_local(key_name, VALUE_FOR_ADDITION_1);
 
     let keys_to_return = truncate_named_keys(named_keys, &mut rng);
     runtime::ret(CLValue::from_t(keys_to_return).unwrap_or_revert());
@@ -196,7 +187,7 @@ pub extern "C" fn call() {
     system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount, None)
         .unwrap_or_revert();
 
-    let balance = system::get_balance(new_purse).unwrap_or_revert();
+    let balance = system::get_purse_balance(new_purse).unwrap_or_revert();
     if balance != transfer_amount {
         runtime::revert(Error::Transfer);
     }

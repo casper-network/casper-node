@@ -1,8 +1,8 @@
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 
-/// Named constant for method `call`.
-pub const METHOD_CALL: &str = "call";
+/// Named constant for method `pay`.
+pub const METHOD_PAY: &str = "pay";
 
 /// Storage for standard payment contract hash.
 pub const HASH_KEY: &str = "standard_payment_hash";

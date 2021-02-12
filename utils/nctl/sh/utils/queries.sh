@@ -53,13 +53,24 @@ function get_chain_name()
 }
 
 #######################################
-# Returns latest block finalized at a node.
+# Returns hash of latest block finalized at a node.
 #######################################
 function get_chain_latest_block_hash()
 {
     $(get_path_to_client) get-block \
         --node-address "$(get_node_address_rpc)" \
         | jq '.result.block.hash' \
+        | sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
+# Returns latest block finalized at a node.
+#######################################
+function get_chain_latest_block()
+{
+    $(get_path_to_client) get-block \
+        --node-address "$(get_node_address_rpc)" \
+        | jq '.result.block' \
         | sed -e 's/^"//' -e 's/"$//'
 }
 

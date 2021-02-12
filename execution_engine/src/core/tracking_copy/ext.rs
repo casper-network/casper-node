@@ -10,13 +10,8 @@ use casper_types::{
 use crate::{
     core::{execution, tracking_copy::TrackingCopy},
     shared::{
-        account::Account,
-        motes::Motes,
-        newtypes::CorrelationId,
-        stored_value::StoredValue,
-        wasm,
-        wasm_prep::{self, Preprocessor},
-        TypeMismatch,
+        account::Account, motes::Motes, newtypes::CorrelationId, stored_value::StoredValue, wasm,
+        wasm_prep::Preprocessor, TypeMismatch,
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
@@ -87,13 +82,7 @@ pub trait TrackingCopyExt<R> {
         contract_package_hash: ContractPackageHash,
     ) -> Result<ContractPackage, Self::Error>;
 
-    fn get_system_module(
-        &mut self,
-        correlation_id: CorrelationId,
-        contract_wasm_hash: ContractWasmHash,
-        use_system_contracts: bool,
-        preprocessor: &Preprocessor,
-    ) -> Result<Module, Self::Error>;
+    fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -262,30 +251,7 @@ where
         }
     }
 
-    fn get_system_module(
-        &mut self,
-        correlation_id: CorrelationId,
-        contract_wasm_hash: ContractWasmHash,
-        use_system_contracts: bool,
-        preprocessor: &Preprocessor,
-    ) -> Result<Module, Self::Error> {
-        match {
-            if use_system_contracts {
-                let contract_wasm = match self.get_contract_wasm(correlation_id, contract_wasm_hash)
-                {
-                    Ok(contract_wasm) => contract_wasm,
-                    Err(error) => {
-                        return Err(error);
-                    }
-                };
-
-                wasm_prep::deserialize(contract_wasm.bytes())
-            } else {
-                wasm::do_nothing_module(preprocessor)
-            }
-        } {
-            Ok(module) => Ok(module),
-            Err(error) => Err(error.into()),
-        }
+    fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error> {
+        Ok(wasm::do_nothing_module(preprocessor)?)
     }
 }

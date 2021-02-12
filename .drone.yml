@@ -34,7 +34,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit
+      - cargo audit --ignore RUSTSEC-2020-0123
 
 trigger:
   branch:
@@ -42,6 +42,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 ---
 # Failure state from pre-checks pipeline
@@ -72,6 +75,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 depends_on:
   - pre-checks
@@ -92,8 +98,9 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
   - make setup
-  - make test
-  - make test-contracts
+  - make test CARGO_FLAGS=--release
+  - make test-contracts CARGO_FLAGS=--release
+  - make test-fast-sync CARGO_FLAGS=--release
 
 - name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
@@ -114,6 +121,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 ---
 # Packaging pipeline, runs in parallel with cargo-test pipeline
@@ -181,6 +191,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 ---
 # Run on success of cargo-test and package pipelines.
@@ -236,7 +249,9 @@ trigger:
     - trying
     - staging
     - "release-*"
-
+  event:
+    exclude:
+      - tag
 
 ---
 # Runs on failure of cargo-test or package pipelines.
@@ -284,6 +299,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 depends_on:
   - cargo-test
@@ -300,26 +318,16 @@ type: docker
 name: release-by-tag
 
 steps:
-- name: update-revision
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./update-rev.sh"
-
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
     - "make deb"
 
-- name: publish-crate-tag-TODO
-  image: casperlabs/node-build-u1804
-  commands:
-  - "echo TODO"
-
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
   commands:
-  - "./upload.sh --repo-name debian --package-name casper-node"
-  - "./upload.sh --repo-name debian --package-name casper-client"
+  - "./upload.sh --repo-name debian --package-name casper-node --package-tag true"
+  - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -342,7 +350,14 @@ steps:
     ref:
     - refs/tags/v*
 
-# push to test repo every time we are going to merge to master (via staging), trying or pushing to release (hot fix)
+- name: publish-crate
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/publish_to_crates_io.sh"
+  environment:
+    CARGO_TOKEN:
+      from_secret: crates_io_token
+
 trigger:
   ref:
   - refs/tags/v*

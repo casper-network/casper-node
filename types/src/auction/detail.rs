@@ -4,10 +4,10 @@ use core::convert::TryInto;
 use num_rational::Ratio;
 
 use crate::{
+    account::AccountHash,
     auction::{
-        constants::*, Auction, Bids, EraId, MintProvider, RuntimeProvider, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider, UnbondingPurse,
-        UnbondingPurses,
+        constants::*, Auction, Bids, EraId, RuntimeProvider, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -78,6 +78,27 @@ where
     write_to(provider, ERA_ID_KEY, era_id)
 }
 
+pub fn get_era_end_timestamp_millis<P>(provider: &mut P) -> Result<u64>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    Ok(read_from(provider, ERA_END_TIMESTAMP_MILLIS_KEY)?)
+}
+
+pub fn set_era_end_timestamp_millis<P>(
+    provider: &mut P,
+    era_end_timestamp_millis: u64,
+) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(
+        provider,
+        ERA_END_TIMESTAMP_MILLIS_KEY,
+        era_end_timestamp_millis,
+    )
+}
+
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshot>
@@ -146,14 +167,19 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
+                let account_hash =
+                    AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), |x| {
+                        provider.blake2b(x)
+                    });
+
                 // Move funds from bid purse to unbonding purse
                 provider
-                    .transfer_from_purse_to_purse(
+                    .transfer_purse_to_account(
                         *unbonding_purse.bonding_purse(),
-                        *unbonding_purse.unbonding_purse(),
+                        account_hash,
                         *unbonding_purse.amount(),
                     )
-                    .map_err(|_| Error::TransferToUnbondingPurse)?
+                    .map_err(|_| Error::TransferToUnbondingPurse)?;
             } else {
                 new_unbonding_list.push(*unbonding_purse);
             }
@@ -178,7 +204,6 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     validator_public_key: PublicKey,
     unbonder_public_key: PublicKey,
     bonding_purse: URef,
-    unbonding_purse: URef,
     amount: U512,
 ) -> Result<U512> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
@@ -189,7 +214,6 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
-        unbonding_purse,
         validator_public_key,
         unbonder_public_key,
         era_of_creation,
@@ -207,41 +231,36 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     Ok(remaining_bond)
 }
 
-/// Update validator reward map.
-pub fn update_delegator_rewards<P>(
-    provider: &mut P,
+/// Reinvests delegator reward by increasing its stake.
+pub fn reinvest_delegator_rewards(
+    bids: &mut Bids,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<U512>
-where
-    P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
-{
-    let mut total_delegator_payout = U512::zero();
-
-    let mut bids = get_bids(provider)?;
+) -> Result<Vec<(U512, URef)>> {
+    let mut delegator_payouts = Vec::new();
 
     let bid = match bids.get_mut(&validator_public_key) {
         Some(bid) => bid,
         None => {
             // Validator has been slashed
-            return Ok(total_delegator_payout);
+            return Ok(delegator_payouts);
         }
     };
 
     let delegators = bid.delegators_mut();
 
     for (delegator_key, delegator_reward) in rewards {
-        let delegator_reward_trunc = delegator_reward.to_integer();
-
         let delegator = match delegators.get_mut(&delegator_key) {
             Some(delegator) => delegator,
-            None => return Err(Error::DelegatorNotFound),
+            None => continue,
         };
 
-        delegator.increase_reward(delegator_reward_trunc)?;
+        let delegator_reward_trunc = delegator_reward.to_integer();
 
-        total_delegator_payout += delegator_reward_trunc;
+        delegator.increase_stake(delegator_reward_trunc)?;
+
+        delegator_payouts.push((delegator_reward_trunc, *delegator.bonding_purse()));
 
         let allocation = SeigniorageAllocation::delegator(
             delegator_key,
@@ -252,38 +271,29 @@ where
         seigniorage_allocations.push(allocation);
     }
 
-    set_bids(provider, bids)?;
-
-    Ok(total_delegator_payout)
+    Ok(delegator_payouts)
 }
 
-/// Update validator reward map.
-pub fn update_validator_reward<P>(
-    provider: &mut P,
+/// Reinvests validator reward by increasing its stake and returns its bonding purse.
+pub fn reinvest_validator_reward(
+    bids: &mut Bids,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<U512>
-where
-    P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
-{
-    let mut bids: Bids = get_bids(provider)?;
-
+) -> Result<Option<URef>> {
     let bid = match bids.get_mut(&validator_public_key) {
         Some(bid) => bid,
         None => {
             // Validator has been slashed
-            return Ok(U512::zero());
+            return Ok(None);
         }
     };
 
-    bid.increase_reward(amount)?;
+    bid.increase_stake(amount)?;
 
     let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
 
     seigniorage_allocations.push(allocation);
 
-    set_bids(provider, bids)?;
-
-    Ok(amount)
+    Ok(Some(*bid.bonding_purse()))
 }

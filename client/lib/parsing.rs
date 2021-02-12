@@ -11,15 +11,15 @@ use casper_node::{
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr, AsymmetricType, CLType, CLValue, ContractHash, Key, NamedArg, PublicKey,
-    RuntimeArgs, SecretKey, UIntParseError, URef, U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
+    SecretKey, UIntParseError, U512,
 };
 
 use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    help, ExecutableDeployItemExt, TransferTarget,
+    help, TransferTarget,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -396,45 +396,48 @@ pub(super) fn parse_session_info(
     let invalid_entry_point =
         || Error::InvalidArgument("session_entry_point", session_entry_point.to_string());
     if let Some(session_name) = name(session_name) {
-        return ExecutableDeployItem::new_stored_contract_by_name(
-            session_name,
-            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
-            session_args,
-        );
+        return Ok(ExecutableDeployItem::StoredContractByName {
+            name: session_name,
+            entry_point: entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
+            args: session_args,
+        });
     }
 
     if let Some(session_hash) = parse_contract_hash(session_hash)? {
-        return ExecutableDeployItem::new_stored_contract_by_hash(
-            session_hash,
-            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
-            session_args,
-        );
+        return Ok(ExecutableDeployItem::StoredContractByHash {
+            hash: session_hash.into(),
+            entry_point: entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
+            args: session_args,
+        });
     }
 
     let version = version(session_version).ok();
     if let Some(package_name) = name(session_package_name) {
-        return ExecutableDeployItem::new_stored_versioned_contract_by_name(
-            package_name,
-            version,
-            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
-            session_args,
-        );
+        return Ok(ExecutableDeployItem::StoredVersionedContractByName {
+            name: package_name,
+            version, // defaults to highest enabled version
+            entry_point: entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
+            args: session_args,
+        });
     }
 
     if let Some(package_hash) = parse_contract_hash(session_package_hash)? {
-        return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
-            package_hash,
-            version,
-            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
-            session_args,
-        );
+        return Ok(ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: package_hash.into(),
+            version, // defaults to highest enabled version
+            entry_point: entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
+            args: session_args,
+        });
     }
 
     let module_bytes = fs::read(session_path).map_err(|error| Error::IoError {
         context: format!("unable to read session file at '{}'", session_path),
         error,
     })?;
-    ExecutableDeployItem::new_module_bytes(module_bytes, session_args)
+    Ok(ExecutableDeployItem::ModuleBytes {
+        module_bytes: module_bytes.into(),
+        args: session_args,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -472,7 +475,10 @@ pub(super) fn parse_payment_info(
     }
 
     if let Ok(payment_args) = standard_payment(payment_amount) {
-        return ExecutableDeployItem::new_module_bytes(vec![], payment_args);
+        return Ok(ExecutableDeployItem::ModuleBytes {
+            module_bytes: vec![].into(),
+            args: payment_args,
+        });
     }
 
     let invalid_entry_point =
@@ -484,68 +490,62 @@ pub(super) fn parse_payment_info(
     );
 
     if let Some(payment_name) = name(payment_name) {
-        return ExecutableDeployItem::new_stored_contract_by_name(
-            payment_name,
-            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
-            payment_args,
-        );
+        return Ok(ExecutableDeployItem::StoredContractByName {
+            name: payment_name,
+            entry_point: entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
+            args: payment_args,
+        });
     }
 
     if let Some(payment_hash) = parse_contract_hash(payment_hash)? {
-        return ExecutableDeployItem::new_stored_contract_by_hash(
-            payment_hash,
-            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
-            payment_args,
-        );
+        return Ok(ExecutableDeployItem::StoredContractByHash {
+            hash: payment_hash.into(),
+            entry_point: entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
+            args: payment_args,
+        });
     }
 
     let version = version(payment_version).ok();
     if let Some(package_name) = name(payment_package_name) {
-        return ExecutableDeployItem::new_stored_versioned_contract_by_name(
-            package_name,
-            version,
-            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
-            payment_args,
-        );
+        return Ok(ExecutableDeployItem::StoredVersionedContractByName {
+            name: package_name,
+            version, // defaults to highest enabled version
+            entry_point: entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
+            args: payment_args,
+        });
     }
 
     if let Some(package_hash) = parse_contract_hash(payment_package_hash)? {
-        return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
-            package_hash,
-            version,
-            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
-            payment_args,
-        );
+        return Ok(ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: package_hash.into(),
+            version, // defaults to highest enabled version
+            entry_point: entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
+            args: payment_args,
+        });
     }
 
     let module_bytes = fs::read(payment_path).map_err(|error| Error::IoError {
         context: format!("unable to read payment file at '{}'", payment_path),
         error,
     })?;
-    ExecutableDeployItem::new_module_bytes(module_bytes, payment_args)
+    Ok(ExecutableDeployItem::ModuleBytes {
+        module_bytes: module_bytes.into(),
+        args: payment_args,
+    })
 }
 
-pub(crate) fn get_transfer_target(
-    target_account: &str,
-    target_purse: &str,
-) -> Result<TransferTarget> {
-    match (target_account, target_purse) {
-        ("", _) if !target_purse.is_empty() => {
-            let purse = purse(target_purse)?;
-            Ok(TransferTarget::OwnPurse(purse))
-        }
-        (_, "") if !target_account.is_empty() => {
-            let account = account(target_account)?;
-            Ok(TransferTarget::Account(account))
-        }
-        _ => Err(Error::InvalidArgument(
-            "target_account | target_purse",
+pub(crate) fn get_transfer_target(target_account: &str) -> Result<TransferTarget> {
+    if !target_account.is_empty() {
+        let account = account(target_account)?;
+        Ok(TransferTarget::Account(account))
+    } else {
+        Err(Error::InvalidArgument(
+            "target_account",
             format!(
-                "Invalid arguments to get_transfer_target - must provide either a target \
-                    account or purse. account={}, purse={}",
-                target_account, target_purse
+                "Invalid arguments to get_transfer_target - must provide either a target account. account={}",
+                target_account
             ),
-        )),
+        ))
     }
 }
 
@@ -553,7 +553,7 @@ pub(crate) fn output(value: &str) -> Option<&str> {
     none_if_empty(value)
 }
 
-fn parse_contract_hash(value: &str) -> Result<Option<ContractHash>> {
+fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
     if value.is_empty() {
         return Ok(None);
     }
@@ -587,10 +587,6 @@ fn account(value: &str) -> Result<PublicKey> {
     })
 }
 
-pub(crate) fn purse(value: &str) -> Result<URef> {
-    URef::from_formatted_str(value).map_err(|error| Error::FailedToParseURef("purse", error))
-}
-
 pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
     if str::is_empty(value) {
         return Ok(None);
@@ -607,7 +603,7 @@ mod tests {
 
     use casper_types::{
         account::AccountHash, bytesrepr::ToBytes, AccessRights, CLTyped, CLValue, NamedArg,
-        PublicKey, RuntimeArgs, U128, U256, U512,
+        PublicKey, RuntimeArgs, URef, U128, U256, U512,
     };
 
     use crate::{PaymentStrParams, SessionStrParams};
@@ -1088,7 +1084,7 @@ mod tests {
         /// ```
         /// #[cfg(test)]
         /// mod session_str_params {
-        ///     use super::*;            
+        ///     use super::*;
         ///
         ///     #[test]
         ///     fn path_conflicts_with_package_hash() {

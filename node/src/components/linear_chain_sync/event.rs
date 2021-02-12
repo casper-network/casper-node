@@ -1,26 +1,36 @@
-use crate::{
-    components::fetcher::FetchResult,
-    types::{Block, BlockHash, BlockHeader},
-};
+use crate::types::{ActivationPoint, Block, BlockHash};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
-    GetBlockHashResult(BlockHash, Option<FetchResult<Block>>),
+    GetBlockHashResult(BlockHash, BlockByHashResult<I>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
-    /// Deploys from the block have been found.
-    DeploysFound(Box<BlockHeader>),
-    /// Deploys from the block have not been found.
-    DeploysNotFound(Box<BlockHeader>),
+    GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHandled(Box<BlockHeader>),
+    BlockHandled(Box<Block>),
+    GotUpgradeActivationPoint(ActivationPoint),
+    InitUpgradeShutdown,
+    Shutdown(bool),
+}
+
+#[derive(Debug)]
+pub enum DeploysResult<I> {
+    Found(Box<Block>),
+    NotFound(Box<Block>, I),
+}
+
+#[derive(Debug)]
+pub enum BlockByHashResult<I> {
+    Absent(I),
+    FromStorage(Box<Block>),
+    FromPeer(Box<Block>, I),
 }
 
 #[derive(Debug)]
 pub enum BlockByHeightResult<I> {
-    Absent,
+    Absent(I),
     FromStorage(Box<Block>),
     FromPeer(Box<Block>, I),
 }
@@ -35,9 +45,8 @@ where
             Event::GetBlockHashResult(block_hash, r) => {
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }
-            Event::DeploysFound(block) => write!(f, "Deploys for block found: {}", block.hash()),
-            Event::DeploysNotFound(block_hash) => {
-                write!(f, "Deploy for block found: {}", block_hash.hash())
+            Event::GetDeploysResult(result) => {
+                write!(f, "Get deploys for block result {:?}", result)
             }
             Event::StartDownloadingDeploys => write!(f, "Start downloading deploys event."),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
@@ -53,6 +62,15 @@ where
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)
             }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
+            }
+            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiatied"),
+            Event::Shutdown(upgrade) => write!(
+                f,
+                "linear chain sync is ready for shutdown. upgrade: {}",
+                upgrade
+            ),
         }
     }
 }

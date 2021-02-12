@@ -19,9 +19,7 @@ pub(super) enum DisplayOrder {
     Input,
     Output,
     TransferAmount,
-    TransferSourcePurse,
     TransferTargetAccount,
-    TransferTargetPurse,
     TransferId,
     Timestamp,
     Ttl,
@@ -241,7 +239,7 @@ pub(super) mod gas_price {
 
     const ARG_NAME: &str = "gas-price";
     const ARG_VALUE_NAME: &str = common::ARG_INTEGER;
-    const ARG_DEFAULT: &str = "10";
+    const ARG_DEFAULT: &str = "1";
     const ARG_HELP: &str =
         "Conversion rate between the cost of Wasm opcodes and the motes sent by the payment code";
 
