@@ -18,7 +18,7 @@ use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::warn;
+use tracing::{info, warn};
 
 use casper_execution_engine::{
     core::engine_state::{executable_deploy_item::ExecutableDeployItem, DeployItem},
@@ -650,10 +650,10 @@ impl Deploy {
                 got: header.ttl(),
             });
         }
-        
+
         let payment_args_length = self.payment().args().serialized_length();
         if payment_args_length > config.payment_args_max_length as usize {
-            warn!(
+            info!(
                 payment_args_length,
                 payment_args_max_length = config.payment_args_max_length,
                 "payment args excessive"
@@ -666,7 +666,7 @@ impl Deploy {
 
         let session_args_length = self.session().args().serialized_length();
         if session_args_length > config.session_args_max_length as usize {
-            warn!(
+            info!(
                 session_args_length,
                 session_args_max_length = config.session_args_max_length,
                 "session args excessive"

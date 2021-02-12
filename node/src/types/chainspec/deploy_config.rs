@@ -151,7 +151,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let config = DeployConfig::random(&mut rng);
         let encoded = toml::to_string_pretty(&config).unwrap();
-        eprintln!("{}", encoded);
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
     }
