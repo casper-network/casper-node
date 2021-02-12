@@ -367,14 +367,18 @@ impl Storage {
 
     /// Deletes value living under the key from the state storage DB.
     #[cfg(not(feature = "fast-sync"))]
-    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<(), Error>
+    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
     where
         K: AsRef<[u8]>,
     {
         let mut txn = self.env.begin_rw_txn()?;
-        txn.del(self.state_store_db, &key, None)?;
+        let result = match txn.del(self.state_store_db, &key, None) {
+            Ok(_) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
+            Err(err) => Err(err),
+        }?;
         txn.commit()?;
-        Ok(())
+        Ok(result)
     }
 
     /// Handles a storage request.

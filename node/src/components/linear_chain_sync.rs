@@ -734,7 +734,7 @@ pub(crate) fn read_init_state(
 pub(crate) fn clean_linear_chain_state(
     storage: &Storage,
     chainspec: &Chainspec,
-) -> Result<(), storage::Error> {
+) -> Result<bool, storage::Error> {
     let key = create_state_key(&chainspec);
     storage.del_state_store(key)
 }
