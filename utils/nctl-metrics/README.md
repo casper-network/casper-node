@@ -12,6 +12,20 @@ A small setup that runs enough containers to get metrics working when using nctl
 2. Run `supervisord -c utils/nctl-metrics/supervisord.conf`.
 3. Navigate to localhost:9090 and watch metrics.
 
+## Metrics offered
+
+In addition to the usual node metrics, the following metrics are available:
+
+* `os_mem_rss_bytes`
+* `os_mem_vms_bytes`
+* `os_mem_shared_bytes`
+* `os_mem_text_bytes`
+* `os_mem_lib_bytes`
+* `os_mem_data_bytes`
+* `os_mem_dirty_bytes`
+
+Each has a `node` label indicating which node's memory usage is shown.
+
 ## Common Issues
 
 * Why am I not getting any memory metrics?
