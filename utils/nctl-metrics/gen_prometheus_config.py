@@ -15,7 +15,7 @@ nodes_dir = os.path.join(
     )
 
 # We start with the `mem_export` service.
-addrs = ["localhost:8000"]
+addrs = ["127.0.0.1:8000"]
 
 for node_dir in os.listdir(nodes_dir):
     node_path = os.path.join(nodes_dir, node_dir)
@@ -30,7 +30,7 @@ for node_dir in os.listdir(nodes_dir):
 # Slightly dirty, we're not dealing with an extra dependency to generate YAML just yet and just
 # abuse that pythons list display rendering is valid yaml.
 cfg = """scrape_configs:
-  - job_name: root_node
+  - job_name: nctl_scrape
     scrape_interval: 5s
     static_configs:
       - targets: {}

@@ -35,7 +35,7 @@ in pkgs.stdenv.mkDerivation {
   buildInputs = with pkgs;
     [ cmake pkg-config openssl.dev zlib.dev rustup ]
     ++ lib.lists.optionals ops [ kubectl python skopeo git nix ]
-    ++ lib.lists.optionals dev [ black ];
+    ++ lib.lists.optionals dev [ black podman ];
 
   # Enable SSL support in pure shells
   SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";

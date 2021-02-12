@@ -10,7 +10,7 @@ echo "Genarating config."
 ./gen_prometheus_config.py > prometheus.yml
 
 echo "Starting prometheus."
-podman run \
+exec podman run \
   --net=host \
   -p 9090:9090 \
   -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
