@@ -1,16 +1,20 @@
 # Metrics for nctl
 
-A small setup that runs enough containers to get metrics working when using nctl. Contains
-
-* a python script that will scrape memory metrics from the OS and make them available via HTTP for prometheus,
-* a generator for a prometheus configuration file based on current nctl assets (only `net-1` supported), and
-* a supervisord configuration to run the generator and prometheus conveniently.
+A small setup that runs enough containers to get metrics working when using nctl.
 
 ## How to run
 
 1. Ensure nctl has generated assets (`nctl-assets-setup`).
 2. Run `supervisord -c utils/nctl-metrics/supervisord.conf`.
-3. Navigate to localhost:9090 and watch metrics.
+3. Navigate to <http://localhost:9090> and watch metrics.
+
+## Architecture
+
+The directory contains
+
+* a python script that will scrape memory metrics from the OS and make them available via HTTP for prometheus,
+* a generator for a prometheus configuration file based on current nctl assets (only `net-1` supported), and
+* a supervisord configuration to run the generator and prometheus conveniently.
 
 ## Metrics offered
 
