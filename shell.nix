@@ -23,10 +23,11 @@ let
     with python-packages; [
       click
       kubernetes
-      volatile
-      supervisor
       prometheus_client
       psutil
+      supervisor
+      toml
+      volatile
     ]);
 in pkgs.stdenv.mkDerivation {
   name = "rustenv";
