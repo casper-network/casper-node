@@ -10,6 +10,7 @@
 //! Serialization errors are unified into a generic, type erased `std` error to allow for easy
 //! interchange of the serialization format if desired.
 
+use crate::{crypto::hash::Digest, types::BlockHash};
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
@@ -36,6 +37,25 @@ pub enum LmdbExtError {
     /// Error neither corruption nor resource exhaustion occurred, likely a programming error.
     #[error("unknown LMDB or serialization error, likely from a bug: {0}")]
     Other(Box<dyn std::error::Error + Send + Sync>),
+    /// The internal database is corrupted and can probably not be salvaged.
+    #[error(
+        "Block header not stored under its hash. \
+         Queried block hash: {queried_block_hash}, \
+         Found block header hash: {found_block_header_hash}"
+    )]
+    BlockHeaderNotStoredUnderItsHash {
+        queried_block_hash: BlockHash,
+        found_block_header_hash: BlockHash,
+    },
+    #[error(
+        "Block body not stored under the hash in its header. \
+         Queried block body hash: {queried_block_body_hash}, \
+         Found block body hash: {found_block_body_hash}"
+    )]
+    BlockBodyNotStoredUnderItsHash {
+        queried_block_body_hash: Digest,
+        found_block_body_hash: Digest,
+    },
 }
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a

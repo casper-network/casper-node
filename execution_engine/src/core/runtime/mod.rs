@@ -1710,10 +1710,13 @@ where
 
                 let era_end_timestamp_millis =
                     Self::get_named_argument(&runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
+                let evicted_validators =
+                    Self::get_named_argument(&runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
                 runtime
-                    .run_auction(era_end_timestamp_millis)
+                    .run_auction(era_end_timestamp_millis, evicted_validators)
                     .map_err(Self::reverter)?;
+
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
@@ -1745,6 +1748,19 @@ where
 
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+
+            auction::METHOD_ACTIVATE_BID => (|| {
+                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+
+                let validator_public_key: PublicKey =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+
+                runtime
+                    .activate_bid(validator_public_key)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),

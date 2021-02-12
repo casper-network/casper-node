@@ -87,7 +87,7 @@ impl From<Block> for MinimalBlockInfo {
             era_id: block.header().era_id(),
             height: block.header().height(),
             state_root_hash: *block.header().state_root_hash(),
-            creator: *block.header().proposer(),
+            creator: *block.body().proposer(),
         }
     }
 }

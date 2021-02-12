@@ -81,6 +81,7 @@ alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
 alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_stderr.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log_stdout.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
+alias nctl-view-node-peer-count='source $NCTL/sh/views/view_node_peer_count.sh'
 alias nctl-view-node-ports='source $NCTL/sh/views/view_node_ports.sh'
 alias nctl-view-node-rpc-endpoint='source $NCTL/sh/views/view_node_rpc_endpoint.sh'
 alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
@@ -127,7 +128,13 @@ alias nctl-erc20-view-allowances='source $NCTL/sh/contracts-erc20/view_allowance
 alias nctl-erc20-view-details='source $NCTL/sh/contracts-erc20/view_details.sh'
 alias nctl-erc20-view-balances='source $NCTL/sh/contracts-erc20/view_balances.sh'
 
-# Contracts #3: KV storage.
+# Contracts #4: KV storage.
 alias nctl-kv-storage-get-key='source $NCTL/sh/contracts-kv/get_key.sh'
 alias nctl-kv-storage-install='source $NCTL/sh/contracts-kv/do_install.sh'
 alias nctl-kv-storage-set-key='source $NCTL/sh/contracts-kv/set_key.sh'
+
+# Contracts #5: Counter.
+# alias nctl-counter-install='source $NCTL/sh/contracts-counter/do_install.sh'
+# alias nctl-counter-increment='source $NCTL/sh/contracts-counter/do_increment.sh'
+# alias nctl-counter-decrement='source $NCTL/sh/contracts-counter/do_decrement.sh'
+# alias nctl-counter-view='source $NCTL/sh/contracts-counter/view.sh'

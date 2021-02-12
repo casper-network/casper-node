@@ -470,9 +470,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         )
                     })
             }
-            Event::BlockAlreadyExists(block) => effect_builder
-                .handle_linear_chain_block(block.take_header())
-                .ignore(),
+            Event::BlockAlreadyExists(block) => {
+                effect_builder.handle_linear_chain_block(*block).ignore()
+            }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),

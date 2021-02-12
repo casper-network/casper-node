@@ -1,4 +1,4 @@
-use crate::types::{ActivationPoint, Block, BlockHash, BlockHeader};
+use crate::types::{ActivationPoint, Block, BlockHash};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
@@ -9,14 +9,14 @@ pub enum Event<I> {
     GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHandled(Box<BlockHeader>),
+    BlockHandled(Box<Block>),
     GotUpgradeActivationPoint(ActivationPoint),
 }
 
 #[derive(Debug)]
 pub enum DeploysResult<I> {
-    Found(Box<BlockHeader>),
-    NotFound(Box<BlockHeader>, I),
+    Found(Box<Block>),
+    NotFound(Box<Block>, I),
 }
 
 #[derive(Debug)]

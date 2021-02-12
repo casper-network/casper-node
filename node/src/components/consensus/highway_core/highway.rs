@@ -447,6 +447,13 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        if let Some(av) = &mut self.active_validator {
+            av.set_paused(paused);
+        }
+    }
+
     fn on_new_unit(
         &mut self,
         uhash: &C::Hash,
