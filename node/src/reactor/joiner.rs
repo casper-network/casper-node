@@ -468,11 +468,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec().protocol_config.version.clone(),
         )?;
 
-        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
-        effects.extend(reactor::wrap_effects(
-            Event::BlockValidator,
-            block_validator_effects,
-        ));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
 
