@@ -451,6 +451,7 @@ impl reactor::Reactor for Reactor {
                 .as_ref()
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
+            chainspec_loader.chainspec().as_ref(),
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
