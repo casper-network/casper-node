@@ -137,7 +137,7 @@ where
     Ok(auction_delay)
 }
 
-fn get_unbonding_delay<P>(provider: &mut P) -> Result<EraId>
+fn get_unbonding_delay<P>(provider: &mut P) -> Result<u64>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {

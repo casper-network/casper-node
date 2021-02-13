@@ -16,7 +16,7 @@ use casper_types::{PublicKey, SecretKey, U512};
 use crate::{
     components::{consensus::EraId, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    reactor::{initializer, joiner, validator, Runner},
+    reactor::{initializer, joiner, validator, ReactorExit, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
     types::{Chainspec, Timestamp},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
@@ -126,14 +126,13 @@ impl TestChain {
                 Arc::clone(&self.chainspec),
             )
             .await?;
-            let _ = initializer_runner.run(rng).await;
-
-            // Now we can construct the actual node.
-            let initializer = initializer_runner.into_inner();
-            if !initializer.stopped_successfully() {
+            let reactor_exit = initializer_runner.run(rng).await;
+            if reactor_exit != ReactorExit::ProcessShouldContinue {
                 bail!("failed to initialize successfully");
             }
 
+            // Now we can construct the actual node.
+            let initializer = initializer_runner.into_inner();
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;

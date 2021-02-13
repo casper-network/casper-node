@@ -85,6 +85,7 @@ reactor!(Reactor {
         LinearChainRequest<NodeId> -> !;
         NetworkRequest<NodeId, Message> -> network;
         StorageRequest -> storage;
+        StateStoreRequest -> storage;
         FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
 
         // The only contract runtime request will be the commit of genesis, which we discard.

@@ -12,10 +12,8 @@ mod protocol_config;
 use std::{fmt::Debug, path::Path};
 
 use datasize::DataSize;
-use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
-use semver::Version;
 use serde::Serialize;
 use tracing::{error, warn};
 
@@ -40,8 +38,6 @@ use crate::{
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
-/// The protocol version at genesis.
-static GENESIS_VERSION: Lazy<Version> = Lazy::new(|| Version::new(1, 0, 0));
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
@@ -89,9 +85,9 @@ impl Chainspec {
         hash::hash(&serialized_chainspec)
     }
 
-    /// Returns true if this chainspec has version <= genesis version (v1.0.0)
+    /// Returns true if this chainspec has an activation_point specifying era ID 0.
     pub(crate) fn is_genesis(&self) -> bool {
-        self.protocol_config.version <= *GENESIS_VERSION
+        self.protocol_config.activation_point.era_id.0 == 0
     }
 }
 
@@ -183,7 +179,7 @@ impl From<&Chainspec> for ExecConfig {
             chainspec.core_config.auction_delay,
             chainspec.core_config.locked_funds_period.millis(),
             chainspec.core_config.round_seigniorage_rate,
-            chainspec.core_config.unbonding_delay.into(),
+            chainspec.core_config.unbonding_delay,
             chainspec.network_config.timestamp.millis(),
         )
     }

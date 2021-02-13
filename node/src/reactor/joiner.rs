@@ -25,7 +25,6 @@ use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
 };
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -68,9 +67,9 @@ use crate::{
         event_queue_metrics::EventQueueMetrics,
         initializer,
         validator::{self, Error, ValidatorInitConfig},
-        EventQueueHandle, Finalize,
+        EventQueueHandle, Finalize, ReactorExit,
     },
-    types::{Block, BlockByHeight, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -193,7 +192,7 @@ pub enum Event {
 
     /// Request for state storage.
     #[from]
-    StateStoreRequest(StateStoreRequest),
+    StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -886,6 +885,9 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
             }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
+            }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
@@ -909,18 +911,17 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
-            Event::StateStoreRequest(req) => {
-                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
-            }
         }
     }
 
-    fn is_stopped(&mut self) -> bool {
-        self.linear_chain_sync.is_synced()
-    }
-
-    fn needs_upgrade(&mut self) -> bool {
-        self.linear_chain_sync.stopped_for_upgrade()
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.linear_chain_sync.is_synced().then(|| {
+            if self.linear_chain_sync.stopped_for_upgrade() {
+                ReactorExit::ProcessShouldExit(ExitCode::Success)
+            } else {
+                ReactorExit::ProcessShouldContinue
+            }
+        })
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {

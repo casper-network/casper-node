@@ -185,6 +185,10 @@ impl Reactor for TestReactor {
             }
         }
     }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
+    }
 }
 
 impl NetworkedReactor for TestReactor {

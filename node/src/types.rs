@@ -3,6 +3,7 @@
 mod block;
 pub mod chainspec;
 mod deploy;
+mod exit_code;
 mod item;
 pub mod json_compatibility;
 mod node_config;
@@ -26,6 +27,7 @@ pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
     Error as DeployError,
 };
+pub use exit_code::ExitCode;
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;

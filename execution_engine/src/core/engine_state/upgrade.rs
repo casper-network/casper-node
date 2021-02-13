@@ -85,9 +85,9 @@ pub struct UpgradeConfig {
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
-    new_locked_funds_period: Option<EraId>,
+    new_locked_funds_period_millis: Option<u64>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
-    new_unbonding_delay: Option<EraId>,
+    new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
 }
 
@@ -102,9 +102,9 @@ impl UpgradeConfig {
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
-        new_locked_funds_period: Option<EraId>,
+        new_locked_funds_period_millis: Option<EraId>,
         new_round_seigniorage_rate: Option<Ratio<u64>>,
-        new_unbonding_delay: Option<EraId>,
+        new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,
     ) -> Self {
         UpgradeConfig {
@@ -116,7 +116,7 @@ impl UpgradeConfig {
             activation_point,
             new_validator_slots,
             new_auction_delay,
-            new_locked_funds_period,
+            new_locked_funds_period_millis,
             new_round_seigniorage_rate,
             new_unbonding_delay,
             global_state_update,
@@ -155,15 +155,15 @@ impl UpgradeConfig {
         self.new_auction_delay
     }
 
-    pub fn new_locked_funds_period(&self) -> Option<EraId> {
-        self.new_locked_funds_period
+    pub fn new_locked_funds_period_millis(&self) -> Option<u64> {
+        self.new_locked_funds_period_millis
     }
 
     pub fn new_round_seigniorage_rate(&self) -> Option<Ratio<u64>> {
         self.new_round_seigniorage_rate
     }
 
-    pub fn new_unbonding_delay(&self) -> Option<EraId> {
+    pub fn new_unbonding_delay(&self) -> Option<u64> {
         self.new_unbonding_delay
     }
 

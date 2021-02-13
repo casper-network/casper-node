@@ -715,7 +715,7 @@ impl BlockHeader {
     }
 
     /// Returns `true` if this block is the last one in the current era.
-    pub fn switch_block(&self) -> bool {
+    pub fn is_switch_block(&self) -> bool {
         self.era_end.is_some()
     }
 

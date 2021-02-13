@@ -199,7 +199,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let height = block.height();
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
-        if block.header().switch_block() && self.should_upgrade(block.header().era_id()) {
+        if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(era = block.header().era_id().0, "shutting down for upgrade");
             return effect_builder
                 .immediately()

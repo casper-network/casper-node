@@ -59,8 +59,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle},
-    types::{Block, Deploy, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
+    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    types::{Block, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
     utils::Source,
     NodeRng,
 };
@@ -952,12 +952,10 @@ impl reactor::Reactor for Reactor {
             .record_event_queue_counts(&event_queue_handle)
     }
 
-    fn is_stopped(&mut self) -> bool {
-        self.consensus.stop_for_upgrade()
-    }
-
-    fn needs_upgrade(&mut self) -> bool {
-        self.consensus.stop_for_upgrade()
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.consensus
+            .stop_for_upgrade()
+            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
 }
 

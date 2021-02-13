@@ -819,7 +819,7 @@ fn insert_to_block_header_indices(
         }
     }
 
-    if block_header.switch_block() {
+    if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
             Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);

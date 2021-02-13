@@ -321,7 +321,7 @@ where
             tracking_copy.borrow_mut().write(auction_delay_key, value);
         }
 
-        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period() {
+        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
             let auction_contract = tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, new_protocol_data.auction())?;

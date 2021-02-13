@@ -328,6 +328,10 @@ impl reactor::Reactor for Reactor {
             ),
         }
     }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
+    }
 }
 
 impl NetworkedReactor for Reactor {
