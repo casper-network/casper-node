@@ -436,7 +436,10 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let init_hash = config.node.trusted_hash;
+        let init_hash = config
+            .node
+            .trusted_hash
+            .or_else(|| chainspec_loader.highest_block_hash());
 
         match init_hash {
             None => {

@@ -52,7 +52,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, BlockHash, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -168,6 +168,7 @@ pub struct ChainspecLoader {
     /// The state root hash resulting from calling contract runtime commit_genesis/upgrade.
     state_root_hash: Option<Digest>,
     next_upgrade: Option<NextUpgrade>,
+    highest_block_hash: Option<BlockHash>,
 }
 
 impl ChainspecLoader {
@@ -259,6 +260,7 @@ impl ChainspecLoader {
             reactor_exit,
             state_root_hash: None,
             next_upgrade,
+            highest_block_hash: None,
         };
 
         (chainspec_loader, effects)
@@ -288,6 +290,10 @@ impl ChainspecLoader {
         self.next_upgrade.clone()
     }
 
+    pub(crate) fn highest_block_hash(&self) -> Option<BlockHash> {
+        self.highest_block_hash
+    }
+
     fn handle_initialize<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -306,7 +312,10 @@ impl ChainspecLoader {
             .ignore();
 
         let highest_block = match maybe_block {
-            Some(block) => block,
+            Some(block) => {
+                self.highest_block_hash = Some(*block.hash());
+                block
+            }
             None => {
                 // This is an initial run since we have no blocks.
                 if self.chainspec.is_genesis() {
