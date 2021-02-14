@@ -34,8 +34,8 @@ build_casper_node() {
 }
 
 make_bin_readme() {
-    mkdir -p "$BIN_DIR"
     echo "Generating bin README.md"
+    mkdir -p "$BIN_DIR"
     local readme="$BIN_DIR/README.md"
     {
       echo "Build for Ubuntu 18.04."
@@ -79,5 +79,4 @@ build_casper_node
 make_bin_readme
 package_bin_tar_gz
 package_config_tar_gz
-
 
