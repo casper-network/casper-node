@@ -190,7 +190,7 @@ steps:
 - name: put-upgrade_package-s3
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/
+    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -388,7 +388,7 @@ steps:
     - md5
     files:
     - "./target/debian/*.deb"
-    - "./target/upgrade_build/*.gz
+    - "./target/upgrade_build/*.gz"
     prerelease:
     - true
   when:
