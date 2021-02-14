@@ -422,15 +422,16 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
+        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
             effect_builder,
-            chainspec_loader.chainspec().protocol_config.version.clone(),
+            protocol_version.clone(),
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            chainspec_loader.chainspec().protocol_config.version.clone(),
+            protocol_version.clone(),
         )?;
 
         let deploy_acceptor = DeployAcceptor::new(
@@ -455,8 +456,12 @@ impl reactor::Reactor for Reactor {
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
-            .with_parent_map(latest_block);
+        let block_executor = BlockExecutor::new(
+            genesis_state_root_hash,
+            protocol_version.clone(),
+            registry.clone(),
+        )
+        .with_parent_map(latest_block);
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
         let linear_chain = LinearChain::new(registry)?;
 

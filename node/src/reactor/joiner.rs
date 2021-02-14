@@ -457,16 +457,15 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
+        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            chainspec_loader.chainspec().protocol_config.version.clone(),
+            protocol_version.clone(),
         )?;
 
-        let event_stream_server = EventStreamServer::new(
-            config.event_stream_server.clone(),
-            chainspec_loader.chainspec().protocol_config.version.clone(),
-        )?;
+        let event_stream_server =
+            EventStreamServer::new(config.event_stream_server.clone(), protocol_version.clone())?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
@@ -480,7 +479,11 @@ impl reactor::Reactor for Reactor {
         );
 
         let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
+        let block_executor = BlockExecutor::new(
+            genesis_state_root_hash,
+            protocol_version.clone(),
+            registry.clone(),
+        );
 
         let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
