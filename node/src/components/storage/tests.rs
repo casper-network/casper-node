@@ -1,9 +1,8 @@
 //! Unit tests for the storage component.
 
-use std::{borrow::Cow, collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap};
 
 use rand::{prelude::SliceRandom, Rng};
-use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
@@ -16,7 +15,7 @@ use crate::{
         Multiple,
     },
     testing::{ComponentHarness, TestRng},
-    types::{Block, BlockHash, Chainspec, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
 };
 
@@ -77,19 +76,6 @@ fn get_block(
             responder,
         }
         .into()
-    });
-    assert!(harness.is_idle());
-    response
-}
-
-/// Loads the chainspec from a storage component.
-fn get_chainspec(
-    harness: &mut ComponentHarness<()>,
-    storage: &mut Storage,
-    version: Version,
-) -> Option<Arc<Chainspec>> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetChainspec { version, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -163,22 +149,6 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
     });
     assert!(harness.is_idle());
     response
-}
-
-/// Stores the chainspec in a storage component.
-fn put_chainspec(
-    harness: &mut ComponentHarness<()>,
-    storage: &mut Storage,
-    chainspec: Arc<Chainspec>,
-) {
-    harness.send_request(storage, move |responder| {
-        StorageRequest::PutChainspec {
-            chainspec,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
 }
 
 /// Stores a deploy in a storage component.
@@ -656,26 +626,6 @@ fn store_identical_execution_results() {
 
     // We should be fine storing the exact same result twice.
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
-}
-
-#[test]
-fn store_and_load_chainspec() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
-
-    let version = Version::new(1, 2, 3);
-
-    // Initially expect a `None` value for the chainspec.
-    let response = get_chainspec(&mut harness, &mut storage, version.clone());
-    assert!(response.is_none());
-
-    // Store a random chainspec.
-    let chainspec = Arc::new(Chainspec::random(&mut harness.rng));
-    put_chainspec(&mut harness, &mut storage, Arc::clone(&chainspec));
-
-    // Compare returned chainspec.
-    let response = get_chainspec(&mut harness, &mut storage, version);
-    assert_eq!(response, Some(chainspec));
 }
 
 /// Example state used in storage.

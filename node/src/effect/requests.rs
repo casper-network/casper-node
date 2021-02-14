@@ -12,7 +12,6 @@ use std::{
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
-use semver::Version;
 use serde::Serialize;
 
 use casper_execution_engine::{
@@ -316,20 +315,6 @@ pub enum StorageRequest {
         /// The responder to call the results with.
         responder: Responder<Option<(Block, BlockSignatures)>>,
     },
-    /// Store given chainspec.
-    PutChainspec {
-        /// Chainspec.
-        chainspec: Arc<Chainspec>,
-        /// Responder to call with the result.
-        responder: Responder<()>,
-    },
-    /// Retrieve chainspec with given version.
-    GetChainspec {
-        /// Version.
-        version: Version,
-        /// Responder to call with the result.
-        responder: Responder<Option<Arc<Chainspec>>>,
-    },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
         /// The hash for the request
@@ -399,16 +384,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetHighestBlockWithMetadata { .. } => {
                 write!(formatter, "get highest block with metadata")
-            }
-            StorageRequest::PutChainspec { chainspec, .. } => {
-                write!(
-                    formatter,
-                    "put chainspec {}",
-                    chainspec.protocol_config.version
-                )
-            }
-            StorageRequest::GetChainspec { version, .. } => {
-                write!(formatter, "get chainspec {}", version)
             }
             StorageRequest::GetBlockSignatures { block_hash, .. } => {
                 write!(

@@ -73,7 +73,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tracing::{error, warn};
@@ -1209,33 +1208,6 @@ impl<REv> EffectBuilder<REv> {
                 upgrade_config,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec(self, chainspec: Arc<Chainspec>)
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::PutChainspec {
-                chainspec,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Arc<Chainspec>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetChainspec { version, responder },
             QueueKind::Regular,
         )
         .await

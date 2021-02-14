@@ -186,12 +186,6 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
-                responder,
-                ..
-            })) => responder
-                .respond(Some(Arc::new(Chainspec::from_resources("local"))))
-                .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
