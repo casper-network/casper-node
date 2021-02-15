@@ -79,7 +79,9 @@ pub struct JsonEraValidators {
 #[serde(deny_unknown_fields)]
 pub struct JsonDelegator {
     public_key: PublicKey,
-    delegator: Delegator,
+    staked_amount: U512,
+    bonding_purse: URef,
+    delegatee: PublicKey,
 }
 
 /// An entry in a founding validator map representing a bid.
@@ -100,11 +102,13 @@ pub struct JsonBid {
 
 impl From<Bid> for JsonBid {
     fn from(bid: Bid) -> Self {
-        let mut json_delegators: Vec<JsonDelegator> = Vec::new();
+        let mut json_delegators: Vec<JsonDelegator> = Vec::with_capacity(bid.delegators().len());
         for (public_key, delegator) in bid.delegators().iter() {
             json_delegators.push(JsonDelegator {
                 public_key: *public_key,
-                delegator: *delegator,
+                staked_amount: *delegator.staked_amount(),
+                bonding_purse: *delegator.bonding_purse(),
+                delegatee: *delegator.delegatee(),
             });
         }
         JsonBid {

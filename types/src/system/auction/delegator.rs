@@ -3,33 +3,33 @@
 
 use alloc::vec::Vec;
 
-#[cfg(feature = "std")]
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    auction::bid::VestingSchedule,
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::Error,
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Delegator {
     staked_amount: U512,
     bonding_purse: URef,
     delegatee: PublicKey,
+    vesting_schedule: Option<VestingSchedule>,
 }
 
 impl Delegator {
     /// Creates a new [`Delegator`]
     pub fn new(staked_amount: U512, bonding_purse: URef, delegatee: PublicKey) -> Self {
+        let vesting_schedule = None;
         Delegator {
             staked_amount,
             bonding_purse,
             delegatee,
+            vesting_schedule,
         }
     }
 
@@ -41,6 +41,11 @@ impl Delegator {
     /// Returns the bonding purse
     pub fn bonding_purse(&self) -> &URef {
         &self.bonding_purse
+    }
+
+    /// Returns delegatee
+    pub fn delegatee(&self) -> &PublicKey {
+        &self.delegatee
     }
 
     /// Decreases the stake of the provided bid
@@ -80,6 +85,7 @@ impl ToBytes for Delegator {
         buffer.extend(self.staked_amount.to_bytes()?);
         buffer.extend(self.bonding_purse.to_bytes()?);
         buffer.extend(self.delegatee.to_bytes()?);
+        buffer.extend(self.vesting_schedule.to_bytes()?);
         Ok(buffer)
     }
 
@@ -87,6 +93,7 @@ impl ToBytes for Delegator {
         self.staked_amount.serialized_length()
             + self.bonding_purse.serialized_length()
             + self.delegatee.serialized_length()
+            + self.vesting_schedule.serialized_length()
     }
 }
 
@@ -95,11 +102,13 @@ impl FromBytes for Delegator {
         let (staked_amount, bytes) = U512::from_bytes(bytes)?;
         let (bonding_purse, bytes) = URef::from_bytes(bytes)?;
         let (delegatee, bytes) = PublicKey::from_bytes(bytes)?;
+        let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Delegator {
                 staked_amount,
                 bonding_purse,
                 delegatee,
+                vesting_schedule,
             },
             bytes,
         ))
