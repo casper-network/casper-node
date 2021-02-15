@@ -1,8 +1,6 @@
 use datasize::DataSize;
 
-use crate::types::TimeDiff;
-
-use super::Timestamp;
+use super::{round_len, TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
 #[derive(Debug, DataSize, Clone)]
@@ -95,6 +93,11 @@ impl Params {
     /// round length.
     pub(crate) fn max_round_exp(&self) -> u8 {
         self.max_round_exp
+    }
+
+    /// Returns the maximum round length, corresponding to the maximum round exponent.
+    pub(crate) fn max_round_length(&self) -> TimeDiff {
+        round_len(self.max_round_exp)
     }
 
     /// Returns the initial round exponent.

@@ -57,7 +57,7 @@ use crate::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -189,6 +189,10 @@ pub enum Event {
     ProtoBlockValidatorRequest(
         #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
     ),
+
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -323,6 +327,7 @@ impl Display for Event {
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
+            Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
         }
     }
 }
@@ -485,8 +490,13 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync =
-            LinearChainSync::new(registry, init_hash, validator_weights.clone())?;
+        let linear_chain_sync = LinearChainSync::new::<Error>(
+            registry,
+            chainspec_loader.chainspec(),
+            &storage,
+            init_hash,
+            validator_weights.clone(),
+        )?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -886,6 +896,9 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
+            }
         }
     }
 
@@ -908,7 +921,13 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> ValidatorInitConfig {
+    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+        // Clean the state of the linear_chain_sync before shutting it down.
+        #[cfg(not(feature = "fast-sync"))]
+        linear_chain_sync::clean_linear_chain_state(
+            &self.storage,
+            self.chainspec_loader.chainspec(),
+        )?;
         let config = ValidatorInitConfig {
             chainspec_loader: self.chainspec_loader,
             config: self.config,
@@ -924,7 +943,7 @@ impl Reactor {
         self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
-        config
+        Ok(config)
     }
 }
 

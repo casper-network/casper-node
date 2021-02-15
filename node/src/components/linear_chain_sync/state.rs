@@ -1,11 +1,12 @@
 use std::{collections::BTreeMap, fmt::Display};
 
 use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::{Block, BlockHash};
 use casper_types::{PublicKey, U512};
 
-#[derive(DataSize, Debug)]
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub enum State {
     /// No syncing of the linear chain configured.
     None,
@@ -45,17 +46,22 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             State::None => write!(f, "None"),
-            State::SyncingTrustedHash { trusted_hash, .. } => {
-                write!(f, "SyncingTrustedHash(trusted_hash: {:?})", trusted_hash)
-            }
+            State::Done => write!(f, "Done"),
+            State::SyncingTrustedHash { trusted_hash, highest_block_seen, .. } => {
+                write!(f, "SyncingTrustedHash(trusted_hash={}, highest_block_seen={})", trusted_hash, highest_block_seen)
+            },
             State::SyncingDescendants {
-                highest_block_seen, ..
+                trusted_hash,
+                latest_block,
+                ..
             } => write!(
                 f,
-                "SyncingDescendants(highest_block_seen: {})",
-                highest_block_seen
+                "SyncingDescendants(trusted_hash={}, latest_block_hash={}, latest_block_height={}, latest_block_era={})",
+                trusted_hash,
+                latest_block.header().hash(),
+                latest_block.header().height(),
+                latest_block.header().era_id(),
             ),
-            State::Done => write!(f, "Done"),
         }
     }
 }
@@ -102,5 +108,15 @@ impl State {
                 }
             }
         };
+    }
+
+    /// Returns whether in `Done` state.
+    pub(crate) fn is_done(&self) -> bool {
+        matches!(self, State::Done)
+    }
+
+    /// Returns whether in `None` state.
+    pub(crate) fn is_none(&self) -> bool {
+        matches!(self, State::None)
     }
 }

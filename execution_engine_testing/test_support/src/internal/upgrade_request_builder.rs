@@ -1,10 +1,15 @@
+use std::collections::BTreeMap;
+
 use num_rational::Ratio;
 
 use casper_execution_engine::{
     core::engine_state::{upgrade::ActivationPoint, UpgradeConfig},
-    shared::{newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        newtypes::Blake2bHash, stored_value::StoredValue, system_config::SystemConfig,
+        wasm_config::WasmConfig,
+    },
 };
-use casper_types::{auction::EraId, ProtocolVersion};
+use casper_types::{auction::EraId, Key, ProtocolVersion};
 
 #[derive(Default)]
 pub struct UpgradeRequestBuilder {
@@ -19,6 +24,7 @@ pub struct UpgradeRequestBuilder {
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<EraId>,
+    global_state_update: BTreeMap<Key, StoredValue>,
 }
 
 impl UpgradeRequestBuilder {
@@ -75,6 +81,14 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_global_state_update(
+        mut self,
+        global_state_update: BTreeMap<Key, StoredValue>,
+    ) -> Self {
+        self.global_state_update = global_state_update;
+        self
+    }
+
     pub fn with_activation_point(mut self, height: u64) -> Self {
         self.activation_point = Some(height);
         self
@@ -93,6 +107,7 @@ impl UpgradeRequestBuilder {
             self.new_locked_funds_period,
             self.new_round_seigniorage_rate,
             self.new_unbonding_delay,
+            self.global_state_update,
         )
     }
 }

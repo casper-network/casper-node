@@ -95,8 +95,7 @@ function do_await_deploy_inclusion() {
 }
 
 function do_read_lfb_hash() {
-    local NODE_ID=${1}
-    LFB_HASH=$(render_last_finalized_block_hash "$NODE_ID" | cut -f2 -d= | cut -f2 -d ' ')
+    LFB_HASH=$(get_chain_latest_block_hash)
     echo "$LFB_HASH"
 }
 

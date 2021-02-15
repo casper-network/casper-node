@@ -15,10 +15,14 @@ use casper_types::{PublicKey, U512};
 
 use self::event::{BlockByHashResult, DeploysResult};
 
-use super::{fetcher::FetchResult, Component};
+use super::{
+    fetcher::FetchResult,
+    storage::{self, Storage},
+    Component,
+};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    types::{Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -38,11 +42,16 @@ pub(crate) struct LinearChainFastSync<I> {
 
 #[allow(dead_code)]
 impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
-    pub fn new(
+    pub fn new<Err>(
         registry: &Registry,
+        _chainspec: &Chainspec,
+        _storage: &Storage,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Result<Self, prometheus::Error> {
+    ) -> Result<Self, Err>
+    where
+        Err: From<prometheus::Error> + From<storage::Error>,
+    {
         let state = init_hash.map_or(State::None, |init_hash| {
             State::sync_trusted_hash(init_hash, genesis_validator_weights)
         });
