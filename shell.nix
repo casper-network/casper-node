@@ -24,13 +24,22 @@ let
     with python-packages;
     [ click ] ++ lists.optionals ops [ kubernetes volatile ]
     ++ lists.optionals dev [ prometheus_client psutil supervisor toml ]);
+  run-nctl = pkgs.writeScriptBin "nctl" ''
+    #!${pkgs.bash}/bin/bash
+    COMMAND_LINE="nctl-$@"
+
+    shopt -s expand_aliases
+    source ''${CASPER_ROOT}/utils/nctl/activate
+
+    eval ''${COMMAND_LINE}
+  '';
 in pkgs.stdenv.mkDerivation {
   name = "rustenv";
   nativeBuildInputs = with pkgs; [ pkg-config perl which protobuf ];
   buildInputs = with pkgs;
     [ cmake pkg-config openssl.dev zlib.dev rustup ]
     ++ lists.optionals ops [ kubectl python skopeo git nix ]
-    ++ lists.optionals dev [ black podman coreutils ];
+    ++ lists.optionals dev [ black podman coreutils run-nctl ];
 
   # Enable SSL support in pure shells
   SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
@@ -71,5 +80,7 @@ in pkgs.stdenv.mkDerivation {
       echo
       echo "Consider moving or symlinking this directory."
     fi
+
+    export CASPER_ROOT=$(pwd)
   '';
 }
