@@ -74,6 +74,8 @@ where
         pending_vertex_timeout: "1min".parse().unwrap(),
         max_execution_delay: 3,
     };
+    // Timestamp of the genesis era start and test start.
+    let start_timestamp: Timestamp = 0.into();
     let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
@@ -81,8 +83,9 @@ where
         &(&chainspec).into(),
         &config,
         None,
-        0.into(),
+        start_timestamp,
         0,
+        start_timestamp,
     );
     // We expect only the vertex purge timer outcome. If there are more, the tests might need to
     // handle them.
