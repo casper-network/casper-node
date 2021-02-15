@@ -1537,6 +1537,10 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     );
 
     // Process unbonding requests to verify delegators recevied their stakes
+    let validator_1 = builder
+        .get_account(*VALIDATOR_1_ADDR)
+        .expect("should have validator 1 account");
+    let validator_1_balance_before = builder.get_purse_balance(validator_1.main_purse());
 
     let delegator_1 = builder
         .get_account(*DELEGATOR_1_ADDR)
@@ -1553,9 +1557,14 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let validator_1_balance_after = builder.get_purse_balance(validator_1.main_purse());
     let delegator_1_balance_after = builder.get_purse_balance(delegator_1.main_purse());
     let delegator_2_balance_after = builder.get_purse_balance(delegator_2.main_purse());
 
+    assert_eq!(
+        validator_1_balance_before + U512::from(VALIDATOR_1_STAKE),
+        validator_1_balance_after
+    );
     assert_eq!(
         delegator_1_balance_before + U512::from(DELEGATOR_1_STAKE),
         delegator_1_balance_after
@@ -1722,6 +1731,10 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     );
 
     // Process unbonding requests to verify delegators recevied their stakes
+    let validator_1 = builder
+        .get_account(*VALIDATOR_1_ADDR)
+        .expect("should have validator 1 account");
+    let validator_1_balance_before = builder.get_purse_balance(validator_1.main_purse());
 
     let delegator_1 = builder
         .get_account(*DELEGATOR_1_ADDR)
@@ -1738,9 +1751,14 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let validator_1_balance_after = builder.get_purse_balance(validator_1.main_purse());
     let delegator_1_balance_after = builder.get_purse_balance(delegator_1.main_purse());
     let delegator_2_balance_after = builder.get_purse_balance(delegator_2.main_purse());
 
+    assert_eq!(
+        validator_1_balance_before + U512::from(VALIDATOR_1_STAKE),
+        validator_1_balance_after
+    );
     assert_eq!(
         delegator_1_balance_before + U512::from(DELEGATOR_1_STAKE),
         delegator_1_balance_after
