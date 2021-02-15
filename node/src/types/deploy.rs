@@ -171,7 +171,7 @@ pub enum DeployValidationFailure {
     InvalidTransferAmount,
 
     /// Insufficient transfer amount.
-    #[error("invalid transfer amount; minimum: {minimum} actual:{attempted}")]
+    #[error("insufficient transfer amount; minimum: {minimum} attempted: {attempted}")]
     InsufficientTransferAmount {
         /// The minimum transfer amount.
         minimum: U512,
