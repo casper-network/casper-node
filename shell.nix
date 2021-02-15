@@ -62,5 +62,14 @@ in pkgs.stdenv.mkDerivation {
     fi;
 
     export PS1="\n\[\033[1;32m\][casper-sh:\w]\$\[\033[0m\] ";
+
+    if [ $(pwd | wc -c) -gt 50 ]; then
+      echo ""
+      echo "WARNING"
+      echo "The current path $(pwd) is very long. This will cause issues with UNIX sockets"
+      echo "(see https://stackoverflow.com/questions/34829600/why-is-the-maximal-path-length-allowed-for-unix-sockets-on-linux-108)."
+      echo
+      echo "Consider moving or symlinking this directory."
+    fi
   '';
 }
