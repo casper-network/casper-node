@@ -543,12 +543,12 @@ where
                 payload,
                 responder,
             } => {
-                if dest == self.node_id {
+                if *dest == self.node_id {
                     panic!("can't send message to self");
                 }
 
                 if let Ok(guard) = self.nodes.read() {
-                    self.send(&guard, dest, payload);
+                    self.send(&guard, *dest, *payload);
                 } else {
                     error!("network lock has been poisoned")
                 };
@@ -558,7 +558,7 @@ where
             NetworkRequest::Broadcast { payload, responder } => {
                 if let Ok(guard) = self.nodes.read() {
                     for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
-                        self.send(&guard, dest.clone(), payload.clone());
+                        self.send(&guard, dest.clone(), *payload.clone());
                     }
                 } else {
                     error!("network lock has been poisoned")
@@ -582,7 +582,7 @@ where
                         .collect();
                     // Not terribly efficient, but will always get us the maximum amount of nodes.
                     for dest in chosen.iter() {
-                        self.send(&guard, dest.clone(), payload.clone());
+                        self.send(&guard, dest.clone(), *payload.clone());
                     }
                     responder.respond(chosen).ignore()
                 } else {
