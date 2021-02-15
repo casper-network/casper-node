@@ -80,8 +80,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         protocol_config: &ProtocolConfig,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
-        start_time: Timestamp,
+        era_start_time: Timestamp,
         seed: u64,
+        now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<I, C>>, ProtocolOutcomes<I, C>) {
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
@@ -138,15 +139,27 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway_config.maximum_round_exponent,
             init_round_exp,
             protocol_config.minimum_era_height,
-            start_time,
-            start_time + protocol_config.era_duration,
+            era_start_time,
+            era_start_time + protocol_config.era_duration,
             endorsement_evidence_limit,
         );
 
-        let outcomes = vec![ProtocolOutcome::ScheduleTimer(
-            Timestamp::now() + config.pending_vertex_timeout,
+        let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
+            now + config.pending_vertex_timeout,
             TIMER_ID_PURGE_VERTICES,
         )];
+
+        // If there's a chance that we start after the era is finished…
+        if now > (params.start_timestamp() + params.min_era_length()) {
+            // … request the latest state from peers on startup, in case we joined the era
+            // late and we wouldn't get any consensus units otherwise.
+            let latest_state_request =
+                HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
+
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+                (&latest_state_request).serialize(),
+            ));
+        }
 
         let min_round_exp = params.min_round_exp();
         let max_round_exp = params.max_round_exp();

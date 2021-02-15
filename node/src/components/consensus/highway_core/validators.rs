@@ -100,6 +100,11 @@ impl<VID: Eq + Hash> Validators<VID> {
             .filter(|(_, v)| v.banned)
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
     }
+
+    /// Returns the size of validator list.
+    pub(crate) fn len(&self) -> usize {
+        self.validators.len()
+    }
 }
 
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
