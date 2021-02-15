@@ -83,7 +83,8 @@ use crate::{
     },
 };
 
-pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000u64));
+pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
