@@ -33,6 +33,7 @@ block_max_transfer_count = 1000
 block_gas_limit = 13
 payment_args_max_length = 1024
 session_args_max_length = 1024
+native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 max_memory = 17

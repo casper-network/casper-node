@@ -161,6 +161,23 @@ pub enum DeployValidationFailure {
         /// The received length of payment arguments.
         got: usize,
     },
+
+    /// Missing transfer amount.
+    #[error("missing transfer amount")]
+    MissingTransferAmount,
+
+    /// Invalid transfer amount.
+    #[error("invalid transfer amount")]
+    InvalidTransferAmount,
+
+    /// Insufficient transfer amount.
+    #[error("invalid transfer amount; minimum: {minimum} actual:{attempted}")]
+    InsufficientTransferAmount {
+        /// The minimum transfer amount.
+        minimum: U512,
+        /// The attempted transfer amount.
+        attempted: U512,
+    },
 }
 
 /// Errors other than validation failures relating to `Deploy`s.
@@ -613,7 +630,7 @@ impl Deploy {
     ) -> Result<(), DeployValidationFailure> {
         let header = self.header();
         if header.chain_name() != chain_name {
-            warn!(
+            info!(
                 deploy_hash = %self.id(),
                 deploy_header = %header,
                 chain_name = %header.chain_name(),
@@ -626,7 +643,7 @@ impl Deploy {
         }
 
         if header.dependencies().len() > config.max_dependencies as usize {
-            warn!(
+            info!(
                 deploy_hash = %self.id(),
                 deploy_header = %header,
                 max_dependencies = %config.max_dependencies,
@@ -639,7 +656,7 @@ impl Deploy {
         }
 
         if header.ttl() > config.max_ttl {
-            warn!(
+            info!(
                 deploy_hash = %self.id(),
                 deploy_header = %header,
                 max_ttl = %config.max_ttl,
@@ -675,6 +692,24 @@ impl Deploy {
                 max_length: config.session_args_max_length as usize,
                 got: session_args_length,
             });
+        }
+
+        if self.session().is_transfer() {
+            let item = self.session().clone();
+            let attempted = item
+                .args()
+                .get(ARG_AMOUNT)
+                .ok_or(DeployValidationFailure::MissingTransferAmount)?
+                .clone()
+                .into_t::<U512>()
+                .map_err(|_| DeployValidationFailure::InvalidTransferAmount)?;
+            let minimum = U512::from(config.native_transfer_minimum_motes);
+            if attempted < minimum {
+                return Err(DeployValidationFailure::InsufficientTransferAmount {
+                    minimum,
+                    attempted,
+                });
+            }
         }
 
         self.is_valid()
@@ -869,10 +904,12 @@ impl FromBytes for Deploy {
 mod tests {
     use std::{iter, time::Duration};
 
+    use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
     use casper_types::bytesrepr::Bytes;
 
     use super::*;
     use crate::crypto::AsymmetricKeyExt;
+    use casper_types::CLValue;
 
     #[test]
     fn json_roundtrip() {
@@ -913,6 +950,13 @@ mod tests {
         let dependencies = iter::repeat_with(|| DeployHash::random(rng))
             .take(dependency_count)
             .collect();
+        let transfer_args = {
+            let mut transfer_args = RuntimeArgs::new();
+            let value =
+                CLValue::from_t(U512::from(MAX_PAYMENT_AMOUNT)).expect("should create CLValue");
+            transfer_args.insert_cl_value(ARG_AMOUNT, value);
+            transfer_args
+        };
         Deploy::new(
             Timestamp::now(),
             ttl,
@@ -924,7 +968,7 @@ mod tests {
                 args: RuntimeArgs::new(),
             },
             ExecutableDeployItem::Transfer {
-                args: RuntimeArgs::new(),
+                args: transfer_args,
             },
             &secret_key,
             rng,
