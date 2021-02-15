@@ -20,15 +20,9 @@ let
     doCheck = false;
   };
   python = pkgs.python3.withPackages (python-packages:
-    with python-packages; [
-      click
-      kubernetes
-      prometheus_client
-      psutil
-      supervisor
-      toml
-      volatile
-    ]);
+    with python-packages;
+    [ click ] ++ lib.lists.optionals ops [ kubernetes volatile ]
+    ++ lib.lists.optionals dev [ prometheus_client psutil supervisor toml ]);
 in pkgs.stdenv.mkDerivation {
   name = "rustenv";
   nativeBuildInputs = with pkgs; [ pkg-config perl which protobuf ];
