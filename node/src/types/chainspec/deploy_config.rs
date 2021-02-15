@@ -51,7 +51,8 @@ impl DeployConfig {
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
         let payment_args_max_length = rng.gen();
         let session_args_max_length = rng.gen();
-        let native_transfer_minimum_motes = rng.gen_range(0, 1_000_000_000_000_000);
+        let native_transfer_minimum_motes =
+            rng.gen_range(MAX_PAYMENT_AMOUNT, 1_000_000_000_000_000);
 
         DeployConfig {
             max_payment_cost,
