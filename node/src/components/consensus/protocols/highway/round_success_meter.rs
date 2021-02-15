@@ -139,6 +139,19 @@ impl<C: Context> RoundSuccessMeter<C> {
         new_exp
     }
 
+    /// Returns an instance of `Self` for the new era: resetting the counters where appropriate.
+    pub fn next_era(&self, era_start_timestamp: Timestamp) -> Self {
+        let current_round_id = round_id(era_start_timestamp, self.current_round_exp).millis();
+        Self {
+            rounds: Default::default(),
+            current_round_id,
+            proposals: Default::default(),
+            min_round_exp: self.min_round_exp,
+            max_round_exp: self.max_round_exp,
+            current_round_exp: self.current_round_exp,
+        }
+    }
+
     fn clean_old_rounds(&mut self) {
         while self.rounds.len() > NUM_ROUNDS_TO_CONSIDER {
             self.rounds.pop_back();
