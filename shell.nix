@@ -8,6 +8,7 @@
 # `dev`: enables tooling useful for development, but not strictly necessary to run/build
 
 { pkgs ? (import <nixpkgs>) { }, ops ? true, dev ? true }:
+with pkgs.lib;
 let
   # `volatile` is not packaged in nix.
   volatile = pkgs.python38Packages.buildPythonPackage rec {
@@ -21,15 +22,15 @@ let
   };
   python = pkgs.python3.withPackages (python-packages:
     with python-packages;
-    [ click ] ++ lib.lists.optionals ops [ kubernetes volatile ]
-    ++ lib.lists.optionals dev [ prometheus_client psutil supervisor toml ]);
+    [ click ] ++ lists.optionals ops [ kubernetes volatile ]
+    ++ lists.optionals dev [ prometheus_client psutil supervisor toml ]);
 in pkgs.stdenv.mkDerivation {
   name = "rustenv";
   nativeBuildInputs = with pkgs; [ pkg-config perl which protobuf ];
   buildInputs = with pkgs;
     [ cmake pkg-config openssl.dev zlib.dev rustup ]
-    ++ lib.lists.optionals ops [ kubectl python skopeo git nix ]
-    ++ lib.lists.optionals dev [ black podman ];
+    ++ lists.optionals ops [ kubectl python skopeo git nix ]
+    ++ lists.optionals dev [ black podman ];
 
   # Enable SSL support in pure shells
   SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
@@ -40,27 +41,26 @@ in pkgs.stdenv.mkDerivation {
 
   # The shell hook provides a predefined environment with kubectl and nctl setup, if `ops` and `dev`
   # respectively are enabled.
-  shellHook = with pkgs.lib;
-    let
-      devS = boolToString dev;
-      opsS = boolToString ops;
-    in ''
-      NCTL_ACTIVATE="utils/nctl/activate"
+  shellHook = let
+    devS = boolToString dev;
+    opsS = boolToString ops;
+  in ''
+    NCTL_ACTIVATE="utils/nctl/activate"
 
-      if [ ${opsS} = "true" ] && [ -e nix/k3s.yaml ]; then
-        echo "Found k3s.yaml in nix folder, setting KUBECONFIG envvar.";
-        export KUBECONFIG=$(pwd)/k3s.yaml
+    if [ ${opsS} = "true" ] && [ -e nix/k3s.yaml ]; then
+      echo "Found k3s.yaml in nix folder, setting KUBECONFIG envvar.";
+      export KUBECONFIG=$(pwd)/k3s.yaml
+    fi;
+
+    if [ ${devS} = "true" ]; then
+      if [ -f "''${NCTL_ACTIVATE}" ]; then
+        echo "Sourcing ''${NCTL_ACTIVATE}."
+        source ''${NCTL_ACTIVATE}
+      else
+        echo "Warning: ''${NCTL_ACTIVATE} not found."
       fi;
+    fi;
 
-      if [ ${devS} = "true" ]; then
-        if [ -f "''${NCTL_ACTIVATE}" ]; then
-          echo "Sourcing ''${NCTL_ACTIVATE}."
-          source ''${NCTL_ACTIVATE}
-        else
-          echo "Warning: ''${NCTL_ACTIVATE} not found."
-        fi;
-      fi;
-
-      export PS1="\n\[\033[1;32m\][casper-sh:\w]\$\[\033[0m\] ";
-    '';
+    export PS1="\n\[\033[1;32m\][casper-sh:\w]\$\[\033[0m\] ";
+  '';
 }
