@@ -32,15 +32,22 @@ class UnixStreamTransport(client.Transport, object):
 
 def main():
     net_name = "net-1"
-    sock_addr = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "nctl",
-        "assets",
-        net_name,
-        "daemon",
-        "socket",
-        "supervisord.sock",
+
+    # Workaround letting us use symlink paths to shorten socket names. Otherwise symlinks will be
+    # resolved by Python's cwd functions (which call libc internally) to resolve `.`.
+    cwd = os.popen("pwd -L").read().strip()
+
+    sock_addr = os.path.abspath(
+        os.path.join(
+            cwd,
+            "..",
+            "nctl",
+            "assets",
+            net_name,
+            "daemon",
+            "socket",
+            "supervisord.sock",
+        )
     )
     delay = 1
 
