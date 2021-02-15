@@ -45,23 +45,25 @@ in pkgs.stdenv.mkDerivation {
   PROTOC = "${pkgs.protobuf}/bin/protoc";
 
   # Convenient setup when working with k3s clusters.
-  shellHook = ''
-    NCTL_ACTIVATE="utils/nctl/activate"
+  shellHook = with pkgs.lib;
+    let
+      devS = boolToString dev;
+      opsS = boolToString ops;
+    in ''
+      NCTL_ACTIVATE="utils/nctl/activate"
 
-    if [ -e nix/k3s.yaml ]; then
-      echo "Found k3s.yaml in nix folder, setting KUBECONFIG envvar.";
-      export KUBECONFIG=$(pwd)/k3s.yaml
-    fi;
-
-    if [ -z "''${NO_NCTL}" ]; then
-      if [ -f "''${NCTL_ACTIVATE}" ]; then
-        echo "Sourcing ''${NCTL_ACTIVATE}."
-        source ''${NCTL_ACTIVATE}
-      else
-        echo "Warning: ''${NCTL_ACTIVATE} not found and NO_NCTL not set."
+      if [ ${opsS} = "true" ] && [ -e nix/k3s.yaml ]; then
+        echo "Found k3s.yaml in nix folder, setting KUBECONFIG envvar.";
+        export KUBECONFIG=$(pwd)/k3s.yaml
       fi;
-    else
-      echo "NO_NCTL is set, not activating nctl"
-    fi;
-  '';
+
+      if [ ${devS} = "true" ] && [ -z "''${NO_NCTL}" ]; then
+        if [ -f "''${NCTL_ACTIVATE}" ]; then
+          echo "Sourcing ''${NCTL_ACTIVATE}."
+          source ''${NCTL_ACTIVATE}
+        else
+          echo "Warning: ''${NCTL_ACTIVATE} not found and NO_NCTL not set."
+        fi;
+      fi;
+    '';
 }
