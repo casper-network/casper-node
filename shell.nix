@@ -44,7 +44,8 @@ in pkgs.stdenv.mkDerivation {
   # `protoc` is required but not found by the `prost` crate, unless this envvar is set
   PROTOC = "${pkgs.protobuf}/bin/protoc";
 
-  # Convenient setup when working with k3s clusters.
+  # The shell hook provides a predefined environment with kubectl and nctl setup, if `ops` and `dev`
+  # respectively are enabled.
   shellHook = with pkgs.lib;
     let
       devS = boolToString dev;
@@ -57,12 +58,12 @@ in pkgs.stdenv.mkDerivation {
         export KUBECONFIG=$(pwd)/k3s.yaml
       fi;
 
-      if [ ${devS} = "true" ] && [ -z "''${NO_NCTL}" ]; then
+      if [ ${devS} = "true" ]; then
         if [ -f "''${NCTL_ACTIVATE}" ]; then
           echo "Sourcing ''${NCTL_ACTIVATE}."
           source ''${NCTL_ACTIVATE}
         else
-          echo "Warning: ''${NCTL_ACTIVATE} not found and NO_NCTL not set."
+          echo "Warning: ''${NCTL_ACTIVATE} not found."
         fi;
       fi;
 
