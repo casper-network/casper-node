@@ -4,15 +4,10 @@ import os
 
 import toml
 
-net_name = 'net-1'
+net_name = "net-1"
 nodes_dir = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "nctl",
-        "assets",
-        net_name,
-        "nodes"
-    )
+    os.path.dirname(__file__), "..", "nctl", "assets", net_name, "nodes"
+)
 
 # We start with the `mem_export` service.
 addrs = ["127.0.0.1:8000"]
@@ -22,7 +17,7 @@ for node_dir in os.listdir(nodes_dir):
     if not os.path.isdir(node_path) or not node_dir.startswith("node-"):
         continue
 
-    config = toml.load(open(os.path.join(node_path, 'config', 'node-config.toml')))
+    config = toml.load(open(os.path.join(node_path, "config", "node-config.toml")))
     addr = config["rest_server"]["address"].replace("0.0.0.0", "127.0.0.1")
     addrs.append(addr)
 
@@ -34,6 +29,8 @@ cfg = """scrape_configs:
     scrape_interval: 5s
     static_configs:
       - targets: {}
-""".format(addrs)
+""".format(
+    addrs
+)
 
 print(cfg)
