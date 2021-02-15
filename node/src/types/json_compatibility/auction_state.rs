@@ -30,7 +30,7 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
-    let delegator = Delegator::new(
+    let delegator = Delegator::unlocked(
         U512::from(10),
         bonding_purse,
         SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into(),

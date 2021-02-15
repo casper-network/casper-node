@@ -23,8 +23,24 @@ pub struct Delegator {
 
 impl Delegator {
     /// Creates a new [`Delegator`]
-    pub fn new(staked_amount: U512, bonding_purse: URef, delegatee: PublicKey) -> Self {
+    pub fn unlocked(staked_amount: U512, bonding_purse: URef, delegatee: PublicKey) -> Self {
         let vesting_schedule = None;
+        Delegator {
+            staked_amount,
+            bonding_purse,
+            delegatee,
+            vesting_schedule,
+        }
+    }
+
+    /// Creates new instance of a [`Delegator`] with locked funds.
+    pub fn locked(
+        staked_amount: U512,
+        bonding_purse: URef,
+        delegatee: PublicKey,
+        release_timestamp_millis: u64,
+    ) -> Self {
+        let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         Delegator {
             staked_amount,
             bonding_purse,
@@ -112,5 +128,28 @@ impl FromBytes for Delegator {
             },
             bytes,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{auction::Delegator, bytesrepr, AccessRights, SecretKey, URef, U512};
+
+    #[test]
+    fn serialization_roundtrip() {
+        let staked_amount = U512::one();
+        let bonding_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+        let delegatee = SecretKey::ed25519([43; 32]).into();
+        let unlocked_delegator = Delegator::unlocked(staked_amount, bonding_purse, delegatee);
+        bytesrepr::test_serialization_roundtrip(&unlocked_delegator);
+
+        let release_timestamp_millis = 42;
+        let locked_delegator = Delegator::locked(
+            staked_amount,
+            bonding_purse,
+            delegatee,
+            release_timestamp_millis,
+        );
+        bytesrepr::test_serialization_roundtrip(&locked_delegator);
     }
 }

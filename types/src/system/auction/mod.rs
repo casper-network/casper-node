@@ -232,7 +232,7 @@ pub trait Auction:
                 let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
-                let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
+                let delegator = Delegator::unlocked(amount, bonding_purse, validator_public_key);
                 delegators.insert(delegator_public_key, delegator);
                 amount
             }
