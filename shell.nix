@@ -46,9 +46,22 @@ in pkgs.stdenv.mkDerivation {
 
   # Convenient setup when working with k3s clusters.
   shellHook = ''
+    NCTL_ACTIVATE="utils/nctl/activate"
+
     if [ -e nix/k3s.yaml ]; then
       echo "Found k3s.yaml in nix folder, setting KUBECONFIG envvar.";
       export KUBECONFIG=$(pwd)/k3s.yaml
+    fi;
+
+    if [ -z "''${NO_NCTL}" ]; then
+      if [ -f "''${NCTL_ACTIVATE}" ]; then
+        echo "Sourcing ''${NCTL_ACTIVATE}."
+        source ''${NCTL_ACTIVATE}
+      else
+        echo "Warning: ''${NCTL_ACTIVATE} not found and NO_NCTL not set."
+      fi;
+    else
+      echo "NO_NCTL is set, not activating nctl"
     fi;
   '';
 }
