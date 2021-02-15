@@ -14,8 +14,8 @@ mod temp {
     // TODO - set to reasonable limit, or remove.
     pub(super) const MAX_ONE_WAY_MESSAGE_SIZE: u32 = u32::max_value();
     pub(super) const REQUEST_TIMEOUT: &str = "10seconds";
-    pub(super) const CONNECTION_KEEP_ALIVE: &str = "5minutes";
-    pub(super) const GOSSIP_HEARTBEAT_INTERVAL: &str = "8seconds";
+    pub(super) const CONNECTION_KEEP_ALIVE: &str = "10seconds";
+    pub(super) const GOSSIP_HEARTBEAT_INTERVAL: &str = "1second";
     // TODO - set to reasonable limit, or remove.
     pub(super) const MAX_GOSSIP_MESSAGE_SIZE: u32 = u32::max_value();
     pub(super) const GOSSIP_DUPLICATE_CACHE_TIMEOUT: &str = "1minute";

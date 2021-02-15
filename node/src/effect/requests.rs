@@ -7,6 +7,7 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    mem,
     sync::Arc,
 };
 
@@ -14,6 +15,7 @@ use datasize::DataSize;
 use hex_fmt::HexFmt;
 use semver::Version;
 use serde::Serialize;
+use static_assertions::const_assert;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -35,7 +37,7 @@ use casper_types::{
     ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
 
-use super::{Multiple, Responder};
+use super::Responder;
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
@@ -48,7 +50,7 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId,
         ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
@@ -58,6 +60,11 @@ use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
 };
+
+const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
+const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
+const_assert!(_STORAGE_REQUEST_SIZE < 89);
+const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -77,6 +84,9 @@ impl Display for MetricsRequest {
     }
 }
 
+const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<NodeId, String>>();
+const_assert!(_NETWORK_EVENT_SIZE < 89);
+
 /// A networking request.
 #[derive(Debug, Serialize)]
 #[must_use]
@@ -84,9 +94,9 @@ pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         /// Message destination.
-        dest: I,
+        dest: Box<I>,
         /// Message payload.
-        payload: P,
+        payload: Box<P>,
         /// Responder to be called when the message is queued.
         #[serde(skip_serializing)]
         responder: Responder<()>,
@@ -96,7 +106,7 @@ pub enum NetworkRequest<I, P> {
     ///       implementation is likely to implement broadcast support.
     Broadcast {
         /// Message payload.
-        payload: P,
+        payload: Box<P>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
         responder: Responder<()>,
@@ -104,7 +114,7 @@ pub enum NetworkRequest<I, P> {
     /// Gossip a message to a random subset of peers.
     Gossip {
         /// Payload to gossip.
-        payload: P,
+        payload: Box<P>,
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
@@ -131,11 +141,11 @@ impl<I, P> NetworkRequest<I, P> {
                 responder,
             } => NetworkRequest::SendMessage {
                 dest,
-                payload: wrap_payload(payload),
+                payload: Box::new(wrap_payload(*payload)),
                 responder,
             },
             NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
-                payload: wrap_payload(payload),
+                payload: Box::new(wrap_payload(*payload)),
                 responder,
             },
             NetworkRequest::Gossip {
@@ -144,7 +154,7 @@ impl<I, P> NetworkRequest<I, P> {
                 exclude,
                 responder,
             } => NetworkRequest::Gossip {
-                payload: wrap_payload(payload),
+                payload: Box::new(wrap_payload(*payload)),
                 count,
                 exclude,
                 responder,
@@ -197,6 +207,7 @@ where
 #[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
+#[repr(u8)]
 pub enum StorageRequest {
     /// Store given block.
     PutBlock {
@@ -265,14 +276,14 @@ pub enum StorageRequest {
     /// Retrieve deploys with given hashes.
     GetDeploys {
         /// Hashes of deploys to be retrieved.
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
     },
     /// Retrieve deploy headers with given hashes.
     GetDeployHeaders {
         /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
@@ -285,7 +296,7 @@ pub enum StorageRequest {
     /// is not an error and will silently be ignored.
     PutExecutionResults {
         /// Hash of block.
-        block_hash: BlockHash,
+        block_hash: Box<BlockHash>,
         /// Mapping of deploys to execution results of the block.
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
@@ -427,6 +438,7 @@ impl Display for StorageRequest {
 
 /// State store request.
 #[derive(DataSize, Debug, Serialize)]
+#[repr(u8)]
 pub enum StateStoreRequest {
     /// Stores a piece of state to storage.
     Save {
@@ -971,7 +983,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
+    HandleLinearBlock(Box<Block>, Responder<Option<FinalitySignature>>),
     /// Check whether validator identifying with the public key is bonded.
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }

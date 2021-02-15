@@ -40,12 +40,12 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{ActivationPoint, BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
 pub use config::Config;
-pub(crate) use consensus_protocol::{BlockContext, EraEnd};
+pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
@@ -110,7 +110,7 @@ pub enum Event<I> {
     /// booking block hash and the seed from the key block.
     CreateNewEra {
         /// The header of the switch block
-        block_header: Box<BlockHeader>,
+        block: Box<Block>,
         /// Ok(block_hash) if the booking block was found, Err(height) if not
         booking_block_hash: Result<BlockHash, u64>,
     },
@@ -216,11 +216,11 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                block_header,
+                block,
             } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, switch block header: {:?}",
-                booking_block_hash, block_header
+                "New era should be created; booking block hash: {:?}, switch block: {:?}",
+                booking_block_hash, block
             ),
             Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
@@ -294,9 +294,9 @@ where
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
             Event::ConsensusRequest(requests::ConsensusRequest::HandleLinearBlock(
-                block_header,
+                block,
                 responder,
-            )) => handling_es.handle_linear_chain_block(*block_header, responder),
+            )) => handling_es.handle_linear_chain_block(*block, responder),
             Event::ResolveValidity {
                 era_id,
                 sender,
@@ -310,18 +310,18 @@ where
                 delay,
             } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
-                block_header,
+                block,
                 booking_block_hash,
             } => {
                 let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
                         "could not find the booking block at height {} for era {}",
                         height,
-                        block_header.era_id().successor()
+                        block.header().era_id().successor()
                     );
                     panic!("couldn't get the booking block hash");
                 });
-                handling_es.handle_create_new_era(*block_header, booking_block_hash)
+                handling_es.handle_create_new_era(*block, booking_block_hash)
             }
             Event::InitializeEras {
                 switch_blocks,

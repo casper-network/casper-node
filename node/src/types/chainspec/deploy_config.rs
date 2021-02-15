@@ -29,6 +29,8 @@ pub struct DeployConfig {
     pub(crate) block_max_deploy_count: u32,
     pub(crate) block_max_transfer_count: u32,
     pub(crate) block_gas_limit: u64,
+    pub(crate) payment_args_max_length: u32,
+    pub(crate) session_args_max_length: u32,
 }
 
 #[cfg(test)]
@@ -44,6 +46,8 @@ impl DeployConfig {
         let block_max_deploy_count = rng.gen();
         let block_max_transfer_count = rng.gen();
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
+        let payment_args_max_length = rng.gen();
+        let session_args_max_length = rng.gen();
 
         DeployConfig {
             max_payment_cost,
@@ -53,6 +57,8 @@ impl DeployConfig {
             block_max_deploy_count,
             block_max_transfer_count,
             block_gas_limit,
+            payment_args_max_length,
+            session_args_max_length,
         }
     }
 }
@@ -68,6 +74,8 @@ impl Default for DeployConfig {
             block_max_deploy_count: 10,
             block_max_transfer_count: 1000,
             block_gas_limit: 10_000_000_000_000,
+            payment_args_max_length: 1024,
+            session_args_max_length: 1024,
         }
     }
 }
@@ -82,6 +90,8 @@ impl ToBytes for DeployConfig {
         buffer.extend(self.block_max_deploy_count.to_bytes()?);
         buffer.extend(self.block_max_transfer_count.to_bytes()?);
         buffer.extend(self.block_gas_limit.to_bytes()?);
+        buffer.extend(self.payment_args_max_length.to_bytes()?);
+        buffer.extend(self.session_args_max_length.to_bytes()?);
         Ok(buffer)
     }
 
@@ -93,6 +103,8 @@ impl ToBytes for DeployConfig {
             + self.block_max_deploy_count.serialized_length()
             + self.block_max_transfer_count.serialized_length()
             + self.block_gas_limit.serialized_length()
+            + self.payment_args_max_length.serialized_length()
+            + self.session_args_max_length.serialized_length()
     }
 }
 
@@ -106,6 +118,8 @@ impl FromBytes for DeployConfig {
         let (block_max_deploy_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_transfer_count, remainder) = u32::from_bytes(remainder)?;
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
+        let (payment_args_max_length, remainder) = u32::from_bytes(remainder)?;
+        let (session_args_max_length, remainder) = u32::from_bytes(remainder)?;
         let config = DeployConfig {
             max_payment_cost,
             max_ttl,
@@ -114,6 +128,8 @@ impl FromBytes for DeployConfig {
             block_max_deploy_count,
             block_max_transfer_count,
             block_gas_limit,
+            payment_args_max_length,
+            session_args_max_length,
         };
         Ok((config, remainder))
     }

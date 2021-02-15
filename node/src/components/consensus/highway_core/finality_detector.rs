@@ -11,7 +11,7 @@ use crate::{
         consensus_protocol::{FinalizedBlock, TerminalBlockData},
         highway_core::{
             highway::Highway,
-            state::{Observation, State, Weight},
+            state::{Observation, State, Unit, Weight},
             validators::ValidatorIndex,
         },
         traits::Context,
@@ -65,18 +65,9 @@ impl<C: Context> FinalityDetector<C> {
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let unit = state.unit(bhash);
-            let terminal_block_data = if state.is_terminal_block(bhash) {
-                let rewards = rewards::compute_rewards(state, bhash);
-                let rewards_iter = rewards.enumerate();
-                let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
-                let inactive_validators = unit.panorama.iter_none().map(to_id).collect();
-                Some(TerminalBlockData {
-                    rewards,
-                    inactive_validators,
-                })
-            } else {
-                None
-            };
+            let terminal_block_data = state
+                .is_terminal_block(bhash)
+                .then(|| Self::create_terminal_block_data(bhash, unit, highway));
             let finalized_block = FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
@@ -170,6 +161,38 @@ impl<C: Context> FinalityDetector<C> {
     /// Returns the configured fault tolerance threshold of this detector.
     pub(crate) fn fault_tolerance_threshold(&self) -> Weight {
         self.ftt
+    }
+
+    /// Creates the information for the terminal block: which validators were inactive, and how
+    /// rewards should be distributed.
+    fn create_terminal_block_data(
+        bhash: &C::Hash,
+        unit: &Unit<C>,
+        highway: &Highway<C>,
+    ) -> TerminalBlockData<C> {
+        let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
+        let state = highway.state();
+
+        // Compute the rewards, and replace each validator index with the validator ID.
+        let rewards = rewards::compute_rewards(state, bhash);
+        let rewards_iter = rewards.enumerate();
+        let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
+
+        // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
+        // if at least one maximum-length round passed between the first and last block.
+        let first_bhash = state.find_ancestor(bhash, 0).unwrap();
+        let sufficient_time_for_activity =
+            unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();
+        let inactive_validators = if sufficient_time_for_activity {
+            unit.panorama.iter_none().map(to_id).collect()
+        } else {
+            Vec::new()
+        };
+
+        TerminalBlockData {
+            rewards,
+            inactive_validators,
+        }
     }
 }
 

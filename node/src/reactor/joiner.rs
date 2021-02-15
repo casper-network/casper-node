@@ -41,7 +41,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_SMALL_NET_ENV_VAR},
+        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
@@ -57,7 +57,7 @@ use crate::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -69,7 +69,7 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHeader, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -133,7 +133,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<BlockHeader, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -174,7 +174,7 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<BlockHeader, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
 
     /// Block executor request.
     #[from]
@@ -189,6 +189,10 @@ pub enum Event {
     ProtoBlockValidatorRequest(
         #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
     ),
+
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -234,7 +238,7 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             Event::Network(network::Event::from(request))
         } else {
             Event::SmallNetwork(small_network::Event::from(request))
@@ -323,6 +327,7 @@ impl Display for Event {
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
+            Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
         }
     }
 }
@@ -340,7 +345,7 @@ pub struct Reactor {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) linear_chain_fetcher: Fetcher<Block>,
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<BlockHeader, NodeId>,
+    pub(super) block_validator: BlockValidator<Block, NodeId>,
     pub(super) deploy_fetcher: Fetcher<Deploy>,
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
@@ -402,13 +407,13 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             false,
         )?;
-        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             registry,
             small_network_identity,
-            genesis_config_hash,
+            network_name,
             false,
         )?;
 
@@ -469,7 +474,7 @@ impl reactor::Reactor for Reactor {
 
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
 
-        let linear_chain = linear_chain::LinearChain::new();
+        let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
@@ -479,8 +484,13 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync =
-            LinearChainSync::new(registry, init_hash, validator_weights.clone())?;
+        let linear_chain_sync = LinearChainSync::new::<Error>(
+            registry,
+            chainspec_loader.chainspec(),
+            &storage,
+            init_hash,
+            validator_weights.clone(),
+        )?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -759,14 +769,16 @@ impl reactor::Reactor for Reactor {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block_header) => reactor::wrap_effects(
-                    Event::LinearChainSync,
-                    self.linear_chain_sync.handle_event(
-                        effect_builder,
-                        rng,
-                        linear_chain_sync::Event::BlockHandled(block_header),
-                    ),
-                ),
+                ConsensusAnnouncement::Handled(block) => {
+                    let mut effects = Effects::new();
+                    let reactor_event =
+                        Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    let reactor_event =
+                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    effects
+                }
                 ConsensusAnnouncement::Finalized(_) => {
                     // A block was finalized.
                     Effects::new()
@@ -859,7 +871,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
             }
             Event::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
                 } else {
                     Event::SmallNetwork(small_network::Event::from(req))
@@ -874,17 +886,25 @@ impl reactor::Reactor for Reactor {
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
-                    next_upgrade.activation_point(),
-                ));
+                let reactor_event =
+                    Event::LinearChainSync(linear_chain_sync::Event::GotUpgradeActivationPoint(
+                        next_upgrade.activation_point(),
+                    ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
+            }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
             }
         }
     }
 
     fn is_stopped(&mut self) -> bool {
         self.linear_chain_sync.is_synced() && self.consensus.is_initialized()
+    }
+
+    fn needs_upgrade(&mut self) -> bool {
+        self.linear_chain_sync.stopped_for_upgrade()
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
@@ -898,7 +918,13 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> ValidatorInitConfig {
+    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+        // Clean the state of the linear_chain_sync before shutting it down.
+        #[cfg(not(feature = "fast-sync"))]
+        linear_chain_sync::clean_linear_chain_state(
+            &self.storage,
+            self.chainspec_loader.chainspec(),
+        )?;
         let config = ValidatorInitConfig {
             chainspec_loader: self.chainspec_loader,
             config: self.config,
@@ -913,7 +939,7 @@ impl Reactor {
         self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
-        config
+        Ok(config)
     }
 }
 
@@ -921,7 +947,7 @@ impl Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
             self.small_network.node_id()
         } else {
             self.network.node_id()

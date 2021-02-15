@@ -11,6 +11,10 @@ use core::{
 };
 
 use datasize::DataSize;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{
     de::{Error as SerdeError, SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -195,6 +199,19 @@ impl DataSize for Bytes {
 
     fn estimate_heap_size(&self) -> usize {
         self.0.capacity() * mem::size_of::<u8>()
+    }
+}
+
+const RANDOM_BYTES_MAX_LENGTH: usize = 100;
+
+impl Distribution<Bytes> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Bytes {
+        let len = rng.gen_range(0, RANDOM_BYTES_MAX_LENGTH);
+        let mut result = Vec::with_capacity(len);
+        for _ in 0..len {
+            result.push(rng.gen());
+        }
+        result.into()
     }
 }
 

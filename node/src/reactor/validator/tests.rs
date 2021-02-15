@@ -125,7 +125,7 @@ impl TestChain {
                 self.chainspec.clone(),
             )
             .await?;
-            initializer_runner.run(rng).await;
+            let _ = initializer_runner.run(rng).await;
 
             // Now we can construct the actual node.
             let initializer = initializer_runner.into_inner();
@@ -136,9 +136,9 @@ impl TestChain {
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
-            joiner_runner.run(rng).await;
+            let _ = joiner_runner.run(rng).await;
 
-            let config = joiner_runner.into_inner().into_validator_config().await;
+            let config = joiner_runner.into_inner().into_validator_config().await?;
 
             network
                 .add_node_with_config(config, rng)
@@ -207,6 +207,7 @@ async fn run_validator_network() {
         .await;
 }
 
+// TODO: fix this test
 #[tokio::test]
 async fn run_equivocator_network() {
     testing::init_logging();

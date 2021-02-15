@@ -144,7 +144,7 @@ impl Cli {
                 setup_signal_hooks();
 
                 let validator_config = Self::init(&config, config_ext)?;
-                info!(version = %env!("CARGO_PKG_VERSION"), "node starting up");
+                info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -170,7 +170,10 @@ impl Cli {
                 // .await?;
                 // initializer2_runner.run(&mut rng).await;
 
-                initializer_runner.run(&mut rng).await;
+                let initializer_exit = initializer_runner.run(&mut rng).await;
+                if initializer_exit.is_err() {
+                    return Result::Ok(());
+                }
 
                 info!("finished initialization");
 
@@ -189,15 +192,19 @@ impl Cli {
                     &registry,
                 )
                 .await?;
-                joiner_runner.run(&mut rng).await;
+                let joiner_exit = joiner_runner.run(&mut rng).await;
+                if joiner_exit.is_err() {
+                    return Result::Ok(());
+                }
 
                 info!("finished joining");
 
-                let config = joiner_runner.into_inner().into_validator_config().await;
+                let config = joiner_runner.into_inner().into_validator_config().await?;
 
                 let mut validator_runner =
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
-                validator_runner.run(&mut rng).await;
+                // We're ignoring validator runner exit status as we would exit the node app anyway.
+                let _validator_exit = validator_runner.run(&mut rng).await;
             }
             Cli::MigrateConfig {
                 old_config,

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
 use thiserror::Error;
@@ -88,6 +88,7 @@ pub struct UpgradeConfig {
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<EraId>,
+    global_state_update: BTreeMap<Key, StoredValue>,
 }
 
 impl UpgradeConfig {
@@ -104,6 +105,7 @@ impl UpgradeConfig {
         new_locked_funds_period: Option<EraId>,
         new_round_seigniorage_rate: Option<Ratio<u64>>,
         new_unbonding_delay: Option<EraId>,
+        global_state_update: BTreeMap<Key, StoredValue>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -117,6 +119,7 @@ impl UpgradeConfig {
             new_locked_funds_period,
             new_round_seigniorage_rate,
             new_unbonding_delay,
+            global_state_update,
         }
     }
 
@@ -162,6 +165,10 @@ impl UpgradeConfig {
 
     pub fn new_unbonding_delay(&self) -> Option<EraId> {
         self.new_unbonding_delay
+    }
+
+    pub fn global_state_update(&self) -> &BTreeMap<Key, StoredValue> {
+        &self.global_state_update
     }
 
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Blake2bHash) {

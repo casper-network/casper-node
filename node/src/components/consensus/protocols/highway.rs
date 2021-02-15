@@ -80,8 +80,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         protocol_config: &ProtocolConfig,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
-        start_time: Timestamp,
+        era_start_time: Timestamp,
         seed: u64,
+        now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<I, C>>, ProtocolOutcomes<I, C>) {
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
@@ -138,15 +139,27 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway_config.maximum_round_exponent,
             init_round_exp,
             protocol_config.minimum_era_height,
-            start_time,
-            start_time + protocol_config.era_duration,
+            era_start_time,
+            era_start_time + protocol_config.era_duration,
             endorsement_evidence_limit,
         );
 
-        let outcomes = vec![ProtocolOutcome::ScheduleTimer(
-            Timestamp::now() + config.pending_vertex_timeout,
+        let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
+            now + config.pending_vertex_timeout,
             TIMER_ID_PURGE_VERTICES,
         )];
+
+        // If there's a chance that we start after the era is finished…
+        if now > (params.start_timestamp() + params.min_era_length()) {
+            // … request the latest state from peers on startup, in case we joined the era
+            // late and we wouldn't get any consensus units otherwise.
+            let latest_state_request =
+                HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
+
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+                (&latest_state_request).serialize(),
+            ));
+        }
 
         let min_round_exp = params.min_round_exp();
         let max_round_exp = params.max_round_exp();
@@ -421,11 +434,8 @@ where
                         .collect();
                     }
                 };
-                let is_faulty = match pvv.inner().signed_wire_unit() {
-                    Some(signed_wire_unit) => self
-                        .highway
-                        .state()
-                        .is_faulty(signed_wire_unit.wire_unit().creator),
+                let is_faulty = match pvv.inner().creator() {
+                    Some(creator) => self.highway.state().is_faulty(creator),
                     None => false,
                 };
 
@@ -591,7 +601,7 @@ where
         rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C> {
         if valid {
-            let mut results = self
+            let mut outcomes = self
                 .pending_values
                 .remove(&value.hash())
                 .into_iter()
@@ -601,9 +611,9 @@ where
                     self.add_valid_vertex(vv, rng, now)
                 })
                 .collect_vec();
-            results.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
-            results.extend(self.detect_finality());
-            results
+            outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
+            outcomes.extend(self.detect_finality());
+            outcomes
         } else {
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
@@ -672,6 +682,11 @@ where
             )
             .into_iter()
             .collect()
+    }
+
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    fn set_paused(&mut self, paused: bool) {
+        self.highway.set_paused(paused);
     }
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {

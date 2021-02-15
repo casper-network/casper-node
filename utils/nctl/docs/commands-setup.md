@@ -10,18 +10,20 @@ The NCTL library can be used to compile the node's binary set, i.e. node, client
 
 ### nctl-compile
 
-Compiles casper node, client + client contracts using `make` + `cargo`.  
+Compiles casper node, node launcher, client + client contracts using `make` + `cargo`.  
 
 
 ### nctl-compile-node
 
 Compiles casper node using `make` + `cargo`.  
 
+### nctl-compile-node-launcher
+
+Compiles casper node lanucher using `cargo`.  
 
 ### nctl-compile-client
 
 Compiles casper client + client contracts using `make` + `cargo`.  
-
 
 ## Managing network assets
 

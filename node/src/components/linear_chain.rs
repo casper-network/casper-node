@@ -8,6 +8,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
+use prometheus::{IntGauge, Registry};
 use tracing::{debug, error, info, warn};
 
 use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
@@ -23,7 +24,9 @@ use crate::{
         EffectBuilder, EffectExt, EffectOptionExt, EffectResultExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
+    types::{
+        Block, BlockByHeight, BlockHash, BlockSignatures, DeployHash, FinalitySignature, Timestamp,
+    },
     NodeRng,
 };
 
@@ -200,17 +203,23 @@ pub(crate) struct LinearChain<I> {
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
     signature_cache: SignatureCache,
+
+    #[data_size(skip)]
+    metrics: LinearChainMetrics,
+
     _marker: PhantomData<I>,
 }
 
 impl<I> LinearChain<I> {
-    pub fn new() -> Self {
-        LinearChain {
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let metrics = LinearChainMetrics::new(registry)?;
+        Ok(LinearChain {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),
             signature_cache: SignatureCache::new(),
+            metrics,
             _marker: PhantomData,
-        }
+        })
     }
 
     // TODO: Remove once we can return all linear chain blocks from persistent storage.
@@ -414,22 +423,25 @@ where
             } => {
                 self.latest_block = Some(*block.clone());
 
-                let block_header = block.take_header();
-                let block_hash = block_header.hash();
-                let era_id = block_header.era_id();
-                let height = block_header.height();
+                let completion_duration = Timestamp::now().millis() - block.header().timestamp().millis();
+                self.metrics.block_completion_duration.set(completion_duration as i64);
+
+
+                let block_hash = block.header().hash();
+                let era_id = block.header().era_id();
+                let height = block.header().height();
                 info!(%block_hash, %era_id, %height, "linear chain block stored");
                 let mut effects = effect_builder
                     .put_execution_results_to_storage(block_hash, execution_results)
                     .ignore();
                 effects.extend(
                     effect_builder
-                        .handle_linear_chain_block(block_header.clone())
+                        .handle_linear_chain_block(*block.clone())
                         .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
                 );
                 effects.extend(
                     effect_builder
-                        .announce_block_added(block_hash, block_header)
+                        .announce_block_added(block_hash, block.take_header())
                         .ignore(),
                 );
                 effects
@@ -592,5 +604,35 @@ where
                 Effects::new()
             }
         }
+    }
+}
+
+#[derive(Debug)]
+struct LinearChainMetrics {
+    block_completion_duration: IntGauge,
+    /// Prometheus registry used to publish metrics.
+    registry: Registry,
+}
+
+impl LinearChainMetrics {
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let block_completion_duration = IntGauge::new(
+            "block_completion_duration",
+            "duration of time from consensus through execution for a block",
+        )?;
+        registry.register(Box::new(block_completion_duration.clone()))?;
+        Ok(Self {
+            block_completion_duration,
+            registry: registry.clone(),
+        })
+    }
+}
+impl Drop for LinearChainMetrics {
+    fn drop(&mut self) {
+        self.registry
+            .unregister(Box::new(self.block_completion_duration.clone()))
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect unregister of block_completion_duration to fail"),
+            );
     }
 }

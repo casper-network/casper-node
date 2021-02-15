@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use casper_engine_test_support::internal::{
     InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
@@ -16,6 +18,7 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
+        stored_value::StoredValue,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
@@ -24,7 +27,7 @@ use casper_types::{
         EraId, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     mint::ROUND_SEIGNIORAGE_RATE_KEY,
-    ProtocolVersion, U512,
+    CLValue, ProtocolVersion, U512,
 };
 use num_rational::Ratio;
 
@@ -563,5 +566,69 @@ fn should_upgrade_only_unbonding_delay() {
     assert_eq!(
         new_unbonding_delay, after_unbonding_delay,
         "Should have upgraded locked funds period"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_apply_global_state_upgrade() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    // We'll try writing directly to this key.
+    let unbonding_delay_key = builder
+        .get_contract(builder.get_auction_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[UNBONDING_DELAY_KEY];
+
+    let before_unbonding_delay: EraId = builder
+        .query(None, unbonding_delay_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    let new_unbonding_delay: EraId = DEFAULT_UNBONDING_DELAY + 5;
+
+    let mut update_map = BTreeMap::new();
+    update_map.insert(
+        unbonding_delay_key,
+        StoredValue::from(CLValue::from_t(new_unbonding_delay).expect("should create a CLValue")),
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(update_map)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    let after_unbonding_delay: EraId = builder
+        .query(None, unbonding_delay_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    assert_ne!(before_unbonding_delay, new_unbonding_delay);
+
+    assert_eq!(
+        new_unbonding_delay, after_unbonding_delay,
+        "Should have modified locked funds period"
     );
 }

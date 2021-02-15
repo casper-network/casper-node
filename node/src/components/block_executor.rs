@@ -219,7 +219,7 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                let era_end = match state.finalized_block.era_end() {
+                let era_end = match state.finalized_block.era_report() {
                     Some(era_end) => era_end,
                     // Not at a switch block, so we don't need to have next_era_validators when
                     // constructing the next block
@@ -470,9 +470,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         )
                     })
             }
-            Event::BlockAlreadyExists(block) => effect_builder
-                .handle_linear_chain_block(block.take_header())
-                .ignore(),
+            Event::BlockAlreadyExists(block) => {
+                effect_builder.handle_linear_chain_block(*block).ignore()
+            }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),
