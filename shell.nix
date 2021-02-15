@@ -65,5 +65,7 @@ in pkgs.stdenv.mkDerivation {
           echo "Warning: ''${NCTL_ACTIVATE} not found and NO_NCTL not set."
         fi;
       fi;
+
+      export PS1="\n\[\033[1;32m\][casper-sh:\w]\$\[\033[0m\] ";
     '';
 }
