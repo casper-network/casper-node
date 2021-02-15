@@ -197,4 +197,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
 
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
+
+    /// Returns the protocol outcomes for all the required timers.
+    fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>>;
 }

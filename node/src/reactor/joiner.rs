@@ -884,7 +884,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn is_stopped(&mut self) -> bool {
-        self.linear_chain_sync.is_synced()
+        self.linear_chain_sync.is_synced() && self.consensus.is_initialized()
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {

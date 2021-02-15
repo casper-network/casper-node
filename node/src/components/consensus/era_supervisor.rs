@@ -110,6 +110,8 @@ pub struct EraSupervisor<I> {
     next_upgrade_activation_point: Option<ActivationPoint>,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
+    /// Set to true when InitializeEras is handled.
+    is_initialized: bool,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -162,6 +164,7 @@ where
             unit_hashes_folder,
             next_upgrade_activation_point: None,
             stop_for_upgrade: false,
+            is_initialized: false,
         };
 
         let effects = effect_builder
@@ -384,6 +387,22 @@ where
 
     pub(crate) fn stop_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
+    }
+
+    pub(crate) fn recreate_timers<'a, REv: ReactorEventT<I>>(
+        &'a mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &'a mut NodeRng,
+    ) -> Effects<Event<I>> {
+        let current_era = self.current_era;
+        let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
+        self.handling_wrapper(effect_builder, rng)
+            .handle_consensus_results(current_era, outcomes)
+    }
+
+    /// Returns true if initialization of the first eras is finished.
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.is_initialized
     }
 }
 
@@ -677,6 +696,8 @@ where
                     .handle_consensus_results(current_era, results),
             );
         }
+
+        self.era_supervisor.is_initialized = true;
 
         effects
     }
