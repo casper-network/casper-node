@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use core::fmt;
 
 use datasize::DataSize;
+#[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Serialize};
 
@@ -162,6 +163,7 @@ impl fmt::Display for ProtocolVersion {
     }
 }
 
+#[cfg(feature = "std")]
 impl JsonSchema for ProtocolVersion {
     fn schema_name() -> String {
         String::from("ProtocolVersion")
