@@ -118,7 +118,7 @@ impl Bid {
             .checked_sub(amount)
             .ok_or(Error::UnbondTooLarge)?;
 
-        let vesting_schedule = match self.vesting_schedule {
+        let vesting_schedule = match self.vesting_schedule.as_ref() {
             Some(vesting_sechdule) => vesting_sechdule,
             None => {
                 self.staked_amount = updated_staked_amount;
