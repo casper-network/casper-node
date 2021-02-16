@@ -1,6 +1,8 @@
 use alloc::vec::Vec;
 use core::fmt;
 
+use datasize::DataSize;
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -10,7 +12,18 @@ use crate::{
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
 #[derive(
-    Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+    Copy,
+    Clone,
+    DataSize,
+    Debug,
+    Default,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
 )]
 pub struct ProtocolVersion(SemVer);
 
@@ -146,6 +159,19 @@ impl FromBytes for ProtocolVersion {
 impl fmt::Display for ProtocolVersion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl JsonSchema for ProtocolVersion {
+    fn schema_name() -> String {
+        String::from("ProtocolVersion")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Protocol version of the network".to_string());
+        schema_object.into()
     }
 }
 
