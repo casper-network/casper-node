@@ -7,6 +7,8 @@ use core::{
     array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
+    num::ParseIntError,
+    str::FromStr,
 };
 
 use datasize::DataSize;
@@ -92,6 +94,7 @@ pub enum FromStrError {
     Hash(TryFromSliceError),
     AccountHash(account::FromStrError),
     URef(uref::FromStrError),
+    EraId(ParseIntError),
 }
 
 impl From<base16::DecodeError> for FromStrError {
@@ -124,6 +127,12 @@ impl From<uref::FromStrError> for FromStrError {
     }
 }
 
+impl From<ParseIntError> for FromStrError {
+    fn from(error: ParseIntError) -> Self {
+        FromStrError::EraId(error)
+    }
+}
+
 impl Display for FromStrError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
@@ -135,6 +144,7 @@ impl Display for FromStrError {
                 write!(f, "account hash from string error: {:?}", error)
             }
             FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
+            FromStrError::EraId(error) => write!(f, "era id from string error: {}", error),
         }
     }
 }
@@ -202,8 +212,12 @@ impl Key {
             )))
         } else if let Ok(transfer_addr) = TransferAddr::from_formatted_str(input) {
             Ok(Key::Transfer(transfer_addr))
+        } else if let Ok(uref) = URef::from_formatted_str(input) {
+            Ok(Key::URef(uref))
+        } else if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
+            Ok(Key::EraInfo(u64::from_str(era_id_str)?))
         } else {
-            Ok(Key::URef(URef::from_formatted_str(input)?))
+            Err(FromStrError::InvalidPrefix)
         }
     }
 
@@ -594,6 +608,8 @@ mod tests {
             format!("{}", deploy_info_key),
             format!("Key::DeployInfo({})", expected_hash)
         );
+        let era_info_key = Key::EraInfo(42);
+        assert_eq!(format!("{}", era_info_key), "Key::EraInfo(42)".to_string());
     }
 
     #[test]
@@ -651,9 +667,12 @@ mod tests {
 
         let key_deploy_info = Key::DeployInfo(DeployHash::new([42; BLAKE2B_DIGEST_LENGTH]));
         assert!(key_deploy_info.serialized_length() <= Key::max_serialized_length());
+
+        let key_era_info = Key::EraInfo(42);
+        assert!(key_era_info.serialized_length() <= Key::max_serialized_length());
     }
 
-    fn round_trip(key: Key) {
+    fn to_string_round_trip(key: Key) {
         let string = key.to_formatted_string();
         let parsed_key = Key::from_formatted_str(&string).unwrap();
         assert_eq!(key, parsed_key);
@@ -661,14 +680,15 @@ mod tests {
 
     #[test]
     fn key_from_str() {
-        round_trip(Key::Account(AccountHash::new([42; BLAKE2B_DIGEST_LENGTH])));
-        round_trip(Key::Hash([42; KEY_HASH_LENGTH]));
-        round_trip(Key::URef(URef::new(
+        to_string_round_trip(Key::Account(AccountHash::new([42; BLAKE2B_DIGEST_LENGTH])));
+        to_string_round_trip(Key::Hash([42; KEY_HASH_LENGTH]));
+        to_string_round_trip(Key::URef(URef::new(
             [255; BLAKE2B_DIGEST_LENGTH],
             AccessRights::READ,
         )));
-        round_trip(Key::Transfer(TransferAddr::new([42; KEY_HASH_LENGTH])));
-        round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
+        to_string_round_trip(Key::Transfer(TransferAddr::new([42; KEY_HASH_LENGTH])));
+        to_string_round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
+        to_string_round_trip(Key::EraInfo(42));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert!(Key::from_formatted_str(invalid_prefix).is_err());
@@ -720,5 +740,47 @@ mod tests {
             serde_json::to_string(&key_deploy_info).unwrap(),
             format!(r#"{{"DeployInfo":"deploy-{}"}}"#, hex_bytes)
         );
+
+        let key_era_info = Key::EraInfo(42);
+        assert_eq!(
+            serde_json::to_string(&key_era_info).unwrap(),
+            r#"{{"EraInfo":"era-42"}}"#.to_string()
+        );
+    }
+
+    #[test]
+    fn serialization_roundtrip_bincode() {
+        let round_trip = |key: &Key| {
+            let encoded = bincode::serialize(key).unwrap();
+            let decoded = bincode::deserialize(&encoded).unwrap();
+            assert_eq!(key, &decoded);
+        };
+
+        let array = [42; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(array)));
+        round_trip(&Key::Hash(array));
+        round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(array)));
+        round_trip(&Key::DeployInfo(DeployHash::new(array)));
+        round_trip(&Key::EraInfo(42));
+    }
+
+    #[test]
+    fn serialization_roundtrip_json() {
+        let round_trip = |key: &Key| {
+            let encoded = serde_json::to_string_pretty(key).unwrap();
+            let decoded = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(key, &decoded);
+        };
+
+        let array = [42; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(array)));
+        round_trip(&Key::Hash(array));
+        round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(array)));
+        round_trip(&Key::DeployInfo(DeployHash::new(array)));
+        round_trip(&Key::EraInfo(42));
     }
 }
