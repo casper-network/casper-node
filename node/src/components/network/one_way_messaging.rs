@@ -14,8 +14,6 @@ use libp2p::{
     },
     PeerId,
 };
-use prometheus::Registry;
-use tracing::warn;
 
 use super::{Config, Error, PayloadT, ProtocolId};
 use crate::types::{Chainspec, NodeId};
@@ -26,14 +24,12 @@ const PROTOCOL_NAME_INNER: &str = "validator/one-way";
 
 /// Constructs a new libp2p behavior suitable for use by one-way messaging.
 pub(super) fn new_behavior(
-    registry: &Registry,
     config: &Config,
+    in_flight_read_futures: prometheus::Gauge,
+    in_flight_write_futures: prometheus::Gauge,
     chainspec: &Chainspec,
 ) -> RequestResponse<Codec> {
-    let mut codec = Codec::from(config);
-    codec
-        .register_metrics(registry)
-        .expect("could not register metrics");
+    let codec = Codec::new(config, in_flight_read_futures, in_flight_write_futures);
     let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
     let request_response_config = RequestResponseConfig::from(config);
     RequestResponse::new(
@@ -93,49 +89,18 @@ pub(super) struct Codec {
     max_message_size: u32,
     in_flight_read_futures: prometheus::Gauge,
     in_flight_write_futures: prometheus::Gauge,
-    registry: Option<Registry>,
 }
 
 impl Codec {
-    fn register_metrics(&mut self, registry: &Registry) -> prometheus::Result<()> {
-        assert!(self.registry.is_none());
-
-        registry.register(Box::new(self.in_flight_read_futures.clone()))?;
-        registry.register(Box::new(self.in_flight_write_futures.clone()))?;
-        self.registry = Some(registry.clone());
-        Ok(())
-    }
-}
-
-impl Drop for Codec {
-    fn drop(&mut self) {
-        let registry = self.registry.take().unwrap();
-        registry
-            .unregister(Box::new(self.in_flight_read_futures.clone()))
-            .map_err(|err| warn!(%err, "failed to unregister `in_flight_read_futures`"))
-            .ok();
-        registry
-            .unregister(Box::new(self.in_flight_write_futures.clone()))
-            .map_err(|err| warn!(%err, "failed to unregister `in_flight_write_futures`"))
-            .ok();
-    }
-}
-
-impl From<&Config> for Codec {
-    fn from(config: &Config) -> Self {
-        Codec {
+    pub(super) fn new(
+        config: &Config,
+        in_flight_read_futures: prometheus::Gauge,
+        in_flight_write_futures: prometheus::Gauge,
+    ) -> Self {
+        Self {
             max_message_size: config.max_one_way_message_size,
-            in_flight_read_futures: prometheus::Gauge::new(
-                "owm_read_reaponse_futures",
-                "number of do-nothing futures in flight created by `Codec::read_response`",
-            )
-            .expect("could net register metric"),
-            in_flight_write_futures: prometheus::Gauge::new(
-                "owm_write_response_futures",
-                "number of do-nothing futures in flight created by `Codec::write_response`",
-            )
-            .expect("could net register metric"),
-            registry: None,
+            in_flight_read_futures,
+            in_flight_write_futures,
         }
     }
 }

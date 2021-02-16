@@ -13,7 +13,6 @@ use libp2p::{
     swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters},
     Multiaddr, NetworkBehaviour, PeerId,
 };
-use prometheus::Registry;
 use tracing::{debug, trace, warn};
 
 use super::{
@@ -50,12 +49,18 @@ pub(super) struct Behavior {
 
 impl Behavior {
     pub(super) fn new(
-        registry: &Registry,
         config: &Config,
+        in_flight_read_futures: prometheus::Gauge,
+        in_flight_write_futures: prometheus::Gauge,
         chainspec: &Chainspec,
         our_public_key: PublicKey,
     ) -> Self {
-        let one_way_message_behavior = one_way_messaging::new_behavior(registry, config, chainspec);
+        let one_way_message_behavior = one_way_messaging::new_behavior(
+            config,
+            in_flight_read_futures,
+            in_flight_write_futures,
+            chainspec,
+        );
 
         let gossip_behavior = gossip::new_behavior(config, chainspec, our_public_key.clone());
 
