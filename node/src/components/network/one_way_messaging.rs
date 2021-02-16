@@ -14,6 +14,7 @@ use libp2p::{
     },
     PeerId,
 };
+use prometheus::Registry;
 
 use super::{Config, Error, PayloadT, ProtocolId};
 use crate::types::{Chainspec, NodeId};
@@ -23,8 +24,13 @@ use crate::types::{Chainspec, NodeId};
 const PROTOCOL_NAME_INNER: &str = "validator/one-way";
 
 /// Constructs a new libp2p behavior suitable for use by one-way messaging.
-pub(super) fn new_behavior(config: &Config, chainspec: &Chainspec) -> RequestResponse<Codec> {
+pub(super) fn new_behavior(
+    registry: &Registry,
+    config: &Config,
+    chainspec: &Chainspec,
+) -> RequestResponse<Codec> {
     let codec = Codec::from(config);
+    codec.register_metrics(registry).unwrap();
     let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
     let request_response_config = RequestResponseConfig::from(config);
     RequestResponse::new(
@@ -82,12 +88,32 @@ impl From<Outgoing> for Vec<u8> {
 #[derive(Debug, Clone)]
 pub(super) struct Codec {
     max_message_size: u32,
+    in_flight_read_futures: prometheus::Gauge,
+    in_flight_write_futures: prometheus::Gauge,
+}
+
+impl Codec {
+    fn register_metrics(&self, registry: &Registry) -> prometheus::Result<()> {
+        registry.register(Box::new(self.in_flight_read_futures.clone()))?;
+        registry.register(Box::new(self.in_flight_write_futures.clone()))?;
+        Ok(())
+    }
 }
 
 impl From<&Config> for Codec {
     fn from(config: &Config) -> Self {
         Codec {
             max_message_size: config.max_one_way_message_size,
+            in_flight_read_futures: prometheus::Gauge::new(
+                "owm_read_reaponse_futures",
+                "number of do-nothing futures in flight created by `Codec::read_response`",
+            )
+            .unwrap(),
+            in_flight_write_futures: prometheus::Gauge::new(
+                "owm_write_response_futures",
+                "number of do-nothing futures in flight created by `Codec::write_response`",
+            )
+            .unwrap(),
         }
     }
 }
@@ -146,8 +172,15 @@ impl RequestResponseCodec for Codec {
         Self: 'async_trait,
         T: AsyncRead + Unpin + Send + 'async_trait,
     {
+        self.in_flight_read_futures.inc();
+        let gauge = self.in_flight_read_futures.clone();
+
         // For one-way messages, where no response will be sent by the peer, just return Ok(()).
-        async { Ok(()) }.boxed()
+        async move {
+            gauge.dec();
+            Ok(())
+        }
+        .boxed()
     }
 
     fn write_request<'life0, 'life1, 'life2, 'async_trait, T>(
@@ -200,7 +233,13 @@ impl RequestResponseCodec for Codec {
         Self: 'async_trait,
         T: AsyncWrite + Unpin + Send + 'async_trait,
     {
+        self.in_flight_write_futures.inc();
+        let gauge = self.in_flight_write_futures.clone();
         // For one-way messages, where no response will be sent by the peer, just return Ok(()).
-        async { Ok(()) }.boxed()
+        async move {
+            gauge.dec();
+            Ok(())
+        }
+        .boxed()
     }
 }

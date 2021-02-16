@@ -233,7 +233,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .boxed();
 
         // Create a Swarm to manage peers and events.
-        let behavior = Behavior::new(&config, chainspec, network_identity.keypair.public());
+        let behavior = Behavior::new(
+            registry,
+            &config,
+            chainspec,
+            network_identity.keypair.public(),
+        );
         let mut swarm = SwarmBuilder::new(transport, behavior, our_peer_id)
             .executor(Box::new(|future| {
                 tokio::spawn(future);
