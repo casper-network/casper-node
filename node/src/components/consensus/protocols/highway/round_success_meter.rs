@@ -143,7 +143,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     pub fn next_era(&self, era_start_timestamp: Timestamp) -> Self {
         let current_round_id = round_id(era_start_timestamp, self.current_round_exp).millis();
         Self {
-            rounds: Default::default(),
+            rounds: self.rounds.clone(),
             current_round_id,
             proposals: Default::default(),
             min_round_exp: self.min_round_exp,
