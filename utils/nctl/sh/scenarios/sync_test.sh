@@ -78,7 +78,7 @@ function do_send_wasm_deploys() {
 function do_send_transfers() {
     log_step "sending native transfers"
     # NOTE: Maybe make these arguments to the test?
-    local AMOUNT=1000
+    local AMOUNT=2500000000
     local TRANSFERS_COUNT=5
     local NODE_ID="random"
 
