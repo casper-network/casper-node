@@ -72,7 +72,7 @@ reactor!(Reactor {
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config);
-        deploy_fetcher = infallible Fetcher::<Deploy>(cfg.fetcher_config);
+        deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
 
     events: {

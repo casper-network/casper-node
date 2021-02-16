@@ -425,7 +425,7 @@ impl reactor::Reactor for Reactor {
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
-        let deploy_fetcher = Fetcher::new(config.fetcher);
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
