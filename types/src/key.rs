@@ -744,7 +744,7 @@ mod tests {
         let key_era_info = Key::EraInfo(42);
         assert_eq!(
             serde_json::to_string(&key_era_info).unwrap(),
-            r#"{{"EraInfo":"era-42"}}"#.to_string()
+            r#"{"EraInfo":"era-42"}"#.to_string()
         );
     }
 
