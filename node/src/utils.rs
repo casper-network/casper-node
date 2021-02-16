@@ -11,6 +11,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io,
     net::{SocketAddr, ToSocketAddrs},
+    ops::{Add, Div},
     path::{Path, PathBuf},
 };
 
@@ -287,4 +288,12 @@ impl<I: Display> Display for Source<I> {
             Source::Client => write!(formatter, "client"),
         }
     }
+}
+
+/// Divides `numerator` by `denominator` and rounds to the closest integer.
+pub(crate) fn div_round<T>(numerator: T, denominator: T) -> T
+where
+    T: Add<Output = T> + Div<Output = T> + From<u8> + Copy,
+{
+    (numerator + denominator / T::from(2)) / denominator
 }
