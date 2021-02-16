@@ -1,6 +1,5 @@
-use alloc::vec::Vec;
-use core::fmt;
-use std::{convert::TryFrom, string::String};
+use alloc::{format, string::String, vec::Vec};
+use core::{convert::TryFrom, fmt};
 
 use datasize::DataSize;
 
