@@ -225,11 +225,11 @@ where
         u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
     }
 
-    /// Returns an iterator over era IDs of `num_eras` past eras, including the provided one.
+    /// Returns an iterator over era IDs of `num_eras` past eras, plus the provided one.
     pub(crate) fn iter_past(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
         (self
             .protocol_config
-            .last_upgrade_point
+            .last_activation_point
             .0
             .max(era_id.0.saturating_sub(num_eras))..=era_id.0)
             .map(EraId)
@@ -243,7 +243,7 @@ where
     ) -> impl Iterator<Item = EraId> {
         (self
             .protocol_config
-            .last_upgrade_point
+            .last_activation_point
             .0
             .max(era_id.0.saturating_sub(num_eras))..era_id.0)
             .map(EraId)
@@ -639,14 +639,14 @@ where
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     ) -> Effects<Event<I>> {
-        let last_upgrade_point = self.era_supervisor.protocol_config.last_upgrade_point;
+        let last_activation_point = self.era_supervisor.protocol_config.last_activation_point;
         let mut effects: Effects<Event<I>> = Default::default();
 
         for era_id in self
             .era_supervisor
             .iter_past(current_era, self.era_supervisor.bonded_eras * 2)
         {
-            let maybe_switch_block = if era_id > last_upgrade_point {
+            let maybe_switch_block = if era_id > last_activation_point {
                 Some(EraId(era_id.0 - 1))
             } else {
                 None

@@ -54,7 +54,7 @@ pub(crate) struct ProtocolConfig {
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
     /// The first era ID after the last upgrade
-    pub(crate) last_upgrade_point: EraId,
+    pub(crate) last_activation_point: EraId,
     /// Name of the network.
     pub(crate) name: String,
     /// Genesis timestamp.
@@ -70,7 +70,7 @@ impl From<&Chainspec> for ProtocolConfig {
             auction_delay: chainspec.core_config.auction_delay,
             unbonding_delay: chainspec.core_config.unbonding_delay.into(),
             protocol_version: chainspec.protocol_config.version.clone(),
-            last_upgrade_point: chainspec.protocol_config.activation_point.era_id,
+            last_activation_point: chainspec.protocol_config.activation_point.era_id,
             name: chainspec.network_config.name.clone(),
             timestamp: chainspec.network_config.timestamp,
         }
