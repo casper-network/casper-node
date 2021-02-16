@@ -12,6 +12,7 @@ use crate::{
         traits::Context,
     },
     types::Timestamp,
+    utils::div_round,
 };
 
 /// A validator's participation status: whether they are faulty or inactive.
@@ -88,8 +89,8 @@ impl<C: Context> Participation<C> {
             .collect();
         Participation {
             instance_id: *highway.instance_id(),
-            inactive_stake_percent: ((inactive_w * 100 + total_w / 2) / total_w) as u8,
-            faulty_stake_percent: ((faulty_w * 100 + total_w / 2) / total_w) as u8,
+            inactive_stake_percent: div_round(inactive_w * 100, total_w) as u8,
+            faulty_stake_percent: div_round(faulty_w * 100, total_w) as u8,
             validators,
         }
     }
