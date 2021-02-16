@@ -93,5 +93,13 @@ mod proptests {
              let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str).unwrap();
              assert_eq!(trie, deserialized_trie)
         }
+
+        #[test]
+        #[ignore]
+        fn bincode_roundtrip_trie(trie in trie_arb()) {
+           let bincode_bytes = bincode::serialize(&trie)?;
+           let deserialized_trie = bincode::deserialize(&bincode_bytes)?;
+           assert_eq!(trie, deserialized_trie)
+        }
     }
 }
