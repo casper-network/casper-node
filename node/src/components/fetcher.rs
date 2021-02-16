@@ -1,10 +1,12 @@
 mod config;
 mod event;
+mod metrics;
 mod tests;
 
 use std::{collections::HashMap, convert::Infallible, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
+use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
@@ -26,6 +28,7 @@ use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::
 use casper_types::Key;
 pub use config::Config;
 pub use event::{Event, FetchResult};
+use metrics::FetcherMetrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub trait ReactorEventT<T>:
@@ -172,14 +175,21 @@ where
 {
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
+    #[data_size(skip)]
+    metrics: FetcherMetrics,
 }
 
 impl<T: Item> Fetcher<T> {
-    pub(crate) fn new(config: Config) -> Self {
-        Fetcher {
+    pub(crate) fn new(
+        name: &str,
+        config: Config,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(Fetcher {
             get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
             responders: HashMap::new(),
-        }
+            metrics: FetcherMetrics::new(name, registry)?,
+        })
     }
 }
 

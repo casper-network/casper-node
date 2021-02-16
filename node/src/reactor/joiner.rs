@@ -423,7 +423,7 @@ impl reactor::Reactor for Reactor {
             false,
         )?;
 
-        let linear_chain_fetcher = Fetcher::new(config.fetcher);
+        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
 
         let mut effects = reactor::wrap_effects(Event::Network, network_effects);
         effects.extend(reactor::wrap_effects(
@@ -468,9 +468,9 @@ impl reactor::Reactor for Reactor {
             block_validator_effects,
         ));
 
-        let deploy_fetcher = Fetcher::new(config.fetcher);
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
 
-        let block_by_height_fetcher = Fetcher::new(config.fetcher);
+        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
 
