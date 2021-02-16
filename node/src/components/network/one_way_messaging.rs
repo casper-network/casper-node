@@ -15,6 +15,7 @@ use libp2p::{
     PeerId,
 };
 use prometheus::Registry;
+use tracing::warn;
 
 use super::{Config, Error, PayloadT, ProtocolId};
 use crate::types::{Chainspec, NodeId};
@@ -30,7 +31,9 @@ pub(super) fn new_behavior(
     chainspec: &Chainspec,
 ) -> RequestResponse<Codec> {
     let mut codec = Codec::from(config);
-    codec.register_metrics(registry).unwrap();
+    codec
+        .register_metrics(registry)
+        .expect("could not register metrics");
     let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
     let request_response_config = RequestResponseConfig::from(config);
     RequestResponse::new(
@@ -109,10 +112,12 @@ impl Drop for Codec {
         let registry = self.registry.take().unwrap();
         registry
             .unregister(Box::new(self.in_flight_read_futures.clone()))
-            .unwrap();
+            .map_err(|err| warn!(%err, "failed to unregister `in_flight_read_futures`"))
+            .ok();
         registry
             .unregister(Box::new(self.in_flight_write_futures.clone()))
-            .unwrap();
+            .map_err(|err| warn!(%err, "failed to unregister `in_flight_write_futures`"))
+            .ok();
     }
 }
 
@@ -124,12 +129,12 @@ impl From<&Config> for Codec {
                 "owm_read_reaponse_futures",
                 "number of do-nothing futures in flight created by `Codec::read_response`",
             )
-            .unwrap(),
+            .expect("could net register metric"),
             in_flight_write_futures: prometheus::Gauge::new(
                 "owm_write_response_futures",
                 "number of do-nothing futures in flight created by `Codec::write_response`",
             )
-            .unwrap(),
+            .expect("could net register metric"),
             registry: None,
         }
     }
