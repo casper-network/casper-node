@@ -19,6 +19,9 @@ if [[ $? -ne 0 ]]; then
 fi
 set -e
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+GENESIS_FILES_DIR="$ROOT_DIR/resources/production"
+
 PROTOCOL_VERSION=$(cat "$GENESIS_FILES_DIR/chainspec.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['protocol']['version'].replace('.','_'))")
 echo "Protocol version: $PROTOCOL_VERSION"
 GIT_HASH=$(git rev-parse HEAD)
@@ -35,16 +38,11 @@ if [[ " ${valid_commands[*]} " != *" $ACTION "* ]]; then
   exit 1
 fi
 
-if [[ "$ACTION" == "del" ]]; then
+if [[ "$ACTION" != "del" ]]; then
   LOCAL=$2
 
   if [ -z "$LOCAL" ]; then
-    echo "Source not provided"
-    exit 1
-  fi
-
-  if [ -z "$LOCAL" ]; then
-    echo "Target not provided"
+    echo "Local path not provided"
     exit 1
   fi
 fi
