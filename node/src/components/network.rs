@@ -487,7 +487,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                 swarm.add_discovered_peer(&peer_id, vec![endpoint.get_remote_address().clone()]);
             }
             Event::ConnectionEstablished {
-                peer_id: NodeId::from(peer_id),
+                peer_id: Box::new(NodeId::from(peer_id)),
                 endpoint,
                 num_established,
             }
@@ -504,7 +504,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                 swarm.discover_peers()
             }
             Event::ConnectionClosed {
-                peer_id: NodeId::from(peer_id),
+                peer_id: Box::new(NodeId::from(peer_id)),
                 endpoint,
                 num_established,
                 cause: cause.map(|error| error.to_string()),
@@ -516,7 +516,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             error,
             attempts_remaining,
         } => Event::UnreachableAddress {
-            peer_id: NodeId::from(peer_id),
+            peer_id: Box::new(NodeId::from(peer_id)),
             address,
             error,
             attempts_remaining,
@@ -845,7 +845,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 num_established,
             } => self.handle_connection_established(
                 effect_builder,
-                peer_id,
+                *peer_id,
                 endpoint,
                 num_established,
             ),
@@ -926,39 +926,50 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                         responder,
                     },
             } => {
-                self.send_message(dest, payload);
+                self.send_message(*dest, *payload);
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
-                self.gossip_message(payload);
+                self.gossip_message(*payload);
                 responder.respond(()).ignore()
             }
-            Event::NetworkRequest {
-                request:
-                    NetworkRequest::Gossip {
-                        payload,
-                        count,
-                        exclude,
-                        responder,
-                    },
-            } => {
-                let sent_to = self.send_message_to_n_peers(rng, payload, count, exclude);
-                responder.respond(sent_to).ignore()
-            }
-            Event::NetworkInfoRequest {
-                info_request: NetworkInfoRequest::GetPeers { responder },
-            } => {
-                let peers = self
-                    .peers
-                    .iter()
-                    .map(|(node_id, endpoint)| {
-                        (node_id.clone(), endpoint.get_remote_address().to_string())
-                    })
-                    .collect();
-                responder.respond(peers).ignore()
-            }
+            Event::NetworkRequest { request } => match request {
+                NetworkRequest::SendMessage {
+                    dest,
+                    payload,
+                    responder,
+                } => {
+                    self.send_message(*dest, *payload);
+                    responder.respond(()).ignore()
+                }
+                NetworkRequest::Broadcast { payload, responder } => {
+                    self.gossip_message(*payload);
+                    responder.respond(()).ignore()
+                }
+                NetworkRequest::Gossip {
+                    payload,
+                    count,
+                    exclude,
+                    responder,
+                } => {
+                    let sent_to = self.send_message_to_n_peers(rng, *payload, count, exclude);
+                    responder.respond(sent_to).ignore()
+                }
+            },
+            Event::NetworkInfoRequest { info_request } => match info_request {
+                NetworkInfoRequest::GetPeers { responder } => {
+                    let peers = self
+                        .peers
+                        .iter()
+                        .map(|(node_id, endpoint)| {
+                            (node_id.clone(), endpoint.get_remote_address().to_string())
+                        })
+                        .collect();
+                    responder.respond(peers).ignore()
+                }
+            },
         }
     }
 }

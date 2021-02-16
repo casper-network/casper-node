@@ -63,8 +63,8 @@ function do_await_genesis_era_to_complete() {
 
 function do_send_wasm_deploys() {
     # NOTE: Maybe make these arguments to the test?
-    local BATCH_COUNT=2
-    local BATCH_SIZE=10
+    local BATCH_COUNT=1
+    local BATCH_SIZE=1
     local TRANSFER_AMOUNT=10000
     log_step "sending Wasm deploys"
     # prepare wasm batch
@@ -79,7 +79,7 @@ function do_send_transfers() {
     log_step "sending native transfers"
     # NOTE: Maybe make these arguments to the test?
     local AMOUNT=1000
-    local TRANSFERS_COUNT=10
+    local TRANSFERS_COUNT=5
     local NODE_ID="random"
 
     # Enumerate set of users.
@@ -89,14 +89,13 @@ function do_send_transfers() {
 }
 
 function do_await_deploy_inclusion() {
-    # Should be enough to await for two eras.
-    log_step "awaiting two eras…"
+    # Should be enough to await for one era.
+    log_step "awaiting one era…"
     await_n_eras 1
 }
 
 function do_read_lfb_hash() {
-    local NODE_ID=${1}
-    LFB_HASH=$(render_last_finalized_block_hash "$NODE_ID" | cut -f2 -d= | cut -f2 -d ' ')
+    LFB_HASH=$(get_chain_latest_block_hash)
     echo "$LFB_HASH"
 }
 

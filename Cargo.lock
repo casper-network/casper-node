@@ -834,6 +834,7 @@ dependencies = [
  "signal-hook",
  "signature",
  "smallvec",
+ "static_assertions",
  "structopt",
  "sys-info",
  "tempfile",

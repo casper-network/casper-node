@@ -64,6 +64,7 @@ type ConsensusConstructor<I> = dyn Fn(
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
     Timestamp,                                    // start time for this era
     u64,                                          // random seed
+    Timestamp,                                    // now timestamp
 ) -> (
     Box<dyn ConsensusProtocol<I, ClContext>>,
     Vec<ProtocolOutcome<I, ClContext>>,
@@ -288,6 +289,7 @@ where
             prev_era.map(|era| &*era.consensus),
             start_time,
             seed,
+            timestamp,
         );
 
         if should_activate {
