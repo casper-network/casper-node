@@ -9,7 +9,6 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
-    semver::ParseSemVerError,
     SemVer,
 };
 
@@ -148,17 +147,24 @@ impl FromBytes for ProtocolVersion {
 
 impl Serialize for ProtocolVersion {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let str = format!("{}.{}.{}", self.0.major, self.0.minor, self.0.patch);
-        String::serialize(&str, serializer)
+        if serializer.is_human_readable() {
+            let str = format!("{}.{}.{}", self.0.major, self.0.minor, self.0.patch);
+            String::serialize(&str, serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
     }
 }
 
 impl<'de> Deserialize<'de> for ProtocolVersion {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value_as_string = String::deserialize(deserializer)?;
-        let parse_res: Result<SemVer, ParseSemVerError> =
-            SemVer::try_from(value_as_string.as_str());
-        parse_res.map_err(SerdeError::custom).map(ProtocolVersion)
+        let semver = if deserializer.is_human_readable() {
+            let value_as_string = String::deserialize(deserializer)?;
+            SemVer::try_from(value_as_string.as_str()).map_err(SerdeError::custom)?
+        } else {
+            SemVer::deserialize(deserializer)?
+        };
+        Ok(ProtocolVersion(semver))
     }
 }
 
@@ -454,5 +460,21 @@ mod tests {
         let json = serde_json::to_string(&protocol_version).unwrap();
         let expected = "\"1.1.1\"";
         assert_eq!(json, expected);
+    }
+
+    #[test]
+    fn serialize_roundtrip() {
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 1);
+        let serialized_json = serde_json::to_string(&protocol_version).unwrap();
+        assert_eq!(
+            protocol_version,
+            serde_json::from_str(&serialized_json).unwrap()
+        );
+
+        let serialized_bincode = bincode::serialize(&protocol_version).unwrap();
+        assert_eq!(
+            protocol_version,
+            bincode::deserialize(&serialized_bincode).unwrap()
+        );
     }
 }
