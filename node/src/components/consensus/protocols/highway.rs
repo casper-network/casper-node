@@ -1,3 +1,4 @@
+mod participation;
 mod round_success_meter;
 mod synchronizer;
 #[cfg(test)]
@@ -33,7 +34,7 @@ use crate::{
         traits::{ConsensusValueT, Context, NodeIdT},
         ActionId, TimerId,
     },
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -49,6 +50,8 @@ const TIMER_ID_ACTIVE_VALIDATOR: TimerId = TimerId(0);
 const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
 /// The timer for purging expired pending vertices from the queues.
 const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
+/// The timer for logging inactive validators.
+const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -144,10 +147,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
-            now + config.pending_vertex_timeout,
-            TIMER_ID_PURGE_VERTICES,
-        )];
+        let mut outcomes = vec![
+            ProtocolOutcome::ScheduleTimer(
+                now + config.pending_vertex_timeout,
+                TIMER_ID_PURGE_VERTICES,
+            ),
+            ProtocolOutcome::ScheduleTimer(
+                now + TimeDiff::from(60_000),
+                TIMER_ID_LOG_PARTICIPATION,
+            ),
+        ];
 
         // If there's a chance that we start after the era is finished…
         if now > (params.start_timestamp() + params.min_era_length()) {
@@ -368,6 +377,21 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             value
         })
     }
+
+    /// Prints a log statement listing the inactive and faulty validators.
+    fn log_participation(&self) {
+        let instance_id = self.highway.instance_id();
+        let participation = participation::Participation::new(&self.highway);
+        info!(?participation, %instance_id, "validator participation");
+    }
+
+    /// Returns whether the switch block has already been finalized.
+    fn finalized_switch_block(&self) -> bool {
+        let is_switch = |block_hash: &C::Hash| self.highway.state().is_terminal_block(block_hash);
+        self.finality_detector
+            .last_finalized()
+            .map_or(false, is_switch)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -572,6 +596,15 @@ where
                 self.synchronizer.purge_vertices(timestamp);
                 let next_time = Timestamp::now() + self.synchronizer.pending_vertex_timeout();
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
+            }
+            TIMER_ID_LOG_PARTICIPATION => {
+                self.log_participation();
+                if !self.finalized_switch_block() {
+                    let next_time = Timestamp::now() + TimeDiff::from(60_000);
+                    vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
+                } else {
+                    vec![]
+                }
             }
             _ => unreachable!("unexpected timer ID"),
         }
