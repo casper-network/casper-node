@@ -1,31 +1,21 @@
 use alloc::vec::Vec;
 use core::fmt;
+use std::{convert::TryFrom, string::String};
 
 use datasize::DataSize;
+
 #[cfg(feature = "std")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
+    semver::ParseSemVerError,
     SemVer,
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
-#[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Debug,
-    Default,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Copy, Clone, DataSize, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(SemVer);
 
 /// The result of [`ProtocolVersion::check_next_version`].
@@ -157,9 +147,19 @@ impl FromBytes for ProtocolVersion {
     }
 }
 
-impl fmt::Display for ProtocolVersion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
+impl Serialize for ProtocolVersion {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let str = format!("{}.{}.{}", self.0.major, self.0.minor, self.0.patch);
+        String::serialize(&str, serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProtocolVersion {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value_as_string = String::deserialize(deserializer)?;
+        let parse_res: Result<SemVer, ParseSemVerError> =
+            SemVer::try_from(value_as_string.as_str());
+        parse_res.map_err(SerdeError::custom).map(ProtocolVersion)
     }
 }
 
@@ -169,11 +169,17 @@ impl JsonSchema for ProtocolVersion {
         String::from("ProtocolVersion")
     }
 
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Protocol version of the network".to_string());
+        schema_object.metadata().description = Some("Casper Platform protocol version".to_string());
         schema_object.into()
+    }
+}
+
+impl fmt::Display for ProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -441,5 +447,13 @@ mod tests {
         let current = ProtocolVersion::from_parts(1, 0, 0);
         let other = ProtocolVersion::from_parts(1, 99, 99);
         assert!(current.is_compatible_with(&other));
+    }
+
+    #[test]
+    fn should_serialize_to_json_properly() {
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 1);
+        let json = serde_json::to_string(&protocol_version).unwrap();
+        let expected = "\"1.1.1\"";
+        assert_eq!(json, expected);
     }
 }
