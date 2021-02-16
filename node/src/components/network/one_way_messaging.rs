@@ -29,7 +29,7 @@ pub(super) fn new_behavior(
     config: &Config,
     chainspec: &Chainspec,
 ) -> RequestResponse<Codec> {
-    let codec = Codec::from(config);
+    let mut codec = Codec::from(config);
     codec.register_metrics(registry).unwrap();
     let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
     let request_response_config = RequestResponseConfig::from(config);
@@ -90,13 +90,29 @@ pub(super) struct Codec {
     max_message_size: u32,
     in_flight_read_futures: prometheus::Gauge,
     in_flight_write_futures: prometheus::Gauge,
+    registry: Option<Registry>,
 }
 
 impl Codec {
-    fn register_metrics(&self, registry: &Registry) -> prometheus::Result<()> {
+    fn register_metrics(&mut self, registry: &Registry) -> prometheus::Result<()> {
+        assert!(self.registry.is_none());
+
         registry.register(Box::new(self.in_flight_read_futures.clone()))?;
         registry.register(Box::new(self.in_flight_write_futures.clone()))?;
+        self.registry = Some(registry.clone());
         Ok(())
+    }
+}
+
+impl Drop for Codec {
+    fn drop(&mut self) {
+        let registry = self.registry.take().unwrap();
+        registry
+            .unregister(Box::new(self.in_flight_read_futures.clone()))
+            .unwrap();
+        registry
+            .unregister(Box::new(self.in_flight_write_futures.clone()))
+            .unwrap();
     }
 }
 
@@ -114,6 +130,7 @@ impl From<&Config> for Codec {
                 "number of do-nothing futures in flight created by `Codec::write_response`",
             )
             .unwrap(),
+            registry: None,
         }
     }
 }
