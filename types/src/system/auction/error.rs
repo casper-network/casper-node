@@ -128,10 +128,13 @@ pub enum Error {
     /// Missing seigniorage recipients for given era.
     #[fail(display = "Missing seigniorage recipients for given era")]
     MissingSeigniorageRecipients = 35,
-
     /// Failed to transfer funds.
     #[fail(display = "Transfer error")]
     Transfer = 36,
+    /// Raised whenever a delegator's funds are still locked in but an attempt to undelegate was
+    /// made.
+    #[fail(display = "Delegator's funds are locked")]
+    DelegatorFundsLocked = 37,
 
     /// Delegation rate exceeds rate.
     #[fail(display = "Delegation rate too large")]

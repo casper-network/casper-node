@@ -175,7 +175,21 @@ impl Bid {
         if timestamp_millis < vesting_schedule.initial_release_timestamp_millis() {
             return false;
         }
-        vesting_schedule.initialize(staked_amount)
+
+        if !vesting_schedule.initialize(staked_amount) {
+            return false;
+        }
+
+        for delegator in self.delegators_mut().values_mut() {
+            let staked_amount = *delegator.staked_amount();
+            if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
+                if !vesting_schedule.initialize(staked_amount) {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 
     /// Sets given bid's `inactive` field to `false`

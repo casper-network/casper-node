@@ -279,7 +279,9 @@ pub trait Auction:
                     *delegator.bonding_purse(),
                     amount,
                 )?;
-                let updated_stake = delegator.decrease_stake(amount)?;
+
+                let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+                let updated_stake = delegator.decrease_stake(amount, era_end_timestamp_millis)?;
                 if updated_stake == U512::zero() {
                     delegators.remove(&delegator_public_key);
                 };

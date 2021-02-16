@@ -65,15 +65,38 @@ impl Delegator {
     }
 
     /// Decreases the stake of the provided bid
-    pub fn decrease_stake(&mut self, amount: U512) -> Result<U512, Error> {
+    pub fn decrease_stake(
+        &mut self,
+        amount: U512,
+        era_end_timestamp_millis: u64,
+    ) -> Result<U512, Error> {
         let updated_staked_amount = self
             .staked_amount
             .checked_sub(amount)
             .ok_or(Error::InvalidAmount)?;
 
-        self.staked_amount = updated_staked_amount;
+        let vesting_schedule = match self.vesting_schedule.as_ref() {
+            Some(vesting_sechdule) => vesting_sechdule,
+            None => {
+                self.staked_amount = updated_staked_amount;
+                return Ok(updated_staked_amount);
+            }
+        };
 
-        Ok(updated_staked_amount)
+        match vesting_schedule.locked_amount(era_end_timestamp_millis) {
+            Some(locked_amount) if updated_staked_amount < locked_amount => {
+                Err(Error::DelegatorFundsLocked)
+            }
+            None => {
+                // If `None`, then the locked amounts table has yet to be initialized (likely
+                // pre-90 day mark)
+                Err(Error::DelegatorFundsLocked)
+            }
+            Some(_) => {
+                self.staked_amount = updated_staked_amount;
+                Ok(updated_staked_amount)
+            }
+        }
     }
 
     /// Increases the stake of the provided bid
@@ -86,6 +109,18 @@ impl Delegator {
         self.staked_amount = updated_staked_amount;
 
         Ok(updated_staked_amount)
+    }
+
+    /// Returns a reference to the vesting schedule of the provided
+    /// delegator bid.  `None` if a non-genesis validator.
+    pub fn vesting_schedule(&self) -> Option<&VestingSchedule> {
+        self.vesting_schedule.as_ref()
+    }
+
+    /// Returns a mutable reference to the vesting schedule of the provided
+    /// delegator bid.  `None` if a non-genesis validator.
+    pub fn vesting_schedule_mut(&mut self) -> Option<&mut VestingSchedule> {
+        self.vesting_schedule.as_mut()
     }
 }
 
