@@ -364,7 +364,9 @@ pub trait Auction:
         // Process bids
         let mut bids_modified = false;
         for (validator_public_key, bid) in bids.iter_mut() {
-            bids_modified = bid.process(era_end_timestamp_millis);
+            if bid.process(era_end_timestamp_millis) {
+                bids_modified = true;
+            }
 
             if evicted_validators.contains(validator_public_key) {
                 bids_modified = bid.deactivate()
