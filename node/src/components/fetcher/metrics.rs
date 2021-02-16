@@ -1,10 +1,11 @@
 use prometheus::{IntCounter, Registry};
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct FetcherMetrics {
     /// Number of fetch requests that found an item in the storage.
     pub(super) found_in_storage: IntCounter,
-    /// Number of fetch requests that fetcher an item from peer.
+    /// Number of fetch requests that fetched an item from peer.
     pub(super) found_on_peer: IntCounter,
     /// Number of fetch requests that timed out.
     pub(super) timeouts: IntCounter,
@@ -46,12 +47,16 @@ impl Drop for FetcherMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.found_in_storage.clone()))
-            .expect("did not expect deregistering found_in_storage to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering found_in_storage to fail"),
+            );
         self.registry
             .unregister(Box::new(self.found_on_peer.clone()))
-            .expect("did not expect deregistering found_on_peer to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering found_on_peer to fail"),
+            );
         self.registry
             .unregister(Box::new(self.timeouts.clone()))
-            .expect("did not expect deregistering timeouts to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering timeouts to fail"));
     }
 }

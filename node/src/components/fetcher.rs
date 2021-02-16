@@ -331,16 +331,22 @@ where
                 peer,
                 maybe_item,
             } => match *maybe_item {
-                Some(item) => self.got_from_storage(item, peer),
+                Some(item) => {
+                    self.metrics.found_in_storage.inc();
+                    self.got_from_storage(item, peer)
+                }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely { item, source } => {
                 match source {
-                    Source::Peer(peer) => self.signal(
-                        item.id(),
-                        Some(FetchResult::FromPeer(item, peer.clone())),
-                        peer,
-                    ),
+                    Source::Peer(peer) => {
+                        self.metrics.found_on_peer.inc();
+                        self.signal(
+                            item.id(),
+                            Some(FetchResult::FromPeer(item, peer.clone())),
+                            peer,
+                        )
+                    }
                     Source::Client => {
                         // TODO - we could possibly also handle this case
                         Effects::new()
@@ -355,6 +361,7 @@ where
             }
             Event::TimeoutPeer { id, peer } => {
                 info!(%id, %peer, "request timed out");
+                self.metrics.timeouts.inc();
                 self.signal(id, None, peer)
             }
         }
