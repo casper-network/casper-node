@@ -25,7 +25,7 @@ impl NetworkingMetrics {
             "number of requests to send a message directly to a peer",
         )?;
         let open_connections =
-            IntGauge::new("net_open_connnections", "number of established connections")?;
+            IntGauge::new("net_open_connections", "number of established connections")?;
         let queued_messages = IntGauge::new(
             "net_queued_direct_messages",
             "number of messages waiting to be sent out",
