@@ -7,8 +7,8 @@ use std::{
 };
 
 use serde::{
-    de::{SeqAccess, Visitor},
-    ser::SerializeSeq,
+    de::{self, MapAccess, Visitor},
+    ser::SerializeMap,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
@@ -112,23 +112,16 @@ impl Serialize for PointerBlock {
         // non-None entries and their indices will be output
 
         // Create the sequence serializer, reserving the necessary number of slots
-        let mut seq = {
-            let mut count = 0;
-            for maybe_pointer in &self.0 {
-                if maybe_pointer.is_some() {
-                    count += 1;
-                }
-            }
-            serializer.serialize_seq(Some(count))?
-        };
+        let elements_count = self.0.iter().filter(|element| element.is_some()).count();
+        let mut map = serializer.serialize_map(Some(elements_count))?;
 
         // Store the non-None entries with their indices
-        for (idx, maybe_pointer_block) in self.0.iter().enumerate() {
+        for (index, maybe_pointer_block) in self.0.iter().enumerate() {
             if let Some(pointer_block_value) = maybe_pointer_block {
-                seq.serialize_element(&(idx, pointer_block_value))?;
+                map.serialize_entry(&index, pointer_block_value)?;
             }
         }
-        seq.end()
+        map.end()
     }
 }
 
@@ -143,23 +136,29 @@ impl<'de> Deserialize<'de> for PointerBlock {
             type Value = PointerBlock;
 
             fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
-                formatter.write_str("Sparse representation of a PointerBlock.")
+                formatter.write_str("sparse representation of a PointerBlock")
             }
 
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
             where
-                A: SeqAccess<'de>,
+                M: MapAccess<'de>,
             {
-                let mut ret = PointerBlock::new();
+                let mut pointer_block = PointerBlock::new();
+
                 // Unpack the sparse representation
-                while let Some(indexed_pointer) = seq.next_element()? {
-                    let (idx, ptr): (u8, Pointer) = indexed_pointer;
-                    ret[idx as usize] = Some(ptr);
+                while let Some((index, pointer_block_value)) =
+                    access.next_entry::<usize, Pointer>()?
+                {
+                    let element = pointer_block.0.get_mut(index).ok_or_else(|| {
+                        de::Error::custom(format!("invalid index {} in pointer block value", index))
+                    })?;
+                    *element = Some(pointer_block_value);
                 }
-                Ok(ret)
+
+                Ok(pointer_block)
             }
         }
-        deserializer.deserialize_seq(PointerBlockDeserializer)
+        deserializer.deserialize_map(PointerBlockDeserializer)
     }
 }
 

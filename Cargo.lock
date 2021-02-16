@@ -749,6 +749,7 @@ dependencies = [
  "rand_chacha 0.2.2",
  "schemars",
  "serde",
+ "serde_bytes",
  "serde_json",
  "tempfile",
  "thiserror",
