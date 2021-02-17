@@ -1,6 +1,6 @@
 {
   "name": "@casper/contract",
-  "version": "0.7.6",
+  "version": "0.8.0",
   "description": "Library for developing Casper smart contracts.",
   "main": "index.js",
   "ascMain": "assembly/index.ts",
