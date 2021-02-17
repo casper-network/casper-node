@@ -32,7 +32,7 @@ use crate::{
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraId, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -350,12 +350,6 @@ pub struct Reactor {
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
     pub(super) consensus: EraSupervisor<NodeId>,
-    // Effects consensus component returned during creation.
-    // In the `joining` phase we don't want to handle it,
-    // so we carry them forward to the `validator` reactor.
-    #[data_size(skip)]
-    // Unfortunately, we have no way of inspecting the future and its heap allocations at all.
-    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     // Handles request for linear chain block by height.
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
     #[data_size(skip)]
@@ -383,7 +377,7 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -513,6 +507,7 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
+            EraId(0),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
@@ -521,8 +516,11 @@ impl reactor::Reactor for Reactor {
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
-            rng,
         )?;
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            init_consensus_effects,
+        ));
 
         Ok((
             Self {
@@ -541,7 +539,6 @@ impl reactor::Reactor for Reactor {
                 block_executor,
                 linear_chain,
                 consensus,
-                init_consensus_effects,
                 block_by_height_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
@@ -912,7 +909,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.linear_chain_sync.is_synced().then(|| {
+        (self.linear_chain_sync.is_synced() && self.consensus.is_initialized()).then(|| {
             if self.linear_chain_sync.stopped_for_upgrade() {
                 ReactorExit::ProcessShouldExit(ExitCode::Success)
             } else {
@@ -945,7 +942,6 @@ impl Reactor {
             contract_runtime: self.contract_runtime,
             storage: self.storage,
             consensus: self.consensus,
-            init_consensus_effects: self.init_consensus_effects,
             latest_block: self.linear_chain.latest_block().clone(),
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),

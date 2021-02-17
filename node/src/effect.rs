@@ -784,8 +784,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the switch block at the given era ID.
-    // TODO - remove once used.
-    #[allow(unused)]
     pub(crate) async fn get_switch_block_at_era_id_from_storage(
         self,
         era_id: EraId,
@@ -1491,6 +1489,25 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Collects the switch blocks from the eras identified by provided era IDs. Returns
+    /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
+    /// `None` if at least one was missing.
+    pub(crate) async fn collect_switch_blocks<I: IntoIterator<Item = EraId>>(
+        self,
+        era_ids: I,
+    ) -> Option<HashMap<EraId, BlockHeader>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(era_ids.into_iter().map(|era_id| {
+            self.get_switch_block_at_era_id_from_storage(era_id)
+                .map(move |maybe_block| maybe_block.map(|block| (era_id, block.take_header())))
+        }))
+        .await
+        .into_iter()
+        .collect()
     }
 }
 

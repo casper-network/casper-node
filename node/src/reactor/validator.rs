@@ -297,7 +297,6 @@ pub struct ValidatorInitConfig {
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) consensus: EraSupervisor<NodeId>,
-    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
@@ -377,17 +376,14 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        // We don't need `rng` b/c consensus component was the only one using it,
-        // and now it's being passed on from the `joiner` reactor via `config`.
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
             config,
             chainspec_loader,
             storage,
             contract_runtime,
-            consensus,
-            init_consensus_effects,
+            mut consensus,
             latest_block,
             event_stream_server,
             small_network_identity,
@@ -468,9 +464,12 @@ impl reactor::Reactor for Reactor {
             Event::SmallNetwork,
             small_network_effects,
         ));
+        // This is a workaround for dropping the Era Supervisor's timer event when transitioning
+        // from the joiner.
+        // TODO: Remove this once the consensus component is removed from the Joiner reactor.
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
-            init_consensus_effects,
+            consensus.recreate_timers(effect_builder, rng),
         ));
 
         // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later

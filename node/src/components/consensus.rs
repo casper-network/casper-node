@@ -14,6 +14,7 @@ mod tests;
 mod traits;
 
 use std::{
+    collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     time::Duration,
@@ -25,10 +26,11 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::PublicKey;
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::Component,
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -38,11 +40,10 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{ActivationPoint, BlockHash, ProtoBlock, Timestamp},
+    types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
-use crate::types::Block;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -75,15 +76,15 @@ pub enum Event<I> {
     MessageReceived { sender: I, msg: ConsensusMessage },
     /// We connected to a peer.
     NewPeer(I),
-    /// A scheduled event to be handled by a specified era
+    /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
         timestamp: Timestamp,
         timer_id: TimerId,
     },
-    /// A queued action to be handled by a specific era
+    /// A queued action to be handled by a specific era.
     Action { era_id: EraId, action_id: ActionId },
-    /// We are receiving the data we require to propose a new block
+    /// We are receiving the data we require to propose a new block.
     NewProtoBlock {
         era_id: EraId,
         proto_block: ProtoBlock,
@@ -91,7 +92,7 @@ pub enum Event<I> {
     },
     #[from]
     ConsensusRequest(requests::ConsensusRequest),
-    /// The proto-block has been validated
+    /// The proto-block has been validated.
     ResolveValidity {
         era_id: EraId,
         sender: I,
@@ -106,14 +107,22 @@ pub enum Event<I> {
         delay: Duration,
     },
     /// Event raised when a new era should be created: once we get the set of validators, the
-    /// booking block hash and the seed from the key block
+    /// booking block hash and the seed from the key block.
     CreateNewEra {
         /// The header of the switch block
         block: Box<Block>,
         /// Ok(block_hash) if the booking block was found, Err(height) if not
         booking_block_hash: Result<BlockHash, u64>,
     },
-    /// An event instructing us to shutdown if the latest era received no votes
+    /// Event raised upon initialization, when a number of eras have to be instantiated at once.
+    InitializeEras {
+        switch_blocks: HashMap<EraId, BlockHeader>,
+        validators: BTreeMap<PublicKey, U512>,
+        state_root_hash: Digest,
+        timestamp: Timestamp,
+        genesis_start_time: Timestamp,
+    },
+    /// An event instructing us to shutdown if the latest era received no votes.
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
@@ -212,6 +221,7 @@ impl<I: Debug> Display for Event<I> {
                 "New era should be created; booking block hash: {:?}, switch block: {:?}",
                 booking_block_hash, block
             ),
+            Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
                 write!(f, "The node finished joining the network at {}", timestamp)
@@ -312,6 +322,19 @@ where
                 });
                 handling_es.handle_create_new_era(*block, booking_block_hash)
             }
+            Event::InitializeEras {
+                switch_blocks,
+                validators,
+                state_root_hash,
+                timestamp,
+                genesis_start_time,
+            } => handling_es.handle_initialize_eras(
+                switch_blocks,
+                validators,
+                state_root_hash,
+                timestamp,
+                genesis_start_time,
+            ),
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
             Event::GotUpgradeActivationPoint(activation_point) => {

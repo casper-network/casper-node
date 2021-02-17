@@ -753,4 +753,34 @@ where
     fn instance_id(&self) -> &C::InstanceId {
         self.highway.instance_id()
     }
+
+    fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>> {
+        let now = Timestamp::now();
+
+        let mut outcomes = vec![
+            ProtocolOutcome::ScheduleTimer(now, TIMER_ID_PURGE_VERTICES),
+            ProtocolOutcome::ScheduleTimer(
+                now + TimeDiff::from(60_000),
+                TIMER_ID_LOG_PARTICIPATION,
+            ),
+        ];
+
+        if self.highway.is_active() {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now,
+                TIMER_ID_ACTIVE_VALIDATOR,
+            ));
+        }
+
+        outcomes.extend(
+            self.synchronizer
+                .timestamps_to_add_vertices()
+                .into_iter()
+                .map(|timestamp| {
+                    ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP)
+                }),
+        );
+
+        outcomes
+    }
 }

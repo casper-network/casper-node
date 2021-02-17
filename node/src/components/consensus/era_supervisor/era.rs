@@ -52,16 +52,6 @@ impl EraId {
         EraId(self.0 + 1)
     }
 
-    /// Returns an iterator over all eras that are still bonded in this one, including this one.
-    pub(crate) fn iter_bonded(&self, bonded_eras: u64) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(bonded_eras)..=self.0).map(EraId)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
-    pub(crate) fn iter_other(&self, count: u64) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(count)..self.0).map(EraId)
-    }
-
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.
     pub(crate) fn checked_sub(&self, x: u64) -> Option<EraId> {
         self.0.checked_sub(x).map(EraId)
