@@ -10,7 +10,7 @@ use casper_execution_engine::{
     shared::{gas::Gas, motes::Motes},
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
-use casper_types::{mint, runtime_args, RuntimeArgs, U512};
+use casper_types::{runtime_args, system::mint, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 

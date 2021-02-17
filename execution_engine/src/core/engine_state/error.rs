@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
+use casper_types::{bytesrepr, system::mint, ProtocolVersion};
 
 use crate::{
     core::{

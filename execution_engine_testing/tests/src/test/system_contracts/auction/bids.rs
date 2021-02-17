@@ -24,13 +24,14 @@ use casper_types::{
     self,
     account::AccountHash,
     api_error::ApiError,
-    auction::{
+    runtime_args,
+    system::auction::{
         self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
         METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
     },
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";

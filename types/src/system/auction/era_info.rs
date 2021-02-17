@@ -244,9 +244,9 @@ pub mod gens {
     };
 
     use crate::{
-        auction::{EraInfo, SeigniorageAllocation},
         crypto::gens::public_key_arb,
         gens::u512_arb,
+        system::auction::{EraInfo, SeigniorageAllocation},
     };
 
     fn seigniorage_allocation_validator_arb() -> impl Strategy<Value = SeigniorageAllocation> {

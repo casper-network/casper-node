@@ -11,7 +11,7 @@ use crate::{
         TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
     bytesrepr, contracts,
-    system_contract_errors::{auction, mint, pos},
+    system::{auction, mint, proof_of_stake},
     CLValueError,
 };
 
@@ -646,8 +646,8 @@ impl From<mint::Error> for ApiError {
     }
 }
 
-impl From<pos::Error> for ApiError {
-    fn from(error: pos::Error) -> Self {
+impl From<proof_of_stake::Error> for ApiError {
+    fn from(error: proof_of_stake::Error) -> Self {
         ApiError::ProofOfStake(error as u8)
     }
 }

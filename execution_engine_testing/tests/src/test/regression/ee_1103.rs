@@ -11,8 +11,9 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    auction::{ARG_DELEGATOR, ARG_VALIDATOR},
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
+    runtime_args,
+    system::auction::{ARG_DELEGATOR, ARG_VALIDATOR},
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";

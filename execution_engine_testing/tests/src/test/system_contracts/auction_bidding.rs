@@ -18,12 +18,11 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, INITIAL_ERA_ID,
-        METHOD_SLASH, UNBONDING_PURSES_KEY,
-    },
     runtime_args,
-    system_contract_errors::auction,
+    system::auction::{
+        self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
+        INITIAL_ERA_ID, METHOD_SLASH, UNBONDING_PURSES_KEY,
+    },
     ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 

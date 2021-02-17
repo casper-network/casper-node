@@ -15,12 +15,13 @@ use casper_engine_test_support::{
 use casper_types::{
     self,
     account::AccountHash,
-    auction::{
+    runtime_args,
+    system::auction::{
         self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation, ARG_AMOUNT,
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
         BIDS_KEY, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
-    runtime_args, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";

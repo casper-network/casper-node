@@ -8,12 +8,13 @@ use alloc::{collections::BTreeMap, string::String};
 use casper_contract::contract_api::{runtime, storage, system};
 
 use casper_types::{
-    auction::{
+    runtime_args,
+    system::auction::{
         SeigniorageRecipients, ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS,
         ARG_VALIDATOR, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
         METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
     },
-    runtime_args, ApiError, PublicKey, RuntimeArgs, U512,
+    ApiError, PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
