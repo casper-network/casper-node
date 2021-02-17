@@ -63,12 +63,12 @@ CL_S3_LOCATION="drone/$GIT_HASH"
 
 case "$ACTION" in
 "put")
-  echo "sync ${LOCAL} s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}"
-  s3cmd sync "${LOCAL}" "s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}"
+  echo "sync ${LOCAL} s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}/"
+  s3cmd sync "${LOCAL}" "s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}/"
   ;;
 "get")
-  echo "sync s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION} ${LOCAL}"
-  s3cmd sync "s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}" "${LOCAL}"
+  echo "sync s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}/ ${LOCAL}"
+  s3cmd sync "s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/${PROTOCOL_VERSION}/" "${LOCAL}"
   ;;
 "del")
   echo "del --recursive s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}"

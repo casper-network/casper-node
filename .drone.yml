@@ -190,7 +190,7 @@ steps:
 - name: put-upgrade_package-s3
   image: casperlabs/s3cmd-build:latest
   commands:
-    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
+    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_build/"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -301,7 +301,7 @@ steps:
     event:
       - push
 
-# Build failed so remove the update_package candidate
+# Build failed so remove the upgrade_package candidate
 - name: del-upgrade_package-s3
   image: casperlabs/s3cmd-build:latest
   commands:
@@ -364,7 +364,6 @@ steps:
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
-  # Removed casper-node from tag publish as we not longer ship this way.
   commands:
   - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
