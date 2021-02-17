@@ -77,6 +77,8 @@ block_gas_limit = 10_000_000_000_000
 payment_args_max_length = 1024
 # The limit of length of serialized session code arguments.
 session_args_max_length = 1024
+# The minimum amount in motes for a valid native transfer.
+native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 # Amount of free memory (in 64kB pages) each contract can use for stack.

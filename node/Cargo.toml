@@ -78,6 +78,7 @@ signal-hook = "0.1.16"
 signature = "1.1.0"
 smallvec = { version = "1.4.0", features = ["serde"] }
 structopt = "0.3.14"
+static_assertions = "1.1.0"
 sys-info = "0.8.0"
 tempfile = "3.1.0"
 thiserror = "1.0.18"

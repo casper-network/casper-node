@@ -94,11 +94,21 @@ impl<VID: Eq + Hash> Validators<VID> {
 
     /// Returns an iterator of all indices of banned validators.
     pub(crate) fn iter_banned_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
-        self.validators
-            .iter()
+        self.iter()
             .enumerate()
             .filter(|(_, v)| v.banned)
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
+    }
+
+    pub(crate) fn enumerate_ids<'a>(&'a self) -> impl Iterator<Item = (ValidatorIndex, &'a VID)> {
+        let to_idx =
+            |(idx, v): (usize, &'a Validator<VID>)| (ValidatorIndex::from(idx as u32), v.id());
+        self.iter().enumerate().map(to_idx)
+    }
+
+    /// Returns the size of validator list.
+    pub(crate) fn len(&self) -> usize {
+        self.validators.len()
     }
 }
 

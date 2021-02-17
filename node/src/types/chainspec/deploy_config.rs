@@ -8,6 +8,8 @@ use num_traits::Zero;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -31,6 +33,7 @@ pub struct DeployConfig {
     pub(crate) block_gas_limit: u64,
     pub(crate) payment_args_max_length: u32,
     pub(crate) session_args_max_length: u32,
+    pub(crate) native_transfer_minimum_motes: u64,
 }
 
 #[cfg(test)]
@@ -48,6 +51,8 @@ impl DeployConfig {
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
         let payment_args_max_length = rng.gen();
         let session_args_max_length = rng.gen();
+        let native_transfer_minimum_motes =
+            rng.gen_range(MAX_PAYMENT_AMOUNT, 1_000_000_000_000_000);
 
         DeployConfig {
             max_payment_cost,
@@ -59,6 +64,7 @@ impl DeployConfig {
             block_gas_limit,
             payment_args_max_length,
             session_args_max_length,
+            native_transfer_minimum_motes,
         }
     }
 }
@@ -76,6 +82,7 @@ impl Default for DeployConfig {
             block_gas_limit: 10_000_000_000_000,
             payment_args_max_length: 1024,
             session_args_max_length: 1024,
+            native_transfer_minimum_motes: MAX_PAYMENT_AMOUNT,
         }
     }
 }
@@ -92,6 +99,7 @@ impl ToBytes for DeployConfig {
         buffer.extend(self.block_gas_limit.to_bytes()?);
         buffer.extend(self.payment_args_max_length.to_bytes()?);
         buffer.extend(self.session_args_max_length.to_bytes()?);
+        buffer.extend(self.native_transfer_minimum_motes.to_bytes()?);
         Ok(buffer)
     }
 
@@ -105,6 +113,7 @@ impl ToBytes for DeployConfig {
             + self.block_gas_limit.serialized_length()
             + self.payment_args_max_length.serialized_length()
             + self.session_args_max_length.serialized_length()
+            + self.native_transfer_minimum_motes.serialized_length()
     }
 }
 
@@ -120,6 +129,7 @@ impl FromBytes for DeployConfig {
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
         let (payment_args_max_length, remainder) = u32::from_bytes(remainder)?;
         let (session_args_max_length, remainder) = u32::from_bytes(remainder)?;
+        let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
         let config = DeployConfig {
             max_payment_cost,
             max_ttl,
@@ -130,6 +140,7 @@ impl FromBytes for DeployConfig {
             block_gas_limit,
             payment_args_max_length,
             session_args_max_length,
+            native_transfer_minimum_motes,
         };
         Ok((config, remainder))
     }

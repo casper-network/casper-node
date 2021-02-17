@@ -45,7 +45,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     fmt::{self, Display, Formatter},
-    fs, io,
+    fs, io, mem,
     path::PathBuf,
 };
 
@@ -55,6 +55,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
 use serde::{Deserialize, Serialize};
+use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
@@ -110,8 +111,11 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 /// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
+const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
+const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
 #[derive(Debug, From, Serialize)]
+#[repr(u8)]
 pub enum Event {
     /// Incoming storage request.
     #[from]
@@ -512,7 +516,7 @@ impl Storage {
                         if prev != &execution_result {
                             return Err(Error::DuplicateExecutionResult {
                                 deploy_hash,
-                                block_hash,
+                                block_hash: *block_hash,
                             });
                         }
 
@@ -537,7 +541,7 @@ impl Storage {
                     // Update metadata and write back to db.
                     metadata
                         .execution_results
-                        .insert(block_hash, execution_result);
+                        .insert(*block_hash, execution_result);
                     let was_written =
                         txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
                     assert!(
@@ -547,7 +551,8 @@ impl Storage {
                     );
                 }
 
-                let was_written = txn.put_value(self.transfer_db, &block_hash, &transfers, true)?;
+                let was_written =
+                    txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
                 assert!(
                     was_written,
                     "failed to write transfers for block_hash {}",

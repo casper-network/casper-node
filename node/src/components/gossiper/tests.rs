@@ -439,11 +439,13 @@ async fn should_get_from_alternate_source() {
     let node_id_0 = node_ids[0].clone();
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
-            Event::NetworkRequest(NetworkRequest::SendMessage {
-                dest,
-                payload: NodeMessage::DeployGossiper(Message::GossipResponse { .. }),
-                ..
-            }) => dest == &node_id_0,
+            Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
+                if let NodeMessage::DeployGossiper(Message::GossipResponse { .. }) = **payload {
+                    **dest == node_id_0
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     };

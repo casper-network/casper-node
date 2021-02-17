@@ -72,7 +72,7 @@ reactor!(Reactor {
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
-        deploy_fetcher = infallible Fetcher::<Deploy>(cfg.fetcher_config);
+        deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
 
     events: {
@@ -401,13 +401,14 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                matches!(
-                    event,
-                    ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                        payload: Message::GetRequest { .. },
-                        ..
-                    })
-                )
+                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
+                    payload, ..
+                }) = event
+                {
+                    matches!(**payload, Message::GetRequest { .. })
+                } else {
+                    false
+                }
             },
             TIMEOUT,
         )
@@ -419,13 +420,14 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                matches!(
-                    event,
-                    ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                        payload: Message::GetResponse { .. },
-                        ..
-                    })
-                )
+                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
+                    payload, ..
+                }) = event
+                {
+                    matches!(**payload, Message::GetResponse { .. })
+                } else {
+                    false
+                }
             },
             TIMEOUT,
         )

@@ -436,7 +436,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
-        let deploy_fetcher = Fetcher::new(config.fetcher);
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
