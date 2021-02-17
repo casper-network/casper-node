@@ -212,8 +212,6 @@ where
         let secret_key = small_network_identity.secret_key;
         let certificate = small_network_identity.tls_certificate;
 
-        let net_metrics = NetworkingMetrics::new(&registry)?;
-
         // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
@@ -235,10 +233,12 @@ where
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
                 is_stopped: Arc::new(AtomicBool::new(true)),
-                net_metrics,
+                net_metrics: NetworkingMetrics::new(&Registry::default())?,
             };
             return Ok((model, Effects::new()));
         }
+
+        let net_metrics = NetworkingMetrics::new(&registry)?;
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;

@@ -36,6 +36,7 @@ use libp2p::{
     tcp::TokioTcpConfig,
     Multiaddr, PeerId, Swarm, Transport,
 };
+use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -54,7 +55,7 @@ use self::{
 };
 pub use self::{config::Config, error::Error};
 use crate::{
-    components::Component,
+    components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -140,6 +141,11 @@ pub struct Network<REv, P> {
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
     server_join_handle: Option<JoinHandle<()>>,
+
+    /// Networking metrics.
+    #[data_size(skip)]
+    net_metrics: NetworkingMetrics,
+
     _phantom: PhantomData<(REv, P)>,
 }
 
@@ -152,6 +158,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         config: Config,
+        registry: &Registry,
         network_identity: NetworkIdentity,
         chainspec: &Chainspec,
         notify: bool,
@@ -195,10 +202,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 max_gossip_message_size: 0,
                 shutdown_sender: Some(server_shutdown_sender),
                 server_join_handle: None,
+                net_metrics: NetworkingMetrics::new(&Registry::default())?,
                 _phantom: PhantomData,
             };
             return Ok((network, Effects::new()));
         }
+
+        let net_metrics = NetworkingMetrics::new(registry).map_err(Error::MetricsError)?;
 
         if notify {
             debug!("our node id: {}", our_id);
@@ -260,6 +270,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             swarm,
             known_addresses_mut.clone(),
             is_bootstrap_node,
+            net_metrics.queued_messages.clone(),
         )));
 
         let network = Network {
@@ -276,6 +287,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             max_gossip_message_size: config.max_gossip_message_size,
             shutdown_sender: Some(server_shutdown_sender),
             server_join_handle,
+            net_metrics,
             _phantom: PhantomData,
         };
         Ok((network, Effects::new()))
@@ -309,6 +321,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         };
 
         let _ = self.peers.insert(peer_id.clone(), endpoint);
+
+        self.net_metrics.peers.set(self.peers.len() as i64);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
         effect_builder.announce_new_peer(peer_id).ignore()
     }
@@ -328,6 +342,9 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         };
         if let Err(error) = self.one_way_message_sender.send(outgoing_message) {
             warn!(%error, "{}: dropped outgoing message, server has shut down", self.our_id);
+        } else {
+            // `queued_message` might become -1 for a short amount of time, which is fine.
+            self.net_metrics.queued_messages.inc();
         }
     }
 
@@ -395,6 +412,8 @@ fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
     NodeId::P2p(Swarm::local_peer_id(swarm).clone())
 }
 
+// TODO: Already refactored in branch.
+#[allow(clippy::too_many_arguments)]
 async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     event_queue: EventQueueHandle<REv>,
     // Receives outgoing one-way messages to be sent out via libp2p.
@@ -406,6 +425,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     mut swarm: Swarm<Behavior>,
     known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
     is_bootsrap_node: bool,
+    queued_messages: IntGauge,
 ) {
     //let our_id = our
     async move {
@@ -425,6 +445,8 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 maybe_outgoing_message = one_way_outgoing_message_receiver.recv() => {
                     match maybe_outgoing_message {
                         Some(outgoing_message) => {
+                            queued_messages.dec();
+
                             // We've received a one-way request to send to a peer.
                             swarm.send_one_way_message(outgoing_message);
                         }
@@ -859,6 +881,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     let _ = self.peers.remove(&peer_id);
                 }
                 debug!(%peer_id, ?endpoint, %num_established, ?cause, "{}: connection closed", self.our_id);
+
+                // Note: We count multiple connections to the same peer as a single connection.
+                self.net_metrics.peers.set(self.peers.len() as i64);
+
                 Effects::new()
             }
             Event::UnreachableAddress {
@@ -932,6 +958,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
+                self.net_metrics.broadcast_requests.inc();
                 self.gossip_message(*payload);
                 responder.respond(()).ignore()
             }
@@ -941,6 +968,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     payload,
                     responder,
                 } => {
+                    self.net_metrics.direct_message_requests.inc();
                     self.send_message(*dest, *payload);
                     responder.respond(()).ignore()
                 }

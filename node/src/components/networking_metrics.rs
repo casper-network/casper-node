@@ -10,7 +10,7 @@ pub(crate) struct NetworkingMetrics {
     pub(crate) open_connections: IntGauge,
     /// Number of messages still waiting to be sent out (broadcast and direct).
     pub(crate) queued_messages: IntGauge,
-    /// Number of peers.
+    /// Number of connected peers.
     pub(crate) peers: IntGauge,
 
     /// Registry instance.
