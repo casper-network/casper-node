@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system_contract_errors::auction::Error,
+    system::auction::Error,
     CLType, CLTyped, PublicKey, URef, U512,
 };
 

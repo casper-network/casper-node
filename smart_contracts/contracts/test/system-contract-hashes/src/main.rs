@@ -2,7 +2,7 @@
 #![no_main]
 
 use casper_contract::contract_api::{runtime, system};
-use casper_types::system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE};
+use casper_types::system::{AUCTION, MINT, PROOF_OF_STAKE};
 
 #[no_mangle]
 pub extern "C" fn call() {

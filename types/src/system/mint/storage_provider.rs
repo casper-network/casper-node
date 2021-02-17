@@ -1,6 +1,6 @@
 use crate::{
     bytesrepr::{FromBytes, ToBytes},
-    system_contract_errors::mint::Error,
+    system::mint::Error,
     CLTyped, Key, URef,
 };
 

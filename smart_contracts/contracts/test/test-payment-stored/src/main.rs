@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    mint::ARG_AMOUNT,
+    system::mint::ARG_AMOUNT,
     CLType, RuntimeArgs, URef, U512,
 };
 

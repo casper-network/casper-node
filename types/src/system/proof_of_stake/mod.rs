@@ -1,14 +1,15 @@
 //! Contains implementation of a Proof Of Stake contract functionality.
 mod constants;
+mod error;
 mod mint_provider;
 mod runtime_provider;
 
 use core::marker::Sized;
 
-use crate::{account::AccountHash, system_contract_errors::pos::Result, AccessRights, URef, U512};
+use crate::{account::AccountHash, AccessRights, URef, U512};
 
-pub use crate::proof_of_stake::{
-    constants::*, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+pub use crate::system::proof_of_stake::{
+    constants::*, error::Error, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
 };
 
 // A simplified representation of a refund percentage which is currently hardcoded to 0%.
@@ -17,19 +18,19 @@ const REFUND_PERCENTAGE: U512 = U512::zero();
 /// Proof of stake functionality implementation.
 pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
     /// Get payment purse.
-    fn get_payment_purse(&self) -> Result<URef> {
+    fn get_payment_purse(&self) -> Result<URef, Error> {
         let purse = internal::get_payment_purse(self)?;
         // Limit the access rights so only balance query and deposit are allowed.
         Ok(URef::new(purse.addr(), AccessRights::READ_ADD))
     }
 
     /// Set refund purse.
-    fn set_refund_purse(&mut self, purse: URef) -> Result<()> {
+    fn set_refund_purse(&mut self, purse: URef) -> Result<(), Error> {
         internal::set_refund(self, purse)
     }
 
     /// Get refund purse.
-    fn get_refund_purse(&self) -> Result<Option<URef>> {
+    fn get_refund_purse(&self) -> Result<Option<URef>, Error> {
         // We purposely choose to remove the access rights so that we do not
         // accidentally give rights for a purse to some contract that is not
         // supposed to have it.
@@ -43,7 +44,7 @@ pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
         amount_spent: U512,
         account: AccountHash,
         target: URef,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         internal::finalize_payment(self, amount_spent, account, target)
     }
 }
@@ -51,8 +52,7 @@ pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
 mod internal {
     use crate::{
         account::AccountHash,
-        proof_of_stake::{MintProvider, RuntimeProvider},
-        system_contract_errors::pos::{Error, Result},
+        system::proof_of_stake::{Error, MintProvider, RuntimeProvider},
         Key, Phase, URef, U512,
     };
 
@@ -62,7 +62,7 @@ mod internal {
     const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
 
     /// Returns the purse for accepting payment for transactions.
-    pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
+    pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
         match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
             Some(Key::URef(uref)) => Ok(uref),
             Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
@@ -73,7 +73,10 @@ mod internal {
     /// Sets the purse where refunds (excess funds not spent to pay for computation) will be sent.
     /// Note that if this function is never called, the default location is the main purse of the
     /// deployer's account.
-    pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> Result<()> {
+    pub fn set_refund<R: RuntimeProvider>(
+        runtime_provider: &mut R,
+        purse: URef,
+    ) -> Result<(), Error> {
         if let Phase::Payment = runtime_provider.get_phase() {
             runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
             return Ok(());
@@ -82,7 +85,9 @@ mod internal {
     }
 
     /// Returns the currently set refund purse.
-    pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Option<URef>> {
+    pub fn get_refund_purse<R: RuntimeProvider>(
+        runtime_provider: &R,
+    ) -> Result<Option<URef>, Error> {
         match runtime_provider.get_key(REFUND_PURSE_KEY) {
             Some(Key::URef(uref)) => Ok(Some(uref)),
             Some(_) => Err(Error::RefundPurseKeyUnexpectedType),
@@ -99,7 +104,7 @@ mod internal {
         amount_spent: U512,
         account: AccountHash,
         target: URef,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let caller = provider.get_caller();
         if caller != SYSTEM_ACCOUNT {
             return Err(Error::SystemFunctionCalledByUserAccount);
@@ -159,7 +164,7 @@ mod internal {
         payment_purse: URef,
         account: AccountHash,
         amount: U512,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
             Ok(_) => Ok(()),
             Err(_) => Err(Error::FailedTransferToAccountPurse),

@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, system_contract_errors::mint::Error, URef, U512};
+use crate::{account::AccountHash, system::mint::Error, URef, U512};
 
 /// Provides functionality of a system module.
 pub trait SystemProvider {

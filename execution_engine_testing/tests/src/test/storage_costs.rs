@@ -21,15 +21,17 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
-#[cfg(not(feature = "use-as-wasm"))]
-use casper_types::{
-    auction::{self, DelegationRate},
-    runtime_args,
-    system_contract_type::AUCTION,
-};
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     CLValue, ContractHash, ProtocolVersion, RuntimeArgs, U512,
+};
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_types::{
+    runtime_args,
+    system::{
+        auction::{self, DelegationRate},
+        AUCTION,
+    },
 };
 
 use num_rational::Ratio;
