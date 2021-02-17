@@ -1,6 +1,8 @@
 [protocol]
 # Protocol version.
 version = '1.0.0'
+# Whether we need to clear latest blocks back to the switch block just before the activation point or not.
+hard_reset = false
 
 [protocol.activation_point]
 # This protocol version becomes active at the start of this era.
