@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(test)]
-use casper_types::auction::BLOCK_REWARD;
+use casper_types::system::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     PublicKey, SecretKey, Signature, U512,

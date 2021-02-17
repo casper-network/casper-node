@@ -5,9 +5,8 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auction::{DelegationRate, Delegator},
     bytesrepr::{self, FromBytes, ToBytes},
-    system_contract_errors::auction::Error,
+    system::auction::{DelegationRate, Delegator, Error},
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
@@ -258,8 +257,9 @@ mod tests {
     use alloc::collections::BTreeMap;
 
     use crate::{
-        auction::{bid::VestingSchedule, Bid, DelegationRate},
-        bytesrepr, AccessRights, URef, U512,
+        bytesrepr,
+        system::auction::{bid::VestingSchedule, Bid, DelegationRate},
+        AccessRights, URef, U512,
     };
 
     #[test]

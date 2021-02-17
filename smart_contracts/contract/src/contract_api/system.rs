@@ -5,10 +5,8 @@ use core::mem::MaybeUninit;
 
 use casper_types::{
     account::AccountHash,
-    api_error,
-    auction::{EraId, EraInfo},
-    bytesrepr,
-    system_contract_errors::auction,
+    api_error, bytesrepr,
+    system::auction::{self, EraId, EraInfo},
     ApiError, ContractHash, HashAddr, SystemContractType, TransferResult, TransferredTo, URef,
     U512, UREF_SERIALIZED_LENGTH,
 };

@@ -1,8 +1,8 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
-    account::AccountHash, mint, AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs,
-    URef, U512,
+    account::AccountHash, system::mint, AccessRights, ApiError, CLType, CLValueError, Key,
+    RuntimeArgs, URef, U512,
 };
 
 use crate::{

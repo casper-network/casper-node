@@ -32,7 +32,7 @@ use casper_execution_engine::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{auction::ValidatorWeights, ProtocolVersion};
+use casper_types::{system::auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::Component,

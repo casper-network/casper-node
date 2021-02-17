@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
-    auction::EraInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    system::auction::EraInfo,
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 

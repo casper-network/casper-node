@@ -11,8 +11,9 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
+    runtime_args,
+    system::auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 

@@ -21,10 +21,10 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     account::{self, AccountHash, TryFromSliceForAccountHashError},
-    auction::EraId,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
+    system::auction::EraId,
     uref::{self, URef, UREF_SERIALIZED_LENGTH},
     DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
 };

@@ -1,8 +1,7 @@
 use crate::{
     account::AccountHash,
-    auction::{EraId, EraInfo},
     bytesrepr::{FromBytes, ToBytes},
-    system_contract_errors::auction::Error,
+    system::auction::{EraId, EraInfo, Error},
     CLTyped, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
