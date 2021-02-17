@@ -234,7 +234,7 @@ impl CLTyped for EraInfo {
     }
 }
 
-/// Generators for [`SeignirageAllocation`] and [`EraInfo`]
+/// Generators for [`SeigniorageAllocation`] and [`EraInfo`]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{
@@ -263,7 +263,7 @@ pub mod gens {
         )
     }
 
-    /// Creates an arbitrary [`SeignorageAllocation`]
+    /// Creates an arbitrary [`SeignorageAllocation`](crate::system::auction::SeigniorageAllocation)
     pub fn seigniorage_allocation_arb() -> impl Strategy<Value = SeigniorageAllocation> {
         prop_oneof![
             seigniorage_allocation_validator_arb(),
