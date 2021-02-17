@@ -40,7 +40,7 @@ use casper_types::{bytesrepr, ProtocolVersion};
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::Component,
+    components::{consensus::EraId, Component},
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
@@ -295,6 +295,15 @@ impl ChainspecLoader {
 
     pub(crate) fn highest_block_hash(&self) -> Option<BlockHash> {
         self.highest_block_hash
+    }
+
+    /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
+    /// subsequent eras are ignored (conceptually deleted from storage).
+    pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
+        self.chainspec
+            .protocol_config
+            .hard_reset
+            .then(|| self.chainspec.protocol_config.activation_point.era_id)
     }
 
     fn handle_initialize<REv>(

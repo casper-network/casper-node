@@ -10,7 +10,10 @@ reactor!(Initializer {
 
   components: {
     chainspec_loader = has_effects ChainspecLoader(cfg.dir(), effect_builder);
-    storage = Storage(&cfg.map_ref(|cfg| cfg.storage.clone()));
+    storage = Storage(
+        &cfg.map_ref(|cfg| cfg.storage.clone()),
+        chainspec_loader.hard_reset_to_start_of_era()
+    );
     contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()),
 &cfg.value().contract_runtime, registry);   }
 

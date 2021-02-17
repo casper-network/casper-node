@@ -70,7 +70,10 @@ reactor!(Reactor {
             effect_builder
         );
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
-        storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
+        storage = Storage(
+            &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
+            chainspec_loader.hard_reset_to_start_of_era(),
+        );
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
