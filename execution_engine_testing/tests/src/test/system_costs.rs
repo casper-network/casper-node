@@ -41,9 +41,8 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate},
-        mint, proof_of_stake,
+        mint, proof_of_stake, AUCTION,
     },
-    system_contract_type::AUCTION,
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
