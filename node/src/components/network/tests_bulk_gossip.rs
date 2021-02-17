@@ -3,6 +3,7 @@ use std::{
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
+    sync::Arc,
     time::Duration,
 };
 
@@ -66,7 +67,7 @@ impl NetworkedReactor for LoadTestingReactor {
 #[derive(Debug)]
 pub struct TestReactorConfig {
     /// The fixed chainspec used in testing.
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
     /// Network configuration used in testing.
     network_config: NetworkComponentConfig,
 }
@@ -153,11 +154,11 @@ async fn send_large_message_across_network() {
     let first_node_port = testing::unused_port_on_localhost() + 1;
 
     let mut net = TestingNetwork::<LoadTestingReactor>::new();
-    let chainspec = Chainspec::random(&mut rng);
+    let chainspec = Arc::new(Chainspec::random(&mut rng));
 
     // Create the root node.
     let cfg = TestReactorConfig {
-        chainspec: chainspec.clone(),
+        chainspec: Arc::clone(&chainspec),
         network_config: NetworkComponentConfig::default_local_net_first_node(first_node_port),
     };
 
@@ -166,7 +167,7 @@ async fn send_large_message_across_network() {
     // Create `node_count-1` additional node instances.
     for _ in 1..node_count {
         let cfg = TestReactorConfig {
-            chainspec: chainspec.clone(),
+            chainspec: Arc::clone(&chainspec),
             network_config: NetworkComponentConfig::default_local_net(first_node_port),
         };
 

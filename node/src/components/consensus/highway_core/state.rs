@@ -320,6 +320,12 @@ impl<C: Context> State<C> {
             .cloned()
     }
 
+    /// Returns the timestamp of the last ping or unit received from the validator, or the start
+    /// timestamp if we haven't received anything yet.
+    pub(crate) fn last_seen(&self, idx: ValidatorIndex) -> Timestamp {
+        self.pings[idx]
+    }
+
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
     pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
         self.panorama[idx] = Observation::Faulty;

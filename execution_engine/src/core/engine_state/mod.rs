@@ -83,7 +83,8 @@ use crate::{
     },
 };
 
-pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000u64));
+pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -321,7 +322,7 @@ where
             tracking_copy.borrow_mut().write(auction_delay_key, value);
         }
 
-        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period() {
+        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
             let auction_contract = tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, new_protocol_data.auction())?;

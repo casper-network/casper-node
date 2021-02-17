@@ -2,7 +2,7 @@ use prometheus::{IntCounter, IntGauge, Registry};
 
 /// Network-type agnostic networking metrics.
 pub(crate) struct NetworkingMetrics {
-    /// How often a request was made a component to broadcast.
+    /// How often a request was made by a component to broadcast.
     pub(crate) broadcast_requests: IntCounter,
     /// How often a request to send a message directly to a peer was made.
     pub(crate) direct_message_requests: IntCounter,
@@ -24,15 +24,13 @@ impl NetworkingMetrics {
             IntCounter::new("net_broadcast_requests", "number of broadcasting requests")?;
         let direct_message_requests = IntCounter::new(
             "net_direct_message_requests",
-            "How often a request to send a message directly to a peer was made.",
+            "number of requests to send a message directly to a peer",
         )?;
-        let open_connections = IntGauge::new(
-            "net_open_connnections",
-            "Current number of open connections.",
-        )?;
+        let open_connections =
+            IntGauge::new("net_open_connections", "number of established connections")?;
         let queued_messages = IntGauge::new(
             "net_queued_direct_messages",
-            "Number of messages still waiting to be sent out.",
+            "number of messages waiting to be sent out",
         )?;
         let peers = IntGauge::new("peers", "Number of connected peers.")?;
 

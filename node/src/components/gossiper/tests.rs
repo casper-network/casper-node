@@ -3,7 +3,6 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
-    sync::Arc,
 };
 
 use derive_more::From;
@@ -154,7 +153,10 @@ impl reactor::Reactor for Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new(deploy_acceptor::Config::new(false));
+        let deploy_acceptor = DeployAcceptor::new(
+            deploy_acceptor::Config::new(false),
+            &Chainspec::from_resources("local"),
+        );
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -183,12 +185,6 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
-                responder,
-                ..
-            })) => responder
-                .respond(Some(Arc::new(Chainspec::from_resources("local"))))
-                .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
@@ -324,6 +320,10 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
         }
+    }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
     }
 }
 

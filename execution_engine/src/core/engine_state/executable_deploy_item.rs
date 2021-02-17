@@ -21,14 +21,15 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, EntryPoint,
-    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
+    mint::ARG_AMOUNT,
+    CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
+    EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
 };
 
 use super::error;
 use crate::{
     core::{
-        engine_state::{Error, ExecError},
+        engine_state::{Error, ExecError, MAX_PAYMENT_AMOUNT},
         execution,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
@@ -630,7 +631,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
         let mut args = RuntimeArgs::new();
         let _ = args.insert(random_string(rng), Bytes::from(random_bytes(rng)));
 
-        match rng.gen_range(0, 6) {
+        match rng.gen_range(0, 5) {
             0 => ExecutableDeployItem::ModuleBytes {
                 module_bytes: random_bytes(rng).into(),
                 args,
@@ -657,7 +658,17 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 entry_point: random_string(rng),
                 args,
             },
-            5 => ExecutableDeployItem::Transfer { args },
+            5 => {
+                let amount = rng.gen_range(MAX_PAYMENT_AMOUNT, 1_000_000_000_000_000);
+                let mut transfer_args = RuntimeArgs::new();
+                transfer_args.insert_cl_value(
+                    ARG_AMOUNT,
+                    CLValue::from_t(U512::from(amount)).expect("should get CLValue from U512"),
+                );
+                ExecutableDeployItem::Transfer {
+                    args: transfer_args,
+                }
+            }
             _ => unreachable!(),
         }
     }

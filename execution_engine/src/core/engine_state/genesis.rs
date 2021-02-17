@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     account::AccountHash,
     auction::{
-        Bid, Bids, DelegationRate, EraId, SeigniorageRecipient, SeigniorageRecipients,
+        Bid, Bids, DelegationRate, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
         ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
@@ -311,7 +311,7 @@ pub struct ExecConfig {
     auction_delay: u64,
     locked_funds_period_millis: u64,
     round_seigniorage_rate: Ratio<u64>,
-    unbonding_delay: EraId,
+    unbonding_delay: u64,
     genesis_timestamp_millis: u64,
 }
 
@@ -325,7 +325,7 @@ impl ExecConfig {
         auction_delay: u64,
         locked_funds_period_millis: u64,
         round_seigniorage_rate: Ratio<u64>,
-        unbonding_delay: EraId,
+        unbonding_delay: u64,
         genesis_timestamp_millis: u64,
     ) -> ExecConfig {
         ExecConfig {
@@ -379,7 +379,7 @@ impl ExecConfig {
         self.round_seigniorage_rate
     }
 
-    pub fn unbonding_delay(&self) -> EraId {
+    pub fn unbonding_delay(&self) -> u64 {
         self.unbonding_delay
     }
 

@@ -24,7 +24,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{
-        EraId, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     mint::ROUND_SEIGNIORAGE_RATE_KEY,
     CLValue, ProtocolVersion, U512,
@@ -411,7 +411,7 @@ fn should_upgrade_only_locked_funds_period() {
         .expect("auction should exist")
         .named_keys()[LOCKED_FUNDS_PERIOD_KEY];
 
-    let before_locked_funds_period: EraId = builder
+    let before_locked_funds_period_millis: u64 = builder
         .query(None, locked_funds_period_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -420,14 +420,14 @@ fn should_upgrade_only_locked_funds_period() {
         .into_t()
         .expect("should be u64");
 
-    let new_locked_funds_period = before_locked_funds_period + 1;
+    let new_locked_funds_period_millis = before_locked_funds_period_millis + 1;
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_locked_funds_period(new_locked_funds_period)
+            .with_new_locked_funds_period_millis(new_locked_funds_period_millis)
             .build()
     };
 
@@ -435,7 +435,7 @@ fn should_upgrade_only_locked_funds_period() {
         .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let after_locked_funds_period: EraId = builder
+    let after_locked_funds_period_millis: u64 = builder
         .query(None, locked_funds_period_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -445,7 +445,7 @@ fn should_upgrade_only_locked_funds_period() {
         .expect("should be u64");
 
     assert_eq!(
-        new_locked_funds_period, after_locked_funds_period,
+        new_locked_funds_period_millis, after_locked_funds_period_millis,
         "Should have upgraded locked funds period"
     )
 }
@@ -528,7 +528,7 @@ fn should_upgrade_only_unbonding_delay() {
         .expect("auction should exist")
         .named_keys()[UNBONDING_DELAY_KEY];
 
-    let before_unbonding_delay: EraId = builder
+    let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -537,7 +537,7 @@ fn should_upgrade_only_unbonding_delay() {
         .into_t()
         .expect("should be u64");
 
-    let new_unbonding_delay: EraId = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -552,7 +552,7 @@ fn should_upgrade_only_unbonding_delay() {
         .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let after_unbonding_delay: EraId = builder
+    let after_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -586,7 +586,7 @@ fn should_apply_global_state_upgrade() {
         .expect("auction should exist")
         .named_keys()[UNBONDING_DELAY_KEY];
 
-    let before_unbonding_delay: EraId = builder
+    let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -595,7 +595,7 @@ fn should_apply_global_state_upgrade() {
         .into_t()
         .expect("should be u64");
 
-    let new_unbonding_delay: EraId = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
     let mut update_map = BTreeMap::new();
     update_map.insert(
@@ -616,7 +616,7 @@ fn should_apply_global_state_upgrade() {
         .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let after_unbonding_delay: EraId = builder
+    let after_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()

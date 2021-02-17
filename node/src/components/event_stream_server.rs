@@ -28,6 +28,7 @@ mod sse_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
+use semver::Version;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
 use super::Component;
@@ -56,16 +57,15 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new<REv>(
-        config: Config,
-        _effect_builder: EffectBuilder<REv>,
-    ) -> Result<Self, ListeningError>
-    where
-        REv: ReactorEventT,
-    {
+    pub(crate) fn new(config: Config, api_version: Version) -> Result<Self, ListeningError> {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
         let builder = utils::start_listening(&config.address)?;
-        tokio::spawn(http_server::run(config, builder, sse_data_receiver));
+        tokio::spawn(http_server::run(
+            config,
+            api_version,
+            builder,
+            sse_data_receiver,
+        ));
 
         Ok(EventStreamServer { sse_data_sender })
     }

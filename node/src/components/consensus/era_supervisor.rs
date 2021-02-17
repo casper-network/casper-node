@@ -139,7 +139,8 @@ where
         effect_builder: EffectBuilder<REv>,
         validators: BTreeMap<PublicKey, U512>,
         protocol_config: ProtocolConfig,
-        genesis_state_root_hash: Digest,
+        state_root_hash: Digest,
+        next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
@@ -167,7 +168,7 @@ where
             metrics,
             finished_joining: false,
             unit_hashes_folder,
-            next_upgrade_activation_point: None,
+            next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: 0,
             is_initialized: false,
@@ -178,7 +179,7 @@ where
             .event(move |switch_blocks| Event::InitializeEras {
                 switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
                 validators,
-                genesis_state_root_hash,
+                state_root_hash,
                 timestamp,
                 genesis_start_time,
             });
@@ -578,7 +579,7 @@ where
             trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
-        if block.header().switch_block() {
+        if block.header().is_switch_block() {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
@@ -635,7 +636,7 @@ where
         &mut self,
         switch_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
-        genesis_state_root_hash: Digest,
+        state_root_hash: Digest,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     ) -> Effects<Event<I>> {
@@ -691,12 +692,7 @@ where
                     // TODO: the start height should be 1 more than the last block before the last
                     // upgrade, and the state hash should be the (potentially modified) state hash
                     // from that block
-                    (
-                        validators.clone(),
-                        0,
-                        genesis_state_root_hash,
-                        genesis_start_time,
-                    )
+                    (validators.clone(), 0, state_root_hash, genesis_start_time)
                 };
 
             let results = self.era_supervisor.new_era(

@@ -118,7 +118,7 @@ pub enum Event<I> {
     InitializeEras {
         switch_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
-        genesis_state_root_hash: Digest,
+        state_root_hash: Digest,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     },
@@ -325,13 +325,13 @@ where
             Event::InitializeEras {
                 switch_blocks,
                 validators,
-                genesis_state_root_hash,
+                state_root_hash,
                 timestamp,
                 genesis_start_time,
             } => handling_es.handle_initialize_eras(
                 switch_blocks,
                 validators,
-                genesis_state_root_hash,
+                state_root_hash,
                 timestamp,
                 genesis_start_time,
             ),

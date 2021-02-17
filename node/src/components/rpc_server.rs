@@ -23,6 +23,7 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::join;
+use semver::Version;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -91,12 +92,18 @@ impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
         let builder = utils::start_listening(&config.address)?;
-        tokio::spawn(http_server::run(builder, effect_builder, config.qps_limit));
+        tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            api_version,
+            config.qps_limit,
+        ));
 
         Ok(RpcServer {})
     }

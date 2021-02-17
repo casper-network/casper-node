@@ -71,8 +71,8 @@ reactor!(Reactor {
         );
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
-        deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config);
-        deploy_fetcher = infallible Fetcher::<Deploy>(cfg.fetcher_config);
+        deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
+        deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
     }
 
     events: {
@@ -85,6 +85,7 @@ reactor!(Reactor {
         LinearChainRequest<NodeId> -> !;
         NetworkRequest<NodeId, Message> -> network;
         StorageRequest -> storage;
+        StateStoreRequest -> storage;
         FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
 
         // The only contract runtime request will be the commit of genesis, which we discard.

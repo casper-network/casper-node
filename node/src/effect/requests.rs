@@ -13,7 +13,6 @@ use std::{
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
-use semver::Version;
 use serde::Serialize;
 use static_assertions::const_assert;
 
@@ -40,7 +39,6 @@ use casper_types::{
 use super::Responder;
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo,
         consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
@@ -49,9 +47,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId,
-        ProtoBlock, StatusFeed, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, NodeId, ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -328,20 +326,6 @@ pub enum StorageRequest {
         /// The responder to call the results with.
         responder: Responder<Option<(Block, BlockSignatures)>>,
     },
-    /// Store given chainspec.
-    PutChainspec {
-        /// Chainspec.
-        chainspec: Arc<Chainspec>,
-        /// Responder to call with the result.
-        responder: Responder<()>,
-    },
-    /// Retrieve chainspec with given version.
-    GetChainspec {
-        /// Version.
-        version: Version,
-        /// Responder to call with the result.
-        responder: Responder<Option<Arc<Chainspec>>>,
-    },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
         /// The hash for the request
@@ -411,16 +395,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetHighestBlockWithMetadata { .. } => {
                 write!(formatter, "get highest block with metadata")
-            }
-            StorageRequest::PutChainspec { chainspec, .. } => {
-                write!(
-                    formatter,
-                    "put chainspec {}",
-                    chainspec.protocol_config.version
-                )
-            }
-            StorageRequest::GetChainspec { version, .. } => {
-                write!(formatter, "get chainspec {}", version)
             }
             StorageRequest::GetBlockSignatures { block_hash, .. } => {
                 write!(
@@ -698,7 +672,7 @@ pub enum ContractRuntimeRequest {
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
-        chainspec: Box<Chainspec>,
+        chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
     },
@@ -958,7 +932,7 @@ pub enum LinearChainRequest<I> {
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
     /// Local request for a linear chain block at height.
-    /// TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
+    // TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
     BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 

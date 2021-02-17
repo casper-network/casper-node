@@ -161,6 +161,23 @@ pub enum DeployValidationFailure {
         /// The received length of payment arguments.
         got: usize,
     },
+
+    /// Missing transfer amount.
+    #[error("missing transfer amount")]
+    MissingTransferAmount,
+
+    /// Invalid transfer amount.
+    #[error("invalid transfer amount")]
+    InvalidTransferAmount,
+
+    /// Insufficient transfer amount.
+    #[error("insufficient transfer amount; minimum: {minimum} attempted: {attempted}")]
+    InsufficientTransferAmount {
+        /// The minimum transfer amount.
+        minimum: U512,
+        /// The attempted transfer amount.
+        attempted: U512,
+    },
 }
 
 /// Errors other than validation failures relating to `Deploy`s.
@@ -608,25 +625,25 @@ impl Deploy {
     /// Note: if everything else checks out, calls the computationally expensive `is_valid` method.
     pub fn is_acceptable(
         &mut self,
-        chain_name: String,
-        config: DeployConfig,
+        chain_name: &str,
+        config: &DeployConfig,
     ) -> Result<(), DeployValidationFailure> {
         let header = self.header();
         if header.chain_name() != chain_name {
-            warn!(
+            info!(
                 deploy_hash = %self.id(),
                 deploy_header = %header,
                 chain_name = %header.chain_name(),
                 "invalid chain identifier"
             );
             return Err(DeployValidationFailure::InvalidChainName {
-                expected: chain_name,
+                expected: chain_name.to_string(),
                 got: header.chain_name().to_string(),
             });
         }
 
         if header.dependencies().len() > config.max_dependencies as usize {
-            warn!(
+            info!(
                 deploy_hash = %self.id(),
                 deploy_header = %header,
                 max_dependencies = %config.max_dependencies,
@@ -639,7 +656,7 @@ impl Deploy {
         }
 
         if header.ttl() > config.max_ttl {
-            warn!(
+            info!(
                 deploy_hash = %self.id(),
                 deploy_header = %header,
                 max_ttl = %config.max_ttl,
@@ -675,6 +692,24 @@ impl Deploy {
                 max_length: config.session_args_max_length as usize,
                 got: session_args_length,
             });
+        }
+
+        if self.session().is_transfer() {
+            let item = self.session().clone();
+            let attempted = item
+                .args()
+                .get(ARG_AMOUNT)
+                .ok_or(DeployValidationFailure::MissingTransferAmount)?
+                .clone()
+                .into_t::<U512>()
+                .map_err(|_| DeployValidationFailure::InvalidTransferAmount)?;
+            let minimum = U512::from(config.native_transfer_minimum_motes);
+            if attempted < minimum {
+                return Err(DeployValidationFailure::InsufficientTransferAmount {
+                    minimum,
+                    attempted,
+                });
+            }
         }
 
         self.is_valid()
@@ -869,7 +904,8 @@ impl FromBytes for Deploy {
 mod tests {
     use std::{iter, time::Duration};
 
-    use casper_types::bytesrepr::Bytes;
+    use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
+    use casper_types::{bytesrepr::Bytes, CLValue};
 
     use super::*;
     use crate::crypto::AsymmetricKeyExt;
@@ -913,6 +949,13 @@ mod tests {
         let dependencies = iter::repeat_with(|| DeployHash::random(rng))
             .take(dependency_count)
             .collect();
+        let transfer_args = {
+            let mut transfer_args = RuntimeArgs::new();
+            let value =
+                CLValue::from_t(U512::from(MAX_PAYMENT_AMOUNT)).expect("should create CLValue");
+            transfer_args.insert_cl_value(ARG_AMOUNT, value);
+            transfer_args
+        };
         Deploy::new(
             Timestamp::now(),
             ttl,
@@ -924,7 +967,7 @@ mod tests {
                 args: RuntimeArgs::new(),
             },
             ExecutableDeployItem::Transfer {
-                args: RuntimeArgs::new(),
+                args: transfer_args,
             },
             &secret_key,
             rng,
@@ -1018,7 +1061,7 @@ mod tests {
     #[test]
     fn is_acceptable() {
         let mut rng = crate::new_rng();
-        let chain_name = "net-1".to_string();
+        let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
         let mut deploy = create_deploy(
@@ -1028,14 +1071,14 @@ mod tests {
             &chain_name,
         );
         deploy
-            .is_acceptable(chain_name, deploy_config)
+            .is_acceptable(chain_name, &deploy_config)
             .expect("should be acceptable");
     }
 
     #[test]
     fn not_acceptable_due_to_invalid_chain_name() {
         let mut rng = crate::new_rng();
-        let expected_chain_name = "net-1".to_string();
+        let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
         let deploy_config = DeployConfig::default();
 
@@ -1047,12 +1090,12 @@ mod tests {
         );
 
         let expected_error = DeployValidationFailure::InvalidChainName {
-            expected: expected_chain_name.clone(),
+            expected: expected_chain_name.to_string(),
             got: wrong_chain_name,
         };
 
         assert_eq!(
-            deploy.is_acceptable(expected_chain_name, deploy_config),
+            deploy.is_acceptable(expected_chain_name, &deploy_config),
             Err(expected_error)
         );
         assert!(
@@ -1064,7 +1107,7 @@ mod tests {
     #[test]
     fn not_acceptable_due_to_excessive_dependencies() {
         let mut rng = crate::new_rng();
-        let chain_name = "net-1".to_string();
+        let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
         let dependency_count = usize::from(deploy_config.max_dependencies + 1);
@@ -1082,7 +1125,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_acceptable(chain_name, deploy_config),
+            deploy.is_acceptable(chain_name, &deploy_config),
             Err(expected_error)
         );
         assert!(
@@ -1094,7 +1137,7 @@ mod tests {
     #[test]
     fn not_acceptable_due_to_excessive_ttl() {
         let mut rng = crate::new_rng();
-        let chain_name = "net-1".to_string();
+        let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
 
         let ttl = deploy_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
@@ -1112,7 +1155,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_acceptable(chain_name, deploy_config),
+            deploy.is_acceptable(chain_name, &deploy_config),
             Err(expected_error)
         );
         assert!(

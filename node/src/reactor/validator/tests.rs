@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashSet},
+    sync::Arc,
     time::Duration,
 };
 
@@ -15,7 +16,7 @@ use casper_types::{PublicKey, SecretKey, U512};
 use crate::{
     components::{consensus::EraId, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    reactor::{initializer, joiner, validator, Runner},
+    reactor::{initializer, joiner, validator, ReactorExit, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
     types::{Chainspec, Timestamp},
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
@@ -26,7 +27,7 @@ struct TestChain {
     // Keys that validator instances will use, can include duplicates
     keys: Vec<SecretKey>,
     storages: Vec<TempDir>,
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
 }
 
 type Nodes = crate::testing::network::Nodes<validator::Reactor>;
@@ -53,7 +54,7 @@ impl TestChain {
         stakes: BTreeMap<PublicKey, u64>,
     ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec: Chainspec = Chainspec::from_resources("local");
+        let mut chainspec = Chainspec::from_resources("local");
 
         // Override accounts with those generated from the keys.
         chainspec.network_config.accounts = stakes
@@ -77,7 +78,7 @@ impl TestChain {
 
         TestChain {
             keys,
-            chainspec,
+            chainspec: Arc::new(chainspec),
             storages: Vec::new(),
         }
     }
@@ -122,17 +123,16 @@ impl TestChain {
             // We create an initializer reactor here and run it to completion.
             let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
                 WithDir::new(root.clone(), cfg),
-                self.chainspec.clone(),
+                Arc::clone(&self.chainspec),
             )
             .await?;
-            let _ = initializer_runner.run(rng).await;
-
-            // Now we can construct the actual node.
-            let initializer = initializer_runner.into_inner();
-            if !initializer.stopped_successfully() {
+            let reactor_exit = initializer_runner.run(rng).await;
+            if reactor_exit != ReactorExit::ProcessShouldContinue {
                 bail!("failed to initialize successfully");
             }
 
+            // Now we can construct the actual node.
+            let initializer = initializer_runner.into_inner();
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
