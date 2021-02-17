@@ -6,9 +6,12 @@ use core::mem::MaybeUninit;
 use casper_types::{
     account::AccountHash,
     api_error, bytesrepr,
-    system::auction::{self, EraId, EraInfo},
-    ApiError, ContractHash, HashAddr, SystemContractType, TransferResult, TransferredTo, URef,
-    U512, UREF_SERIALIZED_LENGTH,
+    system::{
+        auction::{self, EraId, EraInfo},
+        SystemContractType,
+    },
+    ApiError, ContractHash, HashAddr, TransferResult, TransferredTo, URef, U512,
+    UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{

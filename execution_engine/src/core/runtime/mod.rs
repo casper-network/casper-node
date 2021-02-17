@@ -30,11 +30,11 @@ use casper_types::{
         mint::{self, Mint},
         proof_of_stake::{self, ProofOfStake},
         standard_payment::{self, StandardPayment},
+        SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult, TransferredTo, URef,
-    U128, U256, U512,
+    PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
