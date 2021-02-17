@@ -355,3 +355,45 @@ async fn test_joiner() {
         .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
         .await;
 }
+
+#[ignore]
+#[tokio::test]
+async fn test_joiner_network() {
+    testing::init_logging();
+
+    const INITIAL_NETWORK_SIZE: usize = 5;
+
+    let mut rng = crate::new_rng();
+
+    let mut chain = TestChain::new(INITIAL_NETWORK_SIZE, &mut rng).await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        INITIAL_NETWORK_SIZE,
+        "Wrong number of bonded validators in the network"
+    );
+
+    // Get the first switch block hash
+    let first_switch_block_hash = get_switch_block_hash(1, &mut chain.network, &mut rng).await;
+
+    // Have a node join the network with that hash
+    info!("Joining with trusted hash {}", first_switch_block_hash);
+    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    chain
+        .add_node(
+            false,
+            joiner_node_secret_key,
+            Some(first_switch_block_hash),
+            &mut rng,
+        )
+        .await;
+
+    assert_eq!(chain.network.nodes().len(), INITIAL_NETWORK_SIZE + 1,);
+
+    let era_num = 3;
+    info!("Waiting for Era {} to end", era_num);
+    chain
+        .network
+        .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+        .await;
+}
