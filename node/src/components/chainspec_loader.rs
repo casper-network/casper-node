@@ -644,11 +644,14 @@ fn dir_name_from_version(version: &Version) -> PathBuf {
     PathBuf::from(version.to_string().replace(".", "_"))
 }
 
-/// Iterates the given path, returning the subdir representing the greatest SemVer version.
+/// Iterates the given path, returning the subdir representing the immediate next SemVer version
+/// after `current_version`.
 ///
 /// Subdir names should be semvers with dots replaced with underscores.
-fn max_installed_version(dir: &Path) -> Result<Version, Error> {
-    let mut max_version = Version::new(0, 0, 0);
+fn next_installed_version(dir: &Path, current_version: &Version) -> Result<Version, Error> {
+    let max_version = Version::new(u64::max_value(), u64::max_value(), u64::max_value());
+
+    let mut next_version = max_version.clone();
     let mut read_version = false;
     for entry in fs::read_dir(dir).map_err(|error| Error::ReadDir {
         dir: dir.to_path_buf(),
@@ -675,8 +678,8 @@ fn max_installed_version(dir: &Path) -> Result<Version, Error> {
             }
         };
 
-        if version > max_version {
-            max_version = version;
+        if version > *current_version && version < next_version {
+            next_version = version;
         }
         read_version = true;
     }
@@ -687,14 +690,18 @@ fn max_installed_version(dir: &Path) -> Result<Version, Error> {
         });
     }
 
-    Ok(max_version)
+    if next_version == max_version {
+        next_version = current_version.clone();
+    }
+
+    Ok(next_version)
 }
 
-/// Uses `max_installed_version()` to find the latest versioned subdir.  If this is greater than
-/// `current_version`, reads the UpgradePoint file from there and returns its version and activation
-/// point.  Returns `None` if there is no greater version available, or if any step errors.
+/// Uses `next_installed_version()` to find the next versioned subdir.  If it exists, reads the
+/// UpgradePoint file from there and returns its version and activation point.  Returns `None` if
+/// there is no greater version available, or if any step errors.
 fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
-    let max_version = match max_installed_version(&dir) {
+    let next_version = match next_installed_version(&dir, &current_version) {
         Ok(version) => version,
         Err(error) => {
             warn!(dir=%dir.display(), %error, "failed to get a valid version from subdirs");
@@ -702,11 +709,11 @@ fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
         }
     };
 
-    if max_version <= current_version {
+    if next_version <= current_version {
         return None;
     }
 
-    let subdir = dir.join(dir_name_from_version(&max_version));
+    let subdir = dir.join(dir_name_from_version(&next_version));
     let upgrade_point = match UpgradePoint::from_chainspec_path(&subdir) {
         Ok(upgrade_point) => upgrade_point,
         Err(error) => {
@@ -715,10 +722,10 @@ fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
         }
     };
 
-    if upgrade_point.protocol_config.version != max_version {
+    if upgrade_point.protocol_config.version != next_version {
         warn!(
             upgrade_point_version=%upgrade_point.protocol_config.version,
-            subdir_version=%max_version,
+            subdir_version=%next_version,
             "next chainspec installed to wrong subdir"
         );
         return None;
@@ -733,35 +740,43 @@ mod tests {
     use crate::{testing::TestRng, types::chainspec::CHAINSPEC_NAME};
 
     #[test]
-    fn should_get_max_installed_version() {
+    fn should_get_next_installed_version() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let max_version = || max_installed_version(tempdir.path()).unwrap();
+        let get_next_version = |current_version: &Version| {
+            next_installed_version(tempdir.path(), current_version).unwrap()
+        };
 
+        let mut current = Version::new(0, 0, 0);
+        let mut next_version = Version::new(1, 0, 0);
         fs::create_dir(tempdir.path().join("1_0_0")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 0, 0));
+        assert_eq!(get_next_version(&current), next_version);
+        current = next_version;
+
+        next_version = Version::new(1, 2, 3);
+        fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
+        assert_eq!(get_next_version(&current), next_version);
+        current = next_version.clone();
 
         fs::create_dir(tempdir.path().join("1_0_3")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 0, 3));
-
-        fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 2, 3));
-
-        fs::create_dir(tempdir.path().join("1_2_2")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 2, 3));
+        assert_eq!(get_next_version(&current), next_version);
 
         fs::create_dir(tempdir.path().join("2_2_2")).unwrap();
-        assert_eq!(max_version(), Version::new(2, 2, 2));
+        fs::create_dir(tempdir.path().join("3_3_3")).unwrap();
+        assert_eq!(get_next_version(&current), Version::new(2, 2, 2));
     }
 
     #[test]
     fn should_ignore_invalid_versions() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        // Executes `max_installed_version()` and asserts the resulting error as a string starts
+        // Executes `next_installed_version()` and asserts the resulting error as a string starts
         // with the given text.
+        let min_version = Version::new(0, 0, 0);
         let assert_error_starts_with = |path: &Path, expected: String| {
-            let error_msg = max_installed_version(path).unwrap_err().to_string();
+            let error_msg = next_installed_version(path, &min_version)
+                .unwrap_err()
+                .to_string();
             assert!(
                 error_msg.starts_with(&expected),
                 "Error message expected to start with \"{}\"\nActual error message: \"{}\"",
@@ -799,7 +814,7 @@ mod tests {
         // Try with a dir which has a valid and invalid subdir - the invalid one should be ignored.
         fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
         assert_eq!(
-            max_installed_version(tempdir.path()).unwrap(),
+            next_installed_version(tempdir.path(), &min_version).unwrap(),
             Version::new(1, 2, 3)
         );
     }
@@ -826,7 +841,7 @@ mod tests {
     fn should_get_next_upgrade() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let max_point = |current_version: &Version| {
+        let next_point = |current_version: &Version| {
             next_upgrade(tempdir.path().to_path_buf(), current_version.clone()).unwrap()
         };
 
@@ -835,19 +850,25 @@ mod tests {
         let mut current = Version::new(0, 9, 9);
         let v1_0_0 = Version::new(1, 0, 0);
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
-        assert_eq!(max_point(&current), chainspec_v1_0_0.protocol_config.into());
+        assert_eq!(
+            next_point(&current),
+            chainspec_v1_0_0.protocol_config.into()
+        );
 
         current = v1_0_0;
         let v1_0_3 = Version::new(1, 0, 3);
         let chainspec_v1_0_3 = install_chainspec(&mut rng, tempdir.path(), &v1_0_3);
-        assert_eq!(max_point(&current), chainspec_v1_0_3.protocol_config.into());
+        assert_eq!(
+            next_point(&current),
+            chainspec_v1_0_3.protocol_config.into()
+        );
     }
 
     #[test]
     fn should_not_get_old_or_invalid_upgrade() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let maybe_max_point = |current_version: &Version| {
+        let maybe_next_point = |current_version: &Version| {
             next_upgrade(tempdir.path().to_path_buf(), current_version.clone())
         };
 
@@ -856,21 +877,21 @@ mod tests {
         // Check we return `None` if there are no version subdirs.
         let v1_0_0 = Version::new(1, 0, 0);
         let mut current = v1_0_0.clone();
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if current_version == max_version.
+        // Check we return `None` if current_version == next_version.
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if current_version > max_version.
+        // Check we return `None` if current_version > next_version.
         current = Version::new(2, 0, 0);
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if we find an upgrade file where the protocol_config.version field
         // doesn't match the subdir name.
         let v0_9_9 = Version::new(0, 9, 9);
         current = v0_9_9.clone();
-        assert!(maybe_max_point(&current).is_some());
+        assert!(maybe_next_point(&current).is_some());
 
         let mut chainspec_v0_9_9 = chainspec_v1_0_0;
         chainspec_v0_9_9.protocol_config.version = v0_9_9;
@@ -883,14 +904,14 @@ mod tests {
             toml::to_string_pretty(&chainspec_v0_9_9).expect("should encode to toml"),
         )
         .expect("should install upgrade point");
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if the max version upgrade_point file is corrupt.
+        // Check we return `None` if the next version upgrade_point file is corrupt.
         fs::write(&path_v1_0_0, "bad data".as_bytes()).unwrap();
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if the max version upgrade_point file is missing.
+        // Check we return `None` if the next version upgrade_point file is missing.
         fs::remove_file(&path_v1_0_0).unwrap();
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
     }
 }

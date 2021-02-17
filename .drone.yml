@@ -364,7 +364,6 @@ steps:
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
-  # Removed casper-node from tag publish as we not longer ship this way.
   commands:
   - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
