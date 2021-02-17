@@ -15,9 +15,13 @@ pub(crate) struct NetworkingMetrics {
 
     // Potentially temporary metrics, not supported by all networking components:
     /// Number of do-nothing futures that have not finished executing for read requests.
-    pub(crate) in_flight_read_futures: prometheus::Gauge,
+    pub(crate) read_futures_in_flight: prometheus::Gauge,
+    /// Number of do-nothing futures created total (read).
+    pub(crate) read_futures_total: prometheus::Gauge,
     /// Number of do-nothing futures that have not finished executing for write reponses.
-    pub(crate) in_flight_write_futures: prometheus::Gauge,
+    pub(crate) write_futures_in_flight: prometheus::Gauge,
+    /// Number of do-nothing futures created total (write).
+    pub(crate) write_futures_total: prometheus::Gauge,
 
     /// Registry instance.
     registry: Registry,
@@ -40,13 +44,21 @@ impl NetworkingMetrics {
         )?;
         let peers = IntGauge::new("peers", "Number of connected peers.")?;
 
-        let in_flight_read_futures = prometheus::Gauge::new(
-            "owm_read_reaponse_futures",
+        let read_futures_in_flight = prometheus::Gauge::new(
+            "owm_read_futures_in_flight",
             "number of do-nothing futures in flight created by `Codec::read_response`",
         )?;
-        let in_flight_write_futures = prometheus::Gauge::new(
-            "owm_write_response_futures",
+        let read_futures_total = prometheus::Gauge::new(
+            "owm_read_futures_total",
+            "number of do-nothing futures total created by `Codec::read_response`",
+        )?;
+        let write_futures_in_flight = prometheus::Gauge::new(
+            "owm_write_futures_in_flight",
             "number of do-nothing futures in flight created by `Codec::write_response`",
+        )?;
+        let write_futures_total = prometheus::Gauge::new(
+            "owm_write_futures_total",
+            "number of do-nothing futures total created by `Codec::write_response`",
         )?;
 
         registry.register(Box::new(broadcast_requests.clone()))?;
@@ -55,8 +67,10 @@ impl NetworkingMetrics {
         registry.register(Box::new(queued_messages.clone()))?;
         registry.register(Box::new(peers.clone()))?;
 
-        registry.register(Box::new(in_flight_read_futures.clone()))?;
-        registry.register(Box::new(in_flight_write_futures.clone()))?;
+        registry.register(Box::new(read_futures_in_flight.clone()))?;
+        registry.register(Box::new(read_futures_total.clone()))?;
+        registry.register(Box::new(write_futures_in_flight.clone()))?;
+        registry.register(Box::new(write_futures_total.clone()))?;
 
         Ok(NetworkingMetrics {
             broadcast_requests,
@@ -64,8 +78,10 @@ impl NetworkingMetrics {
             open_connections,
             queued_messages,
             peers,
-            in_flight_read_futures,
-            in_flight_write_futures,
+            read_futures_in_flight,
+            read_futures_total,
+            write_futures_in_flight,
+            write_futures_total,
             registry: registry.clone(),
         })
     }
@@ -90,10 +106,16 @@ impl Drop for NetworkingMetrics {
             .expect("did not expect deregistering peers to fail");
 
         self.registry
-            .unregister(Box::new(self.in_flight_read_futures.clone()))
+            .unregister(Box::new(self.read_futures_in_flight.clone()))
             .expect("did not expect deregistering in_flight_read_futures to fail");
         self.registry
-            .unregister(Box::new(self.in_flight_write_futures.clone()))
+            .unregister(Box::new(self.read_futures_total.clone()))
+            .expect("did not expect deregistering total_read_futures to fail");
+        self.registry
+            .unregister(Box::new(self.write_futures_in_flight.clone()))
             .expect("did not expect deregistering in_flight_write_futures to fail");
+        self.registry
+            .unregister(Box::new(self.write_futures_total.clone()))
+            .expect("did not expect deregistering total_write_futures to fail");
     }
 }

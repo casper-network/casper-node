@@ -89,16 +89,20 @@ impl From<Outgoing> for Vec<u8> {
 #[derive(Debug, Clone)]
 pub(super) struct Codec {
     max_message_size: u32,
-    in_flight_read_futures: prometheus::Gauge,
-    in_flight_write_futures: prometheus::Gauge,
+    read_futures_in_flight: prometheus::Gauge,
+    read_futures_total: prometheus::Gauge,
+    write_futures_in_flight: prometheus::Gauge,
+    write_futures_total: prometheus::Gauge,
 }
 
 impl Codec {
     pub(super) fn new(config: &Config, net_metrics: &NetworkingMetrics) -> Self {
         Self {
             max_message_size: config.max_one_way_message_size,
-            in_flight_read_futures: net_metrics.in_flight_read_futures.clone(),
-            in_flight_write_futures: net_metrics.in_flight_write_futures.clone(),
+            read_futures_in_flight: net_metrics.read_futures_in_flight.clone(),
+            read_futures_total: net_metrics.read_futures_total.clone(),
+            write_futures_in_flight: net_metrics.write_futures_in_flight.clone(),
+            write_futures_total: net_metrics.write_futures_total.clone(),
         }
     }
 }
@@ -157,8 +161,9 @@ impl RequestResponseCodec for Codec {
         Self: 'async_trait,
         T: AsyncRead + Unpin + Send + 'async_trait,
     {
-        self.in_flight_read_futures.inc();
-        let gauge = self.in_flight_read_futures.clone();
+        self.read_futures_in_flight.inc();
+        self.read_futures_total.inc();
+        let gauge = self.read_futures_in_flight.clone();
 
         // For one-way messages, where no response will be sent by the peer, just return Ok(()).
         async move {
@@ -218,8 +223,9 @@ impl RequestResponseCodec for Codec {
         Self: 'async_trait,
         T: AsyncWrite + Unpin + Send + 'async_trait,
     {
-        self.in_flight_write_futures.inc();
-        let gauge = self.in_flight_write_futures.clone();
+        self.write_futures_in_flight.inc();
+        self.write_futures_total.inc();
+        let gauge = self.write_futures_in_flight.clone();
         // For one-way messages, where no response will be sent by the peer, just return Ok(()).
         async move {
             gauge.dec();
