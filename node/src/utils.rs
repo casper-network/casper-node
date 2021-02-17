@@ -1,6 +1,7 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
+mod counting_channel;
 mod external;
 mod median;
 pub mod milliseconds;
@@ -23,6 +24,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::warn;
 
+pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, CountingSender};
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
