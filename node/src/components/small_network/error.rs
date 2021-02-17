@@ -118,8 +118,9 @@ pub enum Error {
     /// Server has stopped.
     #[error("failed to create outgoing connection as server has stopped")]
     ServerStopped,
-    #[error(transparent)]
+
     /// Instantiating metrics failed.
+    #[error(transparent)]
     MetricsError(
         #[serde(skip_serializing)]
         #[from]
