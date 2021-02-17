@@ -401,6 +401,7 @@ impl reactor::Reactor for Reactor {
         let (network, network_effects) = Network::new(
             event_queue,
             network_config,
+            registry,
             network_identity,
             chainspec_loader.chainspec(),
             true,

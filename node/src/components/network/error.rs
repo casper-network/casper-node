@@ -39,4 +39,8 @@ pub enum Error {
     /// Message too large.
     #[error("message of {actual_size} bytes exceeds limit of {max_size} bytes")]
     MessageTooLarge { max_size: u32, actual_size: u64 },
+
+    /// Instantiating metrics failed.
+    #[error(transparent)]
+    MetricsError(#[from] prometheus::Error),
 }
