@@ -39,7 +39,7 @@ function main() {
     do_await_full_synchronization
 
     log "------------------------------------------------------------"
-    log "Syncing node complete"
+    log "Scenario itst01 complete"
     log "------------------------------------------------------------"
 }
 
@@ -76,6 +76,11 @@ function do_stop_node() {
 function do_start_node() {
     log_step "starting node-$NODE_ID. Syncing from hash=${LFB_HASH}"
     do_node_start "$NODE_ID" "$LFB_HASH"
+    sleep 1
+    if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then
+        log "ERROR: node-${NODE_ID} is not running"
+	exit 1
+    fi
 }
 
 function do_await_full_synchronization() {

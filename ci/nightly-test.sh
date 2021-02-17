@@ -26,14 +26,15 @@ function start_run_teardown() {
     echo "Setting up network: $RUN_CMD"
     nctl-assets-setup
     nctl-start
-    echo "Sleeping 60 to allow network startup"
-    sleep 60
+    echo "Sleeping 90 to allow network startup"
+    sleep 90
     pushd $SCENARIOS_DIR
     # Don't qoute the cmd
     echo "Starting scenario: $RUN_CMD"
     source $RUN_CMD
     popd
     nctl-assets-teardown
+    sleep 1
 }
 
 start_run_teardown "sync_test.sh node=6 timeout=500"
