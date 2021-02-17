@@ -381,7 +381,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 }
             };
 
-            let era_id = match block.header().era_end() {
+            let era_id = match block.header().era_report() {
                 Some(_) => block.header().era_id().0,
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {

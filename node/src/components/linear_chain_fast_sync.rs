@@ -467,7 +467,7 @@ where
                         // Reset used peers so we can download next block with the full set.
                         self.peers.reset(rng);
                         // Execute block
-                        let finalized_block: FinalizedBlock = (*block).into();
+                        let finalized_block: FinalizedBlock = (block.header().clone()).into();
                         effect_builder.execute_block(finalized_block).ignore()
                     }
                     event::DeploysResult::NotFound(block, peer) => {

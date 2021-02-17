@@ -601,8 +601,8 @@ where
         block: Block,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
-        let (era_end, next_era_validators_weights) = match (
-            block.header().era_end(),
+        let (era_report, next_era_validators_weights) = match (
+            block.header().era_report(),
             block.header().next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
@@ -616,7 +616,7 @@ where
                 )
             }
         };
-        let newly_slashed = era_end.equivocators.clone();
+        let newly_slashed = era_report.equivocators.clone();
         let era_id = block.header().era_id().successor();
         info!(era = era_id.0, "era created");
         let seed =

@@ -31,7 +31,7 @@ use thiserror::Error;
 use casper_types::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{Item, Tag, Timestamp};
@@ -69,26 +69,6 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
         inactive_validators,
     }
 });
-static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::ed25519([0; 32]);
-    let public_key_1 = PublicKey::from(&secret_key_1);
-    let next_era_validator_weights = {
-        let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
-        next_era_validator_weights.insert(public_key_1, U512::from(123));
-        next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::ed25519([5u8; SecretKey::ED25519_LENGTH])),
-            U512::from(456),
-        );
-        next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::ed25519([6u8; SecretKey::ED25519_LENGTH])),
-            U512::from(789),
-        );
-        next_era_validator_weights
-    };
-
-    let era_report = EraReport::doc_example().clone();
-    EraEnd::new(era_report, next_era_validator_weights)
-});
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
@@ -113,7 +93,6 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let state_root_hash = Digest::from([8u8; Digest::LENGTH]);
     let finalized_block = FinalizedBlock::doc_example().clone();
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
-    let protocol_version = ProtocolVersion::V1_0_0;
 
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -138,7 +117,6 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
-        protocol_version,
     )
 });
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
@@ -483,26 +461,21 @@ impl DocExample for FinalizedBlock {
     }
 }
 
-impl From<Block> for FinalizedBlock {
-    fn from(block: Block) -> Self {
+impl From<BlockHeader> for FinalizedBlock {
+    fn from(header: BlockHeader) -> Self {
         let proto_block = ProtoBlock::new(
-            block.body.deploy_hashes().clone(),
-            block.body.transfer_hashes().clone(),
-            block.header.random_bit,
+            header.deploy_hashes().clone(),
+            header.transfer_hashes().clone(),
+            header.random_bit,
         );
-
-        let era_report = match block.header.era_end {
-            Some(data) => Some(data.era_report),
-            None => None,
-        };
 
         FinalizedBlock {
             proto_block,
-            timestamp: block.header.timestamp,
-            era_report,
-            era_id: block.header.era_id,
-            height: block.header.height,
-            proposer: block.body.proposer,
+            timestamp: header.timestamp,
+            era_report: header.era_report,
+            era_id: header.era_id,
+            height: header.height,
+            proposer: header.proposer,
         }
     }
 }
@@ -600,82 +573,22 @@ impl FromBytes for BlockHash {
     }
 }
 
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
-/// A struct to contain information related to the end of an era and validator weights for the
-/// following era.
-pub struct EraEnd {
-    /// The era end information.
-    era_report: EraReport,
-    /// The validator weights for the next era.
-    next_era_validator_weights: BTreeMap<PublicKey, U512>,
-}
-
-impl EraEnd {
-    pub fn new(
-        era_report: EraReport,
-        next_era_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
-        EraEnd {
-            era_report,
-            next_era_validator_weights,
-        }
-    }
-
-    pub fn era_report(&self) -> &EraReport {
-        &self.era_report
-    }
-}
-
-impl ToBytes for EraEnd {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.era_report.to_bytes()?);
-        buffer.extend(self.next_era_validator_weights.to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.era_report.serialized_length() + self.next_era_validator_weights.serialized_length()
-    }
-}
-
-impl FromBytes for EraEnd {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (era_report, bytes) = EraReport::from_bytes(bytes)?;
-        let (next_era_validator_weights, bytes) = BTreeMap::<PublicKey, U512>::from_bytes(bytes)?;
-        let era_end = EraEnd {
-            era_report,
-            next_era_validator_weights,
-        };
-        Ok((era_end, bytes))
-    }
-}
-
-impl Display for EraEnd {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "era_report: {} ", self.era_report)
-    }
-}
-
-impl DocExample for EraEnd {
-    fn doc_example() -> &'static Self {
-        &*ERA_END
-    }
-}
-
 /// The header portion of a [`Block`](struct.Block.html).
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     state_root_hash: Digest,
     body_hash: Digest,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
     random_bit: bool,
     accumulated_seed: Digest,
-    era_end: Option<EraEnd>,
+    era_report: Option<EraReport>,
     timestamp: Timestamp,
     era_id: EraId,
     height: u64,
-    protocol_version: ProtocolVersion,
+    proposer: PublicKey,
+    next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
 }
 
 impl BlockHeader {
@@ -694,6 +607,16 @@ impl BlockHeader {
         &self.body_hash
     }
 
+    /// The list of deploy hashes included in the block.
+    pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        &self.deploy_hashes
+    }
+
+    /// The list of transfer hashes included in the block.
+    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        &self.transfer_hashes
+    }
+
     /// A random bit needed for initializing a future era.
     pub fn random_bit(&self) -> bool {
         self.random_bit
@@ -710,16 +633,13 @@ impl BlockHeader {
     }
 
     /// Returns reward and slashing information if this is the era's last block.
-    pub fn era_end(&self) -> Option<&EraReport> {
-        match &self.era_end {
-            Some(data) => Some(data.era_report()),
-            None => None,
-        }
+    pub fn era_report(&self) -> Option<&EraReport> {
+        self.era_report.as_ref()
     }
 
     /// Returns `true` if this block is the last one in the current era.
     pub fn is_switch_block(&self) -> bool {
-        self.era_end.is_some()
+        self.era_report.is_some()
     }
 
     /// Era ID in which this block was created.
@@ -732,15 +652,14 @@ impl BlockHeader {
         self.height
     }
 
+    /// Block proposer.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
+    }
+
     /// The validators for the upcoming era and their respective weights.
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
-        match &self.era_end {
-            Some(era_end) => {
-                let validator_weights = &era_end.next_era_validator_weights;
-                Some(validator_weights)
-            }
-            None => None,
-        }
+        self.next_era_validator_weights.as_ref()
     }
 
     /// Returns true if block is Genesis' child.
@@ -766,17 +685,19 @@ impl Display for BlockHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block header parent hash {}, post-state hash {}, body hash {}, \
-            random bit {}, accumulated seed {}, timestamp {}",
+            "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
+            transfers [{}], random bit {}, accumulated seed {}, timestamp {}",
             self.parent_hash.inner(),
             self.state_root_hash,
             self.body_hash,
+            DisplayIter::new(self.deploy_hashes.iter()),
+            DisplayIter::new(self.transfer_hashes.iter()),
             self.random_bit,
             self.accumulated_seed,
             self.timestamp,
         )?;
-        if let Some(ee) = &self.era_end {
-            write!(formatter, ", era_end: {}", ee)?;
+        if let Some(ee) = &self.era_report {
+            write!(formatter, ", era_report: {}", ee)?;
         }
         Ok(())
     }
@@ -788,13 +709,16 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.parent_hash.to_bytes()?);
         buffer.extend(self.state_root_hash.to_bytes()?);
         buffer.extend(self.body_hash.to_bytes()?);
+        buffer.extend(self.deploy_hashes.to_bytes()?);
+        buffer.extend(self.transfer_hashes.to_bytes()?);
         buffer.extend(self.random_bit.to_bytes()?);
         buffer.extend(self.accumulated_seed.to_bytes()?);
-        buffer.extend(self.era_end.to_bytes()?);
+        buffer.extend(self.era_report.to_bytes()?);
         buffer.extend(self.timestamp.to_bytes()?);
         buffer.extend(self.era_id.to_bytes()?);
         buffer.extend(self.height.to_bytes()?);
-        buffer.extend(self.protocol_version.to_bytes()?);
+        buffer.extend(self.proposer.to_bytes()?);
+        buffer.extend(self.next_era_validator_weights.to_bytes()?);
         Ok(buffer)
     }
 
@@ -802,13 +726,16 @@ impl ToBytes for BlockHeader {
         self.parent_hash.serialized_length()
             + self.state_root_hash.serialized_length()
             + self.body_hash.serialized_length()
+            + self.deploy_hashes.serialized_length()
+            + self.transfer_hashes.serialized_length()
             + self.random_bit.serialized_length()
             + self.accumulated_seed.serialized_length()
-            + self.era_end.serialized_length()
+            + self.era_report.serialized_length()
             + self.timestamp.serialized_length()
             + self.era_id.serialized_length()
             + self.height.serialized_length()
-            + self.protocol_version.serialized_length()
+            + self.proposer.serialized_length()
+            + self.next_era_validator_weights.serialized_length()
     }
 }
 
@@ -817,109 +744,33 @@ impl FromBytes for BlockHeader {
         let (parent_hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
         let (body_hash, remainder) = Digest::from_bytes(remainder)?;
+        let (deploy_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
+        let (transfer_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
         let (random_bit, remainder) = bool::from_bytes(remainder)?;
         let (accumulated_seed, remainder) = Digest::from_bytes(remainder)?;
-        let (era_end, remainder) = Option::<EraEnd>::from_bytes(remainder)?;
+        let (era_report, remainder) = Option::<EraReport>::from_bytes(remainder)?;
         let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
-        let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
+        let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
+        let (next_era_validator_weights, remainder) =
+            Option::<BTreeMap<PublicKey, U512>>::from_bytes(remainder)?;
         let block_header = BlockHeader {
             parent_hash,
             state_root_hash,
             body_hash,
+            deploy_hashes,
+            transfer_hashes,
             random_bit,
             accumulated_seed,
-            era_end,
+            era_report,
             timestamp,
             era_id,
             height,
-            protocol_version,
+            proposer,
+            next_era_validator_weights,
         };
         Ok((block_header, remainder))
-    }
-}
-
-/// The body portion of a block.
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
-pub struct BlockBody {
-    proposer: PublicKey,
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
-}
-
-impl BlockBody {
-    /// Creates a new body from deploy and transfer hashes.
-    pub(crate) fn new(
-        proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
-    ) -> Self {
-        BlockBody {
-            proposer,
-            deploy_hashes,
-            transfer_hashes,
-        }
-    }
-
-    /// Block proposer.
-    pub fn proposer(&self) -> &PublicKey {
-        &self.proposer
-    }
-
-    /// Retrieves the deploy hashes within the block.
-    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
-        &self.deploy_hashes
-    }
-
-    /// Retrieves the transfer hashes within the block.
-    pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        &self.transfer_hashes
-    }
-
-    /// Computes the body hash
-    pub(crate) fn hash(&self) -> Digest {
-        let serialized_body = self
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        hash::hash(&serialized_body)
-    }
-}
-
-impl Display for BlockBody {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{:?}", self)?;
-        Ok(())
-    }
-}
-
-impl ToBytes for BlockBody {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.proposer.to_bytes()?);
-        buffer.extend(self.deploy_hashes.to_bytes()?);
-        buffer.extend(self.transfer_hashes.to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.proposer.serialized_length()
-            + self.deploy_hashes.serialized_length()
-            + self.transfer_hashes.serialized_length()
-    }
-}
-
-impl FromBytes for BlockBody {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
-        let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let body = BlockBody {
-            proposer,
-            deploy_hashes,
-            transfer_hashes,
-        };
-        Ok((body, bytes))
     }
 }
 
@@ -1009,7 +860,7 @@ impl Display for BlockSignatures {
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
-    body: BlockBody,
+    body: (), // TODO: implement body of block
 }
 
 impl Block {
@@ -1019,22 +870,14 @@ impl Block {
         state_root_hash: Digest,
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
-        protocol_version: ProtocolVersion,
     ) -> Self {
-        let body = BlockBody::new(
-            finalized_block.proposer,
-            finalized_block.proto_block.wasm_deploys().clone(),
-            finalized_block.proto_block.transfers().clone(),
-        );
-        let body_hash = body.hash();
+        let body = ();
+        let serialized_body = Self::serialize_body(&body)
+            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+        let body_hash = hash::hash(&serialized_body);
 
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
-
-        let era_end = match finalized_block.era_report {
-            Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
-            None => None,
-        };
 
         let mut accumulated_seed = [0; Digest::LENGTH];
 
@@ -1049,29 +892,25 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
+            deploy_hashes: finalized_block.proto_block.wasm_deploys,
+            transfer_hashes: finalized_block.proto_block.transfers,
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
-            era_end,
+            era_report: finalized_block.era_report,
             timestamp: finalized_block.timestamp,
             era_id,
             height,
-            protocol_version,
+            proposer: finalized_block.proposer,
+            next_era_validator_weights,
         };
 
-        Self::new_from_header_and_body(header, body)
-    }
-
-    pub(crate) fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
         let hash = header.hash();
+
         Block { hash, header, body }
     }
 
     pub(crate) fn header(&self) -> &BlockHeader {
         &self.header
-    }
-
-    pub(crate) fn body(&self) -> &BlockBody {
-        &self.body
     }
 
     pub(crate) fn take_header(self) -> BlockHeader {
@@ -1089,12 +928,12 @@ impl Block {
 
     /// The deploy hashes included in this block.
     pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
-        self.body.deploy_hashes()
+        self.header.deploy_hashes()
     }
 
     /// The list of transfer hashes included in the block.
     pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        self.body.transfer_hashes()
+        self.header.transfer_hashes()
     }
 
     /// The height of a block.
@@ -1102,9 +941,14 @@ impl Block {
         self.header.height()
     }
 
+    fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
+        body.to_bytes()
+    }
+
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_body_hash = self.body.hash();
+        let serialized_body = Block::serialize_body(&self.body)?;
+        let actual_body_hash = hash::hash(&serialized_body);
         if self.header.body_hash != actual_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 expected_by_block_header: self.header.body_hash,
@@ -1125,7 +969,6 @@ impl Block {
     #[cfg(test)]
     pub fn set_height(&mut self, height: u64) -> &mut Self {
         self.header.height = height;
-        self.hash = self.header.hash();
         self
     }
 
@@ -1136,19 +979,13 @@ impl Block {
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let next_era_validator_weights = match finalized_block.era_report {
-            Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
-            None => None,
-        };
 
         Block::new(
             parent_hash,
             parent_seed,
             state_root_hash,
             finalized_block,
-            next_era_validator_weights,
-            protocol_version,
+            None,
         )
     }
 }
@@ -1163,18 +1000,20 @@ impl Display for Block {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "executed block {}, parent hash {}, post-state hash {}, body hash {}, \
-             random bit {}, timestamp {}, era_id {}, height {}",
+            "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
+            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
             self.header.body_hash,
+            DisplayIter::new(self.header.deploy_hashes.iter()),
+            DisplayIter::new(self.header.transfer_hashes.iter()),
             self.header.random_bit,
             self.header.timestamp,
             self.header.era_id.0,
             self.header.height,
         )?;
-        if let Some(ee) = &self.header.era_end {
+        if let Some(ee) = &self.header.era_report {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -1186,14 +1025,11 @@ impl ToBytes for Block {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.hash.to_bytes()?);
         buffer.extend(self.header.to_bytes()?);
-        buffer.extend(self.body.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length()
-            + self.header.serialized_length()
-            + self.body.serialized_length()
+        self.hash.serialized_length() + self.header.serialized_length()
     }
 }
 
@@ -1201,13 +1037,25 @@ impl FromBytes for Block {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
-        let (body, remainder) = BlockBody::from_bytes(remainder)?;
-        let block = Block { hash, header, body };
+        let block = Block {
+            hash,
+            header,
+            body: (),
+        };
         Ok((block, remainder))
     }
 }
 
 impl BlockLike for Block {
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+            .collect()
+    }
+}
+
+impl BlockLike for BlockHeader {
     fn deploys(&self) -> Vec<&DeployHash> {
         self.deploy_hashes()
             .iter()
@@ -1336,115 +1184,74 @@ pub(crate) mod json_compatibility {
 
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
     #[serde(deny_unknown_fields)]
-    struct JsonEraEnd {
-        era_report: JsonEraReport,
-        next_era_validator_weights: Vec<ValidatorWeight>,
-    }
-
-    impl From<EraEnd> for JsonEraEnd {
-        fn from(data: EraEnd) -> Self {
-            let json_era_end = JsonEraReport::from(data.era_report);
-            let json_validator_weights = data
-                .next_era_validator_weights
-                .iter()
-                .map(|(validator, weight)| ValidatorWeight {
-                    validator: *validator,
-                    weight: *weight,
-                })
-                .collect();
-            JsonEraEnd {
-                era_report: json_era_end,
-                next_era_validator_weights: json_validator_weights,
-            }
-        }
-    }
-
-    impl From<JsonEraEnd> for EraEnd {
-        fn from(json_data: JsonEraEnd) -> Self {
-            let era_report = EraReport::from(json_data.era_report);
-            let validator_weights = json_data
-                .next_era_validator_weights
-                .iter()
-                .map(|validator_weight| (validator_weight.validator, validator_weight.weight))
-                .collect();
-            EraEnd::new(era_report, validator_weights)
-        }
-    }
-
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
-    #[serde(deny_unknown_fields)]
     struct JsonBlockHeader {
         parent_hash: BlockHash,
         state_root_hash: Digest,
         body_hash: Digest,
+        deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
         random_bit: bool,
         accumulated_seed: Digest,
-        era_end: Option<JsonEraEnd>,
+        era_report: Option<JsonEraReport>,
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
-        protocol_version: ProtocolVersion,
+        proposer: PublicKey,
+        next_era_validator_weights: Option<Vec<ValidatorWeight>>,
     }
 
     impl From<BlockHeader> for JsonBlockHeader {
         fn from(block_header: BlockHeader) -> Self {
+            let next_era_validator_weights: Option<Vec<ValidatorWeight>> =
+                block_header.next_era_validator_weights.map(|weights| {
+                    weights
+                        .into_iter()
+                        .map(|(validator, weight)| ValidatorWeight { validator, weight })
+                        .collect()
+                });
+
             JsonBlockHeader {
                 parent_hash: block_header.parent_hash,
                 state_root_hash: block_header.state_root_hash,
                 body_hash: block_header.body_hash,
+                deploy_hashes: block_header.deploy_hashes,
+                transfer_hashes: block_header.transfer_hashes,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
-                era_end: block_header.era_end.map(JsonEraEnd::from),
+                era_report: block_header.era_report.map(JsonEraReport::from),
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
-                protocol_version: block_header.protocol_version,
+                proposer: block_header.proposer,
+                next_era_validator_weights,
             }
         }
     }
 
     impl From<JsonBlockHeader> for BlockHeader {
         fn from(block_header: JsonBlockHeader) -> Self {
+            let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+                block_header.next_era_validator_weights.map(|weights| {
+                    weights
+                        .into_iter()
+                        .map(|ValidatorWeight { validator, weight }| (validator, weight))
+                        .collect()
+                });
+
             BlockHeader {
                 parent_hash: block_header.parent_hash,
                 state_root_hash: block_header.state_root_hash,
                 body_hash: block_header.body_hash,
+                deploy_hashes: block_header.deploy_hashes,
+                transfer_hashes: block_header.transfer_hashes,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
-                era_end: block_header.era_end.map(EraEnd::from),
+                era_report: block_header.era_report.map(EraReport::from),
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
-                protocol_version: block_header.protocol_version,
-            }
-        }
-    }
-
-    /// A JSON-friendly representation of `Body`
-    #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
-    #[serde(deny_unknown_fields)]
-    pub struct JsonBlockBody {
-        proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
-    }
-
-    impl From<BlockBody> for JsonBlockBody {
-        fn from(body: BlockBody) -> Self {
-            JsonBlockBody {
-                proposer: *body.proposer(),
-                deploy_hashes: body.deploy_hashes().clone(),
-                transfer_hashes: body.transfer_hashes().clone(),
-            }
-        }
-    }
-
-    impl From<JsonBlockBody> for BlockBody {
-        fn from(json_body: JsonBlockBody) -> Self {
-            BlockBody {
-                proposer: json_body.proposer,
-                deploy_hashes: json_body.deploy_hashes,
-                transfer_hashes: json_body.transfer_hashes,
+                proposer: block_header.proposer,
+                next_era_validator_weights,
             }
         }
     }
@@ -1455,7 +1262,7 @@ pub(crate) mod json_compatibility {
     pub struct JsonBlock {
         hash: BlockHash,
         header: JsonBlockHeader,
-        body: JsonBlockBody,
+        body: (),
         proofs: Vec<JsonProof>,
     }
 
@@ -1464,25 +1271,24 @@ pub(crate) mod json_compatibility {
         pub fn new(block: Block, signatures: BlockSignatures) -> Self {
             let hash = *block.hash();
             let header = JsonBlockHeader::from(block.header.clone());
-            let body = JsonBlockBody::from(block.body);
             let proofs = signatures.proofs.into_iter().map(JsonProof::from).collect();
 
             JsonBlock {
                 hash,
                 header,
-                body,
+                body: block.body,
                 proofs,
             }
         }
 
         /// Returns the hashes of the `Deploy`s included in the `Block`.
         pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
-            &self.body.deploy_hashes
+            &self.header.deploy_hashes
         }
 
         /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
         pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
-            &self.body.transfer_hashes
+            &self.header.deploy_hashes
         }
     }
 
@@ -1497,7 +1303,7 @@ pub(crate) mod json_compatibility {
             Block {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
-                body: BlockBody::from(block.body),
+                body: block.body,
             }
         }
     }
@@ -1643,18 +1449,6 @@ mod tests {
     }
 
     #[test]
-    fn bytesrepr_roundtrip_era_end() {
-        let mut rng = TestRng::new();
-        let loop_iterations = 50;
-        for _ in 0..loop_iterations {
-            let block = Block::random(&mut rng);
-            if let Some(data) = block.header.era_end {
-                bytesrepr::test_serialization_roundtrip(&data)
-            }
-        }
-    }
-
-    #[test]
     fn random_block_check() {
         let mut rng = TestRng::from_seed([1u8; 16]);
         let loop_iterations = 50;
@@ -1673,7 +1467,9 @@ mod tests {
         let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_hash;
 
-        let actual_body_hash = block.body.hash();
+        let serialized_body =
+            Block::serialize_body(&block.body).expect("Could not serialize block body");
+        let actual_body_hash = hash::hash(&serialized_body);
 
         // No Eq trait for BlockValidationError, so pattern match
         match block.verify() {
