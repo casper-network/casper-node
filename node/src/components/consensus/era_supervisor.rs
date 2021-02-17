@@ -114,6 +114,8 @@ pub struct EraSupervisor<I> {
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
     /// Set to true when InitializeEras is handled.
+    /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
+    /// component.
     is_initialized: bool,
 }
 
@@ -175,7 +177,6 @@ where
             .collect_switch_blocks(era_supervisor.iter_past_other(current_era, bonded_eras * 3))
             .event(move |switch_blocks| Event::InitializeEras {
                 switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
-                current_era,
                 validators,
                 genesis_state_root_hash,
                 timestamp,
@@ -633,25 +634,23 @@ where
     pub(super) fn handle_initialize_eras(
         &mut self,
         switch_blocks: HashMap<EraId, BlockHeader>,
-        current_era: EraId,
         validators: BTreeMap<PublicKey, U512>,
         genesis_state_root_hash: Digest,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     ) -> Effects<Event<I>> {
         let last_activation_point = self.era_supervisor.protocol_config.last_activation_point;
+        let current_era = self.era_supervisor.current_era;
         let mut effects: Effects<Event<I>> = Default::default();
 
         for era_id in self
             .era_supervisor
             .iter_past(current_era, self.era_supervisor.bonded_eras * 2)
         {
-            let maybe_switch_block = if era_id > last_activation_point {
-                Some(EraId(era_id.0 - 1))
-            } else {
-                None
-            }
-            .and_then(|switch_id| switch_blocks.get(&switch_id));
+            // TODO: make sure that we use a switch block for regular (non-emergency) upgrades, too
+            let maybe_switch_block = (era_id > last_activation_point)
+                .then(|| EraId(era_id.0 - 1))
+                .and_then(|switch_id| switch_blocks.get(&switch_id));
 
             let newly_slashed = maybe_switch_block
                 .and_then(|bhdr| bhdr.era_end())
@@ -677,7 +676,7 @@ where
                 0
             };
 
-            let (validators, start_height, state_root_hash) =
+            let (validators, start_height, state_root_hash, era_start_time) =
                 if let Some(switch_block) = maybe_switch_block {
                     (
                         switch_block
@@ -686,12 +685,18 @@ where
                             .expect("switch block should have era validator weights"),
                         switch_block.height() + 1,
                         *switch_block.state_root_hash(),
+                        switch_block.timestamp(),
                     )
                 } else {
                     // TODO: the start height should be 1 more than the last block before the last
                     // upgrade, and the state hash should be the (potentially modified) state hash
                     // from that block
-                    (validators.clone(), 0, genesis_state_root_hash)
+                    (
+                        validators.clone(),
+                        0,
+                        genesis_state_root_hash,
+                        genesis_start_time,
+                    )
                 };
 
             let results = self.era_supervisor.new_era(
@@ -701,9 +706,7 @@ where
                 newly_slashed,
                 slashed,
                 seed,
-                genesis_start_time, /* TODO: this should also be defined in some reasonable way
-                                     * based on either the switch block or chainspec / upgrade
-                                     * point */
+                era_start_time,
                 start_height,
                 state_root_hash,
             );

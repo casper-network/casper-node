@@ -457,6 +457,7 @@ impl reactor::Reactor for Reactor {
         ));
         // This is a workaround for dropping the Era Supervisor's timer event when transitioning
         // from the joiner.
+        // TODO: Remove this once the consensus component is removed from the Joiner reactor.
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             consensus.recreate_timers(effect_builder, rng),

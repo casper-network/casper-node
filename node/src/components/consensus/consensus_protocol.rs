@@ -202,5 +202,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn instance_id(&self) -> &C::InstanceId;
 
     /// Returns the protocol outcomes for all the required timers.
+    /// TODO: Remove this once the Joiner no longer has a consensus component.
     fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>>;
 }

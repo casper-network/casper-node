@@ -117,7 +117,6 @@ pub enum Event<I> {
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
         switch_blocks: HashMap<EraId, BlockHeader>,
-        current_era: EraId,
         validators: BTreeMap<PublicKey, U512>,
         genesis_state_root_hash: Digest,
         timestamp: Timestamp,
@@ -325,14 +324,12 @@ where
             }
             Event::InitializeEras {
                 switch_blocks,
-                current_era,
                 validators,
                 genesis_state_root_hash,
                 timestamp,
                 genesis_start_time,
             } => handling_es.handle_initialize_eras(
                 switch_blocks,
-                current_era,
                 validators,
                 genesis_state_root_hash,
                 timestamp,
