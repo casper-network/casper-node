@@ -1,10 +1,13 @@
 use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
+use serde::Serialize;
 
+use casper_client::Error as ClientError;
 use casper_node::rpcs::chain::GetEraInfoBySwitchBlock;
 
 use crate::{command::ClientCommand, common};
+use std::fmt::{Display, Formatter};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -12,6 +15,55 @@ enum DisplayOrder {
     NodeAddress,
     RpcId,
     BlockIdentifier,
+}
+
+/// This enum defines the possible errors associated with this specific RPC request.
+#[derive(Serialize)]
+enum Error {
+    /// Failed to get the switch block.
+    BlockNotFound(String),
+    /// Failed to get the queried era information
+    EraInfoQueryFailed(String),
+    /// Failed to execute the query for era information.
+    EraInfoQueryExecutionFailure(String),
+    /// An unknown error was encountered.
+    UnknownError(String),
+}
+
+impl From<ClientError> for Error {
+    fn from(error: ClientError) -> Self {
+        if let ClientError::ResponseIsError(rpc_error) = error {
+            match rpc_error.code {
+                -32001 => Self::BlockNotFound(rpc_error.message),
+                -32003 => Self::EraInfoQueryFailed(rpc_error.message),
+                -32004 => Self::EraInfoQueryExecutionFailure(rpc_error.message),
+                _ => Self::UnknownError(rpc_error.message),
+            }
+        } else {
+            panic!("Failed to parse client error: {:?}", error)
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BlockNotFound(message) => {
+                write!(f, "Failed to get the switch block: {}", message)
+            }
+            Self::EraInfoQueryFailed(message) => {
+                write!(f, "The era info query failed: {}", message)
+            }
+            Self::EraInfoQueryExecutionFailure(message) => write!(
+                f,
+                "The era information query failed to execute: {}",
+                message
+            ),
+            Self::UnknownError(message) => {
+                write!(f, "An unknown error was encountered: {}", message)
+            }
+        }
+    }
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetEraInfoBySwitchBlock {
@@ -43,12 +95,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetEraInfoBySwitchBlock {
             node_address,
             verbosity_level,
             maybe_block_id,
-        )
-        .unwrap_or_else(|error| panic!("response error: {}", error));
+        );
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", Error::from(error)),
+        }
     }
 }

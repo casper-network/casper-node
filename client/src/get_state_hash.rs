@@ -4,7 +4,7 @@ use clap::{App, ArgMatches, SubCommand};
 
 use casper_node::rpcs::chain::GetStateRootHash;
 
-use crate::{command::ClientCommand, common};
+use crate::{block::Error as BlockError, command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -43,12 +43,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
             node_address,
             verbosity_level,
             maybe_block_id,
-        )
-        .unwrap_or_else(|error| panic!("response error: {}", error));
+        );
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", BlockError::from(error)),
+        }
     }
 }

@@ -35,13 +35,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
             &input_path,
         );
 
-
         if verbosity_level == 0 {
             verbosity_level += 1
         }
         match response {
             Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
-            Err(error) => println!("{}", DeployError::from(error))
+            Err(error) => println!("{}", DeployError::from(error)),
         }
     }
 }

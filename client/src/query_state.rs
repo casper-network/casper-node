@@ -1,11 +1,14 @@
 use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
+use serde::Serialize;
 
+use casper_client::Error as ClientError;
 use casper_node::rpcs::state::GetItem;
 use casper_types::PublicKey;
 
 use crate::{command::ClientCommand, common};
+use std::fmt::{Display, Formatter};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -15,6 +18,47 @@ enum DisplayOrder {
     StateRootHash,
     Key,
     Path,
+}
+
+/// This enum defines the possible errors associated with this specific RPC request.
+#[derive(Serialize)]
+enum Error {
+    /// Failed to parse the query URef.
+    ParseQueryKey(String),
+    /// Failed to get queried item.
+    QueryFailure(String),
+    /// Failed to execute query.
+    ExecutionFailure(String),
+    /// An unknown error.
+    UnknownError(String),
+}
+
+impl From<ClientError> for Error {
+    fn from(error: ClientError) -> Self {
+        if let ClientError::ResponseIsError(rpc_error) = error {
+            match rpc_error.code {
+                -32002 => Self::ParseQueryKey(rpc_error.message),
+                -32003 => Self::QueryFailure(rpc_error.message),
+                -32004 => Self::ExecutionFailure(rpc_error.message),
+                _ => Self::UnknownError(rpc_error.message),
+            }
+        } else {
+            panic!("Failed to parse client error: {:?}", error)
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParseQueryKey(message) => write!(f, "Failed to parse the query key: {}", message),
+            Self::QueryFailure(message) => write!(f, "Failed to get queried item: {}", message),
+            Self::ExecutionFailure(message) => write!(f, "Query to get item failed: {}", message),
+            Self::UnknownError(message) => {
+                write!(f, "An unknown error was encountered: {}", message)
+            }
+        }
+    }
 }
 
 /// Handles providing the arg for and retrieval of the key.
@@ -133,12 +177,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             state_root_hash,
             &key,
             path,
-        )
-        .unwrap_or_else(|error| panic!("response error: {}", error));
+        );
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", Error::from(error)),
+        }
     }
 }
