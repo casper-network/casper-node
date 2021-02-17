@@ -106,8 +106,8 @@ function do_await_full_synchronization() {
 
 function do_await_era_change() {
     # allow chain height to grow
-    log_step "awaiting 2 eras…"
-    await_n_eras 2
+    log_step "awaiting 1 eras…"
+    await_n_eras 1
 }
 
 function do_get_another_node() {
