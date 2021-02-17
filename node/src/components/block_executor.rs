@@ -84,7 +84,6 @@ type BlockHeight = u64;
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
     genesis_state_root_hash: Option<Digest>,
-    #[data_size(skip)]
     protocol_version: ProtocolVersion,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.

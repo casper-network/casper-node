@@ -3,6 +3,7 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
 use serde::Deserialize;
+use tempfile::TempDir;
 use tokio::{sync::Mutex, task, task::JoinHandle};
 use tower::builder::ServiceBuilder;
 use warp::{Filter, Rejection};
@@ -549,9 +550,12 @@ mod make_deploy {
 
     #[test]
     fn should_succeed_for_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
         assert_eq!(
             casper_client::make_deploy(
-                "../target/test_deploy.json",
+                file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
                 payment_params::test_data_with_name()
@@ -577,9 +581,12 @@ mod send_deploy {
 
     #[tokio::test(threaded_scheduler)]
     async fn should_succeed_for_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_send_deploy.json");
         assert_eq!(
             casper_client::make_deploy(
-                "../target/test_send_deploy.json",
+                file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
                 payment_params::test_data_with_name()
@@ -589,7 +596,7 @@ mod send_deploy {
         );
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         assert_eq!(
-            server_handle.send_deploy_file("../target/test_send_deploy.json"),
+            server_handle.send_deploy_file(file_path.to_str().unwrap()),
             Ok(())
         );
     }
@@ -600,9 +607,13 @@ mod sign_deploy {
 
     #[test]
     fn should_succeed_for_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
+        let signed_file_path = temp_dir.path().join("signed_test_deploy.json");
         assert_eq!(
             casper_client::make_deploy(
-                "../target/test_deploy.json",
+                unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
                 payment_params::test_data_with_name()
@@ -612,9 +623,9 @@ mod sign_deploy {
         );
         assert_eq!(
             casper_client::sign_deploy_file(
-                "../target/test_deploy.json",
+                unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
-                "../target/signed_test_deploy.json",
+                signed_file_path.to_str().unwrap(),
             )
             .map_err(ErrWrapper),
             Ok(())
@@ -623,9 +634,12 @@ mod sign_deploy {
 
     #[test]
     fn should_succeed_for_stdout() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
         assert_eq!(
             casper_client::make_deploy(
-                "../target/test_deploy.json",
+                unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
                 payment_params::test_data_with_name()
@@ -635,7 +649,7 @@ mod sign_deploy {
         );
         assert_eq!(
             casper_client::sign_deploy_file(
-                "../target/test_deploy.json",
+                unsigned_file_path.to_str().unwrap(),
                 "../resources/local/secret_keys/node-1.pem",
                 ""
             )
@@ -646,9 +660,12 @@ mod sign_deploy {
 
     #[test]
     fn should_fail_with_bad_secret_key_path() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let unsigned_file_path = temp_dir.path().join("test_deploy.json");
         assert_eq!(
             casper_client::make_deploy(
-                "../target/test_deploy.json",
+                unsigned_file_path.to_str().unwrap(),
                 deploy_params::test_data_valid(),
                 session_params::test_data_with_package_hash(),
                 payment_params::test_data_with_name()
@@ -657,7 +674,7 @@ mod sign_deploy {
             Ok(())
         );
         assert!(casper_client::sign_deploy_file(
-            "../target/test_deploy.json",
+            unsigned_file_path.to_str().unwrap(),
             "<this is not a path>",
             ""
         )
@@ -666,72 +683,79 @@ mod sign_deploy {
 }
 
 mod keygen_generate_files {
-    use std::{env::current_dir, fs::remove_dir_all};
 
     use super::*;
 
-    fn remove_dir(path: &str) {
-        if let Err(err) = remove_dir_all(path) {
-            println!("Unable to remove file at {} - {:?}", path, err);
-        }
-    }
-
     #[test]
     fn should_succeed_for_valid_args_ed25519() {
-        let path = "../target/test-keygen-ed25519";
-        remove_dir(path);
-        let result =
-            casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
-                .map_err(ErrWrapper);
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-ed25519");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::ED25519,
+            true,
+        )
+        .map_err(ErrWrapper);
         assert_eq!(result, Ok(()));
-        remove_dir(path);
     }
 
     #[test]
     fn should_succeed_for_valid_args_secp256k1() {
-        let path = "../target/test-keygen-secp256k1";
-        remove_dir(path);
-        let result =
-            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, true)
-                .map_err(ErrWrapper);
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-secp256k1");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            true,
+        )
+        .map_err(ErrWrapper);
         assert_eq!(result, Ok(()));
-        remove_dir(path);
     }
 
     #[test]
     fn should_force_overwrite_when_set() {
-        let path = "../target/test-keygen-force";
-        remove_dir(path);
-        let result =
-            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, false)
-                .map_err(ErrWrapper);
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-force");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            false,
+        )
+        .map_err(ErrWrapper);
         assert_eq!(result, Ok(()));
-        let result =
-            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, false)
-                .map_err(ErrWrapper);
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            false,
+        )
+        .map_err(ErrWrapper);
         assert_eq!(
             result,
-            Err(Error::FileAlreadyExists(
-                current_dir()
-                    .expect("does exist")
-                    .parent()
-                    .unwrap()
-                    .join("target/test-keygen-force/secret_key.pem")
-            )
-            .into())
+            Err(Error::FileAlreadyExists(path.join("secret_key.pem")).into())
         );
-        let result =
-            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, true)
-                .map_err(ErrWrapper);
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            casper_client::keygen::SECP256K1,
+            true,
+        )
+        .map_err(ErrWrapper);
         assert_eq!(result, Ok(()));
-        remove_dir(path);
     }
 
     #[test]
     fn should_fail_for_invalid_algorithm() {
-        let path = "../target/test-keygen-invalid-algo";
-        let result = casper_client::keygen::generate_files(path, "<not a valid algo>", true)
-            .map_err(ErrWrapper);
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create a temp dir with error: {}", err));
+        let path = temp_dir.path().join("test-keygen-invalid-algo");
+        let result = casper_client::keygen::generate_files(
+            path.to_str().unwrap(),
+            "<not a valid algo>",
+            true,
+        )
+        .map_err(ErrWrapper);
         assert_eq!(
             result,
             Err(Error::UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
