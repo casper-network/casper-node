@@ -27,7 +27,7 @@ enum Error {
     /// Failed to execute the query for era information.
     EraInfoQueryExecutionFailure(String),
     /// An unknown error was encountered.
-    UnknownError(String),
+    Unknown(String),
 }
 
 impl From<ClientError> for Error {
@@ -37,7 +37,7 @@ impl From<ClientError> for Error {
                 -32001 => Self::BlockNotFound(rpc_error.message),
                 -32003 => Self::EraInfoQueryFailed(rpc_error.message),
                 -32004 => Self::EraInfoQueryExecutionFailure(rpc_error.message),
-                _ => Self::UnknownError(rpc_error.message),
+                _ => Self::Unknown(rpc_error.message),
             }
         } else {
             panic!("Failed to parse client error: {:?}", error)
@@ -59,7 +59,7 @@ impl Display for Error {
                 "The era information query failed to execute: {}",
                 message
             ),
-            Self::UnknownError(message) => {
+            Self::Unknown(message) => {
                 write!(f, "An unknown error was encountered: {}", message)
             }
         }

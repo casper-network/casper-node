@@ -30,7 +30,7 @@ enum Error {
     /// Failed to execute query.
     ExecutionFailure(String),
     /// An unknown error.
-    UnknownError(String),
+    Unknown(String),
 }
 
 impl From<ClientError> for Error {
@@ -40,7 +40,7 @@ impl From<ClientError> for Error {
                 -32002 => Self::ParseQueryKey(rpc_error.message),
                 -32003 => Self::QueryFailure(rpc_error.message),
                 -32004 => Self::ExecutionFailure(rpc_error.message),
-                _ => Self::UnknownError(rpc_error.message),
+                _ => Self::Unknown(rpc_error.message),
             }
         } else {
             panic!("Failed to parse client error: {:?}", error)
@@ -54,7 +54,7 @@ impl Display for Error {
             Self::ParseQueryKey(message) => write!(f, "Failed to parse the query key: {}", message),
             Self::QueryFailure(message) => write!(f, "Failed to get queried item: {}", message),
             Self::ExecutionFailure(message) => write!(f, "Query to get item failed: {}", message),
-            Self::UnknownError(message) => {
+            Self::Unknown(message) => {
                 write!(f, "An unknown error was encountered: {}", message)
             }
         }

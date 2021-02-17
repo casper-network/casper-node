@@ -26,11 +26,11 @@ enum Error {
     /// Failure in executing the RPC request
     ExecutionFailure(String),
     /// Encoding error in warp_json_rpc
-    EncodingError(String),
+    EncodingFailure(String),
     /// Failure to parse the purse URef.
     URefParseFailure(String),
     /// An unknown error was encountered.
-    UnknownError(String),
+    Unknown(String),
 }
 
 impl From<ClientError> for Error {
@@ -39,9 +39,9 @@ impl From<ClientError> for Error {
             match rpc_error.code {
                 -32006 => Self::GetBalanceFailure(rpc_error.message),
                 -32007 => Self::ExecutionFailure(rpc_error.message),
-                -32603 => Self::EncodingError(rpc_error.message),
+                -32603 => Self::EncodingFailure(rpc_error.message),
                 -32005 => Self::URefParseFailure(rpc_error.message),
-                _ => Self::UnknownError(rpc_error.message),
+                _ => Self::Unknown(rpc_error.message),
             }
         } else {
             panic!("Failed to parse client error: {:?}", error)
@@ -58,13 +58,13 @@ impl Display for Error {
                 "RPC request to get balance failed to execute: {}",
                 message
             ),
-            Self::EncodingError(message) => {
+            Self::EncodingFailure(message) => {
                 write!(f, "A warp_json_rpc error in encoding occurred: {}", message)
             }
             Self::URefParseFailure(message) => {
                 write!(f, "Failed to parse the purse URef: {}", message)
             }
-            Self::UnknownError(message) => {
+            Self::Unknown(message) => {
                 write!(f, "An unknown error was encountered: {}", message)
             }
         }
