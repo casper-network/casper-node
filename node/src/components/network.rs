@@ -147,14 +147,6 @@ pub struct Network<REv, P> {
     net_metrics: NetworkingMetrics,
 
     _phantom: PhantomData<(REv, P)>,
-
-    // TODO: Replace with proper metrics module.
-    #[data_size(skip)]
-    in_flight_read_futures: prometheus::Gauge,
-    #[data_size(skip)]
-    in_flight_write_futures: prometheus::Gauge,
-    #[data_size(skip)]
-    registry: Registry,
 }
 
 impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
@@ -194,26 +186,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let (gossip_message_sender, gossip_message_receiver) = mpsc::unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
-        // Metrics, for now:
-        let in_flight_read_futures = prometheus::Gauge::new(
-            "owm_read_reaponse_futures",
-            "number of do-nothing futures in flight created by `Codec::read_response`",
-        )
-        .expect("could not create metric");
-        let in_flight_write_futures = prometheus::Gauge::new(
-            "owm_write_response_futures",
-            "number of do-nothing futures in flight created by `Codec::write_response`",
-        )
-        .expect("could not create metric");
-
-        // TODO: Handle errors properly in metrics.
-        registry
-            .register(Box::new(in_flight_read_futures.clone()))
-            .expect("register failed");
-        registry
-            .register(Box::new(in_flight_write_futures.clone()))
-            .expect("register failed");
-
         // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, start the server and exit.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
             let network = Network {
@@ -232,10 +204,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 server_join_handle: None,
                 net_metrics: NetworkingMetrics::new(&Registry::default())?,
                 _phantom: PhantomData,
-
-                registry: registry.clone(),
-                in_flight_read_futures,
-                in_flight_write_futures,
             };
             return Ok((network, Effects::new()));
         }
@@ -267,8 +235,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // Create a Swarm to manage peers and events.
         let behavior = Behavior::new(
             &config,
-            in_flight_read_futures.clone(),
-            in_flight_write_futures.clone(),
+            &net_metrics,
             chainspec,
             network_identity.keypair.public(),
         );
@@ -327,10 +294,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             server_join_handle,
             net_metrics,
             _phantom: PhantomData,
-
-            registry: registry.clone(),
-            in_flight_read_futures,
-            in_flight_write_futures,
         };
         Ok((network, Effects::new()))
     }
@@ -447,19 +410,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     #[cfg(test)]
     pub(crate) fn seen_peers(&self) -> &HashSet<PeerId> {
         &self.seen_peers
-    }
-}
-
-impl<REv, P> Drop for Network<REv, P> {
-    fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.in_flight_read_futures.clone()))
-            .map_err(|err| warn!(%err, "failed to unregister `in_flight_read_futures`"))
-            .ok();
-        self.registry
-            .unregister(Box::new(self.in_flight_write_futures.clone()))
-            .map_err(|err| warn!(%err, "failed to unregister `in_flight_write_futures`"))
-            .ok();
     }
 }
 

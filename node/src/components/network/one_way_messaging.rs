@@ -16,7 +16,10 @@ use libp2p::{
 };
 
 use super::{Config, Error, PayloadT, ProtocolId};
-use crate::types::{Chainspec, NodeId};
+use crate::{
+    components::networking_metrics::NetworkingMetrics,
+    types::{Chainspec, NodeId},
+};
 
 /// The inner portion of the `ProtocolId` for the one-way message behavior.  A standard prefix and
 /// suffix will be applied to create the full protocol name.
@@ -25,11 +28,10 @@ const PROTOCOL_NAME_INNER: &str = "validator/one-way";
 /// Constructs a new libp2p behavior suitable for use by one-way messaging.
 pub(super) fn new_behavior(
     config: &Config,
-    in_flight_read_futures: prometheus::Gauge,
-    in_flight_write_futures: prometheus::Gauge,
+    net_metrics: &NetworkingMetrics,
     chainspec: &Chainspec,
 ) -> RequestResponse<Codec> {
-    let codec = Codec::new(config, in_flight_read_futures, in_flight_write_futures);
+    let codec = Codec::new(config, net_metrics);
     let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
     let request_response_config = RequestResponseConfig::from(config);
     RequestResponse::new(
@@ -92,15 +94,11 @@ pub(super) struct Codec {
 }
 
 impl Codec {
-    pub(super) fn new(
-        config: &Config,
-        in_flight_read_futures: prometheus::Gauge,
-        in_flight_write_futures: prometheus::Gauge,
-    ) -> Self {
+    pub(super) fn new(config: &Config, net_metrics: &NetworkingMetrics) -> Self {
         Self {
             max_message_size: config.max_one_way_message_size,
-            in_flight_read_futures,
-            in_flight_write_futures,
+            in_flight_read_futures: net_metrics.in_flight_read_futures.clone(),
+            in_flight_write_futures: net_metrics.in_flight_write_futures.clone(),
         }
     }
 }

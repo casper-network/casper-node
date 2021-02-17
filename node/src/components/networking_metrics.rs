@@ -13,6 +13,12 @@ pub(crate) struct NetworkingMetrics {
     /// Number of connected peers.
     pub(crate) peers: IntGauge,
 
+    // Potentially temporary metrics, not supported by all networking components:
+    /// Number of do-nothing futures that have not finished executing for read requests.
+    pub(crate) in_flight_read_futures: prometheus::Gauge,
+    /// Number of do-nothing futures that have not finished executing for write reponses.
+    pub(crate) in_flight_write_futures: prometheus::Gauge,
+
     /// Registry instance.
     registry: Registry,
 }
@@ -34,11 +40,23 @@ impl NetworkingMetrics {
         )?;
         let peers = IntGauge::new("peers", "Number of connected peers.")?;
 
+        let in_flight_read_futures = prometheus::Gauge::new(
+            "owm_read_reaponse_futures",
+            "number of do-nothing futures in flight created by `Codec::read_response`",
+        )?;
+        let in_flight_write_futures = prometheus::Gauge::new(
+            "owm_write_response_futures",
+            "number of do-nothing futures in flight created by `Codec::write_response`",
+        )?;
+
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
         registry.register(Box::new(open_connections.clone()))?;
         registry.register(Box::new(queued_messages.clone()))?;
         registry.register(Box::new(peers.clone()))?;
+
+        registry.register(Box::new(in_flight_read_futures.clone()))?;
+        registry.register(Box::new(in_flight_write_futures.clone()))?;
 
         Ok(NetworkingMetrics {
             broadcast_requests,
@@ -46,6 +64,8 @@ impl NetworkingMetrics {
             open_connections,
             queued_messages,
             peers,
+            in_flight_read_futures,
+            in_flight_write_futures,
             registry: registry.clone(),
         })
     }
@@ -68,5 +88,12 @@ impl Drop for NetworkingMetrics {
         self.registry
             .unregister(Box::new(self.peers.clone()))
             .expect("did not expect deregistering peers to fail");
+
+        self.registry
+            .unregister(Box::new(self.in_flight_read_futures.clone()))
+            .expect("did not expect deregistering in_flight_read_futures to fail");
+        self.registry
+            .unregister(Box::new(self.in_flight_write_futures.clone()))
+            .expect("did not expect deregistering in_flight_write_futures to fail");
     }
 }
