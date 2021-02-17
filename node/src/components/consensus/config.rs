@@ -65,7 +65,7 @@ impl From<&Chainspec> for ProtocolConfig {
             era_duration: chainspec.core_config.era_duration,
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,
-            unbonding_delay: chainspec.core_config.unbonding_delay.into(),
+            unbonding_delay: chainspec.core_config.unbonding_delay,
             protocol_version: chainspec.protocol_config.version.clone(),
             name: chainspec.network_config.name.clone(),
             timestamp: chainspec.network_config.timestamp,

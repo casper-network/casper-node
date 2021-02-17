@@ -6,6 +6,7 @@ use std::{
     collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -24,7 +25,6 @@ use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
 };
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -67,9 +67,9 @@ use crate::{
         event_queue_metrics::EventQueueMetrics,
         initializer,
         validator::{self, Error, ValidatorInitConfig},
-        EventQueueHandle, Finalize,
+        EventQueueHandle, Finalize, ReactorExit,
     },
-    types::{Block, BlockByHeight, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -192,7 +192,7 @@ pub enum Event {
 
     /// Request for state storage.
     #[from]
-    StateStoreRequest(StateStoreRequest),
+    StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -436,7 +436,10 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let init_hash = config.node.trusted_hash;
+        let init_hash = config
+            .node
+            .trusted_hash
+            .or_else(|| chainspec_loader.highest_block_hash());
 
         match init_hash {
             None => {
@@ -457,28 +460,31 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
+        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let rest_server = RestServer::new(
+            config.rest_server.clone(),
+            effect_builder,
+            protocol_version.clone(),
+        )?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), effect_builder)?;
+            EventStreamServer::new(config.event_stream_server.clone(), protocol_version.clone())?;
 
-        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
-        effects.extend(reactor::wrap_effects(
-            Event::BlockValidator,
-            block_validator_effects,
-        ));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
 
         let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
 
-        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
+        let deploy_acceptor =
+            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
-        let genesis_state_root_hash = chainspec_loader
-            .genesis_state_root_hash()
-            .expect("Should have Genesis state root hash");
-
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
+        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
+        let block_executor = BlockExecutor::new(
+            genesis_state_root_hash,
+            protocol_version.clone(),
+            registry.clone(),
+        );
 
         let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
@@ -490,12 +496,16 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
         let linear_chain_sync = LinearChainSync::new::<Error>(
             registry,
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
             validator_weights.clone(),
+            maybe_next_activation_point,
         )?;
 
         // Used to decide whether era should be activated.
@@ -506,10 +516,9 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
-            chainspec_loader.chainspec().into(),
-            chainspec_loader
-                .genesis_state_root_hash()
-                .expect("should have genesis post state hash"),
+            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.starting_state_root_hash(),
+            maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
             rng,
@@ -803,7 +812,7 @@ impl reactor::Reactor for Reactor {
                     ),
                 ),
                 ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                    // TODO: handle the announcement and acutally disconnect
+                    // TODO: handle the announcement and actually disconnect
                     warn!("disconnecting from a given peer not yet implemented.");
                     Effects::new()
                 }
@@ -873,6 +882,9 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
             }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
+            }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
@@ -896,18 +908,17 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
-            Event::StateStoreRequest(req) => {
-                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
-            }
         }
     }
 
-    fn is_stopped(&mut self) -> bool {
-        self.linear_chain_sync.is_synced()
-    }
-
-    fn needs_upgrade(&mut self) -> bool {
-        self.linear_chain_sync.stopped_for_upgrade()
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.linear_chain_sync.is_synced().then(|| {
+            if self.linear_chain_sync.stopped_for_upgrade() {
+                ReactorExit::ProcessShouldExit(ExitCode::Success)
+            } else {
+                ReactorExit::ProcessShouldContinue
+            }
+        })
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {

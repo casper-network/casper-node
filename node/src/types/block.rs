@@ -31,7 +31,7 @@ use thiserror::Error;
 use casper_types::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, SecretKey, Signature, U512,
+    ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{Item, Tag, Timestamp};
@@ -113,6 +113,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let state_root_hash = Digest::from([8u8; Digest::LENGTH]);
     let finalized_block = FinalizedBlock::doc_example().clone();
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
+    let protocol_version = ProtocolVersion::V1_0_0;
 
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -137,6 +138,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
+        protocol_version,
     )
 });
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
@@ -673,6 +675,7 @@ pub struct BlockHeader {
     timestamp: Timestamp,
     era_id: EraId,
     height: u64,
+    protocol_version: ProtocolVersion,
 }
 
 impl BlockHeader {
@@ -715,7 +718,7 @@ impl BlockHeader {
     }
 
     /// Returns `true` if this block is the last one in the current era.
-    pub fn switch_block(&self) -> bool {
+    pub fn is_switch_block(&self) -> bool {
         self.era_end.is_some()
     }
 
@@ -791,6 +794,7 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.timestamp.to_bytes()?);
         buffer.extend(self.era_id.to_bytes()?);
         buffer.extend(self.height.to_bytes()?);
+        buffer.extend(self.protocol_version.to_bytes()?);
         Ok(buffer)
     }
 
@@ -804,6 +808,7 @@ impl ToBytes for BlockHeader {
             + self.timestamp.serialized_length()
             + self.era_id.serialized_length()
             + self.height.serialized_length()
+            + self.protocol_version.serialized_length()
     }
 }
 
@@ -818,6 +823,7 @@ impl FromBytes for BlockHeader {
         let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
+        let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
         let block_header = BlockHeader {
             parent_hash,
             state_root_hash,
@@ -828,6 +834,7 @@ impl FromBytes for BlockHeader {
             timestamp,
             era_id,
             height,
+            protocol_version,
         };
         Ok((block_header, remainder))
     }
@@ -1012,6 +1019,7 @@ impl Block {
         state_root_hash: Digest,
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
+        protocol_version: ProtocolVersion,
     ) -> Self {
         let body = BlockBody::new(
             finalized_block.proposer,
@@ -1047,6 +1055,7 @@ impl Block {
             timestamp: finalized_block.timestamp,
             era_id,
             height,
+            protocol_version,
         };
 
         Self::new_from_header_and_body(header, body)
@@ -1127,6 +1136,7 @@ impl Block {
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
+        let protocol_version = ProtocolVersion::V1_0_0;
         let next_era_validator_weights = match finalized_block.era_report {
             Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
             None => None,
@@ -1138,6 +1148,7 @@ impl Block {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            protocol_version,
         )
     }
 }
@@ -1372,6 +1383,7 @@ pub(crate) mod json_compatibility {
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
+        protocol_version: ProtocolVersion,
     }
 
     impl From<BlockHeader> for JsonBlockHeader {
@@ -1386,6 +1398,7 @@ pub(crate) mod json_compatibility {
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
+                protocol_version: block_header.protocol_version,
             }
         }
     }
@@ -1402,6 +1415,7 @@ pub(crate) mod json_compatibility {
                 timestamp: block_header.timestamp,
                 era_id: block_header.era_id,
                 height: block_header.height,
+                protocol_version: block_header.protocol_version,
             }
         }
     }

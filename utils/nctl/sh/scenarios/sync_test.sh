@@ -78,7 +78,7 @@ function do_send_wasm_deploys() {
 function do_send_transfers() {
     log_step "sending native transfers"
     # NOTE: Maybe make these arguments to the test?
-    local AMOUNT=1000
+    local AMOUNT=2500000000
     local TRANSFERS_COUNT=5
     local NODE_ID="random"
 
@@ -95,7 +95,8 @@ function do_await_deploy_inclusion() {
 }
 
 function do_read_lfb_hash() {
-    LFB_HASH=$(get_chain_latest_block_hash)
+    local NODE_ID=${1}
+    LFB_HASH=$(render_last_finalized_block_hash "$NODE_ID" | cut -f2 -d= | cut -f2 -d ' ')
     echo "$LFB_HASH"
 }
 

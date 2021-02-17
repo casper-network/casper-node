@@ -182,6 +182,27 @@ steps:
     event:
     - push
 
+- name: build-upgrade-package
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/build_update_package.sh"
+
+- name: put-upgrade_package-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
 depends_on:
   - pre-checks
 
@@ -224,6 +245,7 @@ steps:
   # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
   image: casperlabs/node-build-u1804
+  # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
   commands:
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
@@ -267,6 +289,23 @@ steps:
   image: casperlabs/s3cmd-build:latest
   commands:
     - ./ci/drone_s3_storage.sh del
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
+# Build failed so remove the update_package candidate
+- name: del-upgrade_package-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/upgrade_package_s3_storage.sh del
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -325,14 +364,19 @@ steps:
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
+  # Removed casper-node from tag publish as we not longer ship this way.
   commands:
-  - "./upload.sh --repo-name debian --package-name casper-node --package-tag true"
   - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
     CL_VAULT_HOST:
       from_secret: vault_host
+
+- name: build-upgrade-package
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/build_update_package.sh"
 
 - name: publish-github-pre-release
   image: plugins/github-release
@@ -344,6 +388,7 @@ steps:
     - md5
     files:
     - "./target/debian/*.deb"
+    - "./target/upgrade_build/*.gz"
     prerelease:
     - true
   when:

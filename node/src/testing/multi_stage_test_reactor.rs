@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Display, Formatter},
     mem,
     path::PathBuf,
+    sync::Arc,
 };
 
 use derive_more::From;
@@ -21,7 +22,7 @@ use crate::{
         initializer::Reactor as InitializerReactor,
         joiner::Reactor as JoinerReactor,
         validator::{Reactor as ValidatorReactor, ValidatorInitConfig},
-        wrap_effects, EventQueueHandle, QueueKind, Reactor, Scheduler,
+        wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorExit, Scheduler,
     },
     testing::network::NetworkedReactor,
     types::{Chainspec, NodeId},
@@ -156,7 +157,7 @@ where
 
 pub(crate) struct InitializerReactorConfigWithChainspec {
     config: <InitializerReactor as Reactor>::Config,
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
 }
 
 impl Reactor for MultiStageTestReactor {
@@ -235,12 +236,12 @@ impl Reactor for MultiStageTestReactor {
                     initializer_reactor.dispatch_event(effect_builder, rng, initializer_event),
                 );
 
-                if initializer_reactor.is_stopped() {
-                    if !initializer_reactor.stopped_successfully() {
-                        panic!("failed to transition from initializer to joiner");
+                match initializer_reactor.maybe_exit() {
+                    Some(ReactorExit::ProcessShouldContinue) => {
+                        should_transition = true;
                     }
-
-                    should_transition = true;
+                    Some(_) => panic!("failed to transition from initializer to joiner"),
+                    None => (),
                 }
 
                 effects
@@ -260,8 +261,12 @@ impl Reactor for MultiStageTestReactor {
                     joiner_reactor.dispatch_event(effect_builder, rng, joiner_event),
                 );
 
-                if joiner_reactor.is_stopped() {
-                    should_transition = true;
+                match joiner_reactor.maybe_exit() {
+                    Some(ReactorExit::ProcessShouldContinue) => {
+                        should_transition = true;
+                    }
+                    Some(_) => panic!("failed to transition from initializer to joiner"),
+                    None => (),
                 }
 
                 effects
@@ -295,7 +300,7 @@ impl Reactor for MultiStageTestReactor {
                     validator_reactor.dispatch_event(effect_builder, rng, validator_event),
                 );
 
-                if validator_reactor.is_stopped() {
+                if validator_reactor.maybe_exit().is_some() {
                     panic!("validator reactor should never stop");
                 }
 
@@ -464,6 +469,21 @@ impl Reactor for MultiStageTestReactor {
         }
 
         effects
+    }
+
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        match self {
+            MultiStageTestReactor::Deactivated => unreachable!(),
+            MultiStageTestReactor::Initializer {
+                initializer_reactor,
+                ..
+            } => initializer_reactor.maybe_exit(),
+            MultiStageTestReactor::Joiner { joiner_reactor, .. } => joiner_reactor.maybe_exit(),
+            MultiStageTestReactor::JoinerFinalizing { .. } => None,
+            MultiStageTestReactor::Validator {
+                validator_reactor, ..
+            } => validator_reactor.maybe_exit(),
+        }
     }
 }
 

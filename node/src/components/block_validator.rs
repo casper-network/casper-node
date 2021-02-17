@@ -13,15 +13,13 @@ use std::{
     collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     convert::Infallible,
     fmt::Debug,
-    marker::PhantomData,
     sync::Arc,
 };
 
 use datasize::DataSize;
 use derive_more::{Display, From};
-use semver::Version;
 use smallvec::{smallvec, SmallVec};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
     components::Component,
@@ -54,11 +52,6 @@ pub enum Event<T, I> {
     /// Deploy was invalid. Failed the chainspec test.
     #[display(fmt = "deploy {} invalid", _0)]
     DeployInvalid(DeployHash),
-
-    /// An event changing the current state to BlockValidatorReady, once the chainspec has been
-    /// loaded.
-    #[display(fmt = "block validator loaded")]
-    Loaded { chainspec: Arc<Chainspec> },
 }
 
 /// State of the current process of block validation.
@@ -97,7 +90,7 @@ where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidatorReady<T, I> {
+pub(crate) struct BlockValidator<T, I> {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
@@ -105,27 +98,42 @@ pub(crate) struct BlockValidatorReady<T, I> {
     validation_states: HashMap<T, BlockValidationState<T, I>>,
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
-
-    _marker: PhantomData<I>,
 }
 
-impl<T, I> BlockValidatorReady<T, I>
+impl<T, I> BlockValidator<T, I>
+where
+    T: BlockLike + Debug + Send + Clone + 'static,
+    I: Clone + Send + 'static + Send,
+{
+    /// Creates a new block validator instance.
+    pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
+        BlockValidator {
+            chainspec,
+            validation_states: HashMap::new(),
+            in_flight: KeyedCounter::default(),
+        }
+    }
+}
+
+impl<T, I, REv> Component<REv> for BlockValidator<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
     I: Clone + Debug + Send + PartialEq + Eq + 'static,
+    REv: From<Event<T, I>>
+        + From<BlockValidationRequest<T, I>>
+        + From<FetcherRequest<I, Deploy>>
+        + From<StorageRequest>
+        + Send,
 {
-    fn handle_event<REv>(
+    type Event = Event<T, I>;
+    type ConstructionError = Infallible;
+
+    fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        event: Event<T, I>,
-    ) -> Effects<Event<T, I>>
-    where
-        REv: From<Event<T, I>>
-            + From<BlockValidationRequest<T, I>>
-            + From<StorageRequest>
-            + From<FetcherRequest<I, Deploy>>
-            + Send,
-    {
+        _rng: &mut NodeRng,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
         let mut effects = Effects::new();
         match event {
             Event::Request(BlockValidationRequest {
@@ -290,7 +298,6 @@ where
                     }
                 });
             }
-            Event::Loaded { .. } => {}
         }
         effects
     }
@@ -329,95 +336,4 @@ where
     effect_builder
         .fetch_deploy(deploy_hash, sender)
         .map_or_else(validate_deploy, move || Event::DeployMissing(deploy_hash))
-}
-
-/// Block validator states.
-#[derive(DataSize, Debug)]
-pub(crate) enum BlockValidatorState<T, I> {
-    #[data_size(skip)]
-    Loading(Vec<Event<T, I>>),
-    Ready(BlockValidatorReady<T, I>),
-}
-
-/// Block validator.
-#[derive(DataSize, Debug)]
-pub(crate) struct BlockValidator<T, I> {
-    state: BlockValidatorState<T, I>,
-}
-
-impl<T, I> BlockValidator<T, I>
-where
-    T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static + Send,
-{
-    /// Creates a new block validator instance.
-    pub(crate) fn new<REv>(effect_builder: EffectBuilder<REv>) -> (Self, Effects<Event<T, I>>)
-    where
-        REv: From<Event<T, I>> + From<StorageRequest> + Send + 'static,
-    {
-        let effects = async move {
-            effect_builder
-                .get_chainspec(Version::new(1, 0, 0))
-                .await
-                .expect("chainspec should be infallible")
-        }
-        .event(move |chainspec| Event::Loaded { chainspec });
-        (
-            BlockValidator {
-                state: BlockValidatorState::Loading(Vec::new()),
-            },
-            effects,
-        )
-    }
-}
-
-impl<T, I, REv> Component<REv> for BlockValidator<T, I>
-where
-    T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Debug + Send + PartialEq + Eq + 'static,
-    REv: From<Event<T, I>>
-        + From<BlockValidationRequest<T, I>>
-        + From<FetcherRequest<I, Deploy>>
-        + From<StorageRequest>
-        + Send,
-{
-    type Event = Event<T, I>;
-    type ConstructionError = Infallible;
-
-    fn handle_event(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        event: Self::Event,
-    ) -> Effects<Self::Event> {
-        let mut effects = Effects::new();
-        match (&mut self.state, event) {
-            (BlockValidatorState::Loading(requests), Event::Loaded { chainspec }) => {
-                let mut new_ready_state = BlockValidatorReady {
-                    chainspec,
-                    validation_states: Default::default(),
-                    in_flight: Default::default(),
-                    _marker: PhantomData,
-                };
-                // Replay postponed events onto new state.
-                for ev in requests.drain(..) {
-                    effects.extend(new_ready_state.handle_event(effect_builder, ev));
-                }
-                self.state = BlockValidatorState::Ready(new_ready_state);
-            }
-            (
-                BlockValidatorState::Loading(requests),
-                request @ Event::Request(BlockValidationRequest { .. }),
-            ) => {
-                requests.push(request);
-            }
-            (BlockValidatorState::Loading(_), _deploy_found_or_missing) => {
-                error!("Block validator reached unexpected state: should never receive a deploy from itself before it's ready.")
-            }
-            (BlockValidatorState::Ready(ref mut ready_state), event) => {
-                effects.extend(ready_state.handle_event(effect_builder, event));
-            }
-        }
-        effects
-    }
 }

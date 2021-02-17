@@ -41,7 +41,7 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Debug)]
+#[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct Chainspec {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,
@@ -83,6 +83,11 @@ impl Chainspec {
             vec![]
         });
         hash::hash(&serialized_chainspec)
+    }
+
+    /// Returns true if this chainspec has an activation_point specifying era ID 0.
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.protocol_config.activation_point.era_id.0 == 0
     }
 }
 
@@ -141,7 +146,7 @@ impl FromBytes for Chainspec {
         let (core_config, remainder) = CoreConfig::from_bytes(remainder)?;
         let (highway_config, remainder) = HighwayConfig::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
-        let (wasm_costs_config, remainder) = WasmConfig::from_bytes(remainder)?;
+        let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
@@ -149,7 +154,7 @@ impl FromBytes for Chainspec {
             core_config,
             highway_config,
             deploy_config,
-            wasm_config: wasm_costs_config,
+            wasm_config,
             system_costs_config,
         };
         Ok((chainspec, remainder))
@@ -164,17 +169,17 @@ impl Loadable for Chainspec {
     }
 }
 
-impl From<Chainspec> for ExecConfig {
-    fn from(chainspec: Chainspec) -> Self {
+impl From<&Chainspec> for ExecConfig {
+    fn from(chainspec: &Chainspec) -> Self {
         ExecConfig::new(
-            chainspec.network_config.accounts,
+            chainspec.network_config.accounts.clone(),
             chainspec.wasm_config,
             chainspec.system_costs_config,
             chainspec.core_config.validator_slots,
             chainspec.core_config.auction_delay,
             chainspec.core_config.locked_funds_period.millis(),
             chainspec.core_config.round_seigniorage_rate,
-            chainspec.core_config.unbonding_delay.into(),
+            chainspec.core_config.unbonding_delay,
             chainspec.network_config.timestamp.millis(),
         )
     }

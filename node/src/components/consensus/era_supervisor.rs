@@ -134,7 +134,8 @@ where
         effect_builder: EffectBuilder<REv>,
         validators: BTreeMap<PublicKey, U512>,
         protocol_config: ProtocolConfig,
-        genesis_state_root_hash: Digest,
+        state_root_hash: Digest,
+        next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
         mut rng: &mut NodeRng,
@@ -163,7 +164,7 @@ where
             metrics,
             finished_joining: false,
             unit_hashes_folder,
-            next_upgrade_activation_point: None,
+            next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: 0,
         };
@@ -176,7 +177,7 @@ where
             0,      // hardcoded seed for era 0
             genesis_start_time,
             0, // the first block has height 0
-            genesis_state_root_hash,
+            state_root_hash,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, &mut rng)
@@ -542,7 +543,7 @@ where
             trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
-        if block.header().switch_block() {
+        if block.header().is_switch_block() {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();

@@ -9,7 +9,7 @@ use casper_execution_engine::{
         wasm_config::WasmConfig,
     },
 };
-use casper_types::{auction::EraId, Key, ProtocolVersion};
+use casper_types::{Key, ProtocolVersion};
 
 #[derive(Default)]
 pub struct UpgradeRequestBuilder {
@@ -21,9 +21,9 @@ pub struct UpgradeRequestBuilder {
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
-    new_locked_funds_period: Option<EraId>,
+    new_locked_funds_period_millis: Option<u64>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
-    new_unbonding_delay: Option<EraId>,
+    new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
 }
 
@@ -61,8 +61,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_locked_funds_period(mut self, new_locked_funds_period: EraId) -> Self {
-        self.new_locked_funds_period = Some(new_locked_funds_period);
+    pub fn with_new_locked_funds_period_millis(
+        mut self,
+        new_locked_funds_period_millis: u64,
+    ) -> Self {
+        self.new_locked_funds_period_millis = Some(new_locked_funds_period_millis);
         self
     }
 
@@ -71,7 +74,7 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_unbonding_delay(mut self, unbonding_delay: EraId) -> Self {
+    pub fn with_new_unbonding_delay(mut self, unbonding_delay: u64) -> Self {
         self.new_unbonding_delay = Some(unbonding_delay);
         self
     }
@@ -104,7 +107,7 @@ impl UpgradeRequestBuilder {
             self.activation_point,
             self.new_validator_slots,
             self.new_auction_delay,
-            self.new_locked_funds_period,
+            self.new_locked_funds_period_millis,
             self.new_round_seigniorage_rate,
             self.new_unbonding_delay,
             self.global_state_update,

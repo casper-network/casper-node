@@ -18,6 +18,7 @@ reactor!(Initializer {
 
   requests: {
     StorageRequest -> storage;
+    StateStoreRequest -> storage;
     ContractRuntimeRequest -> contract_runtime;
 
     // No network traffic during initialization, just discard.
@@ -31,11 +32,4 @@ reactor!(Initializer {
 });
 
 // TODO: Metrics
-// TODO: is_stopped
-
-impl Initializer {
-    /// Returns whether the initialization process completed successfully or not.
-    pub fn stopped_successfully(&self) -> bool {
-        self.chainspec_loader.stopped_successfully()
-    }
-}
+// TODO: maybe_exit

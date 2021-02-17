@@ -145,6 +145,17 @@ pub trait Auction:
         )?;
 
         if new_amount.is_zero() {
+            // Automatically unbond delegators
+            for (delegator_public_key, delegator) in bid.delegators() {
+                detail::create_unbonding_purse(
+                    self,
+                    public_key,
+                    *delegator_public_key,
+                    *delegator.bonding_purse(),
+                    *delegator.staked_amount(),
+                )?;
+            }
+
             // NOTE: Assumed safe as we're checking for existence above
             bids.remove(&public_key).unwrap();
         }

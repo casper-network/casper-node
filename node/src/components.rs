@@ -30,16 +30,10 @@ pub(crate) mod networking_metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use once_cell::sync::Lazy;
-use semver::Version;
-
 use crate::{
     effect::{EffectBuilder, Effects},
     NodeRng,
 };
-
-// TODO - confirm if we want to use the protocol version for this.
-pub(crate) static CLIENT_API_VERSION: Lazy<Version> = Lazy::new(|| Version::new(1, 0, 0));
 
 /// Core Component.
 ///

@@ -19,8 +19,8 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        Bids, DelegationRate, EraId, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
-        INITIAL_ERA_ID, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, INITIAL_ERA_ID,
+        METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     runtime_args,
     system_contract_errors::auction,
@@ -500,7 +500,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let new_unbonding_delay: EraId = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let sem_ver = old_protocol_version.value();
