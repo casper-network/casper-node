@@ -17,7 +17,7 @@ set -e
 #######################################
 function main() {
     log "------------------------------------------------------------"
-    log "Syncing node begins"
+    log "Starting Scenario: itst01"
     log "------------------------------------------------------------"
 
     log "Node to be stopped: $NODE_ID"

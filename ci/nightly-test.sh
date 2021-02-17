@@ -20,18 +20,25 @@ pushd $DRONE_ROOT_DIR
 source $(pwd)/utils/nctl/activate
 # Build, Setup, and Start NCTL
 nctl-compile
-nctl-assets-setup
-nctl-start
-echo "Sleeping 60 to allow network startup"
-sleep 60
 
-# Switch to scenarios
-pushd $SCENARIOS_DIR
-source sync_test.sh node=6 timeout=500
+function start_run_teardown() {
+    local RUN_CMD=$1
+    echo "Setting up network: $RUN_CMD"
+    nctl-assets-setup
+    nctl-start
+    echo "Sleeping 60 to allow network startup"
+    sleep 60
+    pushd $SCENARIOS_DIR
+    # Don't qoute the cmd
+    echo "Starting scenario: $RUN_CMD"
+    source $RUN_CMD
+    popd
+    nctl-assets-teardown
+}
 
-# Switch back and teardown
-popd
-nctl-assets-teardown
+start_run_teardown "sync_test.sh node=6 timeout=500"
+start_run_teardown "itst01.sh"
+
 
 # Clean up cloned repo
 popd
