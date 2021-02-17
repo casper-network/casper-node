@@ -118,7 +118,7 @@ impl Serialize for PointerBlock {
         // Store the non-None entries with their indices
         for (index, maybe_pointer_block) in self.0.iter().enumerate() {
             if let Some(pointer_block_value) = maybe_pointer_block {
-                map.serialize_entry(&index, pointer_block_value)?;
+                map.serialize_entry(&(index as u8), pointer_block_value)?;
             }
         }
         map.end()
@@ -146,10 +146,8 @@ impl<'de> Deserialize<'de> for PointerBlock {
                 let mut pointer_block = PointerBlock::new();
 
                 // Unpack the sparse representation
-                while let Some((index, pointer_block_value)) =
-                    access.next_entry::<usize, Pointer>()?
-                {
-                    let element = pointer_block.0.get_mut(index).ok_or_else(|| {
+                while let Some((index, pointer_block_value)) = access.next_entry::<u8, Pointer>()? {
+                    let element = pointer_block.0.get_mut(usize::from(index)).ok_or_else(|| {
                         de::Error::custom(format!("invalid index {} in pointer block value", index))
                     })?;
                     *element = Some(pointer_block_value);

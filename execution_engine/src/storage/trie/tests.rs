@@ -100,5 +100,12 @@ mod proptests {
            let deserialized_trie = bincode::deserialize(&bincode_bytes)?;
            assert_eq!(trie, deserialized_trie)
         }
+
+        #[test]
+        fn bincode_roundtrip_trie_pointer_block(pointer_block in trie_pointer_block_arb()) {
+             let bincode_bytes = bincode::serialize(&pointer_block)?;
+             let deserialized_pointer_block = bincode::deserialize(&bincode_bytes)?;
+             assert_eq!(pointer_block, deserialized_pointer_block)
+        }
     }
 }
