@@ -5,7 +5,7 @@ use clap::{App, ArgMatches, SubCommand};
 use casper_client::ListDeploysResult;
 use casper_node::rpcs::chain::GetBlockResult;
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, deploy::Error as DeployError};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
@@ -41,17 +41,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
         let mut verbosity_level = common::verbose::get(matches);
         let maybe_block_id = common::block_identifier::get(matches);
 
-        let response_value =
-            casper_client::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
-                .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
-        let response_value = response_value.get_result().cloned().unwrap();
-        let get_block_result =
-            serde_json::from_value::<GetBlockResult>(response_value).expect("should parse");
-        let list_deploys_result: ListDeploysResult = get_block_result.into();
+        match casper_client::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
+        {
+            Ok(response_value) => {
+                let response_value = response_value.get_result().cloned().unwrap();
+                let get_block_result =
+                    serde_json::from_value::<GetBlockResult>(response_value).expect("should parse");
+                let list_deploys_result: ListDeploysResult = get_block_result.into();
 
-        if verbosity_level == 0 {
-            verbosity_level += 1
+                if verbosity_level == 0 {
+                    verbosity_level += 1
+                }
+                casper_client::pretty_print_at_level(&list_deploys_result, verbosity_level);
+            }
+            Err(error) => println!("{}", DeployError::from(error)),
         }
-        casper_client::pretty_print_at_level(&list_deploys_result, verbosity_level);
     }
 }

@@ -4,7 +4,7 @@ use casper_client::DeployStrParams;
 use casper_node::rpcs::account::PutDeploy;
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, deploy::Error as DeployError};
 
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
@@ -52,12 +52,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
             },
             session_str_params,
             payment_str_params,
-        )
-        .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
+        );
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", DeployError::from(error)),
+        }
     }
 }

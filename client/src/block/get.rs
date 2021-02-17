@@ -4,7 +4,7 @@ use clap::{App, ArgMatches, SubCommand};
 
 use casper_node::rpcs::chain::GetBlock;
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, block::Error as BlockError};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
@@ -39,12 +39,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
         let maybe_block_id = common::block_identifier::get(matches);
 
         let response =
-            casper_client::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
-                .unwrap_or_else(|error| panic!("response error: {}", error));
+            casper_client::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
+
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", BlockError::from(error))
+        }
     }
 }

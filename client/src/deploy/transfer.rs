@@ -3,7 +3,7 @@ use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 use casper_client::DeployStrParams;
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, deploy::Error as DeployError};
 
 /// Handles providing the arg for and retrieval of the transfer amount.
 pub(super) mod amount {
@@ -143,12 +143,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
                 chain_name,
             },
             payment_str_params,
-        )
-        .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
+        );
+
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", DeployError::from(error))
+        }
     }
 }

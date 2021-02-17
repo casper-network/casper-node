@@ -1,7 +1,7 @@
 use clap::{App, ArgMatches, SubCommand};
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, deploy::Error as DeployError};
 
 pub struct SendDeploy;
 
@@ -33,12 +33,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
             node_address,
             verbosity_level,
             &input_path,
-        )
-        .unwrap_or_else(|error| panic!("response error: {}", error));
+        );
+
 
         if verbosity_level == 0 {
             verbosity_level += 1
         }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+        match response {
+            Ok(response) => casper_client::pretty_print_at_level(&response, verbosity_level),
+            Err(error) => println!("{}", DeployError::from(error))
+        }
     }
 }
