@@ -3,6 +3,8 @@
 #[cfg(test)]
 use std::env;
 use std::fmt::{self, Display, Formatter};
+#[cfg(test)]
+use std::sync::Arc;
 
 use datasize::DataSize;
 use derive_more::From;
@@ -26,11 +28,11 @@ use crate::{
     },
     effect::{
         announcements::ChainspecLoaderAnnouncement,
-        requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, NetworkRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, validator, EventQueueHandle},
+    reactor::{self, validator, EventQueueHandle, ReactorExit},
     types::{chainspec, NodeId},
     utils::WithDir,
     NodeRng,
@@ -51,6 +53,10 @@ pub enum Event {
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
+
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 }
 
 impl From<StorageRequest> for Event {
@@ -83,6 +89,9 @@ impl Display for Event {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {}", event),
+            Event::StateStoreRequest(request) => {
+                write!(formatter, "state store request: {}", request)
+            }
         }
     }
 }
@@ -128,17 +137,12 @@ pub struct Reactor {
 }
 
 impl Reactor {
-    /// Returns whether the initialization process completed successfully or not.
-    pub fn stopped_successfully(&self) -> bool {
-        self.chainspec_loader.stopped_successfully()
-    }
-
     #[cfg(test)]
     pub(crate) fn new_with_chainspec(
         config: <Self as reactor::Reactor>::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Event>,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<(Self, Effects<Event>), Error> {
         let effect_builder = EffectBuilder::new(event_queue);
         let (chainspec_loader, chainspec_effects) =
@@ -224,11 +228,14 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::StateStoreRequest(request) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(request.into()))
+            }
         }
     }
 
-    fn is_stopped(&mut self) -> bool {
-        self.chainspec_loader.is_stopped()
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.chainspec_loader.reactor_exit()
     }
 }
 

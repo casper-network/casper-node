@@ -73,7 +73,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tracing::{error, warn};
@@ -86,6 +85,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
+        upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
     },
     shared::{
@@ -100,7 +100,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -112,8 +112,8 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
 };
@@ -1183,14 +1183,14 @@ impl<REv> EffectBuilder<REv> {
     /// Runs the genesis process on the contract runtime.
     pub(crate) async fn commit_genesis(
         self,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<GenesisResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::CommitGenesis {
-                chainspec: Box::new(chainspec),
+                chainspec,
                 responder,
             },
             QueueKind::Regular,
@@ -1198,28 +1198,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec(self, chainspec: Chainspec)
+    /// Runs the upgrade process on the contract runtime.
+    pub(crate) async fn upgrade_contract_runtime(
+        self,
+        upgrade_config: Box<UpgradeConfig>,
+    ) -> Result<UpgradeResult, engine_state::Error>
     where
-        REv: From<StorageRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::PutChainspec {
-                chainspec: Arc::new(chainspec),
+            |responder| ContractRuntimeRequest::Upgrade {
+                upgrade_config,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Arc<Chainspec>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetChainspec { version, responder },
             QueueKind::Regular,
         )
         .await

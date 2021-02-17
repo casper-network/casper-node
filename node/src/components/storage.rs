@@ -47,7 +47,6 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::PathBuf,
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -73,7 +72,7 @@ use crate::{
     },
     fatal,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, DeployHash,
+        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
         DeployMetadata,
     },
     utils::WithDir,
@@ -204,8 +203,6 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// Chainspec cache.
-    chainspec_cache: Option<Arc<Chainspec>>,
 }
 
 impl<REv> Component<REv> for Storage {
@@ -314,7 +311,6 @@ impl Storage {
             state_store_db,
             block_height_index,
             switch_block_era_id_index,
-            chainspec_cache: None,
         })
     }
 
@@ -648,18 +644,6 @@ impl Storage {
                     .respond(Some((highest_block, signatures)))
                     .ignore()
             }
-            StorageRequest::PutChainspec {
-                chainspec,
-                responder,
-            } => {
-                self.chainspec_cache = Some(chainspec);
-
-                responder.respond(()).ignore()
-            }
-            StorageRequest::GetChainspec {
-                version: _version,
-                responder,
-            } => responder.respond(self.chainspec_cache.clone()).ignore(),
             StorageRequest::PutBlockSignatures {
                 signatures,
                 responder,
@@ -824,7 +808,7 @@ fn insert_to_block_header_indices(
         }
     }
 
-    if block_header.switch_block() {
+    if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
             Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);

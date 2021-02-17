@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use log::info;
 use num_rational::Ratio;
@@ -41,7 +41,7 @@ impl Eq for SecretKeyWithStake {}
 struct TestChain {
     // Keys that validator instances will use, can include duplicates
     storages: Vec<TempDir>,
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
     first_node_port: u16,
     network: Network<MultiStageTestReactor>,
 }
@@ -119,7 +119,7 @@ impl TestChain {
         let network: Network<MultiStageTestReactor> = Network::new();
 
         let mut test_chain = TestChain {
-            chainspec,
+            chainspec: Arc::new(chainspec),
             storages: Vec::new(),
             first_node_port,
             network,
@@ -175,7 +175,7 @@ impl TestChain {
         // Bundle our config with a chainspec for creating a multi-stage reactor
         let config = InitializerReactorConfigWithChainspec {
             config: WithDir::new(&*CONFIG_DIR, validator_config),
-            chainspec: self.chainspec.clone(),
+            chainspec: Arc::clone(&self.chainspec),
         };
 
         // Add the node (a multi-stage reactor) with the specified config to the network

@@ -31,6 +31,8 @@ pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
+#[cfg(test)]
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     env,
@@ -54,7 +56,7 @@ use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
-    types::Timestamp,
+    types::{ExitCode, Timestamp},
     utils::{self, WeightedRoundRobin},
     NodeRng,
 };
@@ -96,6 +98,16 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         })
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
+
+/// The value returned by a reactor on completion of the `run()` loop.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
+pub enum ReactorExit {
+    /// The process should continue running, moving to the next reactor.
+    ProcessShouldContinue,
+    /// The process should exit with the given exit code to allow the launcher to react
+    /// accordingly.
+    ProcessShouldExit(ExitCode),
+}
 
 /// Event scheduler
 ///
@@ -187,18 +199,9 @@ pub trait Reactor: Sized {
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
-    /// Indicates that the reactor has completed all its work and should no longer dispatch events.
-    #[inline]
-    fn is_stopped(&mut self) -> bool {
-        false
-    }
-
-    /// Indicates that the reactor shut down due to the restart.
-    /// Should no longer dispatch events.
-    #[inline]
-    fn needs_upgrade(&mut self) -> bool {
-        false
-    }
+    /// If `Some`, indicates that the reactor has completed all its work and should no longer
+    /// dispatch events.  The running process may stop or may keep running with a new reactor.
+    fn maybe_exit(&self) -> Option<ReactorExit>;
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
@@ -350,12 +353,6 @@ impl Drop for RunnerMetrics {
             .expect("did not expect deregistering total_ram_bytes to fail");
     }
 }
-
-/// Exit status of a runner instance.
-pub type RunnerExitStatus = Result<(), u8>;
-
-/// Exit code indicating that node should shut down for a scheduled upgrade.
-pub const UPGRADE_EXIT_CODE: u8 = 0;
 
 impl<R> Runner<R>
 where
@@ -611,16 +608,15 @@ where
         }
     }
 
-    /// Runs the reactor until `is_stopped()` returns true.
+    /// Runs the reactor until `maybe_exit()` returns Some.
     #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) -> RunnerExitStatus {
-        while !self.reactor.is_stopped() {
-            if self.reactor.needs_upgrade() {
-                return RunnerExitStatus::Err(UPGRADE_EXIT_CODE);
+    pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
+        loop {
+            if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                return reactor_exit;
             }
             self.crank(rng).await;
         }
-        RunnerExitStatus::Ok(())
     }
 
     /// Returns a reference to the reactor.
@@ -646,7 +642,7 @@ where
 impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
