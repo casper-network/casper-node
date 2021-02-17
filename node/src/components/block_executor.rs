@@ -24,7 +24,7 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer, U512};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
@@ -84,7 +84,6 @@ type BlockHeight = u64;
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
     genesis_state_root_hash: Option<Digest>,
-    #[data_size(skip)]
     protocol_version: ProtocolVersion,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
@@ -436,7 +435,7 @@ impl BlockExecutor {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
-            ProtocolVersion::new(SemVer::new(1, 0, 0)), // TODO: Fix
+            self.protocol_version,
         );
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
