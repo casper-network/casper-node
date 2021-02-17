@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 
 import toml
 
@@ -17,13 +18,13 @@ for node_dir in os.listdir(nodes_dir):
     if not os.path.isdir(node_path) or not node_dir.startswith("node-"):
         continue
 
+    cfg_path = os.path.join(node_path, "config", "1_0_0", "config.toml")
     try:
-        cfg_path = open(os.path.join(node_path, "config", "node-config.toml"))
-        config = toml.load(cfg_path)
+        config = toml.load(open(cfg_path))
         addr = config["rest_server"]["address"].replace("0.0.0.0", "127.0.0.1")
         addrs.append(addr)
     except Exception as e:
-        sys.stderr.write("error loading {}".format(cfg_path))
+        sys.stderr.write("error loading {}\n".format(cfg_path))
         continue
 
 
