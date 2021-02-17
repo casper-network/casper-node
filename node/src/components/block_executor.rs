@@ -24,7 +24,7 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, U512};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer, U512};
 
 use crate::{
     components::{
@@ -436,6 +436,7 @@ impl BlockExecutor {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            ProtocolVersion::new(SemVer::new(1, 0, 0)), // TODO: Fix
         );
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
