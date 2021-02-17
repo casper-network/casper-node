@@ -434,10 +434,8 @@ impl reactor::Reactor for Reactor {
             protocol_version.clone(),
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            Arc::clone(chainspec_loader.chainspec()),
-        );
+        let deploy_acceptor =
+            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",

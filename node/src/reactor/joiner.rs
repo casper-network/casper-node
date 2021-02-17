@@ -476,10 +476,8 @@ impl reactor::Reactor for Reactor {
 
         let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            Arc::clone(chainspec_loader.chainspec()),
-        );
+        let deploy_acceptor =
+            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
         let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
         let block_executor = BlockExecutor::new(
@@ -513,16 +511,13 @@ impl reactor::Reactor for Reactor {
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
 
-        let state_root_hash = chainspec_loader
-            .state_root_hash()
-            .expect("should have chainspec state root hash");
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
-            state_root_hash,
+            chainspec_loader.starting_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),

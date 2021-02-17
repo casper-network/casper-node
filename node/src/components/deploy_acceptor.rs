@@ -1,7 +1,7 @@
 mod config;
 mod event;
 
-use std::{convert::Infallible, fmt::Debug, sync::Arc};
+use std::{convert::Infallible, fmt::Debug};
 
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -13,7 +13,7 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Chainspec, Deploy, DeployValidationFailure, NodeId},
+    types::{chainspec::DeployConfig, Chainspec, Deploy, DeployValidationFailure, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -62,14 +62,16 @@ impl<REv> ReactorEventT for REv where
 /// accepted `Deploy`.
 #[derive(Debug)]
 pub struct DeployAcceptor {
-    chainspec: Arc<Chainspec>,
+    chain_name: String,
+    deploy_config: DeployConfig,
     verify_accounts: bool,
 }
 
 impl DeployAcceptor {
-    pub(crate) fn new(config: Config, chainspec: Arc<Chainspec>) -> Self {
+    pub(crate) fn new(config: Config, chainspec: &Chainspec) -> Self {
         DeployAcceptor {
-            chainspec,
+            chain_name: chainspec.network_config.name.clone(),
+            deploy_config: chainspec.deploy_config,
             verify_accounts: config.verify_accounts(),
         }
     }
@@ -87,10 +89,7 @@ impl DeployAcceptor {
     ) -> Effects<Event> {
         let mut cloned_deploy = deploy.clone();
         let mut effects = Effects::new();
-        let is_acceptable = cloned_deploy.is_acceptable(
-            &self.chainspec.network_config.name,
-            &self.chainspec.deploy_config,
-        );
+        let is_acceptable = cloned_deploy.is_acceptable(&self.chain_name, &self.deploy_config);
         if let Err(error) = is_acceptable {
             // The client has submitted an invalid deploy. Return an error to the RPC component via
             // the responder.

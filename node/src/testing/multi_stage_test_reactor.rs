@@ -236,14 +236,12 @@ impl Reactor for MultiStageTestReactor {
                     initializer_reactor.dispatch_event(effect_builder, rng, initializer_event),
                 );
 
-                if initializer_reactor.maybe_exit().is_some() {
-                    if initializer_reactor.maybe_exit().unwrap()
-                        != ReactorExit::ProcessShouldContinue
-                    {
-                        panic!("failed to transition from initializer to joiner");
+                match initializer_reactor.maybe_exit() {
+                    Some(ReactorExit::ProcessShouldContinue) => {
+                        should_transition = true;
                     }
-
-                    should_transition = true;
+                    Some(_) => panic!("failed to transition from initializer to joiner"),
+                    None => (),
                 }
 
                 effects
@@ -263,12 +261,12 @@ impl Reactor for MultiStageTestReactor {
                     joiner_reactor.dispatch_event(effect_builder, rng, joiner_event),
                 );
 
-                if joiner_reactor.maybe_exit().is_some() {
-                    if joiner_reactor.maybe_exit().unwrap() != ReactorExit::ProcessShouldContinue {
-                        panic!("failed to transition from joiner to validator");
+                match joiner_reactor.maybe_exit() {
+                    Some(ReactorExit::ProcessShouldContinue) => {
+                        should_transition = true;
                     }
-
-                    should_transition = true;
+                    Some(_) => panic!("failed to transition from initializer to joiner"),
+                    None => (),
                 }
 
                 effects

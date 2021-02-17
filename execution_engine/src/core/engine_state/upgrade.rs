@@ -4,7 +4,6 @@ use num_rational::Ratio;
 use thiserror::Error;
 
 use casper_types::{
-    auction::EraId,
     bytesrepr,
     system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE, STANDARD_PAYMENT},
     ContractHash, Key, ProtocolVersion,
@@ -102,7 +101,7 @@ impl UpgradeConfig {
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
-        new_locked_funds_period_millis: Option<EraId>,
+        new_locked_funds_period_millis: Option<u64>,
         new_round_seigniorage_rate: Option<Ratio<u64>>,
         new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,

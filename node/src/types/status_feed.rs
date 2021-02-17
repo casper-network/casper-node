@@ -29,7 +29,7 @@ static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
         NextUpgrade::new(ActivationPoint { era_id: EraId(42) }, Version::new(2, 0, 1));
     ChainspecInfo {
         name: String::from("casper-example"),
-        state_root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
+        starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),
         next_upgrade: Some(next_upgrade),
     }
 });
@@ -53,8 +53,10 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
 pub struct ChainspecInfo {
     /// Name of the network.
     name: String,
-    /// If `Some` then genesis or upgrade process returned a valid post state hash.
-    state_root_hash: Option<Digest>,
+    /// The state root hash with which this session is starting.  It will be the result of running
+    /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
+    /// hash specified in the highest block on startup.
+    starting_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -67,12 +69,12 @@ impl DocExample for ChainspecInfo {
 impl ChainspecInfo {
     pub(crate) fn new(
         chainspec_network_name: String,
-        state_root_hash: Option<Digest>,
+        starting_state_root_hash: Digest,
         next_upgrade: Option<NextUpgrade>,
     ) -> Self {
         ChainspecInfo {
             name: chainspec_network_name,
-            state_root_hash,
+            starting_state_root_hash,
             next_upgrade,
         }
     }
@@ -141,8 +143,8 @@ pub struct GetStatusResult {
     pub api_version: Version,
     /// The chainspec name.
     pub chainspec_name: String,
-    /// The chainspec state root hash.
-    pub chainspec_state_root_hash: String,
+    /// The state root hash used at the start of the current session.
+    pub starting_state_root_hash: String,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
@@ -156,10 +158,9 @@ pub struct GetStatusResult {
 impl GetStatusResult {
     pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: Version) -> Self {
         let chainspec_name = status_feed.chainspec_info.name;
-        let chainspec_state_root_hash = status_feed
+        let starting_state_root_hash = status_feed
             .chainspec_info
-            .state_root_hash
-            .unwrap_or_default()
+            .starting_state_root_hash
             .to_string();
         let peers = PeersMap::from(status_feed.peers);
         let last_added_block_info = status_feed.last_added_block.map(Into::into);
@@ -168,7 +169,7 @@ impl GetStatusResult {
         GetStatusResult {
             api_version,
             chainspec_name,
-            chainspec_state_root_hash,
+            starting_state_root_hash,
             peers,
             last_added_block_info,
             next_upgrade,

@@ -96,9 +96,10 @@ impl BlockProposer {
     {
         // load the state from storage or use a fresh instance if loading fails.
         let state_key = deploy_sets::create_storage_key(chainspec);
+        let cloned_state_key = state_key.clone();
         let effects = async move {
             effect_builder
-                .load_state(state_key.into())
+                .load_state(cloned_state_key.into())
                 .await
                 .unwrap_or_default()
         }
@@ -110,7 +111,7 @@ impl BlockProposer {
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
                 pending: Vec::new(),
-                state_key: deploy_sets::create_storage_key(chainspec),
+                state_key,
                 deploy_config: chainspec.deploy_config,
             },
             metrics: BlockProposerMetrics::new(registry)?,

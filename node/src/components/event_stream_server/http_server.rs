@@ -70,7 +70,9 @@ pub(super) async fn run(
                     if let Some(subscriber) = maybe_new_subscriber {
                         // First send the client the `ApiVersion` event.  We don't care if this
                         // errors - the client may have disconnected already.
-                        let _ = subscriber.initial_events_sender.send(ServerSentEvent::initial_event(api_version.clone()));
+                        let _ = subscriber
+                            .initial_events_sender
+                            .send(ServerSentEvent::initial_event(api_version.clone()));
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
                         if let Some(start_index) = subscriber.start_from {

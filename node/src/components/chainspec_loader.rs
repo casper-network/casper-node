@@ -165,8 +165,8 @@ pub struct ChainspecLoader {
     root_dir: PathBuf,
     /// If `Some`, we're finished loading and committing the chainspec.
     reactor_exit: Option<ReactorExit>,
-    /// The state root hash resulting from calling contract runtime commit_genesis/upgrade.
-    state_root_hash: Option<Digest>,
+    /// The initial state root hash for this session.
+    starting_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
     highest_block_hash: Option<BlockHash>,
 }
@@ -258,7 +258,7 @@ impl ChainspecLoader {
             chainspec,
             root_dir,
             reactor_exit,
-            state_root_hash: None,
+            starting_state_root_hash: Digest::default(),
             next_upgrade,
             highest_block_hash: None,
         };
@@ -270,14 +270,17 @@ impl ChainspecLoader {
         self.reactor_exit
     }
 
-    pub(crate) fn state_root_hash(&self) -> Option<Digest> {
-        self.state_root_hash
+    /// The state root hash with which this session is starting.  It will be the result of running
+    /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
+    /// hash specified in the highest block.
+    pub(crate) fn starting_state_root_hash(&self) -> Digest {
+        self.starting_state_root_hash
     }
 
     /// Returns the state root hash if available and if this protocol version is genesis.
     pub(crate) fn genesis_state_root_hash(&self) -> Option<Digest> {
         if self.chainspec.is_genesis() {
-            return self.state_root_hash;
+            return Some(self.starting_state_root_hash);
         }
         None
     }
@@ -340,14 +343,14 @@ impl ChainspecLoader {
                 }
             }
         };
-        let highest_block_era_id = highest_block.header().era_id().0;
+        let highest_block_era_id = highest_block.header().era_id();
 
         let cached_protocol_version = maybe_cached_protocol_version
             .expect("cached protocol version must exist if we have a stored block");
         let current_chainspec_activation_point =
-            self.chainspec.protocol_config.activation_point.era_id.0;
+            self.chainspec.protocol_config.activation_point.era_id;
 
-        if highest_block_era_id + 1 == current_chainspec_activation_point {
+        if highest_block_era_id.successor() == current_chainspec_activation_point {
             if highest_block.header().is_switch_block() {
                 // This is a valid run immediately after upgrading the node version.
                 trace!("valid run immediately after upgrade");
@@ -382,10 +385,11 @@ impl ChainspecLoader {
         }
 
         let next_upgrade_activation_point = match self.next_upgrade {
-            Some(ref next_upgrade) => next_upgrade.activation_point.era_id.0,
+            Some(ref next_upgrade) => next_upgrade.activation_point.era_id,
             None => {
                 // This is a valid run, restarted after an unplanned shutdown.
                 debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
+                self.starting_state_root_hash = *highest_block.state_root_hash();
                 info!("valid run after an unplanned shutdown with no scheduled upgrade");
                 return Effects::new();
             }
@@ -394,6 +398,7 @@ impl ChainspecLoader {
         if highest_block_era_id < next_upgrade_activation_point {
             // This is a valid run, restarted after an unplanned shutdown.
             debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
+            self.starting_state_root_hash = *highest_block.state_root_hash();
             info!("valid run after an unplanned shutdown before upgrade due");
             return Effects::new();
         }
@@ -486,7 +491,7 @@ impl ChainspecLoader {
                     info!("genesis state root hash {}", post_state_hash);
                     trace!(%post_state_hash, ?effect);
                     self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                    self.state_root_hash = Some(post_state_hash.into());
+                    self.starting_state_root_hash = post_state_hash.into();
                 }
             },
             Err(error) => {
@@ -518,7 +523,7 @@ impl ChainspecLoader {
                     info!("state root hash {}", post_state_hash);
                     trace!(%post_state_hash, ?effect);
                     self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                    self.state_root_hash = Some(post_state_hash.into());
+                    self.starting_state_root_hash = post_state_hash.into();
                 }
             },
             Err(error) => {
@@ -532,7 +537,7 @@ impl ChainspecLoader {
     fn new_chainspec_info(&self) -> ChainspecInfo {
         ChainspecInfo::new(
             self.chainspec.network_config.name.clone(),
-            self.state_root_hash,
+            self.starting_state_root_hash,
             self.next_upgrade.clone(),
         )
     }

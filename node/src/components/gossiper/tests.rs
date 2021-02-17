@@ -3,7 +3,6 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
-    sync::Arc,
 };
 
 use derive_more::From;
@@ -156,7 +155,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),
-            Arc::new(Chainspec::from_resources("local")),
+            &Chainspec::from_resources("local"),
         );
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
