@@ -11,6 +11,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
+use semver::Version;
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
@@ -23,7 +24,7 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, U512};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer, U512};
 
 use crate::{
     components::{
@@ -82,7 +83,9 @@ type BlockHeight = u64;
 /// The Block executor component.
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
-    genesis_state_root_hash: Digest,
+    genesis_state_root_hash: Option<Digest>,
+    #[data_size(skip)]
+    protocol_version: ProtocolVersion,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
@@ -98,10 +101,19 @@ pub(crate) struct BlockExecutor {
 }
 
 impl BlockExecutor {
-    pub(crate) fn new(genesis_state_root_hash: Digest, registry: Registry) -> Self {
+    pub(crate) fn new(
+        genesis_state_root_hash: Option<Digest>,
+        protocol_version: Version,
+        registry: Registry,
+    ) -> Self {
         let metrics = BlockExecutorMetrics::new(registry).unwrap();
         BlockExecutor {
             genesis_state_root_hash,
+            protocol_version: ProtocolVersion::from_parts(
+                protocol_version.major as u32,
+                protocol_version.minor as u32,
+                protocol_version.patch as u32,
+            ),
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
             metrics,
@@ -219,7 +231,7 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                let era_end = match state.finalized_block.era_end() {
+                let era_end = match state.finalized_block.era_report() {
                     Some(era_end) => era_end,
                     // Not at a switch block, so we don't need to have next_era_validators when
                     // constructing the next block
@@ -243,7 +255,7 @@ impl BlockExecutor {
                 let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
-                    protocol_version: ProtocolVersion::V1_0_0,
+                    protocol_version: self.protocol_version,
                     reward_items,
                     slash_items,
                     evict_items,
@@ -264,7 +276,7 @@ impl BlockExecutor {
             state.state_root_hash.into(),
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
-            ProtocolVersion::V1_0_0,
+            self.protocol_version,
             state.finalized_block.proposer(),
         );
 
@@ -424,6 +436,7 @@ impl BlockExecutor {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            ProtocolVersion::new(SemVer::new(1, 0, 0)), // TODO: Fix
         );
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
@@ -436,7 +449,7 @@ impl BlockExecutor {
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
         if finalized_block.is_genesis_child() {
-            Some(self.genesis_state_root_hash)
+            self.genesis_state_root_hash
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.
@@ -470,9 +483,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         )
                     })
             }
-            Event::BlockAlreadyExists(block) => effect_builder
-                .handle_linear_chain_block(block.take_header())
-                .ignore(),
+            Event::BlockAlreadyExists(block) => {
+                effect_builder.handle_linear_chain_block(*block).ignore()
+            }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),

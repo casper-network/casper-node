@@ -113,16 +113,16 @@ fn should_run_ee_1152_regression_test() {
 
     // In reality a step request is made, but to simplify the test I'm just calling the auction part
     // only.
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    builder.run_auction(timestamp_millis); // At this point paying out rewards would fail
+    builder.run_auction(timestamp_millis, Vec::new()); // At this point paying out rewards would fail
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     let era_validators = builder.get_era_validators();
@@ -151,5 +151,5 @@ fn should_run_ee_1152_regression_test() {
 
     builder.step(step_request.build());
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
 }

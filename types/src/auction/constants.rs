@@ -55,6 +55,8 @@ pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 /// Named constant for `era_end_timestamp_millis`;
 pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
+/// Named constant for `evicted_validators`;
+pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
@@ -74,12 +76,10 @@ pub const METHOD_RUN_AUCTION: &str = "run_auction";
 pub const METHOD_SLASH: &str = "slash";
 /// Named constant for method `distribute`.
 pub const METHOD_DISTRIBUTE: &str = "distribute";
-/// Named constant for method `withdraw_delegator_reward`.
-pub const METHOD_WITHDRAW_DELEGATOR_REWARD: &str = "withdraw_delegator_reward";
-/// Named constant for method `withdraw_validator_reward`.
-pub const METHOD_WITHDRAW_VALIDATOR_REWARD: &str = "withdraw_validator_reward";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
+/// Named constant for method `activate_bid`.
+pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
 
 /// Storage for `UnbondingPurses`
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
@@ -91,10 +91,6 @@ pub const ERA_ID_KEY: &str = "era_id";
 pub const ERA_END_TIMESTAMP_MILLIS_KEY: &str = "era_end_timestamp_millis";
 /// Storage for `SeigniorageRecipientsSnapshot`.
 pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
-/// Storage for delegator reward purse
-pub const DELEGATOR_REWARD_PURSE_KEY: &str = "delegator_reward_purse";
-/// Storage for validator reward purse
-pub const VALIDATOR_REWARD_PURSE_KEY: &str = "validator_reward_purse";
 /// Total validator slots allowed.
 pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 /// Amount of auction delay.

@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use core::{convert::TryFrom, fmt, num::ParseIntError};
 
+use datasize::DataSize;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,18 @@ pub const SEM_VER_SERIALIZED_LENGTH: usize = 3 * U32_SERIALIZED_LENGTH;
 
 /// A struct for semantic versioning.
 #[derive(
-    Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+    Copy,
+    Clone,
+    DataSize,
+    Debug,
+    Default,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
 )]
 pub struct SemVer {
     /// Major version.

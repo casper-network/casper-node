@@ -20,8 +20,7 @@ use casper_execution_engine::{
             auction_costs::{
                 AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_DISTRIBUTE_COST,
                 DEFAULT_RUN_AUCTION_COST, DEFAULT_SLASH_COST, DEFAULT_UNDELEGATE_COST,
-                DEFAULT_WITHDRAW_BID_COST, DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
-                DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
+                DEFAULT_WITHDRAW_BID_COST,
             },
             mint_costs::{
                 MintCosts, DEFAULT_BALANCE_COST, DEFAULT_MINT_COST,
@@ -645,16 +644,6 @@ fn should_charge_for_erroneous_system_contract_calls() {
             auction_hash,
             auction::METHOD_DISTRIBUTE,
             DEFAULT_DISTRIBUTE_COST,
-        ),
-        (
-            auction_hash,
-            auction::METHOD_WITHDRAW_DELEGATOR_REWARD,
-            DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
-        ),
-        (
-            auction_hash,
-            auction::METHOD_WITHDRAW_VALIDATOR_REWARD,
-            DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
         ),
         (mint_hash, mint::METHOD_MINT, DEFAULT_MINT_COST),
         (

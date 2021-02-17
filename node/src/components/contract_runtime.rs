@@ -576,7 +576,7 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis using a chainspec
-    fn commit_genesis(&self, chainspec: Box<Chainspec>) -> Result<GenesisResult, Error> {
+    fn commit_genesis(&self, chainspec: Arc<Chainspec>) -> Result<GenesisResult, Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = ProtocolVersion::from_parts(
@@ -585,7 +585,7 @@ impl ContractRuntime {
             chainspec.protocol_config.version.patch as u32,
         );
         // Transforms a chainspec into a valid genesis config for execution engine.
-        let ee_config = (*chainspec).into();
+        let ee_config = chainspec.as_ref().into();
         self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash.into(),

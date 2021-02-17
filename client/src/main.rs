@@ -1,3 +1,4 @@
+mod account_address;
 mod block;
 mod command;
 mod common;
@@ -23,6 +24,7 @@ use casper_node::rpcs::{
 
 use deploy::{ListDeploys, MakeDeploy, SendDeploy, SignDeploy};
 
+use account_address::GenerateAccountHash as AccountAddress;
 use command::ClientCommand;
 use deploy::Transfer;
 use generate_completion::GenerateCompletion;
@@ -49,6 +51,7 @@ enum DisplayOrder {
     Keygen,
     GenerateCompletion,
     GetRpcs,
+    AccountAddress,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -80,6 +83,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
             DisplayOrder::GenerateCompletion as usize,
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
+        .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
 }
 
 #[tokio::main]
@@ -103,6 +107,7 @@ async fn main() {
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),
         (ListRpcs::NAME, Some(matches)) => ListRpcs::run(matches),
+        (AccountAddress::NAME, Some(matches)) => AccountAddress::run(matches),
         _ => {
             let _ = cli().print_long_help();
             println!();

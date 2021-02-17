@@ -12,6 +12,7 @@ use std::{
     cmp, env,
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -36,7 +37,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_SMALL_NET_ENV_VAR},
+        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
@@ -58,8 +59,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle},
-    types::{Block, Deploy, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
+    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    types::{Block, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
     utils::Source,
     NodeRng,
 };
@@ -303,6 +304,24 @@ pub struct ValidatorInitConfig {
     pub(super) network_identity: NetworkIdentity,
 }
 
+#[cfg(test)]
+impl ValidatorInitConfig {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
+    }
+}
+
+impl Debug for ValidatorInitConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "ValidatorInitConfig {{ .. }}")
+    }
+}
+
 /// Validator node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
@@ -339,6 +358,10 @@ impl Reactor {
     /// Inspect consensus.
     pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
         &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
     }
 }
 
@@ -386,24 +409,34 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             true,
         )?;
-        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
-            genesis_config_hash,
+            network_name,
             true,
         )?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder)?;
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
+        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let rpc_server = RpcServer::new(
+            config.rpc_server.clone(),
+            effect_builder,
+            protocol_version.clone(),
+        )?;
+        let rest_server = RestServer::new(
+            config.rest_server.clone(),
+            effect_builder,
+            protocol_version.clone(),
+        )?;
 
-        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
-        let deploy_fetcher = Fetcher::new(config.fetcher);
+        let deploy_acceptor =
+            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -417,21 +450,19 @@ impl reactor::Reactor for Reactor {
                 .as_ref()
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
+            chainspec_loader.chainspec().as_ref(),
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
-        // Post state hash is expected to be present.
-        let genesis_state_root_hash = chainspec_loader
-            .genesis_state_root_hash()
-            .expect("should have state root hash");
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
-            .with_parent_map(latest_block);
-        let (proto_block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
-        let linear_chain = LinearChain::new();
+        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
+        let block_executor = BlockExecutor::new(
+            genesis_state_root_hash,
+            protocol_version.clone(),
+            registry.clone(),
+        )
+        .with_parent_map(latest_block);
+        let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let linear_chain = LinearChain::new(registry)?;
 
-        effects.extend(reactor::wrap_effects(
-            Event::ProtoBlockValidator,
-            block_validator_effects,
-        ));
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
@@ -573,7 +604,7 @@ impl reactor::Reactor for Reactor {
 
             // Requests:
             Event::NetworkRequest(req) => {
-                let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
                 } else {
                     Event::SmallNetwork(small_network::Event::from(req))
@@ -581,7 +612,7 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, event)
             }
             Event::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
                 } else {
                     Event::SmallNetwork(small_network::Event::from(req))
@@ -921,8 +952,10 @@ impl reactor::Reactor for Reactor {
             .record_event_queue_counts(&event_queue_handle)
     }
 
-    fn is_stopped(&mut self) -> bool {
-        self.consensus.stop_for_upgrade()
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.consensus
+            .stop_for_upgrade()
+            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
 }
 
@@ -930,7 +963,7 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             self.network.node_id()
         } else {
             self.small_network.node_id()

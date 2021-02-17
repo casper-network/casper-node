@@ -6,9 +6,8 @@ use num_rational::Ratio;
 use crate::{
     account::AccountHash,
     auction::{
-        constants::*, Auction, Bids, EraId, MintProvider, RuntimeProvider, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider, UnbondingPurse,
-        UnbondingPurses,
+        constants::*, Auction, Bids, EraId, RuntimeProvider, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -138,7 +137,7 @@ where
     Ok(auction_delay)
 }
 
-fn get_unbonding_delay<P>(provider: &mut P) -> Result<EraId>
+fn get_unbonding_delay<P>(provider: &mut P) -> Result<u64>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -206,7 +205,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     unbonder_public_key: PublicKey,
     bonding_purse: URef,
     amount: U512,
-) -> Result<U512> {
+) -> Result<()> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
         return Err(Error::UnbondTooLarge);
     }
@@ -226,31 +225,23 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         .push(new_unbonding_purse);
     set_unbonding_purses(provider, unbonding_purses)?;
 
-    // Remaining motes in the validator's bid purse
-    let remaining_bond = provider.get_balance(bonding_purse)?.unwrap_or_default();
-
-    Ok(remaining_bond)
+    Ok(())
 }
 
-/// Update validator reward map.
-pub fn update_delegator_rewards<P>(
-    provider: &mut P,
+/// Reinvests delegator reward by increasing its stake.
+pub fn reinvest_delegator_rewards(
+    bids: &mut Bids,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<U512>
-where
-    P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
-{
-    let mut total_delegator_payout = U512::zero();
-
-    let mut bids = get_bids(provider)?;
+) -> Result<Vec<(U512, URef)>> {
+    let mut delegator_payouts = Vec::new();
 
     let bid = match bids.get_mut(&validator_public_key) {
         Some(bid) => bid,
         None => {
             // Validator has been slashed
-            return Ok(total_delegator_payout);
+            return Ok(delegator_payouts);
         }
     };
 
@@ -264,9 +255,9 @@ where
 
         let delegator_reward_trunc = delegator_reward.to_integer();
 
-        delegator.increase_reward(delegator_reward_trunc)?;
+        delegator.increase_stake(delegator_reward_trunc)?;
 
-        total_delegator_payout += delegator_reward_trunc;
+        delegator_payouts.push((delegator_reward_trunc, *delegator.bonding_purse()));
 
         let allocation = SeigniorageAllocation::delegator(
             delegator_key,
@@ -277,38 +268,29 @@ where
         seigniorage_allocations.push(allocation);
     }
 
-    set_bids(provider, bids)?;
-
-    Ok(total_delegator_payout)
+    Ok(delegator_payouts)
 }
 
-/// Update validator reward map.
-pub fn update_validator_reward<P>(
-    provider: &mut P,
+/// Reinvests validator reward by increasing its stake and returns its bonding purse.
+pub fn reinvest_validator_reward(
+    bids: &mut Bids,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<U512>
-where
-    P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
-{
-    let mut bids: Bids = get_bids(provider)?;
-
+) -> Result<Option<URef>> {
     let bid = match bids.get_mut(&validator_public_key) {
         Some(bid) => bid,
         None => {
             // Validator has been slashed
-            return Ok(U512::zero());
+            return Ok(None);
         }
     };
 
-    bid.increase_reward(amount)?;
+    bid.increase_stake(amount)?;
 
     let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
 
     seigniorage_allocations.push(allocation);
 
-    set_bids(provider, bids)?;
-
-    Ok(amount)
+    Ok(Some(*bid.bonding_purse()))
 }

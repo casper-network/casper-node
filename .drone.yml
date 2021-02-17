@@ -100,6 +100,7 @@ steps:
   - make setup
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
+  - make test-fast-sync CARGO_FLAGS=--release
 
 - name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
@@ -181,6 +182,27 @@ steps:
     event:
     - push
 
+- name: build-upgrade-package
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/build_update_package.sh"
+
+- name: put-upgrade_package-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
 depends_on:
   - pre-checks
 
@@ -223,6 +245,7 @@ steps:
   # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
   image: casperlabs/node-build-u1804
+  # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
   commands:
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
@@ -266,6 +289,23 @@ steps:
   image: casperlabs/s3cmd-build:latest
   commands:
     - ./ci/drone_s3_storage.sh del
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
+# Build failed so remove the update_package candidate
+- name: del-upgrade_package-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/upgrade_package_s3_storage.sh del
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -324,6 +364,7 @@ steps:
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
+  # Removed casper-node from tag publish as we not longer ship this way.
   commands:
   - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
@@ -331,6 +372,11 @@ steps:
       from_secret: vault_token
     CL_VAULT_HOST:
       from_secret: vault_host
+
+- name: build-upgrade-package
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/build_update_package.sh"
 
 - name: publish-github-pre-release
   image: plugins/github-release
@@ -342,6 +388,7 @@ steps:
     - md5
     files:
     - "./target/debian/*.deb"
+    - "./target/upgrade_build/*.gz"
     prerelease:
     - true
   when:
@@ -387,3 +434,36 @@ trigger:
 
 depends_on:
 - release-by-tag
+
+---
+kind: pipeline
+type: docker
+name: nightly-tests-cron
+
+steps:
+- name: nctl-nighly-script
+  image: casperlabs/node-build-u1804
+  commands:
+  - "python3 -m pip install supervisor toml"
+  - "apt update && apt install lsof -y"
+  - "bash -i ci/nightly-test.sh"
+
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+    - |
+      Nightly Test Run Status: *{{ uppercasefirst build.status }}*
+      Author: {{ build.author }}
+      Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+  when:
+    status:
+    - failure
+  depends_on:
+  - nctl-nighly-script
+
+trigger:
+  cron: [ nightly-tests-cron ]

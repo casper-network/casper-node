@@ -8,7 +8,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{components::consensus::EraId, types::TimeDiff};
+use crate::types::TimeDiff;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -23,8 +23,8 @@ pub struct CoreConfig {
     pub(crate) auction_delay: u64,
     /// The period after genesis during which a genesis validator's bid is locked.
     pub(crate) locked_funds_period: TimeDiff,
-    /// The delay for paying out the the unbonding amount.
-    pub(crate) unbonding_delay: EraId,
+    /// The delay in number of eras for paying out the the unbonding amount.
+    pub(crate) unbonding_delay: u64,
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
     pub(crate) round_seigniorage_rate: Ratio<u64>,
@@ -39,7 +39,7 @@ impl CoreConfig {
         let validator_slots = rng.gen();
         let auction_delay = rng.gen::<u32>() as u64;
         let locked_funds_period = TimeDiff::from(rng.gen_range(600_000, 604_800_000));
-        let unbonding_delay = EraId(rng.gen_range(1, 1_000_000_000));
+        let unbonding_delay = rng.gen_range(1, 1_000_000_000);
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1, 1_000_000_000),
             rng.gen_range(1, 1_000_000_000),
@@ -88,7 +88,7 @@ impl FromBytes for CoreConfig {
         let (validator_slots, remainder) = u32::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (unbonding_delay, remainder) = EraId::from_bytes(remainder)?;
+        let (unbonding_delay, remainder) = u64::from_bytes(remainder)?;
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,

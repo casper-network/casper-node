@@ -73,7 +73,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tracing::{error, warn};
@@ -86,6 +85,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
+        upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
     },
     shared::{
@@ -100,7 +100,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -112,8 +112,8 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
 };
@@ -369,6 +369,12 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder(event_queue_handle)
     }
 
+    /// Extract the event queue handle out of the effect builder.
+    #[cfg(test)]
+    pub fn into_inner(self) -> EventQueueHandle<REv> {
+        self.0
+    }
+
     /// Performs a request.
     ///
     /// Given a request `Q`, that when completed will yield a result of `T`, produces a future
@@ -472,8 +478,8 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkRequest::SendMessage {
-                dest,
-                payload,
+                dest: Box::new(dest),
+                payload: Box::new(payload),
                 responder,
             },
             QueueKind::Network,
@@ -489,7 +495,10 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::Broadcast { payload, responder },
+            |responder| NetworkRequest::Broadcast {
+                payload: Box::new(payload),
+                responder,
+            },
             QueueKind::Network,
         )
         .await
@@ -514,7 +523,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkRequest::Gossip {
-                payload,
+                payload: Box::new(payload),
                 count,
                 exclude,
                 responder,
@@ -858,7 +867,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
+                deploy_hashes: deploy_hashes.to_vec(),
                 responder,
             },
             QueueKind::Regular,
@@ -877,7 +886,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
-                block_hash,
+                block_hash: Box::new(block_hash),
                 execution_results,
                 responder,
             },
@@ -1096,13 +1105,13 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled<I>(self, block_header: BlockHeader)
+    pub(crate) async fn announce_block_handled<I>(self, block: Block)
     where
         REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Handled(Box::new(block_header)),
+                ConsensusAnnouncement::Handled(Box::new(block)),
                 QueueKind::Regular,
             )
             .await
@@ -1174,14 +1183,14 @@ impl<REv> EffectBuilder<REv> {
     /// Runs the genesis process on the contract runtime.
     pub(crate) async fn commit_genesis(
         self,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<GenesisResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::CommitGenesis {
-                chainspec: Box::new(chainspec),
+                chainspec,
                 responder,
             },
             QueueKind::Regular,
@@ -1189,28 +1198,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec(self, chainspec: Chainspec)
+    /// Runs the upgrade process on the contract runtime.
+    pub(crate) async fn upgrade_contract_runtime(
+        self,
+        upgrade_config: Box<UpgradeConfig>,
+    ) -> Result<UpgradeResult, engine_state::Error>
     where
-        REv: From<StorageRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::PutChainspec {
-                chainspec: Arc::new(chainspec),
+            |responder| ContractRuntimeRequest::Upgrade {
+                upgrade_config,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Arc<Chainspec>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetChainspec { version, responder },
             QueueKind::Regular,
         )
         .await
@@ -1444,15 +1444,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(
-        self,
-        block_header: BlockHeader,
-    ) -> Option<FinalitySignature>
+    pub(crate) async fn handle_linear_chain_block(self, block: Block) -> Option<FinalitySignature>
     where
         REv: From<ConsensusRequest>,
     {
         self.make_request(
-            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
+            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
             QueueKind::Regular,
         )
         .await

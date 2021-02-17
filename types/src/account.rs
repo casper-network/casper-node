@@ -16,6 +16,10 @@ use blake2::{
 };
 use datasize::DataSize;
 use failure::Fail;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -382,6 +386,12 @@ impl FromBytes for AccountHash {
 impl AsRef<[u8]> for AccountHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
+    }
+}
+
+impl Distribution<AccountHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
+        AccountHash::new(rng.gen())
     }
 }
 

@@ -3,7 +3,6 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
-    sync::Arc,
 };
 
 use derive_more::From;
@@ -154,7 +153,10 @@ impl reactor::Reactor for Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new(deploy_acceptor::Config::new(false));
+        let deploy_acceptor = DeployAcceptor::new(
+            deploy_acceptor::Config::new(false),
+            &Chainspec::from_resources("local"),
+        );
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -183,12 +185,6 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
-                responder,
-                ..
-            })) => responder
-                .respond(Some(Arc::new(Chainspec::from_resources("local"))))
-                .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
@@ -325,6 +321,10 @@ impl reactor::Reactor for Reactor {
             ),
         }
     }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
+    }
 }
 
 impl NetworkedReactor for Reactor {
@@ -439,11 +439,13 @@ async fn should_get_from_alternate_source() {
     let node_id_0 = node_ids[0].clone();
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
-            Event::NetworkRequest(NetworkRequest::SendMessage {
-                dest,
-                payload: NodeMessage::DeployGossiper(Message::GossipResponse { .. }),
-                ..
-            }) => dest == &node_id_0,
+            Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
+                if let NodeMessage::DeployGossiper(Message::GossipResponse { .. }) = **payload {
+                    **dest == node_id_0
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     };

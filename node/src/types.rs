@@ -3,6 +3,7 @@
 mod block;
 pub mod chainspec;
 mod deploy;
+mod exit_code;
 mod item;
 pub mod json_compatibility;
 mod node_config;
@@ -16,7 +17,7 @@ use rand::{CryptoRng, RngCore};
 use rand_chacha::ChaCha20Rng;
 
 pub use block::{
-    json_compatibility::JsonBlock, Block, BlockHash, BlockHeader, BlockSignatures,
+    json_compatibility::JsonBlock, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
     BlockValidationError, FinalitySignature,
 };
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
@@ -26,11 +27,12 @@ pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
     Error as DeployError,
 };
+pub use exit_code::ExitCode;
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
-pub use status_feed::{GetStatusResult, StatusFeed};
+pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.

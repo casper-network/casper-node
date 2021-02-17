@@ -95,10 +95,11 @@ impl<C: Context> Vertex<C> {
         }
     }
 
-    pub(crate) fn signed_wire_unit(&self) -> Option<&SignedWireUnit<C>> {
+    pub(crate) fn creator(&self) -> Option<ValidatorIndex> {
         match self {
-            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit),
-            _ => None,
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().creator),
+            Vertex::Ping(ping) => Some(ping.creator),
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 

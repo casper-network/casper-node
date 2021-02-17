@@ -1,10 +1,9 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
 use thiserror::Error;
 
 use casper_types::{
-    auction::EraId,
     bytesrepr,
     system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE, STANDARD_PAYMENT},
     ContractHash, Key, ProtocolVersion,
@@ -85,9 +84,10 @@ pub struct UpgradeConfig {
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
-    new_locked_funds_period: Option<EraId>,
+    new_locked_funds_period_millis: Option<u64>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
-    new_unbonding_delay: Option<EraId>,
+    new_unbonding_delay: Option<u64>,
+    global_state_update: BTreeMap<Key, StoredValue>,
 }
 
 impl UpgradeConfig {
@@ -101,9 +101,10 @@ impl UpgradeConfig {
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
-        new_locked_funds_period: Option<EraId>,
+        new_locked_funds_period_millis: Option<u64>,
         new_round_seigniorage_rate: Option<Ratio<u64>>,
-        new_unbonding_delay: Option<EraId>,
+        new_unbonding_delay: Option<u64>,
+        global_state_update: BTreeMap<Key, StoredValue>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -114,9 +115,10 @@ impl UpgradeConfig {
             activation_point,
             new_validator_slots,
             new_auction_delay,
-            new_locked_funds_period,
+            new_locked_funds_period_millis,
             new_round_seigniorage_rate,
             new_unbonding_delay,
+            global_state_update,
         }
     }
 
@@ -152,16 +154,20 @@ impl UpgradeConfig {
         self.new_auction_delay
     }
 
-    pub fn new_locked_funds_period(&self) -> Option<EraId> {
-        self.new_locked_funds_period
+    pub fn new_locked_funds_period_millis(&self) -> Option<u64> {
+        self.new_locked_funds_period_millis
     }
 
     pub fn new_round_seigniorage_rate(&self) -> Option<Ratio<u64>> {
         self.new_round_seigniorage_rate
     }
 
-    pub fn new_unbonding_delay(&self) -> Option<EraId> {
+    pub fn new_unbonding_delay(&self) -> Option<u64> {
         self.new_unbonding_delay
+    }
+
+    pub fn global_state_update(&self) -> &BTreeMap<Key, StoredValue> {
+        &self.global_state_update
     }
 
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Blake2bHash) {

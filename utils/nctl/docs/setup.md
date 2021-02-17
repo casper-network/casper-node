@@ -5,6 +5,7 @@
 0. bash shell.
 1. python3 + pip3.
 2. The casper-node software (https://github.com/CasperLabs/casper-node) cloned into YOUR_WORKING_DIRECTORY.
+3. The casper-node-launcher software (https://github.com/CasperLabs/casper-node-launcher) cloned into YOUR_WORKING_DIRECTORY.
 
 ### Step 1 - install pre-requisites.
 

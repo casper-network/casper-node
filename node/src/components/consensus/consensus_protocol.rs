@@ -40,7 +40,7 @@ impl BlockContext {
     serialize = "VID: Ord + Serialize",
     deserialize = "VID: Ord + Deserialize<'de>",
 ))]
-pub struct EraEnd<VID> {
+pub struct EraReport<VID> {
     /// The set of equivocators.
     pub(crate) equivocators: Vec<VID>,
     /// Rewards for finalization of earlier blocks.
@@ -185,6 +185,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
 
     /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
     fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> Vec<ProtocolOutcome<I, C>>;
+
+    /// Sets the pause status: While paused we don't create consensus messages other than pings.
+    fn set_paused(&mut self, paused: bool);
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;

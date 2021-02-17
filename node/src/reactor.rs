@@ -31,6 +31,8 @@ pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
+#[cfg(test)]
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     env,
@@ -45,7 +47,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::IntoNanoseconds;
 use serde::Serialize;
 use tokio::time::{Duration, Instant};
@@ -54,7 +56,7 @@ use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
-    types::Timestamp,
+    types::{ExitCode, Timestamp},
     utils::{self, WeightedRoundRobin},
     NodeRng,
 };
@@ -97,6 +99,16 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
+/// The value returned by a reactor on completion of the `run()` loop.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
+pub enum ReactorExit {
+    /// The process should continue running, moving to the next reactor.
+    ProcessShouldContinue,
+    /// The process should exit with the given exit code to allow the launcher to react
+    /// accordingly.
+    ProcessShouldExit(ExitCode),
+}
+
 /// Event scheduler
 ///
 /// The scheduler is a combination of multiple event queues that are polled in a specific order. It
@@ -138,6 +150,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns number of events in each of the scheduler's queues.
+    #[inline]
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.0.event_queues_counts()
     }
@@ -186,11 +199,9 @@ pub trait Reactor: Sized {
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
-    /// Indicates that the reactor has completed all its work and should no longer dispatch events.
-    #[inline]
-    fn is_stopped(&mut self) -> bool {
-        false
-    }
+    /// If `Some`, indicates that the reactor has completed all its work and should no longer
+    /// dispatch events.  The running process may stop or may keep running with a new reactor.
+    fn maybe_exit(&self) -> Option<ReactorExit>;
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
@@ -265,6 +276,12 @@ struct RunnerMetrics {
 
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
+
+    /// Total allocated RAM in bytes, as reported by jemalloc.
+    allocated_ram_bytes: IntGauge,
+
+    /// Total system RAM in bytes, as reported by sys-info.
+    total_ram_bytes: IntGauge,
 }
 
 impl RunnerMetrics {
@@ -301,13 +318,21 @@ impl RunnerMetrics {
             ]),
         )?;
 
+        let allocated_ram_bytes =
+            IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+        let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
+
         registry.register(Box::new(events.clone()))?;
         registry.register(Box::new(event_dispatch_duration.clone()))?;
+        registry.register(Box::new(allocated_ram_bytes.clone()))?;
+        registry.register(Box::new(total_ram_bytes.clone()))?;
 
         Ok(RunnerMetrics {
             events,
             event_dispatch_duration,
             registry: registry.clone(),
+            allocated_ram_bytes,
+            total_ram_bytes,
         })
     }
 }
@@ -320,6 +345,12 @@ impl Drop for RunnerMetrics {
         self.registry
             .unregister(Box::new(self.event_dispatch_duration.clone()))
             .expect("did not expect deregistering event_dispatch_duration to fail");
+        self.registry
+            .unregister(Box::new(self.allocated_ram_bytes.clone()))
+            .expect("did not expect deregistering allocated_ram_bytes to fail");
+        self.registry
+            .unregister(Box::new(self.total_ram_bytes.clone()))
+            .expect("did not expect deregistering total_ram_bytes to fail");
     }
 }
 
@@ -425,6 +456,8 @@ where
 
             if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
                 debug!(%allocated, %total, "memory allocated");
+                self.metrics.allocated_ram_bytes.set(allocated as i64);
+                self.metrics.total_ram_bytes.set(total as i64);
                 if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
                     let threshold_bytes = threshold_mb * 1024 * 1024;
                     if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
@@ -575,10 +608,13 @@ where
         }
     }
 
-    /// Runs the reactor until `is_stopped()` returns true.
+    /// Runs the reactor until `maybe_exit()` returns Some.
     #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) {
-        while !self.reactor.is_stopped() {
+    pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
+        loop {
+            if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                return reactor_exit;
+            }
             self.crank(rng).await;
         }
     }
@@ -606,7 +642,7 @@ where
 impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));

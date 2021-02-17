@@ -12,12 +12,18 @@ function main()
 {
     local NODE_ID=${1}
     local LOG_LEVEL=${2}
-    local PATH_NODE_CONFIG
+    local PATH_NODE_BIN
+
+    PATH_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
 
     export RUST_LOG=$LOG_LEVEL
+    export CASPER_BIN_DIR=$PATH_NODE_BIN
+    export CASPER_CONFIG_DIR=$(get_path_to_node_config "$NODE_ID")
 
-    PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
-    "$(get_path_to_net)"/bin/casper-node validator "$PATH_NODE_CONFIG" ;
+    echo $CASPER_BIN_DIR
+    echo $CASPER_CONFIG_DIR
+
+    "$PATH_NODE_BIN"/casper-node-launcher
 }
 
 # ----------------------------------------------------------------

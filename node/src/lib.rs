@@ -66,15 +66,7 @@ pub use utils::OS_PAGE_SIZE;
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
-        env!("CARGO_PKG_VERSION").to_string()
-    } else {
-        format!(
-            "{}-{}",
-            env!("VERGEN_SEMVER_LIGHTWEIGHT"),
-            env!("VERGEN_SHA_SHORT"),
-        )
-    };
+    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"));
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

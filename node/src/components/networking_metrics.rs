@@ -2,7 +2,7 @@ use prometheus::{IntCounter, IntGauge, Registry};
 
 /// Network-type agnostic networking metrics.
 pub(crate) struct NetworkingMetrics {
-    /// How often a request was made a component to broadcast.
+    /// How often a request was made by a component to broadcast.
     pub(crate) broadcast_requests: IntCounter,
     /// How often a request to send a message directly to a peer was made.
     pub(crate) direct_message_requests: IntCounter,
@@ -10,6 +10,8 @@ pub(crate) struct NetworkingMetrics {
     pub(crate) open_connections: IntGauge,
     /// Number of messages still waiting to be sent out (broadcast and direct).
     pub(crate) queued_messages: IntGauge,
+    /// Number of peers.
+    pub(crate) peers: IntGauge,
 
     /// Registry instance.
     registry: Registry,
@@ -22,27 +24,28 @@ impl NetworkingMetrics {
             IntCounter::new("net_broadcast_requests", "number of broadcasting requests")?;
         let direct_message_requests = IntCounter::new(
             "net_direct_message_requests",
-            "How often a request to send a message directly to a peer was made.",
+            "number of requests to send a message directly to a peer",
         )?;
-        let open_connections = IntGauge::new(
-            "net_open_connnections",
-            "Current number of open connections.",
-        )?;
+        let open_connections =
+            IntGauge::new("net_open_connections", "number of established connections")?;
         let queued_messages = IntGauge::new(
             "net_queued_direct_messages",
-            "Number of messages still waiting to be sent out.",
+            "number of messages waiting to be sent out",
         )?;
+        let peers = IntGauge::new("peers", "Number of connected peers.")?;
 
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
         registry.register(Box::new(open_connections.clone()))?;
         registry.register(Box::new(queued_messages.clone()))?;
+        registry.register(Box::new(peers.clone()))?;
 
         Ok(NetworkingMetrics {
             broadcast_requests,
             direct_message_requests,
             open_connections,
             queued_messages,
+            peers,
             registry: registry.clone(),
         })
     }
@@ -62,5 +65,8 @@ impl Drop for NetworkingMetrics {
         self.registry
             .unregister(Box::new(self.queued_messages.clone()))
             .expect("did not expect deregistering queued_direct_messages to fail");
+        self.registry
+            .unregister(Box::new(self.peers.clone()))
+            .expect("did not expect deregistering peers to fail");
     }
 }
