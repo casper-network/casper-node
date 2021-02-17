@@ -755,14 +755,19 @@ where
     }
 
     fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>> {
-        let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
-            Timestamp::now(),
-            TIMER_ID_PURGE_VERTICES,
-        )];
+        let now = Timestamp::now();
+
+        let mut outcomes = vec![
+            ProtocolOutcome::ScheduleTimer(now, TIMER_ID_PURGE_VERTICES),
+            ProtocolOutcome::ScheduleTimer(
+                now + TimeDiff::from(60_000),
+                TIMER_ID_LOG_PARTICIPATION,
+            ),
+        ];
 
         if self.highway.is_active() {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                Timestamp::now(),
+                now,
                 TIMER_ID_ACTIVE_VALIDATOR,
             ));
         }
