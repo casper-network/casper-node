@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, auction::EraId};
+use crate::{account::AccountHash, system::auction::EraId};
 
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);

@@ -27,7 +27,7 @@ use casper_execution_engine::{
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
-    standard_payment::ARG_AMOUNT,
+    system::standard_payment::ARG_AMOUNT,
     AsymmetricType, ExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 

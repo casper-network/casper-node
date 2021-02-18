@@ -187,21 +187,21 @@ steps:
   commands:
     - "./ci/build_update_package.sh"
 
-- name: put-upgrade_package-s3
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - "release-*"
-    event:
-      - push
+#- name: put-upgrade_package-s3
+#  image: casperlabs/s3cmd-build:latest
+#  commands:
+#    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
+#  environment:
+#    CL_VAULT_TOKEN:
+#      from_secret: vault_token
+#    CL_VAULT_HOST:
+#      from_secret: vault_host
+#  when:
+#    branch:
+#      - master
+#      - "release-*"
+#    event:
+#      - push
 
 depends_on:
   - pre-checks
@@ -302,21 +302,21 @@ steps:
       - push
 
 # Build failed so remove the update_package candidate
-- name: del-upgrade_package-s3
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - ./ci/upgrade_package_s3_storage.sh del
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - "release-*"
-    event:
-      - push
+#- name: del-upgrade_package-s3
+#  image: casperlabs/s3cmd-build:latest
+#  commands:
+#    - ./ci/upgrade_package_s3_storage.sh del
+#  environment:
+#    CL_VAULT_TOKEN:
+#      from_secret: vault_token
+#    CL_VAULT_HOST:
+#      from_secret: vault_host
+#  when:
+#    branch:
+#      - master
+#      - "release-*"
+#    event:
+#      - push
 
 - name: notify
   image: plugins/slack
@@ -364,7 +364,6 @@ steps:
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
-  # Removed casper-node from tag publish as we not longer ship this way.
   commands:
   - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:

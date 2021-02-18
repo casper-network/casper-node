@@ -95,7 +95,7 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{

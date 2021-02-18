@@ -1,5 +1,6 @@
 [protocol]
 version = '1.0.0'
+hard_reset = false
 
 [protocol.activation_point]
 era_id = 1

@@ -48,15 +48,17 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
-        ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
-    },
     bytesrepr::{self},
-    mint::TOTAL_SUPPLY_KEY,
-    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Key, PublicKey, RuntimeArgs, Transfer, TransferAddr,
-    URef, U512,
+    runtime_args,
+    system::{
+        auction::{
+            EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
+        },
+        mint::TOTAL_SUPPLY_KEY,
+    },
+    CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
+    DeployHash, DeployInfo, Key, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::internal::{

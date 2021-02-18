@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
+    system::auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
     AccessRights, PublicKey, SecretKey, URef, U512,
 };
 

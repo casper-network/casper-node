@@ -11,7 +11,9 @@ use casper_execution_engine::core::{
 };
 use casper_types::{
     account::{AccountHash, Weight},
-    mint, runtime_args, RuntimeArgs, U512,
+    runtime_args,
+    system::mint,
+    RuntimeArgs, U512,
 };
 
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";

@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, system_contract_errors::pos::Error, BlockTime, Key, Phase};
+use crate::{account::AccountHash, system::proof_of_stake::Error, BlockTime, Key, Phase};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {

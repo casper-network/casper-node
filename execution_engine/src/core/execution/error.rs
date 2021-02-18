@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system_contract_errors, AccessRights, ApiError, CLType, CLValueError,
-    ContractPackageHash, ContractVersionKey, Key, URef,
+    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractPackageHash,
+    ContractVersionKey, Key, URef,
 };
 
 use crate::{
@@ -61,7 +61,7 @@ pub enum Error {
     #[error("{}", _0)]
     SetThresholdFailure(SetThresholdFailure),
     #[error("{}", _0)]
-    SystemContract(system_contract_errors::Error),
+    SystemContract(system::Error),
     #[error("Deployment authorization failure")]
     DeploymentAuthorizationFailure,
     #[error("Expected return value")]
@@ -179,8 +179,8 @@ impl From<SetThresholdFailure> for Error {
     }
 }
 
-impl From<system_contract_errors::Error> for Error {
-    fn from(error: system_contract_errors::Error) -> Self {
+impl From<system::Error> for Error {
+    fn from(error: system::Error) -> Self {
         Error::SystemContract(error)
     }
 }

@@ -12,11 +12,13 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    system::{
+        auction::{
+            Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
+        mint::TOTAL_SUPPLY_KEY,
     },
-    mint::TOTAL_SUPPLY_KEY,
     CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 

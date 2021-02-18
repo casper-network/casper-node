@@ -1,8 +1,8 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
-    auction::{Bid, DelegationRate, Delegator},
     bytesrepr::{self, FromBytes, ToBytes},
+    system::auction::{Bid, DelegationRate, Delegator},
     CLType, CLTyped, PublicKey, U512,
 };
 
@@ -102,8 +102,9 @@ mod tests {
     use core::iter::FromIterator;
 
     use crate::{
-        auction::{DelegationRate, Delegator, SeigniorageRecipient},
-        bytesrepr, AccessRights, SecretKey, URef, U512,
+        bytesrepr,
+        system::auction::{DelegationRate, Delegator, SeigniorageRecipient},
+        AccessRights, SecretKey, URef, U512,
     };
 
     #[test]

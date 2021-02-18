@@ -18,7 +18,7 @@ use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
 
-use casper_types::{auction::BLOCK_REWARD, U512};
+use casper_types::{system::auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::consensus::{

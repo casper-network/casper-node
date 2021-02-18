@@ -120,6 +120,18 @@ function do_await_full_synchronization() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
+    # Wait one more era and then test LFB again.
+    # This way we can verify that the node is up-to-date with the protocol state
+    # after transitioning to an active validator.
+    await_n_eras 1
+    while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash 1)" ]; do
+        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+            log "ERROR: Failed to keep up with the protocol state"
+            exit 1
+        fi
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
+        sleep 1.0
+    done
 }
 
 function dispatch_native() {

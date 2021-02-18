@@ -167,12 +167,12 @@ mod tests {
     use proptest::{prop_assert, proptest};
 
     use crate::{
-        auction::bid::{
+        bytesrepr,
+        gens::u512_arb,
+        system::auction::bid::{
             vesting::{gens::vesting_schedule_arb, LOCKED_AMOUNTS_LENGTH, WEEK_MILLIS},
             VestingSchedule,
         },
-        bytesrepr,
-        gens::u512_arb,
         U512,
     };
 

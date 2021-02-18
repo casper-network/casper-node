@@ -234,7 +234,10 @@ impl<REv> Component<REv> for Storage {
 
 impl Storage {
     /// Creates a new storage component.
-    pub(crate) fn new(cfg: &WithDir<Config>) -> Result<Self, Error> {
+    pub(crate) fn new(
+        cfg: &WithDir<Config>,
+        hard_reset_to_start_of_era: Option<EraId>,
+    ) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
@@ -283,6 +286,11 @@ impl Storage {
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
+            if let Some(invalid_era) = hard_reset_to_start_of_era {
+                if block.era_id() >= invalid_era {
+                    continue;
+                }
+            }
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,

@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 
 use crate::{
-    auction::EraId,
     bytesrepr::{self, FromBytes, ToBytes},
+    system::auction::EraId,
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
@@ -58,7 +58,7 @@ impl UnbondingPurse {
     /// Returns public key of unbonder.
     ///
     /// For withdrawal requests that originated from validator's public key through
-    /// [`crate::auction::Auction::withdraw_bid`] entrypoint this is equal to
+    /// [`crate::system::auction::Auction::withdraw_bid`] entrypoint this is equal to
     /// [`UnbondingPurse::validator_public_key`] and [`UnbondingPurse::is_validator`] is `true`.
     pub fn unbonder_public_key(&self) -> &PublicKey {
         &self.unbonder_public_key
@@ -125,8 +125,9 @@ mod tests {
     use once_cell::sync::Lazy;
 
     use crate::{
-        auction::{EraId, UnbondingPurse},
-        bytesrepr, AccessRights, PublicKey, SecretKey, URef, U512,
+        bytesrepr,
+        system::auction::{EraId, UnbondingPurse},
+        AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);

@@ -23,10 +23,12 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    auction::{
-        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+    system::{
+        auction::{
+            AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    mint::ROUND_SEIGNIORAGE_RATE_KEY,
     CLValue, ProtocolVersion, U512,
 };
 use num_rational::Ratio;
