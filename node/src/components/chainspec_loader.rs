@@ -169,6 +169,7 @@ pub struct ChainspecLoader {
     starting_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
     highest_block_hash: Option<BlockHash>,
+    starting_era: EraId,
 }
 
 impl ChainspecLoader {
@@ -261,6 +262,7 @@ impl ChainspecLoader {
             starting_state_root_hash: Digest::default(),
             next_upgrade,
             highest_block_hash: None,
+            starting_era: EraId(0),
         };
 
         (chainspec_loader, effects)
@@ -297,6 +299,10 @@ impl ChainspecLoader {
         self.highest_block_hash
     }
 
+    pub(crate) fn starting_era(&self) -> EraId {
+        self.starting_era
+    }
+
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
     /// subsequent eras are ignored (conceptually deleted from storage).
     pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
@@ -326,6 +332,14 @@ impl ChainspecLoader {
         let highest_block = match maybe_block {
             Some(block) => {
                 self.highest_block_hash = Some(*block.hash());
+                // We want to start the Era Supervisor at the era right after the highest block we
+                // have. If the block is a switch block, that will be the era that comes next. If
+                // it's not, we continue the era the highest block belongs to.
+                self.starting_era = if block.header().era_report().is_some() {
+                    block.header().era_id().successor()
+                } else {
+                    block.header().era_id()
+                };
                 block
             }
             None => {
