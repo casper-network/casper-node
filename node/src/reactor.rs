@@ -50,15 +50,16 @@ use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::IntoNanoseconds;
 use serde::Serialize;
+use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     utils::{self, WeightedRoundRobin},
-    NodeRng,
+    NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
@@ -474,11 +475,11 @@ where
         }
 
         // Dump event queue if requested, stopping the world.
-        if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
+        if QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
             self.dump_queues().await;
             // Indicate we are done with the dump.
-            crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+            QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let (event, q) = self.scheduler.pop().await;
@@ -599,6 +600,7 @@ where
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
+    #[cfg(test)]
     pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
@@ -608,14 +610,23 @@ where
         }
     }
 
-    /// Runs the reactor until `maybe_exit()` returns Some.
+    /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
+    /// signal.
     #[inline]
     pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
         loop {
-            if let Some(reactor_exit) = self.reactor.maybe_exit() {
-                return reactor_exit;
+            match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
+                0 => {
+                    if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                        return reactor_exit;
+                    }
+                    self.crank(rng).await;
+                }
+                SIGINT => return ReactorExit::ProcessShouldExit(ExitCode::SigInt),
+                SIGQUIT => return ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
+                SIGTERM => return ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                _ => error!("should be unreachable - bug in signal handler"),
             }
-            self.crank(rng).await;
         }
     }
 
