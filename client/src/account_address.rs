@@ -2,9 +2,10 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
+use casper_client::Error;
 use casper_types::{AsymmetricType, PublicKey};
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -75,12 +76,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateAccountHash {
             .arg(public_key::arg())
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let key_string = public_key::get(matches);
         let public_key = PublicKey::from_hex(key_string)
             .unwrap_or_else(|error| panic!("error in retrieving public key: {}", error));
         let account_hash = public_key.to_account_hash();
-
-        println!("Account hash is [{}]", account_hash);
+        Ok(Success::Output(account_hash.to_string()))
     }
 }

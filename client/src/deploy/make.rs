@@ -1,9 +1,9 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::DeployStrParams;
+use casper_client::{DeployStrParams, Error};
 
 use super::creation_common;
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 pub struct MakeDeploy;
 
@@ -24,7 +24,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         creation_common::apply_common_creation_options(subcommand, false)
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let secret_key = common::secret_key::get(matches);
@@ -52,6 +52,6 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
             session_str_params,
             payment_str_params,
         )
-        .unwrap_or_else(|err| panic!("unable to make deploy {:?}", err));
+        .map(|_| Success::Output("Made the deploy".to_string()))
     }
 }

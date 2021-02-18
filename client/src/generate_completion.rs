@@ -2,7 +2,9 @@ use std::{fs::File, path::PathBuf, process, str::FromStr};
 
 use clap::{crate_name, App, Arg, ArgMatches, Shell, SubCommand};
 
-use crate::{command::ClientCommand, common};
+use casper_client::Error;
+
+use crate::{command::ClientCommand, common, Success};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -90,7 +92,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateCompletion {
             .arg(shell::arg())
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let output_path = output_file::get(matches);
         let force = common::force::get(matches);
         let shell = shell::get(matches);
@@ -109,10 +111,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateCompletion {
         });
         super::cli().gen_completions_to(crate_name!(), shell, &mut output_file);
 
-        println!(
+        Ok(Success::Output(format!(
             "Wrote completion script for {} to {}",
             shell,
             output_path.display()
-        );
+        )))
     }
 }
