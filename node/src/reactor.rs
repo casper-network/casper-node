@@ -333,6 +333,7 @@ impl RunnerMetrics {
         registry.register(Box::new(events.clone()))?;
         registry.register(Box::new(event_dispatch_duration.clone()))?;
         registry.register(Box::new(allocated_ram_bytes.clone()))?;
+        registry.register(Box::new(consumed_ram_bytes.clone()))?;
         registry.register(Box::new(total_ram_bytes.clone()))?;
 
         Ok(RunnerMetrics {
@@ -359,7 +360,7 @@ impl Drop for RunnerMetrics {
             .expect("did not expect deregistering allocated_ram_bytes to fail");
         self.registry
             .unregister(Box::new(self.consumed_ram_bytes.clone()))
-            .expect("did not expect deregistering allocated_ram_bytes to fail");
+            .expect("did not expect deregistering consumed_ram_bytes to fail");
         self.registry
             .unregister(Box::new(self.total_ram_bytes.clone()))
             .expect("did not expect deregistering total_ram_bytes to fail");
