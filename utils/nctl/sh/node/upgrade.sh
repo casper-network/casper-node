@@ -16,7 +16,7 @@ for ARGUMENT in "$@"; do
         era) ACTIVATE_ERA=${VALUE} ;;
         loglevel) LOG_LEVEL=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
-        *) ;;
+        *) echo "Unknown argument '${KEY}'. Use 'version', 'era' or 'loglevel'." && exit 1;;
     esac
 done
 
