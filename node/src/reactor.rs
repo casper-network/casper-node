@@ -553,7 +553,7 @@ where
 
         // mem_info gives us kB
         let total = mem_info.total * 1024;
-        let consumed = total - (mem_info.avail * 1024);
+        let consumed = total - (mem_info.free * 1024);
 
         // whereas jemalloc_ctl gives us the numbers in bytes
         match jemalloc_epoch::mib() {
