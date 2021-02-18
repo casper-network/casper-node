@@ -6,10 +6,14 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 
+use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
     runtime_args,
-    system::auction::{self, DelegationRate},
-    RuntimeArgs, U512,
+    system::{
+        self,
+        auction::{self, DelegationRate},
+    },
+    ApiError, RuntimeArgs, U512,
 };
 
 const LARGE_DELEGATION_RATE: DelegationRate = 101;
@@ -40,7 +44,7 @@ fn should_run_ee_1174_delegation_rate_too_high() {
 
     builder.exec(add_bid_request).commit();
 
-    let _error = builder
+    let error = builder
         .get_exec_results()
         .last()
         .expect("should have results")
@@ -48,4 +52,8 @@ fn should_run_ee_1174_delegation_rate_too_high() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if *auction_error == system::auction::Error::DelegationRateTooLarge as u8));
 }
