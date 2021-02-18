@@ -1,5 +1,7 @@
 use crate::{account::AccountHash, system::auction::EraId};
 
+use super::DelegationRate;
+
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
@@ -11,7 +13,7 @@ pub const INITIAL_ERA_END_TIMESTAMP_MILLIS: u64 = 0;
 
 /// Delegation rate is a fraction between 0-1. Validator sets the delegation rate
 /// in integer terms, which is then divided by the denominator to obtain the fraction.
-pub const DELEGATION_RATE_DENOMINATOR: u64 = 1_000_000_000_000;
+pub const DELEGATION_RATE_DENOMINATOR: DelegationRate = 100;
 
 /// We use one trillion as a block reward unit because it's large enough to allow precise
 /// fractions, and small enough for many block rewards to fit into a u64.
