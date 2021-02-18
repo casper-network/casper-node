@@ -52,7 +52,7 @@ use crate::{
     reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, BlockHash, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -168,8 +168,7 @@ pub struct ChainspecLoader {
     /// The initial state root hash for this session.
     starting_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
-    highest_block_hash: Option<BlockHash>,
-    starting_era: EraId,
+    highest_block_header: Option<BlockHeader>,
 }
 
 impl ChainspecLoader {
@@ -261,8 +260,7 @@ impl ChainspecLoader {
             reactor_exit,
             starting_state_root_hash: Digest::default(),
             next_upgrade,
-            highest_block_hash: None,
-            starting_era: EraId(0),
+            highest_block_header: None,
         };
 
         (chainspec_loader, effects)
@@ -279,14 +277,6 @@ impl ChainspecLoader {
         self.starting_state_root_hash
     }
 
-    /// Returns the state root hash if available and if this protocol version is genesis.
-    pub(crate) fn genesis_state_root_hash(&self) -> Option<Digest> {
-        if self.chainspec.is_genesis() {
-            return Some(self.starting_state_root_hash);
-        }
-        None
-    }
-
     pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
         &self.chainspec
     }
@@ -295,12 +285,30 @@ impl ChainspecLoader {
         self.next_upgrade.clone()
     }
 
+    pub(crate) fn highest_block_header(&self) -> Option<&BlockHeader> {
+        self.highest_block_header.as_ref()
+    }
+
     pub(crate) fn highest_block_hash(&self) -> Option<BlockHash> {
-        self.highest_block_hash
+        self.highest_block_header().map(|hdr| hdr.hash())
     }
 
     pub(crate) fn starting_era(&self) -> EraId {
-        self.starting_era
+        // We want to start the Era Supervisor at the era right after the highest block we
+        // have. If the block is a switch block, that will be the era that comes next. If
+        // it's not, we continue the era the highest block belongs to.
+        if self
+            .highest_block_header()
+            .and_then(|hdr| hdr.era_end())
+            .is_some()
+        {
+            // we know that header is `Some`
+            self.highest_block_header().unwrap().era_id().successor()
+        } else {
+            self.highest_block_header()
+                .map(|hdr| hdr.era_id())
+                .unwrap_or(EraId(0))
+        }
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
@@ -331,15 +339,7 @@ impl ChainspecLoader {
 
         let highest_block = match maybe_block {
             Some(block) => {
-                self.highest_block_hash = Some(*block.hash());
-                // We want to start the Era Supervisor at the era right after the highest block we
-                // have. If the block is a switch block, that will be the era that comes next. If
-                // it's not, we continue the era the highest block belongs to.
-                self.starting_era = if block.header().era_report().is_some() {
-                    block.header().era_id().successor()
-                } else {
-                    block.header().era_id()
-                };
+                self.highest_block_header = Some(block.header().clone());
                 block
             }
             None => {
