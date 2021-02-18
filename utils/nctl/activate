@@ -53,6 +53,7 @@ alias nctl-start-after-n-blocks='source $NCTL/sh/node/start_after_n_blocks.sh'
 alias nctl-start-after-n-eras='source $NCTL/sh/node/start_after_n_eras.sh'
 alias nctl-status='source $NCTL/sh/node/status.sh'
 alias nctl-stop='source $NCTL/sh/node/stop.sh'
+alias nctl-upgrade-protocol='source $NCTL/sh/node/upgrade.sh'
 
 # Blocking commands.
 alias nctl-await-n-blocks='source $NCTL/sh/misc/await_n_blocks.sh'
