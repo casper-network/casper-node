@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::PathBuf,
@@ -40,7 +40,7 @@ use crate::{
         ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
-    effect::{EffectBuilder, EffectExt, Effects, Responder},
+    effect::{requests::ConsensusRequest, EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
         ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
@@ -117,6 +117,8 @@ pub struct EraSupervisor<I> {
     /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
     /// component.
     is_initialized: bool,
+    /// TODO: Remove.
+    pub(crate) enqueued_events: VecDeque<Event<I>>,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -179,6 +181,7 @@ where
             stop_for_upgrade: false,
             next_executed_height: 0,
             is_initialized: false,
+            enqueued_events: Default::default(),
         };
 
         let effects = effect_builder
@@ -565,6 +568,16 @@ where
         block: Block,
         responder: Responder<Option<FinalitySignature>>,
     ) -> Effects<Event<I>> {
+        // TODO: Delete once `EraSupervisor` gets removed from the joiner reactor.
+        if !self.era_supervisor.is_initialized() {
+            // enqueue
+            self.era_supervisor
+                .enqueued_events
+                .push_back(Event::ConsensusRequest(
+                    ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
+                ));
+            return Effects::new();
+        }
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
