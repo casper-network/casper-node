@@ -225,6 +225,8 @@ pub trait Finalize: Sized {
 struct AllocatedMem {
     /// Total allocated memory in bytes.
     allocated: u64,
+    /// Total consumed memory in bytes.
+    consumed: u64,
     /// Total system memory in bytes.
     total: u64,
 }
@@ -281,6 +283,9 @@ struct RunnerMetrics {
     /// Total allocated RAM in bytes, as reported by jemalloc.
     allocated_ram_bytes: IntGauge,
 
+    /// Total consumed RAM in bytes, as reported by sys-info.
+    consumed_ram_bytes: IntGauge,
+
     /// Total system RAM in bytes, as reported by sys-info.
     total_ram_bytes: IntGauge,
 }
@@ -321,6 +326,8 @@ impl RunnerMetrics {
 
         let allocated_ram_bytes =
             IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+        let consumed_ram_bytes =
+            IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
         let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
 
         registry.register(Box::new(events.clone()))?;
@@ -333,6 +340,7 @@ impl RunnerMetrics {
             event_dispatch_duration,
             registry: registry.clone(),
             allocated_ram_bytes,
+            consumed_ram_bytes,
             total_ram_bytes,
         })
     }
@@ -348,6 +356,9 @@ impl Drop for RunnerMetrics {
             .expect("did not expect deregistering event_dispatch_duration to fail");
         self.registry
             .unregister(Box::new(self.allocated_ram_bytes.clone()))
+            .expect("did not expect deregistering allocated_ram_bytes to fail");
+        self.registry
+            .unregister(Box::new(self.consumed_ram_bytes.clone()))
             .expect("did not expect deregistering allocated_ram_bytes to fail");
         self.registry
             .unregister(Box::new(self.total_ram_bytes.clone()))
@@ -455,9 +466,15 @@ where
                 self.last_metrics = now;
             }
 
-            if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
+            if let Some(AllocatedMem {
+                allocated,
+                consumed,
+                total,
+            }) = Self::get_allocated_memory()
+            {
                 debug!(%allocated, %total, "memory allocated");
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
+                self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);
                 if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
                     let threshold_bytes = threshold_mb * 1024 * 1024;
@@ -535,6 +552,7 @@ where
 
         // mem_info gives us kB
         let total = mem_info.total * 1024;
+        let consumed = total - (mem_info.avail * 1024);
 
         // whereas jemalloc_ctl gives us the numbers in bytes
         match jemalloc_epoch::mib() {
@@ -563,7 +581,11 @@ where
             }
         };
 
-        Some(AllocatedMem { allocated, total })
+        Some(AllocatedMem {
+            allocated,
+            consumed,
+            total,
+        })
     }
 
     /// Handles dumping queue contents to files in /tmp.
