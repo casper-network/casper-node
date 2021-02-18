@@ -654,14 +654,18 @@ where
                 .and_then(|switch_id| switch_blocks.get(&switch_id));
 
             let newly_slashed = maybe_switch_block
-                .and_then(|bhdr| bhdr.era_end())
+                .and_then(|bhdr| bhdr.era_report())
                 .map(|era_end| era_end.equivocators.clone())
                 .unwrap_or_default();
 
             let slashed = self
                 .era_supervisor
                 .iter_past_other(era_id, self.era_supervisor.bonded_eras)
-                .filter_map(|old_id| switch_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
+                .filter_map(|old_id| {
+                    switch_blocks
+                        .get(&old_id)
+                        .and_then(|bhdr| bhdr.era_report())
+                })
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
 
