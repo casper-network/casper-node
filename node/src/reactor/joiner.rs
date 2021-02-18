@@ -32,7 +32,7 @@ use crate::{
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraId, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -508,7 +508,7 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
-            EraId(0),
+            chainspec_loader.starting_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
