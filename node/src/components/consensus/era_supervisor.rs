@@ -635,12 +635,11 @@ where
     pub(super) fn handle_initialize_eras(
         &mut self,
         switch_blocks: HashMap<EraId, BlockHeader>,
-        validators: BTreeMap<PublicKey, U512>,
-        state_root_hash: Digest,
+        genesis_validators: BTreeMap<PublicKey, U512>,
+        genesis_state_root_hash: Digest,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     ) -> Effects<Event<I>> {
-        let last_activation_point = self.era_supervisor.protocol_config.last_activation_point;
         let current_era = self.era_supervisor.current_era;
         let mut effects: Effects<Event<I>> = Default::default();
 
@@ -648,19 +647,21 @@ where
             .era_supervisor
             .iter_past(current_era, self.era_supervisor.bonded_eras * 2)
         {
-            // TODO: make sure that we use a switch block for regular (non-emergency) upgrades, too
-            let maybe_switch_block = (era_id > last_activation_point)
-                .then(|| EraId(era_id.0 - 1))
-                .and_then(|switch_id| switch_blocks.get(&switch_id));
+            // This should only be None if era_id = 0, ie. there is no switch block at all
+            let maybe_switch_block = switch_blocks.get(&era_id);
+
+            if maybe_switch_block.is_none() && era_id.0 != 0 {
+                // TODO: that's probably an error; do we exit?
+            }
 
             let newly_slashed = maybe_switch_block
                 .and_then(|bhdr| bhdr.era_end())
-                .map(|era_end| era_end.equivocators.clone())
+                .map(|era_report| era_report.equivocators.clone())
                 .unwrap_or_default();
 
             let slashed = self
                 .era_supervisor
-                .iter_past_other(era_id, self.era_supervisor.bonded_eras)
+                .iter_past(era_id, self.era_supervisor.bonded_eras)
                 .filter_map(|old_id| switch_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
@@ -668,7 +669,7 @@ where
             let booking_era_id = EraId(
                 era_id
                     .0
-                    .saturating_sub(self.era_supervisor.protocol_config.auction_delay + 1),
+                    .saturating_sub(self.era_supervisor.protocol_config.auction_delay),
             );
 
             let seed = if let Some(booking_block) = switch_blocks.get(&booking_era_id) {
@@ -685,14 +686,18 @@ where
                             .cloned()
                             .expect("switch block should have era validator weights"),
                         switch_block.height() + 1,
-                        *switch_block.state_root_hash(),
+                        *switch_block.state_root_hash(), /* TODO: wrong if we want to cater to
+                                                          * upgrades modifying global state */
                         switch_block.timestamp(),
                     )
                 } else {
-                    // TODO: the start height should be 1 more than the last block before the last
-                    // upgrade, and the state hash should be the (potentially modified) state hash
-                    // from that block
-                    (validators.clone(), 0, state_root_hash, genesis_start_time)
+                    // If we don't have a switch block, we're dealing with era 0 and genesis data
+                    (
+                        genesis_validators.clone(),
+                        0,
+                        genesis_state_root_hash,
+                        genesis_start_time,
+                    )
                 };
 
             let results = self.era_supervisor.new_era(
