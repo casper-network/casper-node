@@ -25,11 +25,14 @@ use casper_types::{
     account::AccountHash,
     api_error::ApiError,
     runtime_args,
-    system::auction::{
-        self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
-        ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
-        METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
+    system::{
+        self,
+        auction::{
+            self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients,
+            UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_PUBLIC_KEY, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY,
+            INITIAL_ERA_ID, METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
+        },
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -113,6 +116,26 @@ const DELEGATOR_1_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 const DELEGATOR_2_STAKE: u64 = 2_000_000;
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+const WEEK_TIMESTAMPS: [u64; 14] = [
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + WEEK_MILLIS,
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 2),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 3),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 4),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 5),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 6),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 7),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 8),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 9),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 10),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 11),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
+    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
+];
 
 #[ignore]
 #[test]
@@ -675,26 +698,6 @@ fn should_release_founder_stake() {
         .cloned()
         .map(U512::from)
         .collect();
-
-    const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-
-    const WEEK_TIMESTAMPS: [u64; 14] = [
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + WEEK_MILLIS,
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 2),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 3),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 4),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 5),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 6),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 7),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 8),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 9),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 10),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 11),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
-        EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
-    ];
 
     let expect_unbond_success = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
         let partial_unbond = ExecuteRequestBuilder::standard(
@@ -1984,4 +1987,485 @@ fn should_setup_genesis_delegators() {
         *account_1_delegator_1_entry.staked_amount(),
         U512::from(DELEGATOR_1_STAKE)
     );
+}
+
+#[ignore]
+#[test]
+fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let validator_1 = GenesisAccount::account(
+            *VALIDATOR_1,
+            Motes::new(VALIDATOR_1_STAKE.into()),
+            Motes::new(VALIDATOR_1_STAKE.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *VALIDATOR_1,
+            *DELEGATOR_1,
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        tmp.push(validator_1);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let fund_delegator_account = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+        },
+    )
+    .build();
+    builder
+        .exec(fund_delegator_account)
+        .commit()
+        .expect_success();
+
+    let partial_undelegate = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
+            auction::ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
+        },
+    )
+    .build();
+
+    builder.exec(partial_undelegate).commit();
+    let error = {
+        let response = builder
+            .get_exec_results()
+            .last()
+            .expect("should have last exec result");
+        let exec_response = response.last().expect("should have response");
+        exec_response.as_error().expect("should have error")
+    };
+
+    assert!(matches!(
+        error,
+        engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+    ));
+}
+
+#[ignore]
+#[test]
+fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let validator_1 = GenesisAccount::account(
+            *VALIDATOR_1,
+            Motes::new(VALIDATOR_1_STAKE.into()),
+            Motes::new(VALIDATOR_1_STAKE.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *VALIDATOR_1,
+            *DELEGATOR_1,
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        tmp.push(validator_1);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let fund_delegator_account = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+        },
+    )
+    .build();
+    builder
+        .exec(fund_delegator_account)
+        .commit()
+        .expect_success();
+
+    let full_undelegate = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
+            auction::ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+        },
+    )
+    .build();
+
+    builder.exec(full_undelegate).commit();
+    let error = {
+        let response = builder
+            .get_exec_results()
+            .last()
+            .expect("should have last exec result");
+        let exec_response = response.last().expect("should have response");
+        exec_response.as_error().expect("should have error")
+    };
+
+    assert!(matches!(
+        error,
+        engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+    ));
+}
+
+#[ignore]
+#[test]
+fn should_not_undelegate_vfta_holder_stake() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let validator_1 = GenesisAccount::account(
+            *VALIDATOR_1,
+            Motes::new(VALIDATOR_1_STAKE.into()),
+            Motes::new(VALIDATOR_1_STAKE.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *VALIDATOR_1,
+            *DELEGATOR_1,
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        tmp.push(validator_1);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let post_genesis_requests = {
+        let fund_delegator_account = ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CONTRACT_TRANSFER_TO_ACCOUNT,
+            runtime_args! {
+                ARG_TARGET => *DELEGATOR_1_ADDR,
+                ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+            },
+        )
+        .build();
+
+        let fund_system_account = ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CONTRACT_TRANSFER_TO_ACCOUNT,
+            runtime_args! {
+                ARG_TARGET => SYSTEM_ADDR,
+                ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+            },
+        )
+        .build();
+
+        vec![fund_system_account, fund_delegator_account]
+    };
+
+    for post_genesis_request in post_genesis_requests {
+        builder.exec(post_genesis_request).commit().expect_success();
+    }
+
+    {
+        let auction = builder.get_auction_contract_hash();
+        let bids: Bids = builder.get_value(auction, auction::BIDS_KEY);
+        let delegator = bids
+            .get(&*VALIDATOR_1)
+            .expect("should have validator")
+            .delegators()
+            .get(&*DELEGATOR_1)
+            .expect("should have delegator");
+        let vesting_schedule = delegator
+            .vesting_schedule()
+            .expect("should have vesting schedule");
+        assert_eq!(vesting_schedule.locked_amounts(), None);
+    }
+
+    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
+
+    let partial_unbond = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
+            auction::ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
+        },
+    )
+    .build();
+
+    {
+        let auction = builder.get_auction_contract_hash();
+        let bids: Bids = builder.get_value(auction, auction::BIDS_KEY);
+        let delegator = bids
+            .get(&*VALIDATOR_1)
+            .expect("should have validator")
+            .delegators()
+            .get(&*DELEGATOR_1)
+            .expect("should have delegator");
+        let vesting_schedule = delegator
+            .vesting_schedule()
+            .expect("should have vesting schedule");
+        assert!(matches!(vesting_schedule.locked_amounts(), Some(_)));
+    }
+
+    builder.exec(partial_unbond).commit();
+    let error = {
+        let response = builder
+            .get_exec_results()
+            .last()
+            .expect("should have last exec result");
+        let exec_response = response.last().expect("should have response");
+        exec_response.as_error().expect("should have error")
+    };
+
+    assert!(matches!(
+        error,
+        engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+    ));
+}
+
+#[ignore]
+#[test]
+fn should_release_vfta_holder_stake() {
+    // ACCOUNT_1_BOND / 14 = 7_142
+    const EXPECTED_WEEKLY_RELEASE: u64 = DELEGATOR_1_STAKE / 14;
+
+    const EXPECTED_REMAINDER: u64 = 12;
+
+    const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
+        1392858, 1285716, 1178574, 1071432, 964290, 857148, 750006, 642864, 535722, 428580, 321438,
+        214296, 107154, 0,
+    ];
+
+    let expected_locked_amounts: Vec<U512> = EXPECTED_LOCKED_AMOUNTS
+        .iter()
+        .cloned()
+        .map(U512::from)
+        .collect();
+
+    let expect_undelegate_success = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+        let partial_unbond = ExecuteRequestBuilder::standard(
+            *DELEGATOR_1_ADDR,
+            CONTRACT_UNDELEGATE,
+            runtime_args! {
+                auction::ARG_VALIDATOR => *ACCOUNT_1_PK,
+                auction::ARG_DELEGATOR => *DELEGATOR_1,
+                ARG_AMOUNT => U512::from(amount),
+            },
+        )
+        .build();
+
+        builder.exec(partial_unbond).commit().expect_success();
+    };
+
+    let expect_unbond_failure = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+        let full_unbond = ExecuteRequestBuilder::standard(
+            *DELEGATOR_1_ADDR,
+            CONTRACT_UNDELEGATE,
+            runtime_args! {
+                auction::ARG_VALIDATOR => *ACCOUNT_1_PK,
+                auction::ARG_DELEGATOR => *DELEGATOR_1,
+                ARG_AMOUNT => U512::from(amount),
+            },
+        )
+        .build();
+
+        builder.exec(full_unbond).commit();
+
+        let error = {
+            let response = builder
+                .get_exec_results()
+                .last()
+                .expect("should have last exec result");
+            let exec_response = response.last().expect("should have response");
+            exec_response.as_error().expect("should have error")
+        };
+
+        assert!(
+            matches!(
+                error,
+                engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+                if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+            ),
+            "{:?}",
+            error
+        );
+    };
+
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let fund_delegator_account = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+        },
+    )
+    .build();
+    builder
+        .exec(fund_delegator_account)
+        .commit()
+        .expect_success();
+
+    let auction = builder.get_auction_contract_hash();
+
+    let fund_system_account = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE / 10)
+        },
+    )
+    .build();
+
+    builder.exec(fund_system_account).commit().expect_success();
+
+    // Check bid and its vesting schedule
+    {
+        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        assert_eq!(bids.len(), 1);
+
+        let bid_entry = bids.get(&ACCOUNT_1_PK).unwrap();
+        let entry = bid_entry.delegators().get(&*DELEGATOR_1).unwrap();
+
+        let vesting_schedule = entry.vesting_schedule().unwrap();
+
+        let initial_release = vesting_schedule.initial_release_timestamp_millis();
+        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
+
+        let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
+        assert!(locked_amounts.is_none());
+    }
+
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS, Vec::new());
+
+    {
+        // Attempt unbond of one mote
+        expect_unbond_failure(&mut builder, u64::one());
+    }
+
+    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
+
+    // Check bid and its vesting schedule
+    {
+        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        assert_eq!(bids.len(), 1);
+
+        let bid_entry = bids.get(&ACCOUNT_1_PK).unwrap();
+        let entry = bid_entry.delegators().get(&*DELEGATOR_1).unwrap();
+
+        let vesting_schedule = entry.vesting_schedule().unwrap();
+
+        let initial_release = vesting_schedule.initial_release_timestamp_millis();
+        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
+
+        let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
+        assert_eq!(locked_amounts, Some(expected_locked_amounts));
+    }
+
+    let mut total_unbonded = 0;
+
+    {
+        // Attempt full unbond
+        expect_unbond_failure(&mut builder, DELEGATOR_1_STAKE);
+
+        // Attempt unbond of released amount
+        expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
+
+        total_unbonded += EXPECTED_WEEKLY_RELEASE;
+
+        assert_eq!(
+            DELEGATOR_1_STAKE - total_unbonded,
+            EXPECTED_LOCKED_AMOUNTS[0]
+        )
+    }
+
+    for i in 1..13 {
+        // Run auction forward by almost a week
+        builder.run_auction(WEEK_TIMESTAMPS[i] - 1, Vec::new());
+
+        // Attempt unbond of 1 mote
+        expect_unbond_failure(&mut builder, u64::one());
+
+        // Run auction forward by one millisecond
+        builder.run_auction(WEEK_TIMESTAMPS[i], Vec::new());
+
+        // Attempt unbond of more than weekly release
+        expect_unbond_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
+
+        // Attempt unbond of released amount
+        expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
+
+        total_unbonded += EXPECTED_WEEKLY_RELEASE;
+
+        assert_eq!(
+            DELEGATOR_1_STAKE - total_unbonded,
+            EXPECTED_LOCKED_AMOUNTS[i]
+        )
+    }
+
+    {
+        // Run auction forward by almost a week
+        builder.run_auction(WEEK_TIMESTAMPS[13] - 1, Vec::new());
+
+        // Attempt unbond of 1 mote
+        expect_unbond_failure(&mut builder, u64::one());
+
+        // Run auction forward by one millisecond
+        builder.run_auction(WEEK_TIMESTAMPS[13], Vec::new());
+
+        // Attempt unbond of released amount + remainder
+        expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER);
+
+        total_unbonded += EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER;
+
+        assert_eq!(
+            DELEGATOR_1_STAKE - total_unbonded,
+            EXPECTED_LOCKED_AMOUNTS[13]
+        )
+    }
+
+    assert_eq!(DELEGATOR_1_STAKE, total_unbonded);
 }

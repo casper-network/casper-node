@@ -802,14 +802,15 @@ where
                             .expect("should have delegator variant");
                         if *validator_public_key == public_key {
                             let purse_uref = self.create_purse(
-                                staked_amount.value(),
+                                delegator_delegated_amount.value(),
                                 DeployHash::new(delegator_public_key.to_account_hash().value()),
                             )?;
 
-                            let delegator = Delegator::new(
+                            let delegator = Delegator::locked(
                                 delegator_delegated_amount.value(),
                                 purse_uref,
                                 *validator_public_key,
+                                release_timestamp_millis,
                             );
                             bid.delegators_mut()
                                 .insert(*delegator_public_key, delegator);

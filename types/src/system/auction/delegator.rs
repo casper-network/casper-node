@@ -6,9 +6,8 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auction::bid::VestingSchedule,
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::Error,
+    system::auction::{bid::VestingSchedule, Error},
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
@@ -168,7 +167,7 @@ impl FromBytes for Delegator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{auction::Delegator, bytesrepr, AccessRights, SecretKey, URef, U512};
+    use crate::{bytesrepr, system::auction::Delegator, AccessRights, SecretKey, URef, U512};
 
     #[test]
     fn serialization_roundtrip() {
