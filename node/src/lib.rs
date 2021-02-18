@@ -38,12 +38,19 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize},
+    Arc,
+};
 
 use ansi_term::Color::Red;
 use once_cell::sync::Lazy;
 #[cfg(not(test))]
 use rand::SeedableRng;
+use signal_hook::{
+    consts::{signal::SIGUSR1, TERM_SIGNALS},
+    flag,
+};
 
 pub use components::{
     consensus::Config as ConsensusConfig,
@@ -89,13 +96,25 @@ pub static VERSION_STRING_COLOR: Lazy<String> = Lazy::new(|| version_string(true
 /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
 pub static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(false));
 
+/// Global value that indicates the currently running reactor should exit if it is non-zero.
+pub static TERMINATION_REQUESTED: Lazy<Arc<AtomicUsize>> =
+    Lazy::new(|| Arc::new(AtomicUsize::new(0)));
+
 /// Global flag that indicates the currently running reactor should dump its event queue.
 pub static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
     Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
 /// Setup UNIX signal hooks for current application.
 pub fn setup_signal_hooks() {
-    let _ = signal_hook::flag::register(libc::SIGUSR1, QUEUE_DUMP_REQUESTED.clone());
+    for signal in TERM_SIGNALS {
+        flag::register_usize(
+            *signal,
+            Arc::clone(&*TERMINATION_REQUESTED),
+            *signal as usize,
+        )
+        .unwrap_or_else(|error| panic!("failed to register signal {}: {}", signal, error));
+    }
+    let _ = flag::register(SIGUSR1, Arc::clone(&*QUEUE_DUMP_REQUESTED));
 }
 
 /// Constructs a new `NodeRng`.
