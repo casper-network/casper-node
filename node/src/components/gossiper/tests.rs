@@ -147,7 +147,7 @@ impl reactor::Reactor for Reactor {
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(&storage_withdir).unwrap();
+        let storage = Storage::new(&storage_withdir, None).unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime =

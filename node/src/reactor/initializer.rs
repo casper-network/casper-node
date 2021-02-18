@@ -156,8 +156,10 @@ impl Reactor {
         chainspec_loader: ChainspecLoader,
         chainspec_effects: Effects<chainspec_loader::Event>,
     ) -> Result<(Self, Effects<Event>), Error> {
+        let hard_reset_to_start_of_era = chainspec_loader.hard_reset_to_start_of_era();
+
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());
-        let storage = Storage::new(&storage_config)?;
+        let storage = Storage::new(&storage_config, hard_reset_to_start_of_era)?;
 
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
