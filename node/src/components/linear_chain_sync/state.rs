@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Display};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Block, BlockHash};
+use crate::types::{Block, BlockHash, BlockHeader};
 use casper_types::{PublicKey, U512};
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
@@ -14,6 +14,8 @@ pub enum State {
     SyncingTrustedHash {
         /// Linear chain block to start sync from.
         trusted_hash: BlockHash,
+        /// The header of the highest block we have in storage (if any).
+        highest_block_header: Option<BlockHeader>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -69,10 +71,12 @@ impl Display for State {
 impl State {
     pub fn sync_trusted_hash(
         trusted_hash: BlockHash,
+        highest_block_header: Option<BlockHeader>,
         validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Self {
         State::SyncingTrustedHash {
             trusted_hash,
+            highest_block_header,
             highest_block_seen: 0,
             linear_chain: Vec::new(),
             latest_block: Box::new(None),

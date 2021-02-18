@@ -474,9 +474,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
-        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
         let block_executor = BlockExecutor::new(
-            genesis_state_root_hash,
+            chainspec_loader.starting_state_root_hash(),
+            chainspec_loader.highest_block_header(),
             protocol_version.clone(),
             registry.clone(),
         );
@@ -499,6 +499,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
+            chainspec_loader.highest_block_header().cloned(),
             validator_weights.clone(),
             maybe_next_activation_point,
         )?;
