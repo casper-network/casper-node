@@ -400,6 +400,7 @@ impl ChainspecLoader {
                 debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
                 self.starting_state_root_hash = *highest_block.state_root_hash();
                 info!("valid run after an unplanned shutdown with no scheduled upgrade");
+                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
                 return Effects::new();
             }
         };
@@ -409,6 +410,7 @@ impl ChainspecLoader {
             debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
             self.starting_state_root_hash = *highest_block.state_root_hash();
             info!("valid run after an unplanned shutdown before upgrade due");
+            self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
             return Effects::new();
         }
 
