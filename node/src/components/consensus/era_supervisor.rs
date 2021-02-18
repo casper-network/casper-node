@@ -144,6 +144,13 @@ where
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
+        if current_era < protocol_config.last_activation_point {
+            panic!(
+                "Current era ({:?}) is before the last activation point ({:?}) - no eras would \
+                be instantiated!",
+                current_era, protocol_config.last_activation_point
+            );
+        }
         let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
         let secret_signing_key = Arc::new(config.secret_key_path.clone().load(root)?);
