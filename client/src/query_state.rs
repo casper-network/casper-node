@@ -47,31 +47,28 @@ mod key {
             .display_order(DisplayOrder::Key as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
+    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
         let value = matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
 
         // Try to read as a PublicKey PEM file first.
         if let Ok(public_key) = PublicKey::from_file(value) {
-            return public_key.to_hex();
+            return Ok(public_key.to_hex());
         }
 
         // Try to read as a hex-encoded PublicKey file next.
-        if let Ok(hex_public_key) = fs::read_to_string(value).map(|contents| {
-            PublicKey::from_hex(&contents).unwrap_or_else(|error| {
-                panic!(
-                    "failed to parse '{}' as a hex-encoded public key file: {}",
-                    value, error
-                )
-            });
-            contents
-        }) {
+        if let Ok(hex_public_key) =
+            fs::read_to_string(value).map(|contents| match PublicKey::from_hex(&contents) {
+                Ok(key) => Ok(key.to_string()),
+                Err(_) => Err(Error::FailedToParseKey),
+            })
+        {
             return hex_public_key;
         }
 
         // Just return the value.
-        value.to_string()
+        Ok(value.to_string())
     }
 }
 
@@ -124,7 +121,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(matches);
-        let key = key::get(matches);
+        let key = match key::get(matches) {
+            Ok(key) => key,
+            Err(error) => return Err(error),
+        };
         let path = path::get(matches);
 
         casper_client::get_item(

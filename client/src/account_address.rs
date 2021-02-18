@@ -37,28 +37,25 @@ mod public_key {
             .display_order(DisplayOrder::Key as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
+    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
         let value = matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
 
         if let Ok(public_key) = PublicKey::from_file(value) {
-            return public_key.to_hex();
+            return Ok(public_key.to_hex());
         }
 
-        if let Ok(hex_public_key) = fs::read_to_string(value).map(|contents| {
-            PublicKey::from_hex(&contents).unwrap_or_else(|error| {
-                panic!(
-                    "failed to parse '{}' as a hex-encoded public key file: {}",
-                    value, error
-                )
-            });
-            contents
-        }) {
+        if let Ok(hex_public_key) =
+            fs::read_to_string(value).map(|contents| match PublicKey::from_hex(&contents) {
+                Ok(key) => Ok(key.to_string()),
+                Err(_) => Err(Error::FailedToParseKey),
+            })
+        {
             return hex_public_key;
         }
 
-        value.to_string()
+        Ok(value.to_string())
     }
 }
 
@@ -77,10 +74,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateAccountHash {
     }
 
     fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
-        let key_string = public_key::get(matches);
-        let public_key = PublicKey::from_hex(key_string)
-            .unwrap_or_else(|error| panic!("error in retrieving public key: {}", error));
-        let account_hash = public_key.to_account_hash();
-        Ok(Success::Output(account_hash.to_string()))
+        let key_string = match public_key::get(matches) {
+            Ok(key_string) => key_string,
+            Err(error) => return Err(error),
+        };
+        match PublicKey::from_hex(key_string) {
+            Ok(public_key) => {
+                let account_hash = public_key.to_account_hash();
+                Ok(Success::Output(account_hash.to_string()))
+            }
+            Err(_) => Err(Error::FailedToParseKey),
+        }
     }
 }
