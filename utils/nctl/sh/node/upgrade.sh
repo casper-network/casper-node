@@ -12,11 +12,11 @@ for ARGUMENT in "$@"; do
     KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-    protocolversion) PROTOCOL_VERSION=${VALUE} ;;
-    activateera) ACTIVATE_ERA=${VALUE} ;;
-    loglevel) LOG_LEVEL=${VALUE} ;;
-    node) NODE_ID=${VALUE} ;;
-    *) ;;
+        version) PROTOCOL_VERSION=${VALUE} ;;
+        era) ACTIVATE_ERA=${VALUE} ;;
+        loglevel) LOG_LEVEL=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
+        *) ;;
     esac
 done
 
