@@ -256,6 +256,7 @@ impl<I> Era<I> {
     pub(crate) fn set_paused(&mut self, paused: bool) {
         self.consensus.set_paused(paused);
     }
+
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
         let (complete, candidates): (Vec<_>, Vec<_>) = self
