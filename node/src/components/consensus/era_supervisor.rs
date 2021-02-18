@@ -184,8 +184,14 @@ where
             enqueued_events: Default::default(),
         };
 
+        let era_ids: Vec<EraId> = era_supervisor
+            .iter_past(current_era, bonded_eras * 3)
+            .collect();
+
+        info!(?era_ids, "collecting switch blocks");
+
         let effects = effect_builder
-            .collect_switch_blocks(era_supervisor.iter_past_other(current_era, bonded_eras * 3))
+            .collect_switch_blocks(era_ids)
             .event(move |switch_blocks| Event::InitializeEras {
                 switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
                 validators,
@@ -432,6 +438,7 @@ where
         rng: &'a mut NodeRng,
     ) -> Effects<Event<I>> {
         let current_era = self.current_era;
+        info!(?current_era, "current era");
         let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
         self.handling_wrapper(effect_builder, rng)
             .handle_consensus_outcomes(current_era, outcomes)
@@ -738,6 +745,9 @@ where
                     .handle_consensus_outcomes(current_era, results),
             );
         }
+
+        info!("finished initializing era supervisor");
+        info!(?self.era_supervisor, "current eras");
 
         self.era_supervisor.is_initialized = true;
 
