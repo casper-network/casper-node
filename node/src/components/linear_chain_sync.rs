@@ -510,6 +510,7 @@ where
                         // If we do, it's a bug.
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                         trace!(%block_hash, "linear block found in the local storage.");
+                        // TODO if block is a switch block, start downloading descendants.
                         self.block_downloaded(rng, effect_builder, &block)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {

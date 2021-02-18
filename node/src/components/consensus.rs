@@ -17,6 +17,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
+    mem,
     time::Duration,
 };
 
@@ -328,13 +329,25 @@ where
                 state_root_hash,
                 timestamp,
                 genesis_start_time,
-            } => handling_es.handle_initialize_eras(
-                switch_blocks,
-                validators,
-                state_root_hash,
-                timestamp,
-                genesis_start_time,
-            ),
+            } => {
+                let mut effects = handling_es.handle_initialize_eras(
+                    switch_blocks,
+                    validators,
+                    state_root_hash,
+                    timestamp,
+                    genesis_start_time,
+                );
+
+                for queued_event in mem::take(&mut handling_es.era_supervisor.enqueued_events) {
+                    effects.extend(handling_es.era_supervisor.handle_event(
+                        effect_builder,
+                        handling_es.rng,
+                        queued_event,
+                    ));
+                }
+
+                effects
+            }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
             Event::GotUpgradeActivationPoint(activation_point) => {
