@@ -2245,7 +2245,6 @@ fn should_not_undelegate_vfta_holder_stake() {
 #[ignore]
 #[test]
 fn should_release_vfta_holder_stake() {
-    // ACCOUNT_1_BOND / 14 = 7_142
     const EXPECTED_WEEKLY_RELEASE: u64 = DELEGATOR_1_STAKE / 14;
 
     const EXPECTED_REMAINDER: u64 = 12;
