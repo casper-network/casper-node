@@ -2275,8 +2275,8 @@ fn should_release_vfta_holder_stake() {
         builder.exec(partial_unbond).commit().expect_success();
     };
 
-    let expect_unbond_failure = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
-        let full_unbond = ExecuteRequestBuilder::standard(
+    let expect_undelegate_failure = |builder: &mut InMemoryWasmTestBuilder, amount: u64| {
+        let full_undelegate = ExecuteRequestBuilder::standard(
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
             runtime_args! {
@@ -2287,7 +2287,7 @@ fn should_release_vfta_holder_stake() {
         )
         .build();
 
-        builder.exec(full_unbond).commit();
+        builder.exec(full_undelegate).commit();
 
         let error = {
             let response = builder
@@ -2354,7 +2354,7 @@ fn should_release_vfta_holder_stake() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
             ARG_TARGET => SYSTEM_ADDR,
-            ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE / 10)
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
         },
     )
     .build();
@@ -2382,7 +2382,7 @@ fn should_release_vfta_holder_stake() {
 
     {
         // Attempt unbond of one mote
-        expect_unbond_failure(&mut builder, u64::one());
+        expect_undelegate_failure(&mut builder, u64::one());
     }
 
     builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
@@ -2408,7 +2408,7 @@ fn should_release_vfta_holder_stake() {
 
     {
         // Attempt full unbond
-        expect_unbond_failure(&mut builder, DELEGATOR_1_STAKE);
+        expect_undelegate_failure(&mut builder, DELEGATOR_1_STAKE);
 
         // Attempt unbond of released amount
         expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
@@ -2426,13 +2426,13 @@ fn should_release_vfta_holder_stake() {
         builder.run_auction(WEEK_TIMESTAMPS[i] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
-        expect_unbond_failure(&mut builder, u64::one());
+        expect_undelegate_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
         builder.run_auction(WEEK_TIMESTAMPS[i], Vec::new());
 
         // Attempt unbond of more than weekly release
-        expect_unbond_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
+        expect_undelegate_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
 
         // Attempt unbond of released amount
         expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
@@ -2450,7 +2450,7 @@ fn should_release_vfta_holder_stake() {
         builder.run_auction(WEEK_TIMESTAMPS[13] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
-        expect_unbond_failure(&mut builder, u64::one());
+        expect_undelegate_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
         builder.run_auction(WEEK_TIMESTAMPS[13], Vec::new());
