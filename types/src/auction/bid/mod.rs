@@ -5,7 +5,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auction::{DelegationRate, Delegator},
+    auction::{types::DelegationRate, Delegator},
     bytesrepr::{self, FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     CLType, CLTyped, PublicKey, URef, U512,
