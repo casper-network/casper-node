@@ -18,7 +18,7 @@ use crate::{
 };
 
 // This will be changed in favour of an actual old config type when the migration is not a no-op.
-type OldConfig = Config;
+type OldConfig = toml::Value;
 
 /// The name of the file for recording the new global state hash after a data migration.
 const POST_MIGRATION_STATE_HASH_FILENAME: &str = "post-migration-state-hash";
