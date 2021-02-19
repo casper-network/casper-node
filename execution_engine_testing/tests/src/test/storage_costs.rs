@@ -28,10 +28,8 @@ use casper_types::{
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
     runtime_args,
-    system::{
-        auction::{self, DelegationRate},
-        AUCTION,
-    },
+    system::auction::{self, DelegationRate},
+    system_contract_type::AUCTION,
 };
 
 use num_rational::Ratio;
