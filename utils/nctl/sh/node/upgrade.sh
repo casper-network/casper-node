@@ -15,7 +15,6 @@ for ARGUMENT in "$@"; do
         version) PROTOCOL_VERSION=${VALUE} ;;
         era) ACTIVATE_ERA=${VALUE} ;;
         loglevel) LOG_LEVEL=${VALUE} ;;
-        node) NODE_ID=${VALUE} ;;
         *) echo "Unknown argument '${KEY}'. Use 'version', 'era' or 'loglevel'." && exit 1;;
     esac
 done
@@ -23,7 +22,6 @@ done
 LOG_LEVEL=${LOG_LEVEL:-$RUST_LOG}
 LOG_LEVEL=${LOG_LEVEL:-debug}
 export RUST_LOG=$LOG_LEVEL
-NODE_ID=${NODE_ID:-"all"}
 
 function do_upgrade() {
     local PROTOCOL_VERSION=${1}
@@ -72,7 +70,3 @@ function do_upgrade() {
 log "upgrade node(s) begins ... please wait"
 do_upgrade "$PROTOCOL_VERSION" "$ACTIVATE_ERA"
 log "upgrade node(s) complete"
-
-# Display status.
-sleep 1.0
-source "$NCTL"/sh/node/status.sh node="$NODE_ID"
