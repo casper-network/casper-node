@@ -49,9 +49,9 @@ const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
 const ADD_BID_AMOUNT_2: u64 = 47_500;
-const ADD_BID_DELEGATION_RATE_1: DelegationRate = 125;
+const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
 const BID_AMOUNT_2: u64 = 5_000;
-const ADD_BID_DELEGATION_RATE_2: DelegationRate = 126;
+const ADD_BID_DELEGATION_RATE_2: DelegationRate = 15;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
