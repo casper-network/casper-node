@@ -27,7 +27,7 @@ function main() {
     # 1. Allow chain to progress
     do_await_era_change
     # 2. Stop random node
-    do_stop_node "$NODE_ID"
+    do_stop_node
     # 3. Allow chain to progress
     do_await_era_change
     # 4. Get another random running node to compare
