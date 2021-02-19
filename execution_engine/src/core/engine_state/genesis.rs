@@ -12,35 +12,36 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     account::AccountHash,
-    auction::{
-        Bid, Bids, DelegationRate, EraId, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY,
-        ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
-        DELEGATOR_REWARD_PURSE_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-        INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID,
-        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
-    },
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
     },
-    mint::{
-        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE, ARG_TARGET,
-        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
-        METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
-    },
-    proof_of_stake::{
-        ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE,
-        METHOD_SET_REFUND_PURSE,
-    },
     runtime_args,
-    standard_payment::METHOD_PAY,
-    system_contract_errors::mint,
+    system::{
+        auction::{
+            Bid, Bids, DelegationRate, SeigniorageRecipient, SeigniorageRecipients,
+            SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
+            ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+            ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
+            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
+            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
+            METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
+            METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH,
+            METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        mint::{
+            self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
+            ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
+            METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY,
+            TOTAL_SUPPLY_KEY,
+        },
+        proof_of_stake::{
+            ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
+            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
+        },
+        standard_payment::METHOD_PAY,
+    },
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
@@ -312,7 +313,7 @@ pub struct ExecConfig {
     auction_delay: u64,
     locked_funds_period_millis: u64,
     round_seigniorage_rate: Ratio<u64>,
-    unbonding_delay: EraId,
+    unbonding_delay: u64,
     genesis_timestamp_millis: u64,
 }
 
@@ -326,7 +327,7 @@ impl ExecConfig {
         auction_delay: u64,
         locked_funds_period_millis: u64,
         round_seigniorage_rate: Ratio<u64>,
-        unbonding_delay: EraId,
+        unbonding_delay: u64,
         genesis_timestamp_millis: u64,
     ) -> ExecConfig {
         ExecConfig {
@@ -380,7 +381,7 @@ impl ExecConfig {
         self.round_seigniorage_rate
     }
 
-    pub fn unbonding_delay(&self) -> EraId {
+    pub fn unbonding_delay(&self) -> u64 {
         self.unbonding_delay
     }
 
@@ -618,24 +619,6 @@ where
         let genesis_timestamp_millis: u64 = self.exec_config.genesis_timestamp_millis();
 
         let mut named_keys = NamedKeys::new();
-
-        let validator_reward_purse = self.create_purse(
-            U512::zero(),
-            DeployHash::new(self.genesis_config_hash.value()),
-        )?;
-        named_keys.insert(
-            VALIDATOR_REWARD_PURSE_KEY.into(),
-            Key::URef(validator_reward_purse),
-        );
-
-        let delegator_reward_purse = self.create_purse(
-            U512::zero(),
-            DeployHash::new(self.genesis_config_hash.value()),
-        )?;
-        named_keys.insert(
-            DELEGATOR_REWARD_PURSE_KEY.into(),
-            Key::URef(delegator_reward_purse),
-        );
 
         let genesis_validators: BTreeMap<PublicKey, U512> = self
             .exec_config
@@ -1214,30 +1197,18 @@ where
         entry_points.add_entry_point(entry_point);
 
         let entry_point = EntryPoint::new(
-            METHOD_WITHDRAW_DELEGATOR_REWARD,
-            vec![
-                Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey),
-                Parameter::new(ARG_DELEGATOR_PUBLIC_KEY, CLType::PublicKey),
-            ],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_WITHDRAW_VALIDATOR_REWARD,
-            vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
             METHOD_READ_ERA_ID,
             vec![],
             CLType::U64,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+        entry_points.add_entry_point(entry_point);
+
+        let entry_point = EntryPoint::new(
+            METHOD_ACTIVATE_BID,
+            vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
+            CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );

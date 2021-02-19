@@ -15,18 +15,27 @@ use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
 use derive_more::From;
-use once_cell::sync::Lazy;
+use futures::join;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        genesis::GenesisResult,
+        upgrade::{UpgradeConfig, UpgradeResult},
+    },
+    shared::stored_value::StoredValue,
+};
+use casper_types::{bytesrepr, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
@@ -35,33 +44,34 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
-        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, StateStoreRequest, StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
-    rpcs::docs::DocExample,
+    reactor::ReactorExit,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Chainspec,
+        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
 };
 
-static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade {
-        activation_point: ActivationPoint { era_id: EraId(42) },
-        protocol_version: Version::new(2, 0, 1),
-    };
-    ChainspecInfo {
-        name: String::from("casper-example"),
-        root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
-        next_upgrade: Some(next_upgrade),
-    }
-});
+const STORAGE_KEY: &str = "chainspec loader cached protocol version";
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
 pub enum Event {
+    /// The result of getting the cached protocol version and highest block from storage.
+    Initialize {
+        cached_protocol_version: Option<Version>,
+        highest_block: Option<Box<Block>>,
+    },
+    /// The result of contract runtime running the genesis process.
+    CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisResult, engine_state::Error>),
+    /// The result of contract runtime running the upgrade process.
+    UpgradeResult(#[serde(skip_serializing)] Result<UpgradeResult, engine_state::Error>),
     #[from]
     Request(ChainspecLoaderRequest),
     /// Check config dir to see if an upgrade activation point is available, and if so announce it.
@@ -70,13 +80,28 @@ pub enum Event {
     GotNextUpgrade(NextUpgrade),
     /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
     PutToStorage { version: Version },
-    /// The result of contract runtime running the genesis process.
-    CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisResult, engine_state::Error>),
 }
 
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::Initialize {
+                cached_protocol_version,
+                highest_block,
+            } => {
+                write!(
+                    formatter,
+                    "initialize(cached_protocol_version: {}, highest_block: {})",
+                    cached_protocol_version
+                        .as_ref()
+                        .map_or_else(|| "None".to_string(), |version| version.to_string()),
+                    highest_block
+                        .as_ref()
+                        .map_or_else(|| "None".to_string(), |block| block.to_string())
+                )
+            }
+            Event::CommitGenesisResult(_) => write!(formatter, "commit genesis result"),
+            Event::UpgradeResult(_) => write!(formatter, "contract runtime upgrade result"),
             Event::Request(_) => write!(formatter, "chainspec_loader request"),
             Event::CheckForNextUpgrade => {
                 write!(formatter, "check for next upgrade")
@@ -87,12 +112,6 @@ impl Display for Event {
             Event::PutToStorage { version } => {
                 write!(formatter, "put chainspec {} to storage", version)
             }
-            Event::CommitGenesisResult(result) => match result {
-                Ok(genesis_result) => {
-                    write!(formatter, "commit genesis result: {}", genesis_result)
-                }
-                Err(error) => write!(formatter, "failed to commit genesis: {}", error),
-            },
         }
     }
 }
@@ -107,6 +126,13 @@ pub struct NextUpgrade {
 }
 
 impl NextUpgrade {
+    pub(crate) fn new(activation_point: ActivationPoint, protocol_version: Version) -> Self {
+        NextUpgrade {
+            activation_point,
+            protocol_version,
+        }
+    }
+
     pub(crate) fn activation_point(&self) -> ActivationPoint {
         self.activation_point
     }
@@ -131,59 +157,18 @@ impl Display for NextUpgrade {
     }
 }
 
-/// Information about the chainspec.
-#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
-pub struct ChainspecInfo {
-    /// Name of the chainspec.
-    name: String,
-    /// If `Some` then genesis process returned a valid post state hash.
-    root_hash: Option<Digest>,
-    next_upgrade: Option<NextUpgrade>,
-}
-
-impl ChainspecInfo {
-    pub(crate) fn new(
-        name: String,
-        root_hash: Option<Digest>,
-        next_upgrade: Option<NextUpgrade>,
-    ) -> ChainspecInfo {
-        ChainspecInfo {
-            name,
-            root_hash,
-            next_upgrade,
-        }
-    }
-
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    pub fn root_hash(&self) -> Option<Digest> {
-        self.root_hash
-    }
-
-    pub fn next_upgrade(&self) -> Option<NextUpgrade> {
-        self.next_upgrade.clone()
-    }
-}
-
-impl DocExample for ChainspecInfo {
-    fn doc_example() -> &'static Self {
-        &*CHAINSPEC_INFO
-    }
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub struct ChainspecLoader {
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    /// If `Some`, we're finished.  The value of the bool indicates success (true) or not.
-    completed_successfully: Option<bool>,
-    /// If `Some` then genesis process returned a valid state root hash.
-    genesis_state_root_hash: Option<Digest>,
+    /// If `Some`, we're finished loading and committing the chainspec.
+    reactor_exit: Option<ReactorExit>,
+    /// The initial state root hash for this session.
+    starting_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
+    highest_block_header: Option<BlockHeader>,
 }
 
 impl ChainspecLoader {
@@ -193,10 +178,10 @@ impl ChainspecLoader {
     ) -> Result<(Self, Effects<Event>), Error>
     where
         P: AsRef<Path>,
-        REv: From<Event> + From<StorageRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
     {
         Ok(Self::new_with_chainspec_and_path(
-            Chainspec::from_path(&chainspec_dir.as_ref())?,
+            Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
             chainspec_dir,
             effect_builder,
         ))
@@ -204,23 +189,23 @@ impl ChainspecLoader {
 
     #[cfg(test)]
     pub(crate) fn new_with_chainspec<REv>(
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
-        REv: From<Event> + From<StorageRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
     {
         Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
     }
 
     fn new_with_chainspec_and_path<P, REv>(
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
         chainspec_dir: P,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
         P: AsRef<Path>,
-        REv: From<Event> + From<StorageRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
     {
         chainspec.validate_config();
         let root_dir = chainspec_dir
@@ -231,35 +216,393 @@ impl ChainspecLoader {
             })
             .to_path_buf();
 
-        let version = chainspec.protocol_config.version.clone();
-        let effects = effect_builder
-            .put_chainspec(chainspec.clone())
-            .event(|_| Event::PutToStorage { version });
+        let next_upgrade =
+            next_upgrade(root_dir.clone(), chainspec.protocol_config.version.clone());
+
+        // If the next activation point is the same as the current chainspec one, we've installed
+        // two new versions, where the first which we're currently running should be immediately
+        // replaced by the second.
+        let should_stop = if let Some(next_activation_point) = next_upgrade
+            .as_ref()
+            .map(|upgrade| upgrade.activation_point)
+        {
+            chainspec.protocol_config.activation_point == next_activation_point
+        } else {
+            false
+        };
+
+        // In case this is a version which should be immediately replaced by the next version, don't
+        // create any effects so we exit cleanly for an upgrade without touching the storage
+        // component.  Otherwise create effects which will allow us to initialize properly.
+        let effects = if should_stop {
+            Effects::new()
+        } else {
+            async move {
+                join!(
+                    // TODO - use protocol version from highest block instead of caching as state.
+                    effect_builder.load_state(STORAGE_KEY.as_bytes().into()),
+                    effect_builder.get_highest_block_from_storage()
+                )
+            }
+            .event(
+                |(cached_protocol_version, highest_block)| Event::Initialize {
+                    cached_protocol_version,
+                    highest_block: highest_block.map(Box::new),
+                },
+            )
+        };
+
+        let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
+
         let chainspec_loader = ChainspecLoader {
             chainspec,
             root_dir,
-            completed_successfully: None,
-            genesis_state_root_hash: None,
-            next_upgrade: None,
+            reactor_exit,
+            starting_state_root_hash: Digest::default(),
+            next_upgrade,
+            highest_block_header: None,
         };
 
         (chainspec_loader, effects)
     }
 
-    pub(crate) fn is_stopped(&self) -> bool {
-        self.completed_successfully.is_some()
+    pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
+        self.reactor_exit
     }
 
-    pub(crate) fn stopped_successfully(&self) -> bool {
-        self.completed_successfully.unwrap_or_default()
+    /// The state root hash with which this session is starting.  It will be the result of running
+    /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
+    /// hash specified in the highest block.
+    pub(crate) fn starting_state_root_hash(&self) -> Digest {
+        self.starting_state_root_hash
     }
 
-    pub(crate) fn genesis_state_root_hash(&self) -> &Option<Digest> {
-        &self.genesis_state_root_hash
-    }
-
-    pub(crate) fn chainspec(&self) -> &Chainspec {
+    pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
         &self.chainspec
+    }
+
+    pub(crate) fn next_upgrade(&self) -> Option<NextUpgrade> {
+        self.next_upgrade.clone()
+    }
+
+    pub(crate) fn highest_block_header(&self) -> Option<&BlockHeader> {
+        self.highest_block_header.as_ref()
+    }
+
+    pub(crate) fn highest_block_hash(&self) -> Option<BlockHash> {
+        self.highest_block_header().map(|hdr| hdr.hash())
+    }
+
+    pub(crate) fn starting_era(&self) -> EraId {
+        // We want to start the Era Supervisor at the era right after the highest block we
+        // have. If the block is a switch block, that will be the era that comes next. If
+        // it's not, we continue the era the highest block belongs to.
+        if self
+            .highest_block_header()
+            .and_then(|hdr| hdr.era_end())
+            .is_some()
+        {
+            // we know that header is `Some`
+            self.highest_block_header().unwrap().era_id().successor()
+        } else {
+            self.highest_block_header()
+                .map(|hdr| hdr.era_id())
+                .unwrap_or(EraId(0))
+        }
+    }
+
+    /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
+    /// subsequent eras are ignored (conceptually deleted from storage).
+    pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
+        self.chainspec
+            .protocol_config
+            .hard_reset
+            .then(|| self.chainspec.protocol_config.activation_point.era_id)
+    }
+
+    fn handle_initialize<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        maybe_cached_protocol_version: Option<Version>,
+        maybe_block: Option<Box<Block>>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event> + From<StateStoreRequest> + From<ContractRuntimeRequest> + Send,
+    {
+        // Cache the current protocol version.
+        let mut effects = effect_builder
+            .save_state(
+                STORAGE_KEY.as_bytes().into(),
+                self.chainspec.protocol_config.version.clone(),
+            )
+            .ignore();
+
+        let highest_block = match maybe_block {
+            Some(block) => {
+                self.highest_block_header = Some(block.header().clone());
+                block
+            }
+            None => {
+                // This is an initial run since we have no blocks.
+                if self.chainspec.is_genesis() {
+                    // This is a valid initial run on a new network at genesis.
+                    trace!("valid initial run at genesis");
+                    effects.extend(
+                        effect_builder
+                            .commit_genesis(Arc::clone(&self.chainspec))
+                            .event(Event::CommitGenesisResult),
+                    );
+                    return effects;
+                } else {
+                    // This is an invalid run of a node version issued after genesis.  Instruct the
+                    // process to exit and downgrade the version.
+                    warn!(
+                        "invalid run, no blocks stored but not a genesis chainspec: exit to \
+                        downgrade"
+                    );
+                    self.reactor_exit =
+                        Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion));
+                    return Effects::new();
+                }
+            }
+        };
+        let highest_block_era_id = highest_block.header().era_id();
+
+        let cached_protocol_version = maybe_cached_protocol_version
+            .expect("cached protocol version must exist if we have a stored block");
+        let current_chainspec_activation_point =
+            self.chainspec.protocol_config.activation_point.era_id;
+
+        if highest_block_era_id.successor() == current_chainspec_activation_point {
+            if highest_block.header().is_switch_block() {
+                // This is a valid run immediately after upgrading the node version.
+                trace!("valid run immediately after upgrade");
+                let upgrade_config =
+                    self.new_upgrade_config(&highest_block, cached_protocol_version);
+                effects.extend(
+                    effect_builder
+                        .upgrade_contract_runtime(upgrade_config)
+                        .event(Event::UpgradeResult),
+                );
+                return effects;
+            } else {
+                // This is an invalid run where blocks are missing from storage.  Try exiting the
+                // process and downgrading the version to recover the missing blocks.
+                //
+                // TODO - if migrating data yields a new empty block as a means to store the
+                //        post-migration global state hash, we'll come to this code branch, and we
+                //        should not exit the process in that case.
+                warn!("invalid run, expected highest block to be switch block: exit to downgrade");
+                self.reactor_exit =
+                    Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion));
+                return Effects::new();
+            }
+        }
+
+        if highest_block_era_id < current_chainspec_activation_point {
+            // This is an invalid run where blocks are missing from storage.  Try exiting the
+            // process and downgrading the version to recover the missing blocks.
+            warn!("invalid run, missing blocks from storage: exit to downgrade");
+            self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion));
+            return Effects::new();
+        }
+
+        let next_upgrade_activation_point = match self.next_upgrade {
+            Some(ref next_upgrade) => next_upgrade.activation_point.era_id,
+            None => {
+                // This is a valid run, restarted after an unplanned shutdown.
+                debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
+                self.starting_state_root_hash = *highest_block.state_root_hash();
+                info!("valid run after an unplanned shutdown with no scheduled upgrade");
+                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                return Effects::new();
+            }
+        };
+
+        if highest_block_era_id < next_upgrade_activation_point {
+            // This is a valid run, restarted after an unplanned shutdown.
+            debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
+            self.starting_state_root_hash = *highest_block.state_root_hash();
+            info!("valid run after an unplanned shutdown before upgrade due");
+            self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+            return Effects::new();
+        }
+
+        // The is an invalid run as the highest block era ID >= next activation point, so we're
+        // running an outdated version.  Exit with success to indicate we should upgrade.
+        //
+        // TODO - once the block includes the protocol version, we can deduce here whether we're
+        //        running a version where we missed an upgrade and ran on a fork.  In that case, we
+        //        should set our exit code to `ExitCode::Abort`.
+        warn!("running outdated version: exit to upgrade");
+        self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Success));
+        Effects::new()
+    }
+
+    fn new_upgrade_config(&self, block: &Block, previous_version: Version) -> Box<UpgradeConfig> {
+        let old_version = ProtocolVersion::from_parts(
+            previous_version.major as u32,
+            previous_version.minor as u32,
+            previous_version.patch as u32,
+        );
+        let new_version = ProtocolVersion::from_parts(
+            self.chainspec.protocol_config.version.major as u32,
+            self.chainspec.protocol_config.version.minor as u32,
+            self.chainspec.protocol_config.version.patch as u32,
+        );
+        let global_state_update = self
+            .chainspec
+            .protocol_config
+            .global_state_update
+            .as_ref()
+            .map(|state_update| {
+                // TODO - confirm we're using base64 encoding for this.
+                state_update
+                    .0
+                    .iter()
+                    .map(|(key, encoded_bytes)| {
+                        let decoded_bytes = base64::decode(encoded_bytes).unwrap_or_else(|error| {
+                            panic!(
+                                "failed to base64 decode global state value for upgrade: {}",
+                                error
+                            )
+                        });
+                        let stored_value: StoredValue = bytesrepr::deserialize(decoded_bytes)
+                            .unwrap_or_else(|error| {
+                                panic!(
+                                "failed to parse global state value as StoredValue for upgrade: {}",
+                                error
+                            )
+                            });
+                        (*key, stored_value)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Box::new(UpgradeConfig::new(
+            (*block.state_root_hash()).into(),
+            old_version,
+            new_version,
+            Some(self.chainspec.wasm_config),
+            Some(self.chainspec.system_costs_config),
+            Some(self.chainspec.protocol_config.activation_point.era_id.0),
+            Some(self.chainspec.core_config.validator_slots),
+            Some(self.chainspec.core_config.auction_delay),
+            Some(self.chainspec.core_config.locked_funds_period.millis()),
+            Some(self.chainspec.core_config.round_seigniorage_rate),
+            Some(self.chainspec.core_config.unbonding_delay),
+            global_state_update,
+        ))
+    }
+
+    fn handle_commit_genesis_result(
+        &mut self,
+        result: Result<GenesisResult, engine_state::Error>,
+    ) -> Effects<Event> {
+        match result {
+            Ok(genesis_result) => match genesis_result {
+                GenesisResult::RootNotFound
+                | GenesisResult::KeyNotFound(_)
+                | GenesisResult::TypeMismatch(_)
+                | GenesisResult::Serialization(_) => {
+                    error!("failed to commit genesis: {}", genesis_result);
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
+                }
+                GenesisResult::Success {
+                    post_state_hash,
+                    effect,
+                } => {
+                    info!("chainspec name {}", self.chainspec.network_config.name);
+                    info!("genesis state root hash {}", post_state_hash);
+                    trace!(%post_state_hash, ?effect);
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                    self.starting_state_root_hash = post_state_hash.into();
+                }
+            },
+            Err(error) => {
+                error!("failed to commit genesis: {}", error);
+                self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
+            }
+        }
+        Effects::new()
+    }
+
+    fn handle_upgrade_result(
+        &mut self,
+        result: Result<UpgradeResult, engine_state::Error>,
+    ) -> Effects<Event> {
+        match result {
+            Ok(upgrade_result) => match upgrade_result {
+                UpgradeResult::RootNotFound
+                | UpgradeResult::KeyNotFound(_)
+                | UpgradeResult::TypeMismatch(_)
+                | UpgradeResult::Serialization(_) => {
+                    error!("failed to upgrade contract runtime: {}", upgrade_result);
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
+                }
+                UpgradeResult::Success {
+                    post_state_hash,
+                    effect,
+                } => {
+                    info!("chainspec name {}", self.chainspec.network_config.name);
+                    info!("state root hash {}", post_state_hash);
+                    trace!(%post_state_hash, ?effect);
+                    self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
+                    self.starting_state_root_hash = post_state_hash.into();
+                }
+            },
+            Err(error) => {
+                error!("failed to upgrade contract runtime: {}", error);
+                self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
+            }
+        }
+        Effects::new()
+    }
+
+    fn new_chainspec_info(&self) -> ChainspecInfo {
+        ChainspecInfo::new(
+            self.chainspec.network_config.name.clone(),
+            self.starting_state_root_hash,
+            self.next_upgrade.clone(),
+        )
+    }
+
+    fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
+    where
+        REv: From<ChainspecLoaderAnnouncement> + Send,
+    {
+        let root_dir = self.root_dir.clone();
+        let current_version = self.chainspec.protocol_config.version.clone();
+        async move {
+            let maybe_next_upgrade =
+                task::spawn_blocking(move || next_upgrade(root_dir, current_version))
+                    .await
+                    .unwrap_or_else(|error| {
+                        warn!(%error, "failed to join tokio task");
+                        None
+                    });
+            if let Some(next_upgrade) = maybe_next_upgrade {
+                effect_builder
+                    .announce_upgrade_activation_point_read(next_upgrade)
+                    .await
+            }
+        }
+        .ignore()
+    }
+
+    fn handle_got_next_upgrade(&mut self, next_upgrade: NextUpgrade) -> Effects<Event> {
+        debug!("got {}", next_upgrade);
+        if let Some(ref current_point) = self.next_upgrade {
+            if next_upgrade != *current_point {
+                info!(
+                    new_point=%next_upgrade.activation_point,
+                    %current_point,
+                    "changing upgrade activation point"
+                );
+            }
+        }
+        self.next_upgrade = Some(next_upgrade);
+        Effects::new()
     }
 }
 
@@ -267,6 +610,7 @@ impl<REv> Component<REv> for ChainspecLoader
 where
     REv: From<Event>
         + From<StorageRequest>
+        + From<StateStoreRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderAnnouncement>
         + Send,
@@ -280,81 +624,24 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        trace!("{}", event);
         match event {
+            Event::Initialize {
+                cached_protocol_version,
+                highest_block,
+            } => self.handle_initialize(effect_builder, cached_protocol_version, highest_block),
+            Event::CommitGenesisResult(result) => self.handle_commit_genesis_result(result),
+            Event::UpgradeResult(result) => self.handle_upgrade_result(result),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
-                let chainspec_info = ChainspecInfo::new(
-                    self.chainspec.network_config.name.clone(),
-                    self.genesis_state_root_hash,
-                    self.next_upgrade.clone(),
-                );
-                responder.respond(chainspec_info).ignore()
+                responder.respond(self.new_chainspec_info()).ignore()
             }
-            Event::CheckForNextUpgrade => {
-                let root_dir = self.root_dir.clone();
-                let current_version = self.chainspec.protocol_config.version.clone();
-                async move {
-                    let maybe_next_upgrade =
-                        task::spawn_blocking(move || next_upgrade(root_dir, current_version))
-                            .await
-                            .unwrap_or_else(|error| {
-                                warn!(%error, "failed to join tokio task");
-                                None
-                            });
-                    if let Some(next_upgrade) = maybe_next_upgrade {
-                        effect_builder
-                            .announce_upgrade_activation_point_read(next_upgrade)
-                            .await
-                    }
-                }
-                .ignore()
-            }
-            Event::GotNextUpgrade(next_upgrade) => {
-                debug!("got {}", next_upgrade);
-                if let Some(ref current_point) = self.next_upgrade {
-                    if next_upgrade != *current_point {
-                        info!(
-                            new_point=%next_upgrade.activation_point,
-                            %current_point,
-                            "changing upgrade activation point"
-                        );
-                    }
-                }
-                self.next_upgrade = Some(next_upgrade);
-                Effects::new()
-            }
+            Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
+            Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
             Event::PutToStorage { version } => {
                 debug!("stored chainspec {}", version);
                 effect_builder
-                    .commit_genesis(self.chainspec.clone())
+                    .commit_genesis(Arc::clone(&self.chainspec))
                     .event(Event::CommitGenesisResult)
-            }
-            Event::CommitGenesisResult(result) => {
-                match result {
-                    Ok(genesis_result) => match genesis_result {
-                        GenesisResult::RootNotFound
-                        | GenesisResult::KeyNotFound(_)
-                        | GenesisResult::TypeMismatch(_)
-                        | GenesisResult::Serialization(_) => {
-                            error!("failed to commit genesis: {}", genesis_result);
-                            self.completed_successfully = Some(false);
-                        }
-                        GenesisResult::Success {
-                            post_state_hash,
-                            effect,
-                        } => {
-                            info!("chainspec name {}", self.chainspec.network_config.name);
-                            info!("genesis state root hash {}", post_state_hash);
-                            trace!(%post_state_hash, ?effect);
-                            self.completed_successfully = Some(true);
-                            self.genesis_state_root_hash = Some(post_state_hash.into());
-                        }
-                    },
-                    Err(error) => {
-                        error!("failed to commit genesis: {}", error);
-                        self.completed_successfully = Some(false);
-                    }
-                }
-                Effects::new()
             }
         }
     }
@@ -382,11 +669,14 @@ fn dir_name_from_version(version: &Version) -> PathBuf {
     PathBuf::from(version.to_string().replace(".", "_"))
 }
 
-/// Iterates the given path, returning the subdir representing the greatest SemVer version.
+/// Iterates the given path, returning the subdir representing the immediate next SemVer version
+/// after `current_version`.
 ///
 /// Subdir names should be semvers with dots replaced with underscores.
-fn max_installed_version(dir: &Path) -> Result<Version, Error> {
-    let mut max_version = Version::new(0, 0, 0);
+fn next_installed_version(dir: &Path, current_version: &Version) -> Result<Version, Error> {
+    let max_version = Version::new(u64::max_value(), u64::max_value(), u64::max_value());
+
+    let mut next_version = max_version.clone();
     let mut read_version = false;
     for entry in fs::read_dir(dir).map_err(|error| Error::ReadDir {
         dir: dir.to_path_buf(),
@@ -413,8 +703,8 @@ fn max_installed_version(dir: &Path) -> Result<Version, Error> {
             }
         };
 
-        if version > max_version {
-            max_version = version;
+        if version > *current_version && version < next_version {
+            next_version = version;
         }
         read_version = true;
     }
@@ -425,14 +715,18 @@ fn max_installed_version(dir: &Path) -> Result<Version, Error> {
         });
     }
 
-    Ok(max_version)
+    if next_version == max_version {
+        next_version = current_version.clone();
+    }
+
+    Ok(next_version)
 }
 
-/// Uses `max_installed_version()` to find the latest versioned subdir.  If this is greater than
-/// `current_version`, reads the UpgradePoint file from there and returns its version and activation
-/// point.  Returns `None` if there is no greater version available, or if any step errors.
+/// Uses `next_installed_version()` to find the next versioned subdir.  If it exists, reads the
+/// UpgradePoint file from there and returns its version and activation point.  Returns `None` if
+/// there is no greater version available, or if any step errors.
 fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
-    let max_version = match max_installed_version(&dir) {
+    let next_version = match next_installed_version(&dir, &current_version) {
         Ok(version) => version,
         Err(error) => {
             warn!(dir=%dir.display(), %error, "failed to get a valid version from subdirs");
@@ -440,11 +734,11 @@ fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
         }
     };
 
-    if max_version <= current_version {
+    if next_version <= current_version {
         return None;
     }
 
-    let subdir = dir.join(dir_name_from_version(&max_version));
+    let subdir = dir.join(dir_name_from_version(&next_version));
     let upgrade_point = match UpgradePoint::from_chainspec_path(&subdir) {
         Ok(upgrade_point) => upgrade_point,
         Err(error) => {
@@ -453,10 +747,10 @@ fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
         }
     };
 
-    if upgrade_point.protocol_config.version != max_version {
+    if upgrade_point.protocol_config.version != next_version {
         warn!(
             upgrade_point_version=%upgrade_point.protocol_config.version,
-            subdir_version=%max_version,
+            subdir_version=%next_version,
             "next chainspec installed to wrong subdir"
         );
         return None;
@@ -471,35 +765,43 @@ mod tests {
     use crate::{testing::TestRng, types::chainspec::CHAINSPEC_NAME};
 
     #[test]
-    fn should_get_max_installed_version() {
+    fn should_get_next_installed_version() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let max_version = || max_installed_version(tempdir.path()).unwrap();
+        let get_next_version = |current_version: &Version| {
+            next_installed_version(tempdir.path(), current_version).unwrap()
+        };
 
+        let mut current = Version::new(0, 0, 0);
+        let mut next_version = Version::new(1, 0, 0);
         fs::create_dir(tempdir.path().join("1_0_0")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 0, 0));
+        assert_eq!(get_next_version(&current), next_version);
+        current = next_version;
+
+        next_version = Version::new(1, 2, 3);
+        fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
+        assert_eq!(get_next_version(&current), next_version);
+        current = next_version.clone();
 
         fs::create_dir(tempdir.path().join("1_0_3")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 0, 3));
-
-        fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 2, 3));
-
-        fs::create_dir(tempdir.path().join("1_2_2")).unwrap();
-        assert_eq!(max_version(), Version::new(1, 2, 3));
+        assert_eq!(get_next_version(&current), next_version);
 
         fs::create_dir(tempdir.path().join("2_2_2")).unwrap();
-        assert_eq!(max_version(), Version::new(2, 2, 2));
+        fs::create_dir(tempdir.path().join("3_3_3")).unwrap();
+        assert_eq!(get_next_version(&current), Version::new(2, 2, 2));
     }
 
     #[test]
     fn should_ignore_invalid_versions() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        // Executes `max_installed_version()` and asserts the resulting error as a string starts
+        // Executes `next_installed_version()` and asserts the resulting error as a string starts
         // with the given text.
+        let min_version = Version::new(0, 0, 0);
         let assert_error_starts_with = |path: &Path, expected: String| {
-            let error_msg = max_installed_version(path).unwrap_err().to_string();
+            let error_msg = next_installed_version(path, &min_version)
+                .unwrap_err()
+                .to_string();
             assert!(
                 error_msg.starts_with(&expected),
                 "Error message expected to start with \"{}\"\nActual error message: \"{}\"",
@@ -537,7 +839,7 @@ mod tests {
         // Try with a dir which has a valid and invalid subdir - the invalid one should be ignored.
         fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
         assert_eq!(
-            max_installed_version(tempdir.path()).unwrap(),
+            next_installed_version(tempdir.path(), &min_version).unwrap(),
             Version::new(1, 2, 3)
         );
     }
@@ -564,7 +866,7 @@ mod tests {
     fn should_get_next_upgrade() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let max_point = |current_version: &Version| {
+        let next_point = |current_version: &Version| {
             next_upgrade(tempdir.path().to_path_buf(), current_version.clone()).unwrap()
         };
 
@@ -573,19 +875,25 @@ mod tests {
         let mut current = Version::new(0, 9, 9);
         let v1_0_0 = Version::new(1, 0, 0);
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
-        assert_eq!(max_point(&current), chainspec_v1_0_0.protocol_config.into());
+        assert_eq!(
+            next_point(&current),
+            chainspec_v1_0_0.protocol_config.into()
+        );
 
         current = v1_0_0;
         let v1_0_3 = Version::new(1, 0, 3);
         let chainspec_v1_0_3 = install_chainspec(&mut rng, tempdir.path(), &v1_0_3);
-        assert_eq!(max_point(&current), chainspec_v1_0_3.protocol_config.into());
+        assert_eq!(
+            next_point(&current),
+            chainspec_v1_0_3.protocol_config.into()
+        );
     }
 
     #[test]
     fn should_not_get_old_or_invalid_upgrade() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let maybe_max_point = |current_version: &Version| {
+        let maybe_next_point = |current_version: &Version| {
             next_upgrade(tempdir.path().to_path_buf(), current_version.clone())
         };
 
@@ -594,21 +902,21 @@ mod tests {
         // Check we return `None` if there are no version subdirs.
         let v1_0_0 = Version::new(1, 0, 0);
         let mut current = v1_0_0.clone();
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if current_version == max_version.
+        // Check we return `None` if current_version == next_version.
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if current_version > max_version.
+        // Check we return `None` if current_version > next_version.
         current = Version::new(2, 0, 0);
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if we find an upgrade file where the protocol_config.version field
         // doesn't match the subdir name.
         let v0_9_9 = Version::new(0, 9, 9);
         current = v0_9_9.clone();
-        assert!(maybe_max_point(&current).is_some());
+        assert!(maybe_next_point(&current).is_some());
 
         let mut chainspec_v0_9_9 = chainspec_v1_0_0;
         chainspec_v0_9_9.protocol_config.version = v0_9_9;
@@ -621,14 +929,14 @@ mod tests {
             toml::to_string_pretty(&chainspec_v0_9_9).expect("should encode to toml"),
         )
         .expect("should install upgrade point");
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if the max version upgrade_point file is corrupt.
+        // Check we return `None` if the next version upgrade_point file is corrupt.
         fs::write(&path_v1_0_0, "bad data".as_bytes()).unwrap();
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
 
-        // Check we return `None` if the max version upgrade_point file is missing.
+        // Check we return `None` if the next version upgrade_point file is missing.
         fs::remove_file(&path_v1_0_0).unwrap();
-        assert!(maybe_max_point(&current).is_none());
+        assert!(maybe_next_point(&current).is_none());
     }
 }

@@ -12,11 +12,13 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE_KEY,
+    system::{
+        auction::{
+            Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
+        mint::TOTAL_SUPPLY_KEY,
     },
-    mint::TOTAL_SUPPLY_KEY,
     CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
@@ -88,11 +90,6 @@ fn should_step() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let reward_purse_key = get_named_key(&mut builder, auction_hash, VALIDATOR_REWARD_PURSE_KEY)
-        .into_uref()
-        .expect("should be uref");
-
-    let before_balance = builder.get_purse_balance(reward_purse_key);
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
@@ -117,13 +114,6 @@ fn should_step() {
         !bids_after_slashing.contains_key(&ACCOUNT_1_PK),
         "should not have entry in bids table after slashing {:?}",
         bids_after_slashing
-    );
-
-    // reward purse balance should not be the same after reward distribution
-    let after_balance = builder.get_purse_balance(reward_purse_key);
-    assert_ne!(
-        before_balance, after_balance,
-        "reward balance should change"
     );
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);

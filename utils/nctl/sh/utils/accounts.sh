@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 
 #######################################
+# Returns an on-chain account balance.
+# Arguments:
+#   Data to be hashed.
+#######################################
+function get_account_balance()
+{
+    local PURSE_UREF=${1}
+    local STATE_ROOT_HASH=${2:-$(get_state_root_hash)}
+    local NODE_ADDRESS=$(get_node_address_rpc)
+
+    ACCOUNT_BALANCE=$(
+        $(get_path_to_client) get-balance \
+            --node-address "$NODE_ADDRESS" \
+            --state-root-hash "$STATE_ROOT_HASH" \
+            --purse-uref "$PURSE_UREF" \
+            | jq '.result.balance_value' \
+            | sed -e 's/^"//' -e 's/"$//'
+        )    
+    
+    echo $ACCOUNT_BALANCE
+}
+
+#######################################
 # Returns an on-chain account hash.
 # Arguments:
 #   Data to be hashed.

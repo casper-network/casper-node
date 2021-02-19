@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::SecretKey;
 
 use crate::{
+    components::consensus::EraId,
     types::{chainspec::HighwayConfig, Chainspec, TimeDiff, Timestamp},
     utils::External,
 };
@@ -22,6 +23,9 @@ pub struct Config {
     pub unit_hashes_folder: PathBuf,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,
+    /// The maximum number of blocks by which execution is allowed to lag behind finalization.
+    /// If it is more than that, consensus will pause, and resume once the executor has caught up.
+    pub max_execution_delay: u64,
 }
 
 impl Default for Config {
@@ -30,6 +34,7 @@ impl Default for Config {
             secret_key_path: External::Missing,
             unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "10sec".parse().unwrap(),
+            max_execution_delay: 3,
         }
     }
 }
@@ -48,6 +53,8 @@ pub(crate) struct ProtocolConfig {
     /// The network protocol version.
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
+    /// The first era ID after the last upgrade
+    pub(crate) last_activation_point: EraId,
     /// Name of the network.
     pub(crate) name: String,
     /// Genesis timestamp.
@@ -61,8 +68,9 @@ impl From<&Chainspec> for ProtocolConfig {
             era_duration: chainspec.core_config.era_duration,
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,
-            unbonding_delay: chainspec.core_config.unbonding_delay.into(),
+            unbonding_delay: chainspec.core_config.unbonding_delay,
             protocol_version: chainspec.protocol_config.version.clone(),
+            last_activation_point: chainspec.protocol_config.activation_point.era_id,
             name: chainspec.network_config.name.clone(),
             timestamp: chainspec.network_config.timestamp,
         }

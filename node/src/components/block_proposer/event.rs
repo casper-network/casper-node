@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Formatter},
-    sync::Arc,
-};
+use std::fmt::{self, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -11,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{BlockHeight, BlockProposerDeploySets};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Chainspec, DeployHash, DeployHeader, ProtoBlock},
+    types::{DeployHash, DeployHeader, ProtoBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 
@@ -84,8 +81,6 @@ pub enum Event {
     Request(BlockProposerRequest),
     /// The chainspec and previous sets have been successfully loaded from storage.
     Loaded {
-        /// Loaded chainspec.
-        chainspec: Arc<Chainspec>,
         /// Loaded previously stored block proposer sets.
         sets: Option<BlockProposerDeploySets>,
         /// The height of the next expected finalized block.
@@ -112,7 +107,6 @@ impl Display for Event {
             Event::Loaded {
                 sets: Some(sets),
                 next_finalized_block,
-                ..
             } => write!(
                 f,
                 "loaded block-proposer deploy sets: {}; expected next finalized block: {}",
@@ -121,7 +115,6 @@ impl Display for Event {
             Event::Loaded {
                 sets: None,
                 next_finalized_block,
-                ..
             } => write!(
                 f,
                 "loaded block-proposer deploy sets, none found in storage; \

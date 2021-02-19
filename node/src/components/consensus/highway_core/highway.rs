@@ -437,14 +437,20 @@ impl<C: Context> Highway<C> {
     /// Returns an iterator over all validators against which we have direct evidence.
     pub(crate) fn validators_with_evidence(&self) -> impl Iterator<Item = &C::ValidatorId> {
         self.validators
-            .iter()
-            .enumerate()
-            .filter(move |(i, _)| self.state.has_evidence((*i as u32).into()))
-            .map(|(_, v)| v.id())
+            .enumerate_ids()
+            .filter(move |(idx, _)| self.state.has_evidence(*idx))
+            .map(|(_, v_id)| v_id)
     }
 
     pub(crate) fn state(&self) -> &State<C> {
         &self.state
+    }
+
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        if let Some(av) = &mut self.active_validator {
+            av.set_paused(paused);
+        }
     }
 
     fn on_new_unit(

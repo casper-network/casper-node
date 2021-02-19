@@ -6,10 +6,12 @@ use std::{
     collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
+    sync::Arc,
 };
 
 use datasize::DataSize;
 use derive_more::From;
+use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
@@ -23,7 +25,8 @@ use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
 };
-
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_executor::{self, BlockExecutor},
@@ -38,7 +41,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
-        network::{self, Network, NetworkIdentity, ENABLE_SMALL_NET_ENV_VAR},
+        network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
@@ -54,7 +57,7 @@ use crate::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -64,14 +67,12 @@ use crate::{
         event_queue_metrics::EventQueueMetrics,
         initializer,
         validator::{self, Error, ValidatorInitConfig},
-        EventQueueHandle, Finalize,
+        EventQueueHandle, Finalize, ReactorExit,
     },
-    types::{Block, BlockByHeight, BlockHeader, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
     NodeRng,
 };
-
-use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -132,7 +133,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<BlockHeader, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -173,7 +174,7 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<BlockHeader, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
 
     /// Block executor request.
     #[from]
@@ -188,6 +189,10 @@ pub enum Event {
     ProtoBlockValidatorRequest(
         #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
     ),
+
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -233,7 +238,7 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             Event::Network(network::Event::from(request))
         } else {
             Event::SmallNetwork(small_network::Event::from(request))
@@ -322,6 +327,7 @@ impl Display for Event {
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
+            Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
         }
     }
 }
@@ -339,17 +345,11 @@ pub struct Reactor {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) linear_chain_fetcher: Fetcher<Block>,
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<BlockHeader, NodeId>,
+    pub(super) block_validator: BlockValidator<Block, NodeId>,
     pub(super) deploy_fetcher: Fetcher<Deploy>,
     pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
     pub(super) consensus: EraSupervisor<NodeId>,
-    // Effects consensus component returned during creation.
-    // In the `joining` phase we don't want to handle it,
-    // so we carry them forward to the `validator` reactor.
-    #[data_size(skip)]
-    // Unfortunately, we have no way of inspecting the future and its heap allocations at all.
-    pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     // Handles request for linear chain block by height.
     pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
     #[data_size(skip)]
@@ -377,7 +377,7 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -403,21 +403,22 @@ impl reactor::Reactor for Reactor {
         let (network, network_effects) = Network::new(
             event_queue,
             network_config,
+            registry,
             network_identity,
             chainspec_loader.chainspec(),
             false,
         )?;
-        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             registry,
             small_network_identity,
-            genesis_config_hash,
+            network_name,
             false,
         )?;
 
-        let linear_chain_fetcher = Fetcher::new(config.fetcher);
+        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
 
         let mut effects = reactor::wrap_effects(Event::Network, network_effects);
         effects.extend(reactor::wrap_effects(
@@ -430,7 +431,10 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let init_hash = config.node.trusted_hash;
+        let init_hash = config
+            .node
+            .trusted_hash
+            .or_else(|| chainspec_loader.highest_block_hash());
 
         match init_hash {
             None => {
@@ -439,7 +443,10 @@ impl reactor::Reactor for Reactor {
                 if Timestamp::now() > chainspec.network_config.timestamp + era_duration {
                     error!(
                         "Node started with no trusted hash after the expected end of \
-                        the genesis era! Please specify a trusted hash and restart."
+                         the genesis era! Please specify a trusted hash and restart. \
+                         Time: {}, End of genesis era: {}",
+                        Timestamp::now(),
+                        chainspec.network_config.timestamp + era_duration
                     );
                     panic!("should have trusted hash after genesis era")
                 }
@@ -448,30 +455,33 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
+        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let rest_server = RestServer::new(
+            config.rest_server.clone(),
+            effect_builder,
+            protocol_version.clone(),
+        )?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), effect_builder)?;
+            EventStreamServer::new(config.event_stream_server.clone(), protocol_version.clone())?;
 
-        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
-        effects.extend(reactor::wrap_effects(
-            Event::BlockValidator,
-            block_validator_effects,
-        ));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
-        let deploy_fetcher = Fetcher::new(config.fetcher);
+        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, &registry)?;
 
-        let block_by_height_fetcher = Fetcher::new(config.fetcher);
+        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
 
-        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
+        let deploy_acceptor =
+            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
-        let genesis_state_root_hash = chainspec_loader
-            .genesis_state_root_hash()
-            .expect("Should have Genesis state root hash");
+        let block_executor = BlockExecutor::new(
+            chainspec_loader.starting_state_root_hash(),
+            chainspec_loader.highest_block_header(),
+            protocol_version.clone(),
+            registry.clone(),
+        );
 
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
-
-        let linear_chain = linear_chain::LinearChain::new();
+        let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
@@ -481,25 +491,38 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync =
-            LinearChainSync::new(registry, init_hash, validator_weights.clone())?;
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
+        let linear_chain_sync = LinearChainSync::new::<Error>(
+            registry,
+            chainspec_loader.chainspec(),
+            &storage,
+            init_hash,
+            chainspec_loader.highest_block_header().cloned(),
+            validator_weights.clone(),
+            maybe_next_activation_point,
+        )?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
+            chainspec_loader.starting_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
-            chainspec_loader.chainspec().into(),
-            chainspec_loader
-                .genesis_state_root_hash()
-                .expect("should have genesis post state hash"),
+            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.starting_state_root_hash(),
+            maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
-            rng,
         )?;
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            init_consensus_effects,
+        ));
 
         Ok((
             Self {
@@ -518,7 +541,6 @@ impl reactor::Reactor for Reactor {
                 block_executor,
                 linear_chain,
                 consensus,
-                init_consensus_effects,
                 block_by_height_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
@@ -758,14 +780,16 @@ impl reactor::Reactor for Reactor {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block_header) => reactor::wrap_effects(
-                    Event::LinearChainSync,
-                    self.linear_chain_sync.handle_event(
-                        effect_builder,
-                        rng,
-                        linear_chain_sync::Event::BlockHandled(block_header),
-                    ),
-                ),
+                ConsensusAnnouncement::Handled(block) => {
+                    let mut effects = Effects::new();
+                    let reactor_event =
+                        Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    let reactor_event =
+                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    effects
+                }
                 ConsensusAnnouncement::Finalized(_) => {
                     // A block was finalized.
                     Effects::new()
@@ -787,7 +811,7 @@ impl reactor::Reactor for Reactor {
                     ),
                 ),
                 ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                    // TODO: handle the announcement and acutally disconnect
+                    // TODO: handle the announcement and actually disconnect
                     warn!("disconnecting from a given peer not yet implemented.");
                     Effects::new()
                 }
@@ -857,8 +881,11 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
             }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
+            }
             Event::NetworkInfoRequest(req) => {
-                let event = if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+                let event = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                     Event::Network(network::Event::from(req))
                 } else {
                     Event::SmallNetwork(small_network::Event::from(req))
@@ -873,17 +900,24 @@ impl reactor::Reactor for Reactor {
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                let reactor_event = Event::Consensus(consensus::Event::GotUpgradeActivationPoint(
-                    next_upgrade.activation_point(),
-                ));
+                let reactor_event =
+                    Event::LinearChainSync(linear_chain_sync::Event::GotUpgradeActivationPoint(
+                        next_upgrade.activation_point(),
+                    ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
         }
     }
 
-    fn is_stopped(&mut self) -> bool {
-        self.linear_chain_sync.is_synced()
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        (self.linear_chain_sync.is_synced() && self.consensus.is_initialized()).then(|| {
+            if self.linear_chain_sync.stopped_for_upgrade() {
+                ReactorExit::ProcessShouldExit(ExitCode::Success)
+            } else {
+                ReactorExit::ProcessShouldContinue
+            }
+        })
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
@@ -897,15 +931,20 @@ impl Reactor {
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
-    pub async fn into_validator_config(self) -> ValidatorInitConfig {
+    pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+        // Clean the state of the linear_chain_sync before shutting it down.
+        #[cfg(not(feature = "fast-sync"))]
+        linear_chain_sync::clean_linear_chain_state(
+            &self.storage,
+            self.chainspec_loader.chainspec(),
+        )?;
         let config = ValidatorInitConfig {
             chainspec_loader: self.chainspec_loader,
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage: self.storage,
             consensus: self.consensus,
-            init_consensus_effects: self.init_consensus_effects,
-            latest_block: self.linear_chain.latest_block().clone(),
+            latest_block: self.linear_chain_sync.latest_block().cloned(),
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),
@@ -913,6 +952,30 @@ impl Reactor {
         self.network.finalize().await;
         self.small_network.finalize().await;
         self.rest_server.finalize().await;
-        config
+        Ok(config)
+    }
+}
+
+#[cfg(test)]
+impl NetworkedReactor for Reactor {
+    type NodeId = NodeId;
+    fn node_id(&self) -> Self::NodeId {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
+            self.small_network.node_id()
+        } else {
+            self.network.node_id()
+        }
+    }
+}
+
+#[cfg(test)]
+impl Reactor {
+    /// Inspect consensus.
+    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+        &self.consensus
+    }
+    /// Inspect storage.
+    pub(crate) fn storage(&self) -> &Storage {
+        &self.storage
     }
 }

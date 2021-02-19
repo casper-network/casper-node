@@ -65,12 +65,17 @@ impl ConsensusValueT for CandidateBlock {
     type Hash = Digest;
 
     fn hash(&self) -> Self::Hash {
+        let CandidateBlock {
+            proto_block,
+            timestamp,
+            accusations,
+        } = self;
         let mut result = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-        hasher.update(self.proto_block.hash().inner());
-        hasher
-            .update(bincode::serialize(self.accusations()).expect("should serialize accusations"));
+        hasher.update(proto_block.hash().inner());
+        let data = (timestamp, accusations);
+        hasher.update(bincode::serialize(&data).expect("should serialize candidate block data"));
         hasher.finalize_variable(|slice| {
             result.copy_from_slice(slice);
         });

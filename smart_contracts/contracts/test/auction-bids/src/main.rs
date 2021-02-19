@@ -8,13 +8,13 @@ use alloc::{collections::BTreeMap, string::String};
 use casper_contract::contract_api::{runtime, storage, system};
 
 use casper_types::{
-    auction::{
-        SeigniorageRecipients, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY,
-        ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY,
-        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION,
-        METHOD_UNDELEGATE, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+    runtime_args,
+    system::auction::{
+        SeigniorageRecipients, ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS,
+        ARG_VALIDATOR, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
+        METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
     },
-    runtime_args, ApiError, PublicKey, RuntimeArgs, U512,
+    ApiError, PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -43,8 +43,6 @@ pub extern "C" fn call() {
         ARG_RUN_AUCTION => run_auction(),
         ARG_READ_SEIGNIORAGE_RECIPIENTS => read_seigniorage_recipients(),
         METHOD_DISTRIBUTE => distribute(),
-        METHOD_WITHDRAW_DELEGATOR_REWARD => withdraw_delegator_reward(),
-        METHOD_WITHDRAW_VALIDATOR_REWARD => withdraw_validator_reward(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     };
 }
@@ -101,26 +99,4 @@ fn distribute() {
         ARG_REWARD_FACTORS => reward_factors
     };
     runtime::call_contract::<()>(auction, METHOD_DISTRIBUTE, args);
-}
-
-fn withdraw_delegator_reward() {
-    let auction = system::get_auction();
-    let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
-    let delegator_public_key: PublicKey = runtime::get_named_arg(ARG_DELEGATOR_PUBLIC_KEY);
-
-    let args = runtime_args! {
-        ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
-        ARG_DELEGATOR_PUBLIC_KEY => delegator_public_key,
-    };
-    runtime::call_contract::<()>(auction, METHOD_WITHDRAW_DELEGATOR_REWARD, args);
-}
-
-fn withdraw_validator_reward() {
-    let auction = system::get_auction();
-    let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
-
-    let args = runtime_args! {
-        ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
-    };
-    runtime::call_contract::<()>(auction, METHOD_WITHDRAW_VALIDATOR_REWARD, args);
 }

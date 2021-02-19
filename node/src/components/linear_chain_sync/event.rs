@@ -1,21 +1,31 @@
-use crate::types::{Block, BlockHash, BlockHeader};
-use std::fmt::{Debug, Display};
+use crate::types::{ActivationPoint, Block, BlockHash};
+
+use casper_types::{PublicKey, U512};
+
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+};
 
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
+    GotInitialValidators(I, BTreeMap<PublicKey, U512>),
     GetBlockHashResult(BlockHash, BlockByHashResult<I>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
     GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHandled(Box<BlockHeader>),
+    BlockHandled(Box<Block>),
+    GotUpgradeActivationPoint(ActivationPoint),
+    InitUpgradeShutdown,
+    Shutdown(bool),
 }
 
 #[derive(Debug)]
 pub enum DeploysResult<I> {
-    Found(Box<BlockHeader>),
-    NotFound(Box<BlockHeader>, I),
+    Found(Box<Block>),
+    NotFound(Box<Block>, I),
 }
 
 #[derive(Debug)]
@@ -39,6 +49,9 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Start(init_peer) => write!(f, "Start syncing from peer {}.", init_peer),
+            Event::GotInitialValidators(_, validators) => {
+                write!(f, "Got initial validators: {:?}", validators)
+            }
             Event::GetBlockHashResult(block_hash, r) => {
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }
@@ -59,6 +72,15 @@ where
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)
             }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
+            }
+            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiatied"),
+            Event::Shutdown(upgrade) => write!(
+                f,
+                "linear chain sync is ready for shutdown. upgrade: {}",
+                upgrade
+            ),
         }
     }
 }

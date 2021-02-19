@@ -62,6 +62,7 @@ use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
+use once_cell::sync::Lazy;
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
@@ -85,9 +86,8 @@ use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
     components::{
-        network::ENABLE_SMALL_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
+        network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
     },
-    crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -96,13 +96,15 @@ use crate::{
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
     tls::{self, TlsCert, ValidationError},
-    types::NodeId,
+    types::{NodeId, TimeDiff, Timestamp},
     utils, NodeRng,
 };
 pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
+static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
+    Lazy::new(|| Duration::from_secs(60 * 10).into());
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -147,16 +149,16 @@ where
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
 
-    /// List of addresses which this node will avoid connecting to.
-    blocklist: HashSet<SocketAddr>,
+    /// List of addresses which this node will avoid connecting to and the time they were added.
+    blocklist: HashMap<SocketAddr, Timestamp>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashSet<SocketAddr>,
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
-    /// The hash of the chainspec.  We only remain connected to peers with the same
-    /// `genesis_config_hash` as us.
-    genesis_config_hash: Digest,
+    /// Name of the network we participate in. We only remain connected to peers with the same
+    /// network name as us.
+    network_name: String,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -174,6 +176,9 @@ where
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: NetworkingMetrics,
+
+    /// Known addresses for this node.
+    known_addresses: Vec<String>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -191,7 +196,7 @@ where
         cfg: Config,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
-        genesis_config_hash: Digest,
+        network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         // Assert we have at least one known address in the config.
@@ -207,12 +212,11 @@ where
         let secret_key = small_network_identity.secret_key;
         let certificate = small_network_identity.tls_certificate;
 
-        let net_metrics = NetworkingMetrics::new(&registry)?;
-
-        // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without starting the
+        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
+                known_addresses: cfg.known_addresses.clone(),
                 certificate,
                 secret_key,
                 public_address,
@@ -222,17 +226,19 @@ where
                 incoming: HashMap::new(),
                 outgoing: HashMap::new(),
                 pending: HashSet::new(),
-                blocklist: HashSet::new(),
+                blocklist: HashMap::new(),
                 gossip_interval: cfg.gossip_interval,
-                genesis_config_hash,
+                network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
                 is_stopped: Arc::new(AtomicBool::new(true)),
-                net_metrics,
+                net_metrics: NetworkingMetrics::new(&Registry::default())?,
             };
             return Ok((model, Effects::new()));
         }
+
+        let net_metrics = NetworkingMetrics::new(&registry)?;
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -274,6 +280,7 @@ where
         ));
 
         let mut model = SmallNetwork {
+            known_addresses: cfg.known_addresses.clone(),
             certificate,
             secret_key,
             public_address,
@@ -283,9 +290,9 @@ where
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
             pending: HashSet::new(),
-            blocklist: HashSet::new(),
+            blocklist: HashMap::new(),
             gossip_interval: cfg.gossip_interval,
-            genesis_config_hash,
+            network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -311,11 +318,11 @@ where
                         )
                         .result(
                             move |(peer_id, transport)| Event::OutgoingEstablished {
-                                peer_id,
+                                peer_id: Box::new(peer_id),
                                 transport,
                             },
                             move |error| Event::BootstrappingFailed {
-                                peer_address: known_address,
+                                peer_address: Box::new(known_address),
                                 error,
                             },
                         ),
@@ -435,7 +442,7 @@ where
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
-                    genesis_config_hash: self.genesis_config_hash,
+                    network_name: self.network_name.clone(),
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -466,8 +473,8 @@ where
                     )
                     .event(move |result| Event::IncomingClosed {
                         result,
-                        peer_id,
-                        peer_address,
+                        peer_id: Box::new(peer_id),
+                        peer_address: Box::new(peer_address),
                     }),
                 );
 
@@ -534,7 +541,7 @@ where
         let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
         let handshake = Message::Handshake {
-            genesis_config_hash: self.genesis_config_hash,
+            network_name: self.network_name.clone(),
         };
         let peer_id_cloned = peer_id.clone();
         effects.extend(
@@ -545,9 +552,9 @@ where
                 handshake,
             )
             .event(move |result| Event::OutgoingFailed {
-                peer_id: Some(peer_id),
-                peer_address,
-                error: result.err().map(Into::into),
+                peer_id: Box::new(Some(peer_id)),
+                peer_address: Box::new(peer_address),
+                error: Box::new(result.err().map(Into::into)),
             }),
         );
         effects.extend(
@@ -609,9 +616,11 @@ where
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
-            if add_to_blocklist {
-                info!(our_id=%self.our_id, %peer_id, "blacklisting peer");
-                self.blocklist.insert(outgoing.peer_address);
+            let peer_ip = format!("{}", outgoing.peer_address.ip());
+            if add_to_blocklist && !self.known_addresses.contains(&peer_ip) {
+                info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
+                self.blocklist
+                    .insert(outgoing.peer_address, Timestamp::now());
             }
         }
         self.terminate_if_isolated(effect_builder)
@@ -678,19 +687,20 @@ where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
         match msg {
-            Message::Handshake {
-                genesis_config_hash,
-            } => {
-                if genesis_config_hash != self.genesis_config_hash {
+            Message::Handshake { network_name } => {
+                if network_name != self.network_name {
                     info!(
                         our_id=%self.our_id,
                         %peer_id,
-                        our_hash=?self.genesis_config_hash,
-                        their_hash=?genesis_config_hash,
-                        "dropping connection due to genesis config hash mismatch"
+                        our_network=?self.network_name,
+                        their_network=?network_name,
+                        "dropping connection due to network name mismatch"
                     );
-                    return self.remove(effect_builder, &peer_id, false);
+                    let remove = self.remove(effect_builder, &peer_id, false);
+                    self.update_peers_metric();
+                    return remove;
                 }
+                self.update_peers_metric();
                 Effects::new()
             }
             Message::Payload(payload) => effect_builder
@@ -699,9 +709,15 @@ where
         }
     }
 
+    fn update_peers_metric(&mut self) {
+        self.net_metrics.peers.set(self.peers().len() as i64);
+    }
+
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
+        self.blocklist
+            .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains(&peer_address)
-            || self.blocklist.contains(&peer_address)
+            || self.blocklist.contains_key(&peer_address)
             || self
                 .outgoing
                 .iter()
@@ -720,11 +736,14 @@ where
                 Arc::clone(&self.is_stopped),
             )
             .result(
-                move |(peer_id, transport)| Event::OutgoingEstablished { peer_id, transport },
+                move |(peer_id, transport)| Event::OutgoingEstablished {
+                    peer_id: Box::new(peer_id),
+                    transport,
+                },
                 move |error| Event::OutgoingFailed {
-                    peer_id: None,
-                    peer_address,
-                    error: Some(error),
+                    peer_id: Box::new(None),
+                    peer_address: Box::new(peer_address),
+                    error: Box::new(Some(error)),
                 },
             )
         }
@@ -817,7 +836,7 @@ where
                     Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
                     Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
                 }
-            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+            } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
         }
@@ -862,16 +881,18 @@ where
                 setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
                     .boxed()
                     .event(move |result| Event::IncomingHandshakeCompleted {
-                        result,
+                        result: Box::new(result),
                         peer_address,
                     })
             }
             Event::IncomingHandshakeCompleted {
                 result,
                 peer_address,
-            } => self.handle_incoming_tls_handshake_completed(effect_builder, result, peer_address),
+            } => {
+                self.handle_incoming_tls_handshake_completed(effect_builder, *result, *peer_address)
+            }
             Event::IncomingMessage { peer_id, msg } => {
-                self.handle_message(effect_builder, peer_id, msg)
+                self.handle_message(effect_builder, *peer_id, *msg)
             }
             Event::IncomingClosed {
                 result,
@@ -889,50 +910,49 @@ where
                 self.remove(effect_builder, &peer_id, false)
             }
             Event::OutgoingEstablished { peer_id, transport } => {
-                self.setup_outgoing(effect_builder, peer_id, transport)
+                self.setup_outgoing(effect_builder, *peer_id, transport)
             }
             Event::OutgoingFailed {
                 peer_id,
                 peer_address,
                 error,
-            } => self.handle_outgoing_lost(effect_builder, peer_id, peer_address, error),
-            Event::NetworkRequest {
-                req:
+            } => self.handle_outgoing_lost(effect_builder, *peer_id, *peer_address, *error),
+            Event::NetworkRequest { req } => {
+                match *req {
                     NetworkRequest::SendMessage {
                         dest,
                         payload,
                         responder,
-                    },
-            } => {
-                // We're given a message to send out.
-                self.net_metrics.direct_message_requests.inc();
-                self.send_message(dest, Message::Payload(payload));
-                responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                req: NetworkRequest::Broadcast { payload, responder },
-            } => {
-                // We're given a message to broadcast.
-                self.net_metrics.broadcast_requests.inc();
-                self.broadcast_message(Message::Payload(payload));
-                responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                req:
+                    } => {
+                        // We're given a message to send out.
+                        self.net_metrics.direct_message_requests.inc();
+                        self.send_message(*dest, Message::Payload(*payload));
+                        responder.respond(()).ignore()
+                    }
+                    NetworkRequest::Broadcast { payload, responder } => {
+                        // We're given a message to broadcast.
+                        self.net_metrics.broadcast_requests.inc();
+                        self.broadcast_message(Message::Payload(*payload));
+                        responder.respond(()).ignore()
+                    }
                     NetworkRequest::Gossip {
                         payload,
                         count,
                         exclude,
                         responder,
-                    },
-            } => {
-                // We're given a message to gossip.
-                let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
-                responder.respond(sent_to).ignore()
+                    } => {
+                        // We're given a message to gossip.
+                        let sent_to =
+                            self.gossip_message(rng, Message::Payload(*payload), count, exclude);
+                        responder.respond(sent_to).ignore()
+                    }
+                }
             }
-            Event::NetworkInfoRequest {
-                req: NetworkInfoRequest::GetPeers { responder },
-            } => responder.respond(self.peers()).ignore(),
+            Event::NetworkInfoRequest { req } => match *req {
+                NetworkInfoRequest::GetPeers { responder } => {
+                    responder.respond(self.peers()).ignore()
+                }
+            },
             Event::GossipOurAddress => {
                 let mut effects = self.gossip_our_address(effect_builder);
                 effects.extend(self.enforce_symmetric_connections(effect_builder));
@@ -972,7 +992,7 @@ async fn server_task<P, REv>(
                     // Move the incoming connection to the event queue for handling.
                     let event = Event::IncomingNew {
                         stream,
-                        peer_address,
+                        peer_address: Box::new(peer_address),
                     };
                     event_queue
                         .schedule(event, QueueKind::NetworkIncoming)
@@ -1093,7 +1113,10 @@ async fn handshake_reader<REv, P>(
         debug!(%our_id, %msg, %peer_id, "handshake received");
         return event_queue
             .schedule(
-                Event::IncomingMessage { peer_id, msg },
+                Event::IncomingMessage {
+                    peer_id: Box::new(peer_id),
+                    msg: Box::new(msg),
+                },
                 QueueKind::NetworkIncoming,
             )
             .await;
@@ -1102,9 +1125,9 @@ async fn handshake_reader<REv, P>(
     event_queue
         .schedule(
             Event::OutgoingFailed {
-                peer_id: Some(peer_id),
-                peer_address,
-                error: None,
+                peer_id: Box::new(Some(peer_id)),
+                peer_address: Box::new(peer_address),
+                error: Box::new(None),
             },
             QueueKind::Network,
         )
@@ -1136,8 +1159,8 @@ where
                     event_queue
                         .schedule(
                             Event::IncomingMessage {
-                                peer_id: peer_id_cloned.clone(),
-                                msg,
+                                peer_id: Box::new(peer_id_cloned.clone()),
+                                msg: Box::new(msg),
                             },
                             QueueKind::NetworkIncoming,
                         )
@@ -1172,8 +1195,8 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 ///
-/// Initially sends a handshake including the `genesis_config_hash` as a final handshake step.  If
-/// the recipient's `genesis_config_hash` doesn't match, the connection will be closed.
+/// Initially sends a handshake including the `chainspec_hash` as a final handshake step.  If the
+/// recipient's `chainspec_hash` doesn't match, the connection will be closed.
 async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,

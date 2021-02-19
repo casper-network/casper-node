@@ -18,13 +18,11 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        Bids, DelegationRate, EraId, UnbondingPurses, ARG_ERA_END_TIMESTAMP_MILLIS,
-        ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
-        UNBONDING_PURSES_KEY,
-    },
     runtime_args,
-    system_contract_errors::auction,
+    system::auction::{
+        self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
+        INITIAL_ERA_ID, METHOD_SLASH, UNBONDING_PURSES_KEY,
+    },
     ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -140,7 +138,10 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        Vec::new(),
+    );
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
@@ -392,7 +393,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     //
     // Advance era by calling run_auction
     //
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     //
     // Partial unbond
@@ -431,7 +432,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let account_balance_before_auction = builder.get_purse_balance(unbonding_purse);
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
@@ -459,12 +460,12 @@ fn should_run_successful_bond_and_unbond_with_release() {
     // Advance state to hit the unbonding period
     //
     for _ in 0..DEFAULT_UNBONDING_DELAY {
-        builder.run_auction(timestamp_millis);
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     // Should pay out
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     assert_eq!(
         builder.get_purse_balance(unbonding_purse),
         account_balance_before_auction + unbond_amount
@@ -498,7 +499,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let new_unbonding_delay: EraId = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let sem_ver = old_protocol_version.value();
@@ -570,19 +571,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     //
     // Advance era by calling run_auction
     //
-    let run_auction_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
-
-    builder
-        .exec(run_auction_request_1)
-        .commit()
-        .expect_success();
+    builder.run_auction(timestamp_millis, Vec::new());
 
     //
     // Partial unbond
@@ -622,16 +611,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
-    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
-
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.run_auction(timestamp_millis, Vec::new());
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
@@ -660,33 +640,12 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     //
 
     for _ in 0..DEFAULT_UNBONDING_DELAY {
-        let run_auction_request = ExecuteRequestBuilder::contract_call_by_hash(
-            SYSTEM_ADDR,
-            auction,
-            METHOD_RUN_AUCTION,
-            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
-        )
-        .with_protocol_version(new_protocol_version)
-        .build();
-
-        builder.exec(run_auction_request).commit().expect_success();
+        builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     // Won't pay out (yet) as we increased unbonding period
-    let run_auction_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
-
-    builder
-        .exec(run_auction_request_1)
-        .expect_success()
-        .commit();
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     // Not paid yet
@@ -698,16 +657,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     // -1 below is the extra run auction above in `run_auction_request_1`
     for _ in 0..new_unbonding_delay - DEFAULT_UNBONDING_DELAY - 1 {
-        let run_auction_request = ExecuteRequestBuilder::contract_call_by_hash(
-            SYSTEM_ADDR,
-            auction,
-            METHOD_RUN_AUCTION,
-            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
-        )
-        .with_protocol_version(new_protocol_version)
-        .build();
-
-        builder.exec(run_auction_request).expect_success().commit();
+        builder.run_auction(timestamp_millis, Vec::new());
     }
 
     assert_eq!(

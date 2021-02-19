@@ -18,7 +18,6 @@ use std::{
 
 use datasize::DataSize;
 use prometheus::{self, Registry};
-use semver::Version;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
@@ -27,7 +26,7 @@ use crate::{
         requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{chainspec::DeployConfig, DeployHash, DeployHeader, ProtoBlock, Timestamp},
+    types::{chainspec::DeployConfig, Chainspec, DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 use casper_execution_engine::shared::gas::Gas;
@@ -72,7 +71,14 @@ type RequestQueue = HashMap<BlockHeight, Vec<ProtoBlockRequest>>;
 #[allow(clippy::large_enum_variant)]
 enum BlockProposerState {
     /// Block proposer is initializing, waiting for a state snapshot.
-    Initializing { pending: Vec<Event> },
+    Initializing {
+        /// Events cached pending transition to `Ready` state when they can be handled.
+        pending: Vec<Event>,
+        /// The key under which this component's state is cached in storage.
+        state_key: Vec<u8>,
+        /// The deploy config from the current chainspec.
+        deploy_config: DeployConfig,
+    },
     /// Normal operation.
     Ready(BlockProposerReady),
 }
@@ -83,32 +89,22 @@ impl BlockProposer {
         registry: Registry,
         effect_builder: EffectBuilder<REv>,
         next_finalized_block: BlockHeight,
+        chainspec: &Chainspec,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
     {
-        // Note: Version is currently not honored by the storage component, so we just hardcode
-        // 1.0.0.
+        debug!(%next_finalized_block, "creating block proposer");
+        // load the state from storage or use a fresh instance if loading fails.
+        let state_key = deploy_sets::create_storage_key(chainspec);
+        let cloned_state_key = state_key.clone();
         let effects = async move {
-            let chainspec = effect_builder
-                .get_chainspec(Version::new(1, 0, 0))
+            effect_builder
+                .load_state(cloned_state_key.into())
                 .await
-                // Note: Currently the storage component will always return a chainspec, however the
-                // interface has not kept up with this yet.
-                .expect("chainspec should be infallible");
-
-            // With the chainspec, we can now load the state from storage or use a fresh instance if
-            // loading fails.
-            let key = deploy_sets::create_storage_key(&chainspec);
-            let sets = effect_builder
-                .load_state(key.into())
-                .await
-                .unwrap_or_default();
-
-            (chainspec, sets)
+                .unwrap_or_default()
         }
-        .event(move |(chainspec, sets)| Event::Loaded {
-            chainspec,
+        .event(move |sets| Event::Loaded {
             sets,
             next_finalized_block,
         });
@@ -116,6 +112,8 @@ impl BlockProposer {
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
                 pending: Vec::new(),
+                state_key,
+                deploy_config: chainspec.deploy_config,
             },
             metrics: BlockProposerMetrics::new(registry)?,
         };
@@ -144,9 +142,12 @@ where
         // enough to handle it here directly.
         match (&mut self.state, event) {
             (
-                BlockProposerState::Initializing { ref mut pending },
+                BlockProposerState::Initializing {
+                    ref mut pending,
+                    state_key,
+                    deploy_config,
+                },
                 Event::Loaded {
-                    chainspec,
                     sets,
                     next_finalized_block,
                 },
@@ -155,10 +156,10 @@ where
                     sets: sets
                         .unwrap_or_default()
                         .with_next_finalized(next_finalized_block),
-                    deploy_config: chainspec.deploy_config,
-                    state_key: deploy_sets::create_storage_key(&chainspec),
-                    request_queue: Default::default(),
                     unhandled_finalized: Default::default(),
+                    deploy_config: *deploy_config,
+                    state_key: state_key.clone(),
+                    request_queue: Default::default(),
                 };
 
                 // Replay postponed events onto new state.
@@ -175,7 +176,12 @@ where
                         .event(|_| Event::Prune),
                 );
             }
-            (BlockProposerState::Initializing { ref mut pending }, event) => {
+            (
+                BlockProposerState::Initializing {
+                    ref mut pending, ..
+                },
+                event,
+            ) => {
                 // Any incoming events are just buffered until initialization is complete.
                 pending.push(event);
             }
@@ -203,7 +209,7 @@ struct BlockProposerReady {
     /// seen but were reported as reported to `finalized_deploys()`. They are used to
     /// filter deploys for proposal, similar to `self.sets.finalized_deploys`.
     unhandled_finalized: HashSet<DeployHash>,
-    // We don't need the whole Chainspec here, just the deploy config.
+    /// We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
     /// Key for storing the block proposer state.
     state_key: Vec<u8>,
@@ -234,6 +240,7 @@ impl BlockProposerReady {
                         .push(request);
                     Effects::new()
                 } else {
+                    info!(%request.next_finalized, "proposing a proto block");
                     request
                         .responder
                         .respond(self.propose_proto_block(
@@ -290,6 +297,7 @@ impl BlockProposerReady {
                     self.sets.finalization_queue.insert(height - 1, deploys);
                     Effects::new()
                 } else {
+                    debug!(%height, "handling finalized block");
                     let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
                     while let Some(deploys) = self.sets.finalization_queue.remove(&height) {
                         info!(%height, "removed finalization queue entry");

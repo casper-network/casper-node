@@ -36,6 +36,7 @@ reqwest = { version = "0.10.6", features = ["json"] }
 semver = { version = "0.11.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1.0.55"
+tempfile = "3"
 thiserror = "1.0.20"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
 

@@ -385,6 +385,8 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
                 Ok((reactor, all_effects))
             }
+
+            fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> { None }
         }
     )
 }

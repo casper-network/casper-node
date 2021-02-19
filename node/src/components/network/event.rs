@@ -10,19 +10,26 @@ use libp2p::{
     Multiaddr,
 };
 use serde::Serialize;
+use static_assertions::const_assert;
 
 use crate::{
     effect::requests::{NetworkInfoRequest, NetworkRequest},
+    protocol::Message,
     types::NodeId,
 };
+use core::mem;
+
+const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<Message>>();
+const_assert!(_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
+#[repr(u8)]
 pub enum Event<P> {
     // ========== Events triggered by the libp2p network behavior ==========
     /// A connection to the given peer has been opened.
     ConnectionEstablished {
         /// Identity of the peer that we have connected to.
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         /// Endpoint of the connection that has been opened.
         #[serde(skip_serializing)]
         endpoint: ConnectedPoint,
@@ -33,7 +40,7 @@ pub enum Event<P> {
     /// A connection with the given peer has been closed, possibly as a result of an error.
     ConnectionClosed {
         /// Identity of the peer that we have connected to.
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         /// Endpoint of the connection that has been closed.
         #[serde(skip_serializing)]
         endpoint: ConnectedPoint,
@@ -45,7 +52,7 @@ pub enum Event<P> {
     /// Tried to dial an address but it ended up being unreachable.
     UnreachableAddress {
         /// `NodeId` that we were trying to reach.
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         /// Address that we failed to reach.
         address: Multiaddr,
         /// Error that has been encountered.
@@ -94,7 +101,7 @@ pub enum Event<P> {
         request: NetworkRequest<NodeId, P>,
     },
 
-    /// A network info request made by a different component.
+    /// Incoming network info request.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]

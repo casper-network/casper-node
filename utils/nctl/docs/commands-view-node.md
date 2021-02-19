@@ -24,16 +24,14 @@ nctl-view-node-error-log node=1  (same as above)
 nctl-view-node-error-log node=3 
 ```
 
-### nctl-view-node-log node={X:-1}
+### nctl-view-node-finalisation-time node={X:-all}
 
-Displays stdout log of node X.
+Renders time to finalisation of blocks at node X to stdout.
 
 ```
-nctl-view-node-log
+nctl-view-node-metric-finalisation-time
 
-nctl-view-node-log node=1 (same as above)
-
-nctl-view-node-log node=3 
+nctl-view-node-metric-finalisation-time node=all (same as above)
 ```
 
 ### nctl-view-node-finalised-block-count node={X:-all}
@@ -44,6 +42,18 @@ Renders count of finalised blocks at node X to stdout.
 nctl-view-node-metric-finalised-block-count
 
 nctl-view-node-metric-finalised-block-count node=all (same as above)
+```
+
+### nctl-view-node-log node={X:-1}
+
+Displays stdout log of node X.
+
+```
+nctl-view-node-log
+
+nctl-view-node-log node=1 (same as above)
+
+nctl-view-node-log node=3 
 ```
 
 ### nctl-view-node-metrics node={X:-all} metric={Y:-all}
@@ -60,16 +70,6 @@ nctl-view-node-metrics node=all metric=scheduler_queue_regular_count
 nctl-view-node-metrics node=2 metric=runner_events
 ```
 
-### nctl-view-node-pending-deploy-count node={X:-all}
-
-Renders count of pending deploys at node X to stdout.
-
-```
-nctl-view-node-metric-pending-deploy
-
-nctl-view-node-metric-pending-deploy node=all (same as above)
-```
-
 ### nctl-view-node-peers node={X:-all}
 
 Renders peers of node X to stdout.
@@ -80,6 +80,16 @@ nctl-view-node-peers
 nctl-view-node-peers node=all  (same as above)
 
 nctl-view-node-peers node=3
+```
+
+### nctl-view-node-pending-deploy-count node={X:-all}
+
+Renders count of pending deploys at node X to stdout.
+
+```
+nctl-view-node-metric-pending-deploy
+
+nctl-view-node-metric-pending-deploy node=all (same as above)
 ```
 
 ### nctl-view-node-ports node={X:-all}
@@ -138,3 +148,14 @@ nctl-view-node-storage node=all  (same as above)
 nctl-view-node-storage node=3
 ```
 
+### nctl-view-node-storage-consensus node={X:-all}
+
+Renders consensus storage stats of node X to stdout.
+
+```
+nctl-view-node-storage-consensus
+
+nctl-view-node-storage-consensus node=all  (same as above)
+
+nctl-view-node-storage-consensus node=3
+```

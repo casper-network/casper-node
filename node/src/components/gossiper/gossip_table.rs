@@ -104,8 +104,8 @@ impl State {
     }
 }
 
-#[derive(Debug)]
-struct Timeouts<T> {
+#[derive(DataSize, Debug)]
+pub(crate) struct Timeouts<T> {
     values: Vec<(Instant, T)>,
 }
 
@@ -142,14 +142,12 @@ pub(crate) struct GossipTable<T> {
     /// Data IDs for which gossiping is complete.
     finished: HashSet<T>,
     /// Timeouts for removal of items from the `finished` cache.
-    #[data_size(skip)]
     finished_timeouts: Timeouts<T>,
     /// Data IDs for which gossiping has been paused (likely due to detecting that the data was not
     /// correct as per our current knowledge).  Such data could later be decided as still requiring
     /// to be gossiped, so we retain the `State` part here in order to resume gossiping.
     paused: HashMap<T, State>,
     /// Timeouts for removal of items from the `paused` cache.
-    #[data_size(skip)]
     paused_timeouts: Timeouts<T>,
     /// See `Config::infection_target`.
     infection_target: usize,

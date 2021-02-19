@@ -9,7 +9,12 @@ use core::{
     num::ParseIntError,
 };
 
+use datasize::DataSize;
 use hex_fmt::HexFmt;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -87,7 +92,7 @@ impl Display for FromStrError {
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, DataSize)]
 pub struct URef(URefAddr, AccessRights);
 
 impl URef {
@@ -257,6 +262,12 @@ impl TryFrom<Key> for URef {
         } else {
             Err(ApiError::UnexpectedKeyVariant)
         }
+    }
+}
+
+impl Distribution<URef> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> URef {
+        URef::new(rng.gen(), rng.gen())
     }
 }
 

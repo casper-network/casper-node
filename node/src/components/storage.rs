@@ -45,9 +45,8 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     fmt::{self, Display, Formatter},
-    fs, io,
+    fs, io, mem,
     path::PathBuf,
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -56,10 +55,11 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
 use serde::{Deserialize, Serialize};
+use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 
 use super::Component;
 #[cfg(test)]
@@ -71,7 +71,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, Chainspec, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
     NodeRng,
 };
@@ -97,7 +97,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 6;
+const MAX_DB_COUNT: u32 = 7;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -108,6 +108,8 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 /// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
+const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
+const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
 #[derive(Debug, From, Serialize)]
 pub enum Event {
@@ -194,8 +196,6 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// Chainspec cache.
-    chainspec_cache: Option<Arc<Chainspec>>,
 }
 
 impl<REv> Component<REv> for Storage {
@@ -227,7 +227,10 @@ impl<REv> Component<REv> for Storage {
 
 impl Storage {
     /// Creates a new storage component.
-    pub(crate) fn new(cfg: &WithDir<Config>) -> Result<Self, Error> {
+    pub(crate) fn new(
+        cfg: &WithDir<Config>,
+        hard_reset_to_start_of_era: Option<EraId>,
+    ) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
@@ -275,6 +278,11 @@ impl Storage {
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
             let block: Block = lmdb_ext::deserialize(raw_val)?;
+            if let Some(invalid_era) = hard_reset_to_start_of_era {
+                if block.header().era_id() >= invalid_era {
+                    continue;
+                }
+            }
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,
@@ -302,7 +310,6 @@ impl Storage {
             state_store_db,
             block_height_index,
             switch_block_era_id_index,
-            chainspec_cache: None,
         })
     }
 
@@ -338,6 +345,39 @@ impl Storage {
                 Ok(responder.respond(bytes).ignore())
             }
         }
+    }
+
+    /// Reads from the state storage DB.
+    /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
+    /// May also fail with storage errors.
+    #[cfg(not(feature = "fast-sync"))]
+    pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let txn = self.env.begin_ro_txn()?;
+        let bytes = match txn.get(self.state_store_db, &key) {
+            Ok(slice) => Some(slice.to_owned()),
+            Err(lmdb::Error::NotFound) => None,
+            Err(err) => return Err(err.into()),
+        };
+        Ok(bytes)
+    }
+
+    /// Deletes value living under the key from the state storage DB.
+    #[cfg(not(feature = "fast-sync"))]
+    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let mut txn = self.env.begin_rw_txn()?;
+        let result = match txn.del(self.state_store_db, &key, None) {
+            Ok(_) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
+            Err(err) => Err(err),
+        }?;
+        txn.commit()?;
+        Ok(result)
     }
 
     /// Handles a storage request.
@@ -461,7 +501,7 @@ impl Storage {
                         if prev != &execution_result {
                             return Err(Error::DuplicateExecutionResult {
                                 deploy_hash,
-                                block_hash,
+                                block_hash: *block_hash,
                             });
                         }
 
@@ -486,7 +526,7 @@ impl Storage {
                     // Update metadata and write back to db.
                     metadata
                         .execution_results
-                        .insert(block_hash, execution_result);
+                        .insert(*block_hash, execution_result);
                     let was_written =
                         txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
                     assert!(
@@ -496,7 +536,8 @@ impl Storage {
                     );
                 }
 
-                let was_written = txn.put_value(self.transfer_db, &block_hash, &transfers, true)?;
+                let was_written =
+                    txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
                 assert!(
                     was_written,
                     "failed to write transfers for block_hash {}",
@@ -588,18 +629,6 @@ impl Storage {
                     .respond(Some((highest_block, signatures)))
                     .ignore()
             }
-            StorageRequest::PutChainspec {
-                chainspec,
-                responder,
-            } => {
-                self.chainspec_cache = Some(chainspec);
-
-                responder.respond(()).ignore()
-            }
-            StorageRequest::GetChainspec {
-                version: _version,
-                responder,
-            } => responder.respond(self.chainspec_cache.clone()).ignore(),
             StorageRequest::PutBlockSignatures {
                 signatures,
                 responder,
@@ -713,6 +742,12 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
     }
+
+    /// Get the lmdb environment
+    #[cfg(test)]
+    pub(crate) fn env(&self) -> &Environment {
+        &self.env
+    }
 }
 
 /// Inserts the relevant entries to the two indices.
@@ -733,7 +768,7 @@ fn insert_to_block_indices(
         }
     }
 
-    if block.header().switch_block() {
+    if block.header().is_switch_block() {
         match switch_block_era_id_index.entry(block.header().era_id()) {
             Entry::Vacant(entry) => {
                 let _ = entry.insert(*block.hash());
@@ -879,5 +914,30 @@ impl Storage {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
             .collect()
+    }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env()
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
     }
 }

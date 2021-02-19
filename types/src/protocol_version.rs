@@ -1,7 +1,11 @@
-use alloc::vec::Vec;
-use core::fmt;
+use alloc::{format, string::String, vec::Vec};
+use core::{convert::TryFrom, fmt};
 
-use serde::{Deserialize, Serialize};
+use datasize::DataSize;
+
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
@@ -9,9 +13,7 @@ use crate::{
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
-#[derive(
-    Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Copy, Clone, DataSize, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(SemVer);
 
 /// The result of [`ProtocolVersion::check_next_version`].
@@ -140,6 +142,43 @@ impl FromBytes for ProtocolVersion {
         let (version, rem) = SemVer::from_bytes(bytes)?;
         let protocol_version = ProtocolVersion::new(version);
         Ok((protocol_version, rem))
+    }
+}
+
+impl Serialize for ProtocolVersion {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            let str = format!("{}.{}.{}", self.0.major, self.0.minor, self.0.patch);
+            String::serialize(&str, serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ProtocolVersion {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let semver = if deserializer.is_human_readable() {
+            let value_as_string = String::deserialize(deserializer)?;
+            SemVer::try_from(value_as_string.as_str()).map_err(SerdeError::custom)?
+        } else {
+            SemVer::deserialize(deserializer)?
+        };
+        Ok(ProtocolVersion(semver))
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for ProtocolVersion {
+    fn schema_name() -> String {
+        String::from("ProtocolVersion")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Casper Platform protocol version".to_string());
+        schema_object.into()
     }
 }
 
@@ -413,5 +452,29 @@ mod tests {
         let current = ProtocolVersion::from_parts(1, 0, 0);
         let other = ProtocolVersion::from_parts(1, 99, 99);
         assert!(current.is_compatible_with(&other));
+    }
+
+    #[test]
+    fn should_serialize_to_json_properly() {
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 1);
+        let json = serde_json::to_string(&protocol_version).unwrap();
+        let expected = "\"1.1.1\"";
+        assert_eq!(json, expected);
+    }
+
+    #[test]
+    fn serialize_roundtrip() {
+        let protocol_version = ProtocolVersion::from_parts(1, 1, 1);
+        let serialized_json = serde_json::to_string(&protocol_version).unwrap();
+        assert_eq!(
+            protocol_version,
+            serde_json::from_str(&serialized_json).unwrap()
+        );
+
+        let serialized_bincode = bincode::serialize(&protocol_version).unwrap();
+        assert_eq!(
+            protocol_version,
+            bincode::deserialize(&serialized_bincode).unwrap()
+        );
     }
 }

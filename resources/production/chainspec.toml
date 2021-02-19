@@ -1,6 +1,8 @@
 [protocol]
 # Protocol version.
 version = '1.0.0'
+# Whether we need to clear latest blocks back to the switch block just before the activation point or not.
+hard_reset = false
 
 [protocol.activation_point]
 # This protocol version becomes active at the start of this era.
@@ -73,6 +75,12 @@ block_max_deploy_count = 100
 block_max_transfer_count = 100
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
+# The limit of length of serialized payment code arguments.
+payment_args_max_length = 1024
+# The limit of length of serialized session code arguments.
+session_args_max_length = 1024
+# The minimum amount in motes for a valid native transfer.
+native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 # Amount of free memory (in 64kB pages) each contract can use for stack.
@@ -181,6 +189,7 @@ distribute = 10_000
 withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
+activate_bid = 10_000
 
 [system_costs.mint_costs]
 mint = 10_000

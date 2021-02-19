@@ -25,15 +25,17 @@ use tracing::{debug, error};
 
 use casper_types::{
     account::AccountHash,
-    auction::{
-        EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
-        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
-    },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    mint::ROUND_SEIGNIORAGE_RATE_KEY,
-    proof_of_stake,
-    system_contract_errors::{self},
+    system::{
+        auction::{
+            EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
+        proof_of_stake,
+    },
     AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -82,7 +84,8 @@ use crate::{
     },
 };
 
-pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000u64));
+pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -320,7 +323,7 @@ where
             tracking_copy.borrow_mut().write(auction_delay_key, value);
         }
 
-        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period() {
+        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
             let auction_contract = tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, new_protocol_data.auction())?;
@@ -366,6 +369,11 @@ where
             tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
+        }
+
+        // apply the arbitrary modifications
+        for (key, value) in upgrade_config.global_state_update() {
+            tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
         let effects = tracking_copy.borrow().effect();
@@ -861,12 +869,10 @@ where
 
             let transfer_result = match actual_result {
                 Some(Ok(())) => Ok(()),
-                Some(Err(mint_error)) => {
-                    match system_contract_errors::mint::Error::try_from(mint_error) {
-                        Ok(mint_error) => Err(ApiError::from(mint_error)),
-                        Err(_) => Err(ApiError::Transfer),
-                    }
-                }
+                Some(Err(mint_error)) => match mint::Error::try_from(mint_error) {
+                    Ok(mint_error) => Err(ApiError::from(mint_error)),
+                    Err(_) => Err(ApiError::Transfer),
+                },
                 None => Err(ApiError::Transfer),
             };
 
@@ -1947,6 +1953,14 @@ where
                     args.insert(
                         ARG_ERA_END_TIMESTAMP_MILLIS,
                         step_request.era_end_timestamp_millis,
+                    )?;
+                    args.insert(
+                        ARG_EVICTED_VALIDATORS,
+                        step_request
+                            .evict_items
+                            .iter()
+                            .map(|item| item.validator_id)
+                            .collect::<Vec<PublicKey>>(),
                     )?;
                     Ok(())
                 });

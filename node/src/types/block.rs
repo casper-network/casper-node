@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(test)]
-use casper_types::auction::BLOCK_REWARD;
+use casper_types::system::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     PublicKey, SecretKey, Signature, U512,
@@ -321,6 +321,7 @@ impl FromBytes for EraEnd {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
         let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
         let (inactive_validators, remainder) = Vec::<PublicKey>::from_bytes(remainder)?;
+
         let era_end = EraEnd {
             equivocators,
             rewards,
@@ -393,12 +394,6 @@ impl FinalizedBlock {
         self.height
     }
 
-    /// Returns true if block is Genesis' child.
-    /// Genesis child block is from era 0 and height 0.
-    pub(crate) fn is_genesis_child(&self) -> bool {
-        self.era_id() == EraId(0) && self.height() == 0
-    }
-
     pub(crate) fn proposer(&self) -> PublicKey {
         self.proposer
     }
@@ -406,6 +401,21 @@ impl FinalizedBlock {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        let era = rng.gen_range(0, 5);
+        let height = era * 10 + rng.gen_range(0, 10);
+        let is_switch = rng.gen_bool(0.1);
+
+        FinalizedBlock::random_with_specifics(rng, EraId(era), height, is_switch)
+    }
+
+    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
+    #[cfg(test)]
+    pub fn random_with_specifics(
+        rng: &mut TestRng,
+        era_id: EraId,
+        height: u64,
+        is_switch: bool,
+    ) -> Self {
         let deploy_count = rng.gen_range(0, 11);
         let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(deploy_count)
@@ -415,7 +425,7 @@ impl FinalizedBlock {
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let era_end = if rng.gen_bool(0.1) {
+        let era_end = if is_switch {
             let equivocators_count = rng.gen_range(0, 5);
             let rewards_count = rng.gen_range(0, 5);
             let inactive_count = rng.gen_range(0, 5);
@@ -439,18 +449,10 @@ impl FinalizedBlock {
         } else {
             None
         };
-        let era = rng.gen_range(0, 5);
         let secret_key: SecretKey = SecretKey::ed25519(rng.gen());
         let public_key = PublicKey::from(&secret_key);
 
-        FinalizedBlock::new(
-            proto_block,
-            timestamp,
-            era_end,
-            EraId(era),
-            era * 10 + rng.gen_range(0, 10),
-            public_key,
-        )
+        FinalizedBlock::new(proto_block, timestamp, era_end, era_id, height, public_key)
     }
 }
 
@@ -637,7 +639,7 @@ impl BlockHeader {
     }
 
     /// Returns `true` if this block is the last one in the current era.
-    pub fn switch_block(&self) -> bool {
+    pub fn is_switch_block(&self) -> bool {
         self.era_end.is_some()
     }
 
@@ -974,9 +976,24 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        let era = rng.gen_range(0, 5);
+        let height = era * 10 + rng.gen_range(0, 10);
+        let is_switch = rng.gen_bool(0.1);
+
+        Block::random_with_specifics(rng, EraId(era), height, is_switch)
+    }
+
+    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
+    #[cfg(test)]
+    pub fn random_with_specifics(
+        rng: &mut TestRng,
+        era_id: EraId,
+        height: u64,
+        is_switch: bool,
+    ) -> Self {
         let parent_hash = BlockHash::new(Digest::random(rng));
         let state_root_hash = Digest::random(rng);
-        let finalized_block = FinalizedBlock::random(rng);
+        let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = Digest::random(rng);
 
         Block::new(

@@ -14,6 +14,7 @@ use futures::{future::BoxFuture, TryFutureExt};
 use http::Response;
 use hyper::Body;
 use schemars::JsonSchema;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use warp::{
@@ -84,6 +85,7 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> BoxedFilter<(Response<Body>,)> {
         let with_valid_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
@@ -91,8 +93,14 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
             .and(filters::params::<Self::RequestParams>())
             .and_then(
                 move |response_builder: Builder, params: Self::RequestParams| {
-                    Self::handle_request(effect_builder, response_builder, params)
-                        .map_err(reject::custom)
+                    let api_version_cloned = api_version.clone();
+                    Self::handle_request(
+                        effect_builder,
+                        response_builder,
+                        params,
+                        api_version_cloned,
+                    )
+                    .map_err(reject::custom)
                 },
             );
         let with_invalid_params = warp::path(RPC_API_PATH)
@@ -127,6 +135,7 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 
@@ -149,12 +158,14 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> BoxedFilter<(Response<Body>,)> {
         let with_no_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
-                Self::handle_request(effect_builder, response_builder).map_err(reject::custom)
+                Self::handle_request(effect_builder, response_builder, api_version.clone())
+                    .map_err(reject::custom)
             });
         let with_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
@@ -174,6 +185,7 @@ pub(super) trait RpcWithoutParamsExt: RpcWithoutParams {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 
@@ -205,15 +217,22 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
     /// Creates the warp filter for this particular RPC.
     fn create_filter<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> BoxedFilter<(Response<Body>,)> {
+        let api_version_cloned = api_version.clone();
         let with_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and(filters::params::<Self::OptionalRequestParams>())
             .and_then(
                 move |response_builder: Builder, params: Self::OptionalRequestParams| {
-                    Self::handle_request(effect_builder, response_builder, Some(params))
-                        .map_err(reject::custom)
+                    Self::handle_request(
+                        effect_builder,
+                        response_builder,
+                        Some(params),
+                        api_version.clone(),
+                    )
+                    .map_err(reject::custom)
                 },
             );
         let with_invalid_params = warp::path(RPC_API_PATH)
@@ -231,7 +250,13 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
-                Self::handle_request(effect_builder, response_builder, None).map_err(reject::custom)
+                Self::handle_request(
+                    effect_builder,
+                    response_builder,
+                    None,
+                    api_version_cloned.clone(),
+                )
+                .map_err(reject::custom)
             });
         with_params
             .or(without_params)
@@ -246,6 +271,7 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>>;
 }
 

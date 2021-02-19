@@ -13,7 +13,7 @@ use tracing::{debug, info};
 
 use super::{
     network_is_isolated, Config, Event as NetworkEvent, Network as NetworkComponent,
-    ENABLE_SMALL_NET_ENV_VAR,
+    ENABLE_LIBP2P_NET_ENV_VAR,
 };
 use crate::{
     components::{network::NetworkIdentity, Component},
@@ -69,14 +69,20 @@ impl Reactor for TestReactor {
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let chainspec = Chainspec::random(rng);
         let network_identity = NetworkIdentity::new();
-        let (network_component, effects) =
-            NetworkComponent::new(event_queue, config, network_identity, &chainspec, false)?;
+        let (network_component, effects) = NetworkComponent::new(
+            event_queue,
+            config,
+            registry,
+            network_identity,
+            &chainspec,
+            false,
+        )?;
 
         Ok((
             TestReactor { network_component },
@@ -117,6 +123,10 @@ impl Reactor for TestReactor {
                 Effects::new()
             }
         }
+    }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
     }
 }
 
@@ -182,8 +192,8 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 
@@ -248,8 +258,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 
@@ -293,8 +303,8 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 

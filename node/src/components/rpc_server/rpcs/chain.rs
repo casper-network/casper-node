@@ -20,11 +20,10 @@ use warp_json_rpc::Builder;
 use casper_types::{Key, Transfer};
 
 use super::{
-    docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams,
-    RpcWithOptionalParamsExt,
+    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
 };
 use crate::{
-    components::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
@@ -38,7 +37,7 @@ static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     block: Some(JsonBlock::doc_example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
@@ -47,7 +46,7 @@ static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     });
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
-        api_version: CLIENT_API_VERSION.clone(),
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
         block_hash: Some(Block::doc_example().id()),
         transfers: Some(vec![Transfer::default()]),
     });
@@ -57,14 +56,14 @@ static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     });
 static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
     Lazy::new(|| GetStateRootHashResult {
-        api_version: CLIENT_API_VERSION.clone(),
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
         state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     era_summary: Some(ERA_SUMMARY.clone()),
 });
 
@@ -123,6 +122,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
@@ -144,7 +144,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
 
             // Return the result.
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 block: Some(json_block),
             };
             Ok(response_builder.success(result)?)
@@ -215,6 +215,7 @@ impl RpcWithOptionalParamsExt for GetBlockTransfers {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
@@ -223,7 +224,7 @@ impl RpcWithOptionalParamsExt for GetBlockTransfers {
                 Ok(Some(block)) => *block.hash(),
                 Ok(None) => {
                     return Ok(response_builder.success(Self::ResponseResult::new(
-                        CLIENT_API_VERSION.clone(),
+                        api_version,
                         None,
                         None,
                     ))?)
@@ -242,8 +243,7 @@ impl RpcWithOptionalParamsExt for GetBlockTransfers {
                 .await;
 
             // Return the result.
-            let result =
-                Self::ResponseResult::new(CLIENT_API_VERSION.clone(), Some(block_hash), transfers);
+            let result = Self::ResponseResult::new(api_version, Some(block_hash), transfers);
             Ok(response_builder.success(result)?)
         }
         .boxed()
@@ -295,6 +295,7 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
@@ -306,7 +307,7 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
 
             // Return the result.
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 state_root_hash: maybe_block.map(|block| *block.state_root_hash()),
             };
             Ok(response_builder.success(result)?)
@@ -360,6 +361,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // TODO: decide if/how to handle era id
@@ -373,7 +375,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 Some(block) => block,
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
+                        api_version,
                         era_summary: None,
                     })?)
                 }
@@ -383,7 +385,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 Some(_) => block.header().era_id().0,
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
+                        api_version,
                         era_summary: None,
                     })?)
                 }
@@ -416,7 +418,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
             let block_hash = block.hash().to_owned();
 
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 era_summary: Some(EraSummary {
                     block_hash,
                     era_id,

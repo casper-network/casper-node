@@ -1,5 +1,6 @@
 [protocol]
 version = '1.0.0'
+hard_reset = false
 
 [protocol.activation_point]
 era_id = 1
@@ -31,6 +32,9 @@ max_block_size = 12
 block_max_deploy_count = 125
 block_max_transfer_count = 1000
 block_gas_limit = 13
+payment_args_max_length = 1024
+session_args_max_length = 1024
+native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 max_memory = 17
@@ -118,6 +122,7 @@ distribute = 10_000
 withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
+activate_bid = 10_000
 
 [system_costs.mint_costs]
 mint = 10_000

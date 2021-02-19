@@ -3,6 +3,7 @@
 mod block;
 pub mod chainspec;
 mod deploy;
+mod exit_code;
 mod item;
 pub mod json_compatibility;
 mod node_config;
@@ -26,11 +27,12 @@ pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
     Error as DeployError,
 };
+pub use exit_code::ExitCode;
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
-pub use status_feed::{GetStatusResult, StatusFeed};
+pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.

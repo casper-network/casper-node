@@ -16,13 +16,23 @@ use casper_types::PublicKey;
 
 use crate::{
     components::{
-        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::EraId,
-        rpc_server::rpcs::docs::DocExample,
+        rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
     crypto::hash::Digest,
-    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
+    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
+
+static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
+    let next_upgrade =
+        NextUpgrade::new(ActivationPoint { era_id: EraId(42) }, Version::new(2, 0, 1));
+    ChainspecInfo {
+        name: String::from("casper-example"),
+        starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),
+        next_upgrade: Some(next_upgrade),
+    }
+});
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
@@ -35,8 +45,40 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         chainspec_info: ChainspecInfo::doc_example().clone(),
         version: crate::VERSION_STRING.as_str(),
     };
-    GetStatusResult::from(status_feed)
+    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION.clone())
 });
+
+/// Summary information from the chainspec.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChainspecInfo {
+    /// Name of the network.
+    name: String,
+    /// The state root hash with which this session is starting.  It will be the result of running
+    /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
+    /// hash specified in the highest block on startup.
+    starting_state_root_hash: Digest,
+    next_upgrade: Option<NextUpgrade>,
+}
+
+impl DocExample for ChainspecInfo {
+    fn doc_example() -> &'static Self {
+        &*CHAINSPEC_INFO
+    }
+}
+
+impl ChainspecInfo {
+    pub(crate) fn new(
+        chainspec_network_name: String,
+        starting_state_root_hash: Digest,
+        next_upgrade: Option<NextUpgrade>,
+    ) -> Self {
+        ChainspecInfo {
+            name: chainspec_network_name,
+            starting_state_root_hash,
+            next_upgrade,
+        }
+    }
+}
 
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
@@ -101,8 +143,8 @@ pub struct GetStatusResult {
     pub api_version: Version,
     /// The chainspec name.
     pub chainspec_name: String,
-    /// The genesis root hash.
-    pub genesis_root_hash: String,
+    /// The state root hash used at the start of the current session.
+    pub starting_state_root_hash: String,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
@@ -114,39 +156,30 @@ pub struct GetStatusResult {
 }
 
 impl GetStatusResult {
-    /// Set api version.
-    pub fn set_api_version(&mut self, version: Version) {
-        self.api_version = version;
+    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: Version) -> Self {
+        let chainspec_name = status_feed.chainspec_info.name;
+        let starting_state_root_hash = status_feed
+            .chainspec_info
+            .starting_state_root_hash
+            .to_string();
+        let peers = PeersMap::from(status_feed.peers);
+        let last_added_block_info = status_feed.last_added_block.map(Into::into);
+        let next_upgrade = status_feed.chainspec_info.next_upgrade;
+        let build_version = crate::VERSION_STRING.clone();
+        GetStatusResult {
+            api_version,
+            chainspec_name,
+            starting_state_root_hash,
+            peers,
+            last_added_block_info,
+            next_upgrade,
+            build_version,
+        }
     }
 }
 
 impl DocExample for GetStatusResult {
     fn doc_example() -> &'static Self {
         &*GET_STATUS_RESULT
-    }
-}
-
-impl From<StatusFeed<NodeId>> for GetStatusResult {
-    fn from(status_feed: StatusFeed<NodeId>) -> Self {
-        let chainspec_name = status_feed.chainspec_info.name();
-        let genesis_root_hash = status_feed
-            .chainspec_info
-            .root_hash()
-            .unwrap_or_default()
-            .to_string();
-        let api_version = Version::from((0, 0, 0));
-        let peers = PeersMap::from(status_feed.peers);
-        let last_added_block_info = status_feed.last_added_block.map(Into::into);
-        let next_upgrade = status_feed.chainspec_info.next_upgrade();
-        let build_version = crate::VERSION_STRING.clone();
-        GetStatusResult {
-            api_version,
-            chainspec_name,
-            genesis_root_hash,
-            peers,
-            last_added_block_info,
-            next_upgrade,
-            build_version,
-        }
     }
 }

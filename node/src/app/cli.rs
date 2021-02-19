@@ -7,20 +7,22 @@ pub mod arglang;
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    process,
     str::FromStr,
 };
 
-use anyhow::{self, bail, Context};
+use anyhow::{self, Context};
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 
 use crate::config;
 use casper_node::{
     logging,
-    reactor::{initializer, joiner, validator, Runner},
+    reactor::{initializer, joiner, validator, ReactorExit, Runner},
     setup_signal_hooks,
+    types::ExitCode,
     utils::WithDir,
 };
 use prometheus::Registry;
@@ -144,7 +146,7 @@ impl Cli {
                 setup_signal_hooks();
 
                 let validator_config = Self::init(&config, config_ext)?;
-                info!(version = %env!("CARGO_PKG_VERSION"), "node starting up");
+                info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -170,15 +172,13 @@ impl Cli {
                 // .await?;
                 // initializer2_runner.run(&mut rng).await;
 
-                initializer_runner.run(&mut rng).await;
-
-                info!("finished initialization");
-
-                let initializer = initializer_runner.into_inner();
-                if !initializer.stopped_successfully() {
-                    bail!("failed to initialize successfully");
+                match initializer_runner.run(&mut rng).await {
+                    ReactorExit::ProcessShouldExit(ExitCode::Success) => return Ok(()),
+                    ReactorExit::ProcessShouldExit(exit_code) => process::exit(exit_code as i32),
+                    ReactorExit::ProcessShouldContinue => info!("finished initialization"),
                 }
 
+                let initializer = initializer_runner.into_inner();
                 let root = config
                     .parent()
                     .map(|path| path.to_owned())
@@ -189,15 +189,25 @@ impl Cli {
                     &registry,
                 )
                 .await?;
-                joiner_runner.run(&mut rng).await;
+                match joiner_runner.run(&mut rng).await {
+                    ReactorExit::ProcessShouldExit(ExitCode::Success) => return Ok(()),
+                    ReactorExit::ProcessShouldExit(exit_code) => process::exit(exit_code as i32),
+                    ReactorExit::ProcessShouldContinue => info!("finished joining"),
+                }
 
-                info!("finished joining");
-
-                let config = joiner_runner.into_inner().into_validator_config().await;
-
+                let config = joiner_runner.into_inner().into_validator_config().await?;
                 let mut validator_runner =
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
-                validator_runner.run(&mut rng).await;
+
+                match validator_runner.run(&mut rng).await {
+                    ReactorExit::ProcessShouldExit(ExitCode::Success) => (),
+                    ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigInt)
+                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigQuit)
+                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigTerm) => {
+                        process::exit(exit_code as i32)
+                    }
+                    reactor_exit => error!("validator should not exit with {:?}", reactor_exit),
+                }
             }
             Cli::MigrateConfig {
                 old_config,

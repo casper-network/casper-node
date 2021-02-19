@@ -320,6 +320,12 @@ impl<C: Context> State<C> {
             .cloned()
     }
 
+    /// Returns the timestamp of the last ping or unit received from the validator, or the start
+    /// timestamp if we haven't received anything yet.
+    pub(crate) fn last_seen(&self, idx: ValidatorIndex) -> Timestamp {
+        self.pings[idx]
+    }
+
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
     pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
         self.panorama[idx] = Observation::Faulty;
@@ -509,15 +515,13 @@ impl<C: Context> State<C> {
     /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
     /// ping we have already received, we drop it without forwarding it to our peers.
     pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
-        let max_round_len = round_len(self.params.max_round_exp());
-        self.pings[creator] + max_round_len > timestamp
+        self.pings[creator] + self.params.max_round_length() > timestamp
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
     /// lengths old.
     pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
-        let max_round_len = round_len(self.params.max_round_exp());
-        self.pings[vidx] + max_round_len * PING_TIMEOUT >= now
+        self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
