@@ -944,7 +944,7 @@ impl Reactor {
             contract_runtime: self.contract_runtime,
             storage: self.storage,
             consensus: self.consensus,
-            latest_block: self.linear_chain.latest_block().clone(),
+            latest_block: self.linear_chain_sync.latest_block().cloned(),
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),

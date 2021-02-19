@@ -134,7 +134,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     /// Add new block to linear chain.
     fn add_block(&mut self, block: Block) {
         match &mut self.state {
-            State::None | State::Done => {}
+            State::None | State::Done(_) => {}
             State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block),
             State::SyncingDescendants { latest_block, .. } => **latest_block = block,
         };
@@ -142,7 +142,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        matches!(self.state, State::None | State::Done)
+        matches!(self.state, State::None | State::Done(_))
     }
 
     /// Returns `true` if we should stop for upgrade.
@@ -164,7 +164,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         self.state.block_downloaded(block);
         self.add_block(block.clone());
         match &self.state {
-            State::None | State::Done => panic!("Downloaded block when in {} state.", self.state),
+            State::None | State::Done(_) => {
+                panic!("Downloaded block when in {} state.", self.state)
+            }
             State::SyncingTrustedHash {
                 highest_block_header,
                 ..
@@ -192,7 +194,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     fn mark_done(&mut self) {
-        self.state = State::Done;
+        let latest_block = self.latest_block().cloned().map(Box::new);
+        self.state = State::Done(latest_block);
     }
 
     /// Handles an event indicating that a linear chain block has been executed and handled by
@@ -223,7 +226,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let block_height = block.height();
         let mut curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
-            State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
+            State::None | State::Done(_) => {
+                panic!("Block handled when in {:?} state.", &curr_state)
+            }
             // Keep syncing from genesis if we haven't reached the trusted block hash
             State::SyncingTrustedHash {
                 highest_block_seen,
@@ -301,7 +306,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let peer = self.peers.random_unsafe();
 
         let next_block = match &mut self.state {
-            State::None | State::Done => {
+            State::None | State::Done(_) => {
                 panic!("Tried fetching next block when in {:?} state.", self.state)
             }
             State::SyncingTrustedHash {
@@ -355,7 +360,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 self.metrics.reset_start_time();
                 fetch_block_at_height(effect_builder, peer, next_height)
             }
-            State::Done | State::None => {
+            State::Done(_) | State::None => {
                 panic!("Tried fetching block when in {:?} state", self.state)
             }
         }
@@ -381,11 +386,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             .event(|_| Event::Shutdown(true))
     }
 
-    fn latest_block(&self) -> Option<&Block> {
+    pub(crate) fn latest_block(&self) -> Option<&Block> {
         match &self.state {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
-            State::Done | State::None => None,
+            State::Done(latest_block) => latest_block.as_deref(),
+            State::None => None,
         }
     }
 
@@ -419,7 +425,7 @@ where
                         trace!("received `Start` event when in {} state.", self.state);
                         Effects::new()
                     }
-                    State::Done => {
+                    State::Done(_) => {
                         // Illegal states for syncing start.
                         error!("should not have received `Start` event when in `Done` state.",);
                         Effects::new()
