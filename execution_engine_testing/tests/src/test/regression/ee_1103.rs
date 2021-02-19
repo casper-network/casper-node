@@ -174,7 +174,7 @@ fn validator_scores_should_reflect_delegates() {
     // Check weights after auction_delay eras
     {
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
@@ -209,7 +209,7 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
@@ -259,7 +259,7 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
@@ -310,7 +310,7 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
         era = builder.get_era();
