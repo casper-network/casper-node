@@ -230,7 +230,7 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                let era_end = match state.finalized_block.era_report() {
+                let era_end = match state.finalized_block.era_end() {
                     Some(era_end) => era_end,
                     // Not at a switch block, so we don't need to have next_era_validators when
                     // constructing the next block

@@ -32,7 +32,7 @@ use crate::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
         consensus_protocol::{
-            BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
+            BlockContext, ConsensusProtocol, EraEnd, FinalizedBlock as CpFinalizedBlock,
             ProtocolOutcome,
         },
         metrics::ConsensusMetrics,
@@ -654,18 +654,14 @@ where
                 .and_then(|switch_id| switch_blocks.get(&switch_id));
 
             let newly_slashed = maybe_switch_block
-                .and_then(|bhdr| bhdr.era_report())
+                .and_then(|bhdr| bhdr.era_end())
                 .map(|era_end| era_end.equivocators.clone())
                 .unwrap_or_default();
 
             let slashed = self
                 .era_supervisor
                 .iter_past_other(era_id, self.era_supervisor.bonded_eras)
-                .filter_map(|old_id| {
-                    switch_blocks
-                        .get(&old_id)
-                        .and_then(|bhdr| bhdr.era_report())
-                })
+                .filter_map(|old_id| switch_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
 
@@ -728,8 +724,8 @@ where
         block: Block,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
-        let (era_report, next_era_validators_weights) = match (
-            block.header().era_report(),
+        let (era_end, next_era_validators_weights) = match (
+            block.header().era_end(),
             block.header().next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
@@ -743,7 +739,7 @@ where
                 )
             }
         };
-        let newly_slashed = era_report.equivocators.clone();
+        let newly_slashed = era_end.equivocators.clone();
         let era_id = block.header().era_id().successor();
         info!(era = era_id.0, "era created");
         let seed =
@@ -911,7 +907,7 @@ where
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets slashed.
-                let era_end = terminal_block_data.map(|tbd| EraReport {
+                let era_end = terminal_block_data.map(|tbd| EraEnd {
                     rewards: tbd.rewards,
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
@@ -933,7 +929,7 @@ where
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
                 self.era_supervisor.next_block_height = finalized_block.height() + 1;
-                if finalized_block.era_report().is_some() {
+                if finalized_block.era_end().is_some() {
                     // This was the era's last block. Schedule deactivating this era.
                     let delay = Timestamp::now().saturating_diff(timestamp).into();
                     let faulty_num = era.consensus.validators_with_evidence().len();
