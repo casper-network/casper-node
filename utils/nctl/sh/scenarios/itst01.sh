@@ -94,12 +94,12 @@ function do_await_full_synchronization() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
-    # Wait 1 era and then test chain height.
+    # Wait 1 era and then check the LFB.
     # This way we can verify that the node is up-to-date with the protocol state
-    # after transitioning to an active validator and the chain progressed.
+    # after transitioning to an active validator.
     do_await_era_change
     log_step "verifying full synchronization of node=${NODE_ID}…"
-    while [ "$(get_chain_height "$NODE_ID")" != "$(get_chain_height "$COMPARE_NODE_ID")" ]; do
+    while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash "$COMPARE_NODE_ID")" ]; do
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to keep up with the protocol state"
             exit 1
