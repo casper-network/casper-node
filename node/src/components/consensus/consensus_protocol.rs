@@ -205,5 +205,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// TODO: Remove this once the Joiner no longer has a consensus component.
     fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>>;
 
+    // TODO: Make this lees Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }
