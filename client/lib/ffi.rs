@@ -52,7 +52,6 @@ pub enum casper_error_t {
     CASPER_FFI_SETUP_NOT_CALLED = -21,
     CASPER_FFI_PTR_NULL_BUT_REQUIRED = -22,
     CASPER_CONFLICTING_ARGUMENTS = -23,
-    CASPER_FAILED_FILE_CREATION = -24,
 }
 
 trait AsFFIError {
@@ -85,7 +84,6 @@ impl AsFFIError for Error {
             Error::FFISetupNotCalled => casper_error_t::CASPER_FFI_SETUP_NOT_CALLED,
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
             Error::ConflictingArguments { .. } => casper_error_t::CASPER_CONFLICTING_ARGUMENTS,
-            Error::FailedToCreateFile(_) => casper_error_t::CASPER_FAILED_FILE_CREATION,
         }
     }
 }

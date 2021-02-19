@@ -58,13 +58,15 @@ mod key {
         }
 
         // Try to read as a hex-encoded PublicKey file next.
-        if let Ok(hex_public_key) =
-            fs::read_to_string(value).map(|contents| match PublicKey::from_hex(&contents) {
-                Ok(key) => Ok(key.to_string()),
-                Err(_) => Err(Error::FailedToParseKey),
-            })
-        {
-            return hex_public_key;
+        if let Ok(hex_public_key) = fs::read_to_string(value) {
+            let _ = PublicKey::from_hex(&hex_public_key).map_err(|error| {
+                eprintln!(
+                    "Can't parse the contents of {} as a public key: {}",
+                    value, error
+                );
+                Error::FailedToParseKey
+            })?;
+            return Ok(hex_public_key);
         }
 
         // Just return the value.
@@ -121,10 +123,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(matches);
-        let key = match key::get(matches) {
-            Ok(key) => key,
-            Err(error) => return Err(error),
-        };
+        let key = key::get(matches)?;
         let path = path::get(matches);
 
         casper_client::get_item(

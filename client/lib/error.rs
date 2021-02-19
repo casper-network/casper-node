@@ -32,11 +32,11 @@ pub enum Error {
     FailedToParseInt(&'static str, ParseIntError),
 
     /// Failed to parse a `TimeDiff` from a formatted string.
-    #[error("Failed to parse '{0}' as a time diff: {1:?}")]
+    #[error("Failed to parse '{0}' as a time diff: {1}")]
     FailedToParseTimeDiff(&'static str, DurationError),
 
     /// Failed to parse a `Timestamp` from a formatted string.
-    #[error("Failed to parse '{0}' as a timestamp: {1:?}")]
+    #[error("Failed to parse '{0}' as a timestamp: {1}")]
     FailedToParseTimestamp(&'static str, TimestampError),
 
     /// Failed to parse a `U128`, `U256` or `U512` from a string.
@@ -48,15 +48,11 @@ pub enum Error {
     FailedToGetResponse(reqwest::Error),
 
     /// Failed to parse the response from the node.
-    #[error("Failed to parse as json-rpc response: {0}")]
+    #[error("Failed to parse as JSON-RPC response: {0}")]
     FailedToParseResponse(reqwest::Error),
 
-    /// Failed to create a new file
-    #[error("failed to create file: {0:?}")]
-    FailedToCreateFile(PathBuf),
-
     /// Failed to create new key file because it already exists.
-    #[error("file already exists: {0:?}")]
+    #[error("File at {} already exists", .0.display())]
     FileAlreadyExists(PathBuf),
 
     /// Unsupported keygen algorithm.
