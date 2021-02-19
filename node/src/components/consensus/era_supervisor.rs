@@ -5,6 +5,8 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+mod era;
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
@@ -31,6 +33,7 @@ use crate::{
     components::consensus::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
+        config::ProtocolConfig,
         consensus_protocol::{
             BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
             ProtocolOutcome,
@@ -43,17 +46,14 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
-        ProtoBlock, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
+        FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
 };
 
 pub use self::era::{Era, EraId};
-use crate::{components::consensus::config::ProtocolConfig, types::Block};
-
-mod era;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -1061,6 +1061,19 @@ where
             .get(&era_id)
             .map_or(false, |cp| cp.is_bonded_validator(&vid));
         responder.respond(is_bonded).ignore()
+    }
+
+    pub(super) fn status(
+        &self,
+        responder: Responder<(PublicKey, Option<TimeDiff>)>,
+    ) -> Effects<Event<I>> {
+        let public_key = self.era_supervisor.public_signing_key;
+        let round_length = self
+            .era_supervisor
+            .active_eras
+            .get(&self.era_supervisor.current_era)
+            .and_then(|era| era.consensus.next_round_length());
+        responder.respond((public_key, round_length)).ignore()
     }
 
     fn disconnect(&self, sender: I) -> Effects<Event<I>> {
