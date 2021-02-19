@@ -106,9 +106,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateCompletion {
             process::exit(1);
         }
 
-        let mut output_file = File::create(&output_path).unwrap_or_else(|error| {
-            panic!("failed to create {}: {}", output_path.display(), error)
-        });
+        let mut output_file = match File::create(&output_path) {
+            Ok(file) => file,
+            Err(_) => return Err(Error::FailedToCreateFile(output_path)),
+        };
         super::cli().gen_completions_to(crate_name!(), shell, &mut output_file);
 
         Ok(Success::Output(format!(
