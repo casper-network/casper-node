@@ -14,9 +14,8 @@ use casper_execution_engine::{
     shared::motes::Motes,
 };
 use casper_types::{
-    runtime_args,
-    system::auction::{self, BLOCK_REWARD, INITIAL_ERA_ID},
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    auction::{self, BLOCK_REWARD, INITIAL_ERA_ID},
+    runtime_args, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

@@ -1,7 +1,8 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
+    mint::{Mint, RuntimeProvider, StorageProvider, SystemProvider},
+    system_contract_errors::mint::Error,
     CLTyped, CLValue, Key, URef, U512,
 };
 

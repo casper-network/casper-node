@@ -8,8 +8,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
-    account::AccountHash, runtime_args, system::auction, ApiError, PublicKey, RuntimeArgs,
-    SecretKey, U512,
+    account::AccountHash, runtime_args, system_contract_errors::auction, ApiError, PublicKey,
+    RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

@@ -19,22 +19,19 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
+    auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
         DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
-    system::{
-        self,
-        auction::{self, Auction, EraId, EraInfo},
-        mint::{self, Mint},
-        proof_of_stake::{self, ProofOfStake},
-        standard_payment::{self, StandardPayment},
-    },
-    AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult, TransferredTo, URef,
-    U128, U256, U512,
+    mint::{self, Mint},
+    proof_of_stake::{self, ProofOfStake},
+    standard_payment::{self, StandardPayment},
+    system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
+    TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -1275,16 +1272,18 @@ where
         // GasLimit properly to the user. Once support for wasm system contract will be dropped this
         // won't be necessary anymore.
         match api_error {
-            ApiError::Mint(mint_error) if mint_error == mint::Error::GasLimit as u8 => {
+            ApiError::Mint(mint_error)
+                if mint_error == system_contract_errors::mint::Error::GasLimit as u8 =>
+            {
                 Error::GasLimit
             }
             ApiError::AuctionError(auction_error)
-                if auction_error == auction::Error::GasLimit as u8 =>
+                if auction_error == system_contract_errors::auction::Error::GasLimit as u8 =>
             {
                 Error::GasLimit
             }
             ApiError::ProofOfStake(pos_error)
-                if pos_error == proof_of_stake::Error::GasLimit as u8 =>
+                if pos_error == system_contract_errors::pos::Error::GasLimit as u8 =>
             {
                 Error::GasLimit
             }
@@ -1362,8 +1361,9 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.mint)?;
 
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
-                let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
-                if let Err(mint::Error::GasLimit) = result {
+                let result: Result<URef, system_contract_errors::mint::Error> =
+                    mint_runtime.mint(amount);
+                if let Err(system_contract_errors::mint::Error::GasLimit) = result {
                     return Err(execution::Error::GasLimit);
                 }
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1372,7 +1372,8 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.reduce_total_supply)?;
 
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
-                let result: Result<(), mint::Error> = mint_runtime.reduce_total_supply(amount);
+                let result: Result<(), system_contract_errors::mint::Error> =
+                    mint_runtime.reduce_total_supply(amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             // Type: `fn create() -> URef`
@@ -1402,7 +1403,7 @@ where
                 let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
-                let result: Result<(), mint::Error> =
+                let result: Result<(), system_contract_errors::mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -2758,8 +2759,8 @@ where
         let call_result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args);
         self.set_gas_counter(gas_counter);
 
-        let result: Result<URef, mint::Error> = call_result?.into_t()?;
-        Ok(result.map_err(system::Error::from)?)
+        let result: Result<URef, system_contract_errors::mint::Error> = call_result?.into_t()?;
+        Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
     /// Calls the `reduce_total_supply` method on the mint contract at the given mint
@@ -2782,8 +2783,8 @@ where
         );
         self.set_gas_counter(gas_counter);
 
-        let result: Result<(), mint::Error> = call_result?.into_t()?;
-        Ok(result.map_err(system::Error::from)?)
+        let result: Result<(), system_contract_errors::mint::Error> = call_result?.into_t()?;
+        Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
     /// Calls the "create" method on the mint contract at the given mint
@@ -2812,7 +2813,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<Result<(), mint::Error>, Error> {
+    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
         let args_values = {
             let mut runtime_args = RuntimeArgs::new();
             runtime_args.insert(mint::ARG_TO, to)?;
@@ -2847,13 +2848,17 @@ where
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount > self.get_balance(source)?.unwrap_or_default() {
-            return Ok(Err(mint::Error::InsufficientFunds.into()));
+            return Ok(Err(
+                system_contract_errors::mint::Error::InsufficientFunds.into()
+            ));
         }
 
         let target_purse = self.mint_create(mint_contract_hash)?;
 
         if source == target_purse {
-            return Ok(Err(mint::Error::EqualSourceAndTarget.into()));
+            return Ok(Err(
+                system_contract_errors::mint::Error::EqualSourceAndTarget.into(),
+            ));
         }
 
         match self.mint_transfer(
@@ -2951,7 +2956,7 @@ where
         amount_size: u32,
         id_ptr: u32,
         id_size: u32,
-    ) -> Result<Result<(), mint::Error>, Error> {
+    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?

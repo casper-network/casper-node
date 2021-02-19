@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, system::mint::Error, Key};
+use crate::{account::AccountHash, system_contract_errors::mint::Error, Key};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {

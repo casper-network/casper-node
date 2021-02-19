@@ -10,13 +10,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::{
-        auction::ARG_AMOUNT,
-        mint::{self, ARG_TARGET},
-    },
-    ApiError, CLValue, RuntimeArgs, U512,
+    account::AccountHash, auction::ARG_AMOUNT, mint::ARG_TARGET, runtime_args,
+    system_contract_errors::mint, ApiError, CLValue, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

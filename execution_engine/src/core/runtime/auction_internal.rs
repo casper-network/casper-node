@@ -1,11 +1,12 @@
 use casper_types::{
     account,
     account::AccountHash,
-    bytesrepr::{FromBytes, ToBytes},
-    system::auction::{
-        AccountProvider, Auction, EraInfo, Error, MintProvider, RuntimeProvider, StorageProvider,
+    auction::{
+        AccountProvider, Auction, EraInfo, MintProvider, RuntimeProvider, StorageProvider,
         SystemProvider,
     },
+    bytesrepr::{FromBytes, ToBytes},
+    system_contract_errors::auction::Error,
     CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 

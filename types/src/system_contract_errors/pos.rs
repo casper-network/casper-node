@@ -140,3 +140,6 @@ impl ToBytes for Error {
         U8_SERIALIZED_LENGTH
     }
 }
+
+/// An alias for `Result<T, pos::Error>`.
+pub type Result<T> = result::Result<T, Error>;

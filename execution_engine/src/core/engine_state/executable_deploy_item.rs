@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    system::mint::ARG_AMOUNT,
+    mint::ARG_AMOUNT,
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
     EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
 };

@@ -1,8 +1,6 @@
 use casper_types::{
-    system::{
-        mint, proof_of_stake,
-        standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
-    },
+    standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
+    system_contract_errors::{mint, pos},
     ApiError, Key, RuntimeArgs, URef, U512,
 };
 
@@ -78,8 +76,7 @@ where
             )
             .map_err(|exec_error| {
                 let maybe_api_error: Option<ApiError> = exec_error.into();
-                maybe_api_error
-                    .unwrap_or_else(|| proof_of_stake::Error::PaymentPurseNotFound.into())
+                maybe_api_error.unwrap_or_else(|| pos::Error::PaymentPurseNotFound.into())
             })?;
 
         let payment_purse_ref: URef = cl_value.into_t()?;

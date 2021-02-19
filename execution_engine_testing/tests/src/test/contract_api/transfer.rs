@@ -10,10 +10,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::{mint, proof_of_stake},
-    ApiError, RuntimeArgs, U512,
+    account::AccountHash, proof_of_stake, runtime_args, system_contract_errors::mint, ApiError,
+    RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

@@ -4,9 +4,9 @@ use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
 use casper_types::{
+    auction::EraInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    system::auction::EraInfo,
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
