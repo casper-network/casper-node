@@ -94,7 +94,7 @@ function do_await_full_synchronization() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
-    # Wait 2 more era and then test chainheight.
+    # Wait 1 era and then test chain height.
     # This way we can verify that the node is up-to-date with the protocol state
     # after transitioning to an active validator and the chain progressed.
     do_await_era_change
