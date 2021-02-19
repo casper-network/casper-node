@@ -8,6 +8,8 @@
 //! for `T` and `send_datasized` is used instead of send. Internally it stores the size of each item
 //! instead of recalculating on `recv` to avoid underflows due to interior mutability.
 
+#![allow(dead_code)]
+
 use std::{
     mem::size_of,
     sync::{

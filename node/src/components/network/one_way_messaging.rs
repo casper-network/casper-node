@@ -6,6 +6,7 @@
 
 use std::{fmt::Debug, future::Future, io, iter, pin::Pin};
 
+use datasize::DataSize;
 use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
 use futures_io::{AsyncRead, AsyncWrite};
 use libp2p::{
@@ -41,8 +42,10 @@ pub(super) fn new_behavior(
     )
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(super) struct Outgoing {
+    // Datasize note: `PeerId` can be skipped, as in our case it should be 100% stack allocated.
+    #[data_size(skip)]
     pub destination: PeerId,
     pub message: Vec<u8>,
 }

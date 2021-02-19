@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod counting_channel;
+pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
