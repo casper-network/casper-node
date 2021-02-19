@@ -909,8 +909,15 @@ where
                 // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = terminal_block_data.map(|tbd| EraReport {
                     rewards: tbd.rewards,
-                    equivocators: era.accusations(),
-                    inactive_validators: tbd.inactive_validators,
+                    // TODO: In the first 90 days we don't slash, and we just report all
+                    // equivocators as "inactive" instead. Change this back 90 days after launch,
+                    // and put era.accusations() into equivocators instead of inactive_validators.
+                    equivocators: vec![],
+                    inactive_validators: tbd
+                        .inactive_validators
+                        .into_iter()
+                        .chain(era.accusations())
+                        .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.into(),
