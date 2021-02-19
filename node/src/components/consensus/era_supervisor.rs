@@ -752,6 +752,8 @@ where
         info!(?self.era_supervisor, "current eras");
 
         self.era_supervisor.is_initialized = true;
+        self.era_supervisor.next_block_height =
+            self.era_supervisor.active_eras[&current_era].start_height;
 
         effects
     }
