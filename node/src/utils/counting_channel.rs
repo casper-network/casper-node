@@ -9,21 +9,25 @@ use std::sync::{
     Arc,
 };
 
+use datasize::DataSize;
 use tokio::sync::mpsc::{error::SendError, unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 /// Create an unbounded tokio channel, wrapped in counting sender/receiver.
 pub fn counting_unbounded_channel<T>() -> (CountingSender<T>, CountingReceiver<T>) {
     let (tx, rx) = unbounded_channel();
     let counter = Arc::new(AtomicUsize::new(0));
+    let memory_used = Arc::new(AtomicUsize::new(0));
 
     (
         CountingSender {
             sender: tx,
             counter: counter.clone(),
+            memory_used: memory_used.clone(),
         },
         CountingReceiver {
             receiver: rx,
             counter,
+            memory_used,
         },
     )
 }
@@ -33,6 +37,7 @@ pub fn counting_unbounded_channel<T>() -> (CountingSender<T>, CountingReceiver<T
 pub struct CountingSender<T> {
     sender: UnboundedSender<T>,
     counter: Arc<AtomicUsize>,
+    memory_used: Arc<AtomicUsize>,
 }
 
 impl<T> CountingSender<T> {
@@ -51,9 +56,37 @@ impl<T> CountingSender<T> {
     }
 }
 
+impl<T> CountingSender<T>
+where
+    T: DataSize,
+{
+    /// Sends a message down the channel, recording heap memory usage and count.
+    #[inline]
+    pub fn send_datasized(&self, message: T) -> Result<usize, SendError<T>> {
+        let message_size = message.estimate_heap_size();
+        self.send(message).map(|sz| {
+            self.memory_used.fetch_add(message_size, Ordering::SeqCst);
+            sz
+        })
+    }
+}
+
+impl<T> DataSize for CountingSender<T>
+where
+    T: DataSize,
+{
+    const IS_DYNAMIC: bool = T::IS_DYNAMIC;
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        self.memory_used.load(Ordering::SeqCst)
+    }
+}
+
 pub struct CountingReceiver<T> {
     receiver: UnboundedReceiver<T>,
     counter: Arc<AtomicUsize>,
+    memory_used: Arc<AtomicUsize>,
 }
 
 impl<T> CountingReceiver<T> {
@@ -73,30 +106,74 @@ impl<T> CountingReceiver<T> {
     }
 }
 
-#[tokio::test]
-async fn test_counting_channel() {
-    let (tx, mut rc) = counting_unbounded_channel::<u32>();
+impl<T> CountingReceiver<T>
+where
+    T: DataSize,
+{
+    /// Receives a message from the channel, decreasing heap memory usage and count.
+    #[inline]
+    pub async fn recv_datasized(&mut self) -> Option<T> {
+        self.recv().await.map(|item| {
+            self.memory_used
+                .fetch_sub(item.estimate_heap_size(), Ordering::SeqCst);
+            item
+        })
+    }
+}
 
-    assert_eq!(tx.len(), 0);
-    assert_eq!(rc.len(), 0);
+impl<T> DataSize for CountingReceiver<T>
+where
+    T: DataSize,
+{
+    const IS_DYNAMIC: bool = T::IS_DYNAMIC;
+    const STATIC_HEAP_SIZE: usize = 0;
 
-    tx.send(99).unwrap();
-    tx.send(100).unwrap();
-    tx.send(101).unwrap();
-    tx.send(102).unwrap();
-    tx.send(103).unwrap();
+    fn estimate_heap_size(&self) -> usize {
+        self.memory_used.load(Ordering::SeqCst)
+    }
+}
 
-    assert_eq!(tx.len(), 5);
-    assert_eq!(rc.len(), 5);
+mod tests {
+    use datasize::DataSize;
 
-    rc.recv().await.unwrap();
-    rc.recv().await.unwrap();
+    use super::counting_unbounded_channel;
 
-    assert_eq!(tx.len(), 3);
-    assert_eq!(rc.len(), 3);
+    #[tokio::test]
+    async fn test_counting_channel() {
+        let (tx, mut rc) = counting_unbounded_channel::<u32>();
 
-    tx.send(104).unwrap();
+        assert_eq!(tx.len(), 0);
+        assert_eq!(rc.len(), 0);
+        assert_eq!(tx.estimate_heap_size(), 0);
+        assert_eq!(rc.estimate_heap_size(), 0);
 
-    assert_eq!(tx.len(), 4);
-    assert_eq!(rc.len(), 4);
+        tx.send(99).unwrap();
+        tx.send(100).unwrap();
+        tx.send(101).unwrap();
+        tx.send(102).unwrap();
+        tx.send(103).unwrap();
+
+        assert_eq!(tx.len(), 5);
+        assert_eq!(rc.len(), 5);
+
+        assert_eq!(tx.estimate_heap_size(), 20);
+        assert_eq!(rc.estimate_heap_size(), 20);
+
+        rc.recv().await.unwrap();
+        rc.recv().await.unwrap();
+
+        assert_eq!(tx.len(), 3);
+        assert_eq!(rc.len(), 3);
+
+        assert_eq!(tx.estimate_heap_size(), 12);
+        assert_eq!(rc.estimate_heap_size(), 12);
+
+        tx.send(104).unwrap();
+
+        assert_eq!(tx.len(), 4);
+        assert_eq!(rc.len(), 4);
+
+        assert_eq!(tx.estimate_heap_size(), 16);
+        assert_eq!(rc.estimate_heap_size(), 16);
+    }
 }
