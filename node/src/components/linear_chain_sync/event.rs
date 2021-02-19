@@ -1,9 +1,16 @@
 use crate::types::{ActivationPoint, Block, BlockHash};
-use std::fmt::{Debug, Display};
+
+use casper_types::{PublicKey, U512};
+
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+};
 
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
+    GotInitialValidators(I, BTreeMap<PublicKey, U512>),
     GetBlockHashResult(BlockHash, BlockByHashResult<I>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
     GetDeploysResult(DeploysResult<I>),
@@ -42,6 +49,9 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Start(init_peer) => write!(f, "Start syncing from peer {}.", init_peer),
+            Event::GotInitialValidators(_, validators) => {
+                write!(f, "Got initial validators: {:?}", validators)
+            }
             Event::GetBlockHashResult(block_hash, r) => {
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }

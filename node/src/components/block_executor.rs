@@ -41,7 +41,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId,
+        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock,
+        NodeId,
     },
     NodeRng,
 };
@@ -83,7 +84,11 @@ type BlockHeight = u64;
 /// The Block executor component.
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
-    genesis_state_root_hash: Option<Digest>,
+    /// Height of the highest known block
+    highest_block_height: Option<u64>,
+    /// Summary of the highest known block
+    highest_block_summary: Option<ExecutedBlockSummary>,
+    initial_state_root_hash: Digest,
     protocol_version: ProtocolVersion,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
@@ -101,13 +106,21 @@ pub(crate) struct BlockExecutor {
 
 impl BlockExecutor {
     pub(crate) fn new(
-        genesis_state_root_hash: Option<Digest>,
+        initial_state_root_hash: Digest,
+        highest_block_header: Option<&BlockHeader>,
         protocol_version: Version,
         registry: Registry,
     ) -> Self {
         let metrics = BlockExecutorMetrics::new(registry).unwrap();
+        let highest_block_summary = highest_block_header.map(|hdr| ExecutedBlockSummary {
+            hash: hdr.hash(),
+            state_root_hash: initial_state_root_hash,
+            accumulated_seed: hdr.accumulated_seed(),
+        });
         BlockExecutor {
-            genesis_state_root_hash,
+            highest_block_height: highest_block_header.map(|hdr| hdr.height()),
+            highest_block_summary,
+            initial_state_root_hash,
             protocol_version: ProtocolVersion::from_parts(
                 protocol_version.major as u32,
                 protocol_version.minor as u32,
@@ -417,9 +430,18 @@ impl BlockExecutor {
         state_root_hash: Digest,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Block {
-        let (parent_summary_hash, parent_seed) = if finalized_block.is_genesis_child() {
+        let (parent_summary_hash, parent_seed) = if self.is_highest_block_child(&finalized_block) {
             // Genesis, no parent summary.
-            (BlockHash::new(Digest::default()), Digest::default())
+            (
+                self.highest_block_summary
+                    .as_ref()
+                    .map(|summary| summary.hash)
+                    .unwrap_or_else(|| BlockHash::new(Digest::default())),
+                self.highest_block_summary
+                    .as_ref()
+                    .map(|summary| summary.accumulated_seed)
+                    .unwrap_or_default(),
+            )
         } else {
             let parent_block_height = finalized_block.height() - 1;
             let summary = self
@@ -446,8 +468,8 @@ impl BlockExecutor {
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
-        if finalized_block.is_genesis_child() {
-            self.genesis_state_root_hash
+        if self.is_highest_block_child(finalized_block) {
+            Some(self.initial_state_root_hash)
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.
@@ -456,6 +478,14 @@ impl BlockExecutor {
                 .get(&parent_block_height)
                 .map(|summary| summary.state_root_hash)
         }
+    }
+
+    fn is_highest_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
+        finalized_block.height()
+            == self
+                .highest_block_height
+                .map(|height| height + 1)
+                .unwrap_or(0)
     }
 }
 

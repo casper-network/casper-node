@@ -32,7 +32,7 @@ use crate::{
         block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraId, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -474,9 +474,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
-        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
         let block_executor = BlockExecutor::new(
-            genesis_state_root_hash,
+            chainspec_loader.starting_state_root_hash(),
+            chainspec_loader.highest_block_header(),
             protocol_version.clone(),
             registry.clone(),
         );
@@ -499,6 +499,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
+            chainspec_loader.highest_block_header().cloned(),
             validator_weights.clone(),
             maybe_next_activation_point,
         )?;
@@ -508,7 +509,7 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
-            EraId(0),
+            chainspec_loader.starting_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
@@ -943,7 +944,7 @@ impl Reactor {
             contract_runtime: self.contract_runtime,
             storage: self.storage,
             consensus: self.consensus,
-            latest_block: self.linear_chain.latest_block().clone(),
+            latest_block: self.linear_chain_sync.latest_block().cloned(),
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Display};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Block, BlockHash};
+use crate::types::{Block, BlockHash, BlockHeader};
 use casper_types::{PublicKey, U512};
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
@@ -14,6 +14,8 @@ pub enum State {
     SyncingTrustedHash {
         /// Linear chain block to start sync from.
         trusted_hash: BlockHash,
+        /// The header of the highest block we have in storage (if any).
+        highest_block_header: Option<Box<BlockHeader>>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -39,14 +41,14 @@ pub enum State {
         validators_for_latest_block: BTreeMap<PublicKey, U512>,
     },
     /// Synchronizing done.
-    Done,
+    Done(Option<Box<Block>>),
 }
 
 impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             State::None => write!(f, "None"),
-            State::Done => write!(f, "Done"),
+            State::Done(_) => write!(f, "Done"),
             State::SyncingTrustedHash { trusted_hash, highest_block_seen, .. } => {
                 write!(f, "SyncingTrustedHash(trusted_hash={}, highest_block_seen={})", trusted_hash, highest_block_seen)
             },
@@ -69,10 +71,12 @@ impl Display for State {
 impl State {
     pub fn sync_trusted_hash(
         trusted_hash: BlockHash,
+        highest_block_header: Option<BlockHeader>,
         validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Self {
         State::SyncingTrustedHash {
             trusted_hash,
+            highest_block_header: highest_block_header.map(Box::new),
             highest_block_seen: 0,
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
@@ -95,7 +99,7 @@ impl State {
 
     pub fn block_downloaded(&mut self, block: &Block) {
         match self {
-            State::None | State::Done => {}
+            State::None | State::Done(_) => {}
             State::SyncingTrustedHash {
                 highest_block_seen, ..
             }
@@ -112,7 +116,7 @@ impl State {
 
     /// Returns whether in `Done` state.
     pub(crate) fn is_done(&self) -> bool {
-        matches!(self, State::Done)
+        matches!(self, State::Done(_))
     }
 
     /// Returns whether in `None` state.
