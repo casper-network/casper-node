@@ -11,9 +11,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    runtime_args,
-    system::auction::{ARG_DELEGATOR, ARG_VALIDATOR},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    auction::{ARG_DELEGATOR, ARG_VALIDATOR},
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -175,7 +174,7 @@ fn validator_scores_should_reflect_delegates() {
     // Check weights after auction_delay eras
     {
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
@@ -210,7 +209,7 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
@@ -260,7 +259,7 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
 
@@ -311,7 +310,7 @@ fn validator_scores_should_reflect_delegates() {
             .expect_success();
 
         for _ in 0..=auction_delay {
-            builder.run_auction(timestamp_millis, Vec::new());
+            builder.run_auction(timestamp_millis);
             timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
         }
         era = builder.get_era();

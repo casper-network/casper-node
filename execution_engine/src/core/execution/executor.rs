@@ -5,12 +5,9 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash,
-    bytesrepr::FromBytes,
-    contracts::NamedKeys,
-    system::{auction, mint, proof_of_stake},
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
-    Phase, ProtocolVersion, RuntimeArgs,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, mint,
+    proof_of_stake, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
+    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{

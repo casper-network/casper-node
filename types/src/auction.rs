@@ -4,51 +4,31 @@ mod constants;
 mod delegator;
 mod detail;
 mod era_info;
-mod error;
 mod providers;
 mod seigniorage_recipient;
+mod types;
 mod unbonding_purse;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_rational::Ratio;
 
-use crate::{account::AccountHash, PublicKey, U512};
+use crate::{
+    account::AccountHash,
+    system_contract_errors::auction::{Error, Result},
+    PublicKey, U512,
+};
 
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
 pub use era_info::*;
-pub use error::Error;
 pub use providers::{
     AccountProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
 };
 pub use seigniorage_recipient::SeigniorageRecipient;
+pub use types::*;
 pub use unbonding_purse::UnbondingPurse;
-
-/// Representation of delegation rate of tokens. Fraction of 1 in trillionths (12 decimal places).
-pub type DelegationRate = u64;
-
-/// Validators mapped to their bids.
-pub type Bids = BTreeMap<PublicKey, Bid>;
-
-/// Weights of validators. "Weight" in this context means a sum of their stakes.
-pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
-
-/// Era index type.
-pub type EraId = u64;
-
-/// List of era validators
-pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;
-
-/// Collection of seigniorage recipients.
-pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
-
-/// Snapshot of `SeigniorageRecipients` for a given era.
-pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
-
-/// Validators and delegators mapped to their unbonding purses.
-pub type UnbondingPurses = BTreeMap<PublicKey, Vec<UnbondingPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -58,7 +38,7 @@ pub trait Auction:
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
-    fn get_era_validators(&mut self) -> Result<EraValidators, Error> {
+    fn get_era_validators(&mut self) -> Result<EraValidators> {
         let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let era_validators = snapshot
             .into_iter()
@@ -77,7 +57,7 @@ pub trait Auction:
     /// rates and lists of delegators together with their delegated quantities from delegators.
     /// This function is publicly accessible, but intended for system use by the PoS contract,
     /// because this data is necessary for distributing seigniorage.
-    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
+    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
         let mut seigniorage_recipients_snapshot =
@@ -96,7 +76,7 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -139,7 +119,7 @@ pub trait Auction:
     ///
     /// The function returns a the new amount of motes remaining in the bid. If the target bid
     /// does not exist, the function call returns an error.
-    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
+    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -195,7 +175,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -250,7 +230,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -292,7 +272,7 @@ pub trait Auction:
     /// Slashes each validator.
     ///
     /// This can be only invoked through a system call.
-    fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
+    fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
@@ -339,11 +319,7 @@ pub trait Auction:
     /// (number of auction slots) bidders and replaces era_validators with these.
     ///
     /// Accessed by: node
-    fn run_auction(
-        &mut self,
-        era_end_timestamp_millis: u64,
-        evicted_validators: Vec<PublicKey>,
-    ) -> Result<(), Error> {
+    fn run_auction(&mut self, era_end_timestamp_millis: u64) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
@@ -359,34 +335,30 @@ pub trait Auction:
 
         // Process bids
         let mut bids_modified = false;
-        for (validator_public_key, bid) in bids.iter_mut() {
-            bids_modified = bid.process(era_end_timestamp_millis);
-
-            if evicted_validators.contains(validator_public_key) {
-                bids_modified = bid.deactivate()
-            }
+        for bid in bids.values_mut() {
+            bids_modified = bid.process(era_end_timestamp_millis)
         }
 
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let founder_weights: ValidatorWeights = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some() && !bid.inactive())
+                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((*public_key, total_staked_amount))
                 })
-                .collect::<Result<ValidatorWeights, Error>>()?;
+                .collect::<Result<ValidatorWeights>>()?;
 
             // We collect these into a vec for sorting
             let mut non_founder_weights: Vec<(PublicKey, U512)> = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none() && !bid.inactive())
+                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((*public_key, total_staked_amount))
                 })
-                .collect::<Result<Vec<(PublicKey, U512)>, Error>>()?;
+                .collect::<Result<Vec<(PublicKey, U512)>>>()?;
 
             non_founder_weights.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
@@ -440,7 +412,7 @@ pub trait Auction:
 
     /// Mint and distribute seigniorage rewards to validators and their delegators,
     /// according to `reward_factors` returned by the consensus component.
-    fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error> {
+    fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
@@ -548,29 +520,7 @@ pub trait Auction:
     }
 
     /// Reads current era id.
-    fn read_era_id(&mut self) -> Result<EraId, Error> {
+    fn read_era_id(&mut self) -> Result<EraId> {
         detail::get_era_id(self)
-    }
-
-    /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
-    /// by consensus (aka "evicted").
-    fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
-        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
-
-        let mut bids = detail::get_bids(self)?;
-
-        let bid = match bids.get_mut(&validator_public_key) {
-            Some(bid) => bid,
-            None => return Err(Error::ValidatorNotFound),
-        };
-
-        bid.activate();
-
-        detail::set_bids(self, bids)?;
-
-        Ok(())
     }
 }

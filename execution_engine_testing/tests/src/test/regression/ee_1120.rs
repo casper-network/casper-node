@@ -9,12 +9,11 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    runtime_args,
-    system::auction::{
+    auction::{
         Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
         METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

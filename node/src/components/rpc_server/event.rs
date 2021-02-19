@@ -9,7 +9,7 @@ use casper_execution_engine::{
     core::engine_state::{self, BalanceResult, GetEraValidatorsError, QueryResult},
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{system::auction::EraValidators, Transfer};
+use casper_types::{auction::EraValidators, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},

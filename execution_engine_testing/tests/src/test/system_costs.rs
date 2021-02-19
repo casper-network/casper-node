@@ -38,11 +38,9 @@ use casper_execution_engine::{
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
-    runtime_args,
-    system::{
-        auction::{self, DelegationRate},
-        mint, proof_of_stake, AUCTION,
-    },
+    auction::{self, DelegationRate},
+    mint, proof_of_stake, runtime_args,
+    system_contract_type::AUCTION,
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 

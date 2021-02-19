@@ -5,15 +5,16 @@ use num_rational::Ratio;
 
 use crate::{
     account::AccountHash,
-    bytesrepr::{FromBytes, ToBytes},
-    system::auction::{
-        constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
+    auction::{
+        constants::*, Auction, Bids, EraId, RuntimeProvider, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
     },
+    bytesrepr::{FromBytes, ToBytes},
+    system_contract_errors::auction::{Error, Result},
     CLTyped, PublicKey, URef, U512,
 };
 
-fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
+fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
     T: FromBytes + CLTyped,
@@ -24,7 +25,7 @@ where
     Ok(value)
 }
 
-fn write_to<P, T>(provider: &mut P, name: &str, value: T) -> Result<(), Error>
+fn write_to<P, T>(provider: &mut P, name: &str, value: T) -> Result<()>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
     T: ToBytes + CLTyped,
@@ -35,52 +36,49 @@ where
     Ok(())
 }
 
-pub fn get_bids<P>(provider: &mut P) -> Result<Bids, Error>
+pub fn get_bids<P>(provider: &mut P) -> Result<Bids>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     Ok(read_from(provider, BIDS_KEY)?)
 }
 
-pub fn set_bids<P>(provider: &mut P, validators: Bids) -> Result<(), Error>
+pub fn set_bids<P>(provider: &mut P, validators: Bids) -> Result<()>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, BIDS_KEY, validators)
 }
 
-pub fn get_unbonding_purses<P>(provider: &mut P) -> Result<UnbondingPurses, Error>
+pub fn get_unbonding_purses<P>(provider: &mut P) -> Result<UnbondingPurses>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     Ok(read_from(provider, UNBONDING_PURSES_KEY)?)
 }
 
-pub fn set_unbonding_purses<P>(
-    provider: &mut P,
-    unbonding_purses: UnbondingPurses,
-) -> Result<(), Error>
+pub fn set_unbonding_purses<P>(provider: &mut P, unbonding_purses: UnbondingPurses) -> Result<()>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, UNBONDING_PURSES_KEY, unbonding_purses)
 }
 
-pub fn get_era_id<P>(provider: &mut P) -> Result<EraId, Error>
+pub fn get_era_id<P>(provider: &mut P) -> Result<EraId>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     Ok(read_from(provider, ERA_ID_KEY)?)
 }
 
-pub fn set_era_id<P>(provider: &mut P, era_id: u64) -> Result<(), Error>
+pub fn set_era_id<P>(provider: &mut P, era_id: u64) -> Result<()>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, ERA_ID_KEY, era_id)
 }
 
-pub fn get_era_end_timestamp_millis<P>(provider: &mut P) -> Result<u64, Error>
+pub fn get_era_end_timestamp_millis<P>(provider: &mut P) -> Result<u64>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -90,7 +88,7 @@ where
 pub fn set_era_end_timestamp_millis<P>(
     provider: &mut P,
     era_end_timestamp_millis: u64,
-) -> Result<(), Error>
+) -> Result<()>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -103,7 +101,7 @@ where
 
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
-) -> Result<SeigniorageRecipientsSnapshot, Error>
+) -> Result<SeigniorageRecipientsSnapshot>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -113,14 +111,14 @@ where
 pub fn set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
     snapshot: SeigniorageRecipientsSnapshot,
-) -> Result<(), Error>
+) -> Result<()>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
 }
 
-pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>
+pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -131,7 +129,7 @@ where
     Ok(validator_slots)
 }
 
-pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64, Error>
+pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -139,7 +137,7 @@ where
     Ok(auction_delay)
 }
 
-fn get_unbonding_delay<P>(provider: &mut P) -> Result<u64, Error>
+fn get_unbonding_delay<P>(provider: &mut P) -> Result<u64>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -150,7 +148,7 @@ where
 /// a specific era is reached.
 ///
 /// This function can be called by the system only.
-pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<(), Error> {
+pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<()> {
     if provider.get_caller() != SYSTEM_ACCOUNT {
         return Err(Error::InvalidCaller);
     }
@@ -207,7 +205,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     unbonder_public_key: PublicKey,
     bonding_purse: URef,
     amount: U512,
-) -> Result<(), Error> {
+) -> Result<()> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
         return Err(Error::UnbondTooLarge);
     }
@@ -236,7 +234,7 @@ pub fn reinvest_delegator_rewards(
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<Vec<(U512, URef)>, Error> {
+) -> Result<Vec<(U512, URef)>> {
     let mut delegator_payouts = Vec::new();
 
     let bid = match bids.get_mut(&validator_public_key) {
@@ -279,7 +277,7 @@ pub fn reinvest_validator_reward(
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<Option<URef>, Error> {
+) -> Result<Option<URef>> {
     let bid = match bids.get_mut(&validator_public_key) {
         Some(bid) => bid,
         None => {

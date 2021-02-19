@@ -5,7 +5,7 @@ use casper_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{runtime_args, system::mint, ApiError, RuntimeArgs, URef, U512};
+use casper_types::{runtime_args, system_contract_errors::mint, ApiError, RuntimeArgs, URef, U512};
 
 const METHOD_MINT: &str = "mint";
 const METHOD_BALANCE: &str = "balance";

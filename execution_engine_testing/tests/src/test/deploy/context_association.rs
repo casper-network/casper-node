@@ -8,7 +8,7 @@ use casper_engine_test_support::{
 
 use casper_types::{
     runtime_args,
-    system::{AUCTION, MINT, PROOF_OF_STAKE},
+    system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE},
     RuntimeArgs,
 };
 

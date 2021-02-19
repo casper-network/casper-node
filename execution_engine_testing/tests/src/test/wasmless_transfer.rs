@@ -24,10 +24,8 @@ use casper_execution_engine::{
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::{mint, proof_of_stake},
-    AccessRights, ApiError, Key, ProtocolVersion, RuntimeArgs, URef, U512,
+    account::AccountHash, mint, proof_of_stake, runtime_args, AccessRights, ApiError, Key,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

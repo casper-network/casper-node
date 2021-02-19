@@ -11,9 +11,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    runtime_args,
-    system::auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -154,7 +153,7 @@ fn should_run_ee_1045_squash_validators() {
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
-    builder.run_auction(timestamp_millis, Vec::new());
+    builder.run_auction(timestamp_millis);
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     let post_round_1_auction_weights = builder
@@ -178,7 +177,7 @@ fn should_run_ee_1045_squash_validators() {
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
-    builder.run_auction(timestamp_millis, Vec::new());
+    builder.run_auction(timestamp_millis);
 
     let post_round_2_auction_weights = builder
         .get_validator_weights(new_era_id)

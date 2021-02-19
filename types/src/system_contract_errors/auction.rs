@@ -244,6 +244,9 @@ impl From<bytesrepr::Error> for Error {
     }
 }
 
+/// An alias for `Result<T, Error>`.
+pub type Result<T> = result::Result<T, Error>;
+
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
 pub enum PurseLookupError {

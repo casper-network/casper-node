@@ -15,7 +15,6 @@ pub const DEFAULT_DISTRIBUTE_COST: u32 = 10_000;
 pub const DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST: u32 = 10_000;
 pub const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u32 = 10_000;
 pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
-pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 
 /// Description of costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
@@ -32,7 +31,6 @@ pub struct AuctionCosts {
     pub withdraw_delegator_reward: u32,
     pub withdraw_validator_reward: u32,
     pub read_era_id: u32,
-    pub activate_bid: u32,
 }
 
 impl Default for AuctionCosts {
@@ -50,7 +48,6 @@ impl Default for AuctionCosts {
             withdraw_delegator_reward: DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
             withdraw_validator_reward: DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
             read_era_id: DEFAULT_READ_ERA_ID_COST,
-            activate_bid: DEFAULT_ACTIVATE_BID_COST,
         }
     }
 }
@@ -71,7 +68,6 @@ impl ToBytes for AuctionCosts {
         ret.append(&mut self.withdraw_delegator_reward.to_bytes()?);
         ret.append(&mut self.withdraw_validator_reward.to_bytes()?);
         ret.append(&mut self.read_era_id.to_bytes()?);
-        ret.append(&mut self.activate_bid.to_bytes()?);
 
         Ok(ret)
     }
@@ -89,7 +85,6 @@ impl ToBytes for AuctionCosts {
             + self.withdraw_delegator_reward.serialized_length()
             + self.withdraw_validator_reward.serialized_length()
             + self.read_era_id.serialized_length()
-            + self.activate_bid.serialized_length()
     }
 }
 
@@ -107,7 +102,6 @@ impl FromBytes for AuctionCosts {
         let (withdraw_delegator_reward, rem) = FromBytes::from_bytes(rem)?;
         let (withdraw_validator_reward, rem) = FromBytes::from_bytes(rem)?;
         let (read_era_id, rem) = FromBytes::from_bytes(rem)?;
-        let (activate_bid, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Self {
                 get_era_validators,
@@ -122,7 +116,6 @@ impl FromBytes for AuctionCosts {
                 withdraw_delegator_reward,
                 withdraw_validator_reward,
                 read_era_id,
-                activate_bid,
             },
             rem,
         ))
@@ -144,7 +137,6 @@ impl Distribution<AuctionCosts> for Standard {
             withdraw_delegator_reward: rng.gen(),
             withdraw_validator_reward: rng.gen(),
             read_era_id: rng.gen(),
-            activate_bid: rng.gen(),
         }
     }
 }
@@ -169,7 +161,6 @@ pub mod gens {
             withdraw_delegator_reward in num::u32::ANY,
             withdraw_validator_reward in num::u32::ANY,
             read_era_id in num::u32::ANY,
-            activate_bid in num::u32::ANY,
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,
@@ -184,7 +175,6 @@ pub mod gens {
                 withdraw_delegator_reward,
                 withdraw_validator_reward,
                 read_era_id,
-                activate_bid,
             }
         }
     }

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_types::{
     bytesrepr,
-    system::{AUCTION, MINT, PROOF_OF_STAKE, STANDARD_PAYMENT},
+    system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE, STANDARD_PAYMENT},
     ContractHash, Key, ProtocolVersion,
 };
 

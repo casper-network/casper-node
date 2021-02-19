@@ -31,7 +31,7 @@ use casper_execution_engine::{
     },
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
+use casper_types::{auction::EraValidators, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
 

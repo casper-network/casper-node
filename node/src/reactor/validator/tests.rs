@@ -207,7 +207,6 @@ async fn run_validator_network() {
         .await;
 }
 
-// TODO: fix this test
 #[tokio::test]
 async fn run_equivocator_network() {
     testing::init_logging();

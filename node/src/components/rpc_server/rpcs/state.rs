@@ -374,7 +374,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             // auction contract key
             let base_key = protocol_data.auction().into();
             // bids named key in auction contract
-            let path = vec![casper_types::system::auction::BIDS_KEY.to_string()];
+            let path = vec![casper_types::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();
             // the block height of the last added block

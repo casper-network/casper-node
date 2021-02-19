@@ -13,11 +13,7 @@ use casper_execution_engine::{
     shared::{gas::Gas, motes::Motes},
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
-use casper_types::{
-    runtime_args,
-    system::{mint, proof_of_stake},
-    ApiError, RuntimeArgs, U512,
-};
+use casper_types::{mint, proof_of_stake, runtime_args, ApiError, RuntimeArgs, U512};
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);

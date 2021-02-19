@@ -48,17 +48,14 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    bytesrepr::{self},
-    runtime_args,
-    system::{
-        auction::{
-            EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
-        },
-        mint::TOTAL_SUPPLY_KEY,
+    auction::{
+        EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS, AUCTION_DELAY_KEY,
+        ERA_ID_KEY, METHOD_RUN_AUCTION,
     },
-    CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, Key, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, U512,
+    bytesrepr::{self},
+    mint::TOTAL_SUPPLY_KEY,
+    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, DeployHash, DeployInfo, Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::internal::{
@@ -538,21 +535,14 @@ where
         self
     }
 
-    pub fn run_auction(
-        &mut self,
-        era_end_timestamp_millis: u64,
-        evicted_validators: Vec<PublicKey>,
-    ) -> &mut Self {
+    pub fn run_auction(&mut self, era_end_timestamp_millis: u64) -> &mut Self {
         const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
         let auction = self.get_auction_contract_hash();
         let run_request = ExecuteRequestBuilder::contract_call_by_hash(
             SYSTEM_ADDR,
             auction,
             METHOD_RUN_AUCTION,
-            runtime_args! {
-                ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis,
-                ARG_EVICTED_VALIDATORS => evicted_validators,
-            },
+            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis },
         )
         .build();
         self.exec(run_request).commit().expect_success()

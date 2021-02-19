@@ -5,13 +5,12 @@ use core::mem::MaybeUninit;
 
 use casper_types::{
     account::AccountHash,
-    api_error, bytesrepr,
-    system::{
-        auction::{self, EraId, EraInfo},
-        SystemContractType,
-    },
-    ApiError, ContractHash, HashAddr, TransferResult, TransferredTo, URef, U512,
-    UREF_SERIALIZED_LENGTH,
+    api_error,
+    auction::{EraId, EraInfo},
+    bytesrepr,
+    system_contract_errors::auction,
+    ApiError, ContractHash, HashAddr, SystemContractType, TransferResult, TransferredTo, URef,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{

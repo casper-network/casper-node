@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
+    auction::EraInfo,
     bytesrepr::{self, ToBytes},
-    system::auction::EraInfo,
     CLValue, DeployInfo, Transfer,
 };
 

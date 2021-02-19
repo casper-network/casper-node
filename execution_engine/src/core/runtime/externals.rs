@@ -6,9 +6,9 @@ use casper_types::{
     account,
     account::AccountHash,
     api_error,
+    auction::{EraId, EraInfo},
     bytesrepr::{self, ToBytes},
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
-    system::auction::{EraId, EraInfo},
     ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
 };
 
