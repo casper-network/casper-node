@@ -712,10 +712,13 @@ impl Storage {
             .transpose()
     }
 
-    pub fn get_highest_block_header_for_db_check(&self) -> Result<Option<Block>, LmdbExtError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        let hightest_index = self.block_height_index.keys().last().unwrap();
-        self.get_block_by_height(&mut txn, *hightest_index)
+    pub fn get_highest_block_header_for_db_check(&self) -> Option<Block> {
+        let mut txn = self.env.begin_ro_txn().ok()?;
+        if let Some(height) = self.block_height_index.keys().last() {
+            self.get_block_by_height(&mut txn, *height).ok()?
+        } else {
+            None
+        }
     }
 
     /// Retrieves a single block in a separate transaction from storage.

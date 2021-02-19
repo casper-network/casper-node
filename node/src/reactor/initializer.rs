@@ -165,7 +165,7 @@ impl Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
 
-        if let Ok(Some(block)) = storage.get_highest_block_header_for_db_check() {
+        if let Some(block) = storage.get_highest_block_header_for_db_check() {
             let highest_block_header = block.take_header();
             let blake_hash = Blake2bHash::new(highest_block_header.state_root_hash().as_ref());
             let missing_trie_key = contract_runtime.retrieve_missing_keys(blake_hash);
