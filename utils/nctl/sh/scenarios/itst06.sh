@@ -133,7 +133,7 @@ function do_get_another_node() {
 }
 
 function do_background_wasmless_transfers() {
-    "$NCTL"/sh/contracts-transfers/do_dispatch_native.sh transfers=10000 node="$NODE_ID" &
+    bash "$NCTL"/sh/contracts-transfers/do_dispatch_native.sh transfers=100 amount=2500000000 node="$NODE_ID" &
     sleep 5
     log_step "initiated background wasmless transfers"
 }
