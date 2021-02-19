@@ -18,10 +18,6 @@ static ALICE_KEY: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE_KEY));
 
-static BOB_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
-static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));
-
 static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 
 #[ignore]
@@ -59,11 +55,10 @@ fn get_balance_should_work() {
 
     let state_root_hash = builder.get_post_state_hash();
 
-    let (purse_proof, balance_proof) = alice_balance_result.proofs().expect("should have proofs");
+    let balance_proof = alice_balance_result.proof().expect("should have proofs");
 
     assert!(core::validate_balance_proof(
         &state_root_hash,
-        &purse_proof,
         &balance_proof,
         alice_main_purse.into(),
         &alice_balance,
@@ -74,7 +69,6 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &purse_proof,
             &balance_proof,
             bogus_key.to_owned(),
             &alice_balance,
@@ -84,13 +78,7 @@ fn get_balance_should_work() {
 
     let bogus_uref: Key = Key::URef(URef::new([3u8; 32], AccessRights::READ_ADD_WRITE));
     assert_eq!(
-        core::validate_balance_proof(
-            &state_root_hash,
-            &purse_proof,
-            &balance_proof,
-            bogus_uref,
-            &alice_balance,
-        ),
+        core::validate_balance_proof(&state_root_hash, &balance_proof, bogus_uref, &alice_balance,),
         Err(ValidationError::UnexpectedKey)
     );
 
@@ -98,73 +86,21 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &bogus_hash,
-            &purse_proof,
             &balance_proof,
             alice_main_purse.into(),
             &alice_balance,
         ),
         Err(ValidationError::InvalidProofHash)
-    );
-
-    assert_eq!(
-        core::validate_balance_proof(
-            &state_root_hash,
-            &purse_proof,
-            &purse_proof,
-            alice_main_purse.into(),
-            &alice_balance,
-        ),
-        Err(ValidationError::UnexpectedKey)
     );
 
     let bogus_motes = U512::from(1337);
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &purse_proof,
             &balance_proof,
             alice_main_purse.into(),
             &bogus_motes,
         ),
         Err(ValidationError::UnexpectedValue)
-    );
-
-    ////////////////////////////////////////////
-
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            TRANSFER_ARG_TARGET => *BOB_ADDR,
-            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1,
-            TRANSFER_ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
-
-    builder.exec(transfer_request).commit().expect_success();
-
-    let alice_account = builder
-        .get_account(*ALICE_ADDR)
-        .expect("should have Alice's account");
-
-    let alice_main_purse = alice_account.main_purse();
-
-    let alice_balance_result_new = builder.get_purse_balance_result(alice_main_purse);
-
-    let state_root_hash = builder.get_post_state_hash();
-
-    let (_purse_proof_new, balance_proof_new) = alice_balance_result_new
-        .proofs()
-        .expect("should have proofs");
-
-    assert_eq!(
-        core::validate_balance_proof(
-            &state_root_hash,
-            &purse_proof,
-            &balance_proof_new,
-            alice_main_purse.into(),
-            &alice_balance,
-        ),
-        Err(ValidationError::InvalidProofHash)
     );
 }

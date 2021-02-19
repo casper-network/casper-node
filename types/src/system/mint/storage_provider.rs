@@ -1,19 +1,13 @@
 use crate::{
     bytesrepr::{FromBytes, ToBytes},
     system::mint::Error,
-    CLTyped, Key, URef,
+    CLTyped, URef, U512,
 };
 
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {
     /// Create new [`URef`].
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error>;
-
-    /// Write data to a local key.
-    fn write_balance_entry(&mut self, purse_uref: URef, balance_uref: URef) -> Result<(), Error>;
-
-    /// Read data from a local key.
-    fn read_balance_entry(&mut self, purse_uref: &URef) -> Result<Option<Key>, Error>;
 
     /// Read data from [`URef`].
     fn read<T: CLTyped + FromBytes>(&mut self, uref: URef) -> Result<Option<T>, Error>;
@@ -23,4 +17,13 @@ pub trait StorageProvider {
 
     /// Add data to a [`URef`].
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error>;
+
+    /// Read balance.
+    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error>;
+
+    /// Write balance.
+    fn write_balance(&mut self, uref: URef, balance: U512) -> Result<(), Error>;
+
+    /// Add amount to an existing balance.
+    fn add_balance(&mut self, uref: URef, value: U512) -> Result<(), Error>;
 }

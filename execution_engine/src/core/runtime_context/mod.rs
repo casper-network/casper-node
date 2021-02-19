@@ -776,7 +776,11 @@ where
         Ok(())
     }
 
-    fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    pub(crate) fn metered_add_gs_unsafe(
+        &mut self,
+        key: Key,
+        value: StoredValue,
+    ) -> Result<(), Error> {
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 
