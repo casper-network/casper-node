@@ -220,8 +220,12 @@ where
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
-        let after_booking_era_id =
-            EraId(era_id.0.saturating_sub(self.protocol_config.auction_delay));
+        let after_booking_era_id = EraId(
+            era_id
+                .0
+                .saturating_sub(self.protocol_config.auction_delay)
+                .max(self.protocol_config.last_activation_point.0),
+        );
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
