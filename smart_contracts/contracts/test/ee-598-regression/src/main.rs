@@ -7,11 +7,12 @@ use casper_types::{runtime_args, system::auction, ContractHash, PublicKey, Runti
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
+const DELEGATION_RATE: DelegationRate = 42;
 
 fn add_bid(contract_hash: ContractHash, public_key: PublicKey, bond_amount: U512) {
     let runtime_args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
-        auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+        auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         auction::ARG_AMOUNT => bond_amount,
     };
     runtime::call_contract::<U512>(contract_hash, auction::METHOD_ADD_BID, runtime_args);

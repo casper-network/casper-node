@@ -22,6 +22,7 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_PUBLIC_KEY: &str = "public_key";
 const TEST_BOND: &str = "bond";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
+const DELEGATION_RATE: DelegationRate = 42;
 
 #[repr(u16)]
 enum Error {
@@ -50,7 +51,7 @@ fn bond() {
 fn call_bond(auction: ContractHash, public_key: PublicKey, bond_amount: U512) {
     let args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
-        auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+        auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         auction::ARG_AMOUNT => bond_amount,
     };
 

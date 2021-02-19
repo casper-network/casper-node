@@ -205,7 +205,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
 #[test]
 fn should_verify_isolated_auction_storage_is_free() {
     const BOND_AMOUNT: u64 = 42;
-    const DELEGATION_RATE: DelegationRate = 123;
+    const DELEGATION_RATE: DelegationRate = 10;
 
     let mut builder = initialize_isolated_storage_costs();
 

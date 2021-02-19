@@ -26,8 +26,8 @@ pub use providers::{
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use unbonding_purse::UnbondingPurse;
 
-/// Representation of delegation rate of tokens. Fraction of 1 in trillionths (12 decimal places).
-pub type DelegationRate = u64;
+/// Representation of delegation rate of tokens. Range from 0..=100.
+pub type DelegationRate = u8;
 
 /// Validators mapped to their bids.
 pub type Bids = BTreeMap<PublicKey, Bid>;
@@ -104,6 +104,10 @@ pub trait Auction:
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
+        }
+
+        if delegation_rate > DELEGATION_RATE_DENOMINATOR {
+            return Err(Error::DelegationRateTooLarge);
         }
 
         let source = self.get_main_purse()?;
