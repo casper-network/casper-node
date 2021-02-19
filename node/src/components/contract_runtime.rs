@@ -41,6 +41,7 @@ use crate::{
     utils::WithDir,
     NodeRng, StorageConfig,
 };
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 
 /// The contract runtime components.
 #[derive(DataSize)]
@@ -592,5 +593,17 @@ impl ContractRuntime {
             protocol_version,
             &ee_config,
         )
+    }
+
+    /// Retrieve missing trie-keys for a DB check at upgrade.
+    pub fn retrieve_missing_keys(&self, trie_key: Blake2bHash) -> Vec<Blake2bHash> {
+        let correlation_id = CorrelationId::new();
+        match self
+            .engine_state
+            .missing_trie_keys(correlation_id, trie_key)
+        {
+            Ok(keys) => keys,
+            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
+        }
     }
 }

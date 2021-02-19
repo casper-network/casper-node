@@ -37,6 +37,7 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -163,6 +164,15 @@ impl Reactor {
 
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
+
+        if let Ok(Some(block)) = storage.get_highest_block_header_for_db_check() {
+            let highest_block_header = block.take_header();
+            let blake_hash = Blake2bHash::new(highest_block_header.state_root_hash().as_ref());
+            let missing_trie_key = contract_runtime.retrieve_missing_keys(blake_hash);
+            if !missing_trie_key.is_empty() {
+                panic!("Fatal error! Trie-Key store is not empty. Wipe the DB to ensure operations")
+            }
+        }
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
