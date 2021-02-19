@@ -299,7 +299,7 @@ impl ChainspecLoader {
         // it's not, we continue the era the highest block belongs to.
         if self
             .highest_block_header()
-            .and_then(|hdr| hdr.era_report())
+            .and_then(|hdr| hdr.era_end())
             .is_some()
         {
             // we know that header is `Some`

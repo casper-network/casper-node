@@ -689,7 +689,7 @@ where
 
             let newly_slashed = maybe_switch_block
                 .and_then(|bhdr| bhdr.era_end())
-                .map(|era_report| era_report.equivocators.clone())
+                .map(|era_end| era_end.equivocators.clone())
                 .unwrap_or_default();
 
             let slashed = self
