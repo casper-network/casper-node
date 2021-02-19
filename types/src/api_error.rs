@@ -19,16 +19,20 @@ use crate::{
 /// value less than or equal to `RESERVED_ERROR_MAX`.
 const RESERVED_ERROR_MAX: u32 = u16::MAX as u32; // 0..=65535
 
-/// Proof of Stake errors will have this value added to them when being converted to a `u32`.
+/// Proof of Stake errors (defined in "contracts/system/pos/src/error.rs") will have this value
+/// added to them when being converted to a `u32`.
 const POS_ERROR_OFFSET: u32 = RESERVED_ERROR_MAX - u8::MAX as u32; // 65280..=65535
 
-/// Mint errors will have this value added to them when being converted to a `u32`.
+/// Mint errors (defined in "contracts/system/mint/src/error.rs") will have this value
+/// added to them when being converted to a `u32`.
 const MINT_ERROR_OFFSET: u32 = (POS_ERROR_OFFSET - 1) - u8::MAX as u32; // 65024..=65279
 
-/// Contract header errors will have this value added to them when being converted to a `u32`.
+/// Contract header errors (defined in "types/src/contract_header.rs") will have this value
+/// added to them when being converted to a `u32`.
 const HEADER_ERROR_OFFSET: u32 = (MINT_ERROR_OFFSET - 1) - u8::MAX as u32; // 64768..=65023
 
-/// Contract header errors will have this value added to them when being converted to a `u32`.
+/// Contract header errors (defined in "types/src/system_contract_errors/auction.rs") will have
+/// this value added to them when being converted to a `u32`.
 const AUCTION_ERROR_OFFSET: u32 = (HEADER_ERROR_OFFSET - 1) - u8::MAX as u32; // 64512..=64767
 
 /// Minimum value of user error's inclusive range.
@@ -192,7 +196,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 34 => HostBufferFull
 /// # );
 /// // Auction errors:
-/// use casper_types::system::auction::Error as AuctionError;
+/// use casper_types::system_contract_errors::auction::Error as AuctionError;
 /// # show_and_check!(
 /// 64_512 => AuctionError::MissingKey
 /// # );
@@ -310,7 +314,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 64_773 => ContractHeaderError::MaxTotalURefsExceeded
 /// # );
 /// // Mint errors:
-/// use casper_types::system::mint::Error as MintError;
+/// use casper_types::system_contract_errors::mint::Error as MintError;
 /// # show_and_check!(
 /// 65_024 => MintError::InsufficientFunds
 /// # );
@@ -337,7 +341,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// # );
 ///
 /// // Proof of stake errors:
-/// use casper_types::system::proof_of_stake::Error as PosError;
+/// use casper_types::system_contract_errors::pos::Error as PosError;
 /// # show_and_check!(
 /// 65_280 => PosError::NotBonded
 /// # );
@@ -522,7 +526,7 @@ pub enum ApiError {
     /// Setting a threshold to a value greater than the total weight of associated keys is
     /// disallowed.
     InsufficientTotalWeight,
-    /// The given `u32` doesn't map to a [`SystemContractType`](crate::system::SystemContractType).
+    /// The given `u32` doesn't map to a [`SystemContractType`](crate::SystemContractType).
     InvalidSystemContract,
     /// Failed to create a new purse.
     PurseNotCreated,

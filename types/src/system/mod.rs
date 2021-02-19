@@ -21,7 +21,7 @@ mod error {
         /// Contains a [`mint::Error`].
         #[fail(display = "Mint error: {}", _0)]
         Mint(mint::Error),
-        /// Contains a [`proof_of_stake::Error`].
+        /// Contains a [`pos::Error`].
         #[fail(display = "Proof of Stake error: {}", _0)]
         Pos(proof_of_stake::Error),
         /// Contains a [`auction::Error`].
