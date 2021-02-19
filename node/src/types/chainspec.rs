@@ -1,6 +1,7 @@
 //! The chainspec is a set of configuration options for the network.  All validators must apply the
 //! same set of options in order to join and act as a peer in a given network.
 
+mod accounts_config;
 mod core_config;
 mod deploy_config;
 mod error;
@@ -23,10 +24,11 @@ use casper_execution_engine::{
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use self::network_config::parse_accounts_csv;
+#[cfg(test)]
+pub(crate) use self::accounts_config::AccountConfig;
 pub(crate) use self::{
-    core_config::CoreConfig, deploy_config::DeployConfig, highway_config::HighwayConfig,
-    network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig, core_config::CoreConfig, deploy_config::DeployConfig,
+    highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
 pub use self::{error::Error, protocol_config::ActivationPoint};
 #[cfg(test)]
@@ -172,7 +174,7 @@ impl Loadable for Chainspec {
 impl From<&Chainspec> for ExecConfig {
     fn from(chainspec: &Chainspec) -> Self {
         ExecConfig::new(
-            chainspec.network_config.accounts.clone(),
+            chainspec.network_config.accounts_config.clone().into(),
             chainspec.wasm_config,
             chainspec.system_costs_config,
             chainspec.core_config.validator_slots,
@@ -283,20 +285,20 @@ mod tests {
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
             assert_eq!(spec.protocol_config.version, Version::from((0, 9, 0)));
-            assert_eq!(spec.network_config.accounts.len(), 4);
+            assert_eq!(spec.network_config.accounts_config.accounts().len(), 4);
             for index in 0..4 {
                 assert_eq!(
-                    spec.network_config.accounts[index].balance(),
+                    spec.network_config.accounts_config.accounts()[index].balance(),
                     Motes::new(U512::from(index + 1))
                 );
                 assert_eq!(
-                    spec.network_config.accounts[index].bonded_amount(),
+                    spec.network_config.accounts_config.accounts()[index].bonded_amount(),
                     Motes::new(U512::from((index as u64 + 1) * 10))
                 );
             }
         } else {
             assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
-            assert!(spec.network_config.accounts.is_empty());
+            assert!(spec.network_config.accounts_config.accounts().is_empty());
         }
 
         assert_eq!(spec.network_config.name, "test-chain");

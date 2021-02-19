@@ -9,7 +9,7 @@ function check_for_error()
   exit_val=$?
   if [[ $exit_val -ne "0" ]]; then
     echo
-    echo "Validation failed for accounts.csv and chainspec.toml in $FILE_DIR"
+    echo "Validation failed for accounts.toml and chainspec.toml in $FILE_DIR"
     echo "Run generate_validation.sh in $FILE_DIR to update validation.md5 and commit."
     echo
   fi

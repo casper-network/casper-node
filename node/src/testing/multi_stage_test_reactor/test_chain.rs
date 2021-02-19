@@ -5,7 +5,7 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{PublicKey, SecretKey, U512};
 
 use crate::{
@@ -18,7 +18,10 @@ use crate::{
         network::{Network, Nodes},
         ConditionCheckReactor, MultiStageTestReactor,
     },
-    types::{BlockHash, Chainspec, NodeId, Timestamp},
+    types::{
+        chainspec::{AccountConfig, AccountsConfig},
+        BlockHash, Chainspec, NodeId, Timestamp,
+    },
     utils::{External, Loadable, WithDir},
     NodeRng,
 };
@@ -92,18 +95,18 @@ impl TestChain {
         let mut chainspec: Chainspec = Chainspec::from_resources("local");
 
         // Override accounts with those generated from the keys.
-        chainspec.network_config.accounts = std::iter::once(&first_node_secret_key_with_stake)
+        let genesis_accounts = std::iter::once(&first_node_secret_key_with_stake)
             .chain(other_secret_keys_with_stakes.iter())
             .map(|staked_secret_key| {
                 let public_key = PublicKey::from(&staked_secret_key.secret_key);
-                GenesisAccount::new(
+                AccountConfig::new(
                     public_key,
-                    public_key.to_account_hash(),
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
                     Motes::new(U512::from(staked_secret_key.stake)),
                 )
             })
             .collect();
+        chainspec.network_config.accounts_config = AccountsConfig::new(genesis_accounts);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
         chainspec.network_config.timestamp = Timestamp::now() + 45000.into();
