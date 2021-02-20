@@ -89,10 +89,15 @@ pub struct ContractRuntimeMetrics {
 
 /// Value of upper bound of histogram.
 const EXPONENTIAL_BUCKET_START: f64 = 0.01;
+
 /// Multiplier of previous upper bound for next bound.
 const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
-/// Bucket count, with last going to +Inf.
-const EXPONENTIAL_BUCKET_COUNT: usize = 6;
+
+/// Bucket count, with the last bucket going to +Inf which will not be included in the results.
+/// - start = 0.01, factor = 2.0, count = 10
+/// - start * factor ^ count = 0.01 * 2.0 ^ 10 = 10.24
+/// - Values above 10.24 (f64 seconds here) will not fall in a bucket that is kept.
+const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
 const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
 const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
