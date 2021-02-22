@@ -775,7 +775,6 @@ dependencies = [
  "casper-node-macros",
  "casper-types",
  "chrono",
- "csv",
  "datasize",
  "derive_more",
  "derp",
