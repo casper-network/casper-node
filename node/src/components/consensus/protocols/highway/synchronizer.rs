@@ -72,6 +72,11 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
         Some(PendingVertex::new(sender, pvv, timestamp))
     }
 
+    /// Drops all pending vertices other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.0.retain(|pvv, _| pvv.inner().is_evidence());
+    }
+
     fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -308,6 +313,13 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             senders.extend(new_senders);
         }
         senders
+    }
+
+    /// Drops all pending vertices other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.vertex_deps.clear();
+        self.vertices_to_be_added_later.clear();
+        self.vertices_to_be_added.retain_evidence_only();
     }
 
     /// Schedules vertices to be added to the protocol state.

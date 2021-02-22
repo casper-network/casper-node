@@ -343,6 +343,15 @@ where
             trace!(era = obsolete_era_id.0, "removing obsolete era");
             self.active_eras.remove(&obsolete_era_id);
         }
+        // Clear the obsolete data from the era whose validators are unbonded now. We only retain
+        // the information necessary to validate evidence that units in still-bonded eras may refer
+        // to for cross-era slashing.
+        if let Some(evidence_only_era_id) = era_id.checked_sub(self.bonded_eras + 1) {
+            trace!(era = evidence_only_era_id.0, "clearing unbonded era");
+            if let Some(era) = self.active_eras.get_mut(&era_id) {
+                era.consensus.set_evidence_only();
+            }
+        }
 
         outcomes
     }
@@ -499,10 +508,9 @@ where
             ConsensusMessage::Protocol { era_id, payload } => {
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
-                let evidence_only = !self.era_supervisor.is_bonded(era_id);
                 trace!(era = era_id.0, "received a consensus message");
                 self.delegate_to_era(era_id, move |consensus, rng| {
-                    consensus.handle_message(sender, payload, evidence_only, rng)
+                    consensus.handle_message(sender, payload, rng)
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
