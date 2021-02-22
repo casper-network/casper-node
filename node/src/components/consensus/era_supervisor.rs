@@ -219,7 +219,9 @@ where
 
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
-        // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
+        // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
+        // We make sure not to go below the last upgrade activation point, because we will not have
+        // any eras from before that.
         let after_booking_era_id = EraId(
             era_id
                 .0
@@ -442,7 +444,7 @@ where
         rng: &'a mut NodeRng,
     ) -> Effects<Event<I>> {
         let current_era = self.current_era;
-        info!(?current_era, "current era");
+        trace!(?current_era, "current era");
         let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
         self.handling_wrapper(effect_builder, rng)
             .handle_consensus_outcomes(current_era, outcomes)
@@ -608,7 +610,9 @@ where
         let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
-            // we have to do that to let linear chain sync work after an upgrade
+            // We have to do that to let linear chain sync work after an upgrade - it might go back
+            // in history further than the point at which the era supervisor was initialized, send
+            // us blocks from the past, and then expect that we handle them and emit this event.
             effects.extend(self.effect_builder.announce_block_handled(block).ignore());
             return effects;
         }

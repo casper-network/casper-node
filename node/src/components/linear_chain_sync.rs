@@ -445,19 +445,25 @@ where
                     } => {
                         trace!(?trusted_hash, "start synchronization");
                         match highest_block_header.as_ref() {
-                            Some(hdr) if hdr.era_id().0 > 0 => effect_builder
-                                .get_switch_block_at_era_id_from_storage(EraId(hdr.era_id().0 - 1))
-                                .event(|block| {
-                                    Event::GotInitialValidators(
-                                        init_peer,
-                                        block
-                                            .expect("should have switch block for the latest era")
-                                            .header()
-                                            .next_era_validator_weights()
-                                            .expect("switch block should have era validators")
-                                            .clone(),
-                                    )
-                                }),
+                            Some(hdr) if hdr.era_id().0 > 0 => {
+                                self.peers.push(init_peer);
+                                effect_builder
+                                    .get_switch_block_at_era_id_from_storage(EraId(
+                                        hdr.era_id().0 - 1,
+                                    ))
+                                    .event(|block| {
+                                        Event::GotInitialValidators(
+                                            block
+                                                .expect(
+                                                    "should have switch block for the latest era",
+                                                )
+                                                .header()
+                                                .next_era_validator_weights()
+                                                .expect("switch block should have era validators")
+                                                .clone(),
+                                        )
+                                    })
+                            }
                             _ => {
                                 // Start synchronization.
                                 self.metrics.reset_start_time();
@@ -467,12 +473,13 @@ where
                     }
                 }
             }
-            Event::GotInitialValidators(init_peer, validators) => match &mut self.state {
+            Event::GotInitialValidators(validators) => match &mut self.state {
                 State::SyncingTrustedHash {
                     trusted_hash,
                     validator_weights,
                     ..
                 } => {
+                    let init_peer = self.peers.random_unsafe();
                     *validator_weights = validators;
                     self.metrics.reset_start_time();
                     fetch_block_by_hash(effect_builder, init_peer, *trusted_hash)
