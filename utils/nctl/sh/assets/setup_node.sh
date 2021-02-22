@@ -55,7 +55,6 @@ function setup_node()
 public_key = "$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID")"
 balance = "$NCTL_INITIAL_BALANCE_VALIDATOR"
 bonded_amount = "$POS_WEIGHT"
-
 EOM
 }
 

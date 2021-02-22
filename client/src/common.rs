@@ -122,6 +122,7 @@ pub mod force {
 
     pub fn arg(order: usize, singular: bool) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
             .short(ARG_NAME_SHORT)
             .required(false)
             .help(if singular {

@@ -34,7 +34,8 @@ where
             AccountConfig::new(pk, motes, motes)
         })
         .collect();
-    chainspec.network_config.accounts_config = AccountsConfig::new(accounts);
+    let delegators = vec![];
+    chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
     chainspec.network_config.timestamp = Timestamp::now();
 
     // Every era has exactly two blocks.

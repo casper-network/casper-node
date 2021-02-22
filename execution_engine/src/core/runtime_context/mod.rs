@@ -248,6 +248,10 @@ where
                 // Users cannot remove era infos from global state
                 Ok(())
             }
+            Key::Balance(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -649,6 +653,7 @@ where
             Key::Transfer(_) => true,
             Key::DeployInfo(_) => true,
             Key::EraInfo(_) => true,
+            Key::Balance(_) => false,
         }
     }
 
@@ -660,6 +665,7 @@ where
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
+            Key::Balance(_) => false,
         }
     }
 
@@ -671,6 +677,7 @@ where
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
+            Key::Balance(_) => false,
         }
     }
 
@@ -769,7 +776,11 @@ where
         Ok(())
     }
 
-    fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    pub(crate) fn metered_add_gs_unsafe(
+        &mut self,
+        key: Key,
+        value: StoredValue,
+    ) -> Result<(), Error> {
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 

@@ -298,13 +298,13 @@ fn should_upgrade_only_validator_slots() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let valdiator_slot_key = builder
+    let validator_slot_key = builder
         .get_contract(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()[VALIDATOR_SLOTS_KEY];
 
     let before_validator_slots: u32 = builder
-        .query(None, valdiator_slot_key, &[])
+        .query(None, validator_slot_key, &[])
         .expect("should have validator slots")
         .as_cl_value()
         .expect("should be CLValue")
@@ -328,7 +328,7 @@ fn should_upgrade_only_validator_slots() {
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
-        .query(None, valdiator_slot_key, &[])
+        .query(None, validator_slot_key, &[])
         .expect("should have validator slots")
         .as_cl_value()
         .expect("should be CLValue")

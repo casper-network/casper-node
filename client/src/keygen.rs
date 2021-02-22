@@ -1,5 +1,3 @@
-use std::process;
-
 use clap::{App, Arg, ArgMatches, SubCommand};
 use once_cell::sync::Lazy;
 
@@ -8,7 +6,7 @@ use casper_client::{
     Error,
 };
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 static MORE_ABOUT: Lazy<String> = Lazy::new(|| {
     format!(
@@ -95,22 +93,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Keygen {
             .arg(algorithm::arg())
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let output_dir = output_dir::get(matches);
         let algorithm = algorithm::get(matches);
         let force = common::force::get(matches);
 
-        match keygen::generate_files(&output_dir, algorithm, force) {
-            Err(Error::FileAlreadyExists(existing)) => {
-                eprintln!(
-                    "{} exists. To overwrite, rerun with --{}",
-                    existing.display(),
-                    common::force::ARG_NAME
-                );
-                process::exit(1);
-            }
-            Err(error) => panic!("should write key files: {}", error),
-            Ok(_) => println!("Wrote files to {}", output_dir),
-        }
+        keygen::generate_files(&output_dir, algorithm, force)
+            .map(|_| Success::Output(format!("Wrote files to {}", output_dir)))
     }
 }
