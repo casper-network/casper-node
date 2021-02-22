@@ -37,19 +37,15 @@ function main() {
     do_start_node "5"
     do_start_node "4"
     do_start_node "3"
-    # 10-12. Check sync of restarted node
-    do_await_full_synchronization "5"
-    do_await_full_synchronization "4"
-    do_await_full_synchronization "3"
-    # 13. Ensure era proceeds after restart
-    do_await_era_change "2"
-    # 14-16. Check sync of nodes again
-    do_await_full_synchronization "5"
-    do_await_full_synchronization "4"
-    do_await_full_synchronization "3"
-    # 17. Verify all nodes are in sync
+    # 10. Check sync of network
     check_network_sync
-    # 18-20. Compare stalled lfb hash to current
+    # 11. Ensure era proceeds after restart
+    do_await_era_change "2"
+    # 12. Check sync of nodes again
+    check_network_sync
+    # 13. Verify all nodes are in sync
+    check_network_sync
+    # 14-16. Compare stalled lfb hash to current
     assert_chain_progressed "5" "$STALLED_LFB"
     assert_chain_progressed "4" "$STALLED_LFB"
     assert_chain_progressed "3" "$STALLED_LFB"
@@ -153,20 +149,6 @@ function check_network_sync() {
         fi
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1
-    done
-}
-
-function do_await_full_synchronization() {
-    local NODE_ID=${1}
-    local WAIT_TIME_SEC=0
-    log_step "awaiting full synchronization of node=${NODE_ID}…"
-    while [ "$(do_read_lfb_hash ${NODE_ID})" != "$(do_read_lfb_hash '1')" ]; do
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Failed to synchronize node-${NODE_ID} in ${SYNC_TIMEOUT_SEC} seconds"
-            exit 1
-        fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        sleep 1.0
     done
 }
 
