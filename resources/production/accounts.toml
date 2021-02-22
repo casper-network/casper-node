@@ -23,7 +23,8 @@ public_key = "01524a5f3567d7b5ea17ca518c9d0320fb4a75a28a5eab58d06c755c388f20a19f
 balance = "1000000000000000000000000"
 bonded_amount = "0"
 
-[[accounts]]
-public_key = "018267d68f8d249b1430551ecc7b4c176d66f2ba2bf98d5547e7c3accc99375e53"
-balance = "1000000000000000000000"
-bonded_amount = "0"
+[[delegators]]
+validator_public_key = "01524a5f3567d7b5ea17ca518c9d0320fb4a75a28a5eab58d06c755c388f20a19f"
+delegator_public_key = "018267d68f8d249b1430551ecc7b4c176d66f2ba2bf98d5547e7c3accc99375e53"
+balance = "0"
+delegated_amount = "100000000000001"

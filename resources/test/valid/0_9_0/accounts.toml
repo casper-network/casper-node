@@ -17,3 +17,9 @@ bonded_amount = "30"
 public_key = "01569b41d574c46390212d698660b5326269ddb0a761d1294258897ac717b4958b"
 balance = "4"
 bonded_amount = "40"
+
+[[delegators]]
+validator_public_key = "01569b41d574c46390212d698660b5326269ddb0a761d1294258897ac717b4958b"
+delegator_public_key = "020248509e67db3127f82d5224c5c18eac00f96d1edeadbadc8eb2c8606227b56873"
+balance = "0"
+delegated_amount = "10"

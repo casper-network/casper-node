@@ -3,7 +3,6 @@
 use std::{
     collections::{HashMap, HashSet},
     mem,
-    mem::size_of,
 };
 
 use datasize::DataSize;
@@ -18,17 +17,17 @@ const SAMPLE_SIZE: usize = 50;
 
 /// Estimate memory usage of a hashmap of keys and values each with no heap allocations.
 pub fn hash_map_fixed_size<K, V>(hashmap: &HashMap<K, V>) -> usize {
-    hashmap.capacity() * (size_of::<V>() + size_of::<K>() + size_of::<usize>())
+    hashmap.capacity() * (mem::size_of::<V>() + mem::size_of::<K>() + mem::size_of::<usize>())
 }
 
 /// Estimate memory usage of a hashset of items with no heap allocations.
 pub fn hash_set_fixed_size<T>(hashset: &HashSet<T>) -> usize {
-    hashset.capacity() * (size_of::<T>() + size_of::<usize>())
+    hashset.capacity() * (mem::size_of::<T>() + mem::size_of::<usize>())
 }
 
 /// Estimate memory usage of a vec of items with no heap allocations.
 pub fn vec_fixed_size<T>(vec: &Vec<T>) -> usize {
-    vec.capacity() * size_of::<T>()
+    vec.capacity() * mem::size_of::<T>()
 }
 
 /// Creates an RNG for sampling based on the length of a collection.
@@ -85,7 +84,8 @@ where
     if map.len() < SAMPLE_SIZE {
         map.estimate_heap_size()
     } else {
-        let base_size = map.capacity() * (size_of::<V>() + size_of::<K>() + size_of::<usize>());
+        let base_size =
+            map.capacity() * (mem::size_of::<V>() + mem::size_of::<K>() + mem::size_of::<usize>());
 
         let mut rng = sampling_rng(map.len());
 

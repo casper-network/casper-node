@@ -60,7 +60,7 @@ use crate::{
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
     types::{Chainspec, NodeId},
-    utils::{counting_unbounded_channel, ds, CountingReceiver, CountingSender, DisplayIter},
+    utils::{self, ds, CountingReceiver, CountingSender, DisplayIter},
     NodeRng,
 };
 
@@ -184,8 +184,9 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             return Err(Error::NoKnownAddress);
         }
 
-        let (one_way_message_sender, one_way_message_receiver) = counting_unbounded_channel();
-        let (gossip_message_sender, gossip_message_receiver) = counting_unbounded_channel();
+        let (one_way_message_sender, one_way_message_receiver) =
+            utils::counting_unbounded_channel();
+        let (gossip_message_sender, gossip_message_receiver) = utils::counting_unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
         // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, start the server and exit.

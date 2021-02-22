@@ -1,10 +1,10 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::DeployStrParams;
+use casper_client::{DeployStrParams, Error};
 use casper_node::rpcs::account::PutDeploy;
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
@@ -21,12 +21,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         creation_common::apply_common_creation_options(subcommand, true)
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let mut verbosity_level = common::verbose::get(matches);
+        let verbosity_level = common::verbose::get(matches);
 
         let secret_key = common::secret_key::get(matches);
         let timestamp = creation_common::timestamp::get(matches);
@@ -38,7 +38,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let session_str_params = creation_common::session_str_params(matches);
         let payment_str_params = creation_common::payment_str_params(matches);
 
-        let response = casper_client::put_deploy(
+        casper_client::put_deploy(
             maybe_rpc_id,
             node_address,
             verbosity_level,
@@ -53,11 +53,6 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
             session_str_params,
             payment_str_params,
         )
-        .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
-
-        if verbosity_level == 0 {
-            verbosity_level += 1
-        }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+        .map(Success::from)
     }
 }
