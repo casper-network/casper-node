@@ -55,6 +55,7 @@ fn scale_sample(len: usize, sampled: usize) -> usize {
 }
 
 /// Extrapolate memory usage of a Vec by from a random subset of `SAMPLE_SIZE` items.
+#[allow(clippy::ptr_arg)]
 pub fn vec_sample<T>(vec: &Vec<T>) -> usize
 where
     T: DataSize,
