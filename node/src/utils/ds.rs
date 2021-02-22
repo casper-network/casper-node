@@ -36,7 +36,7 @@ fn sampling_rng(len: usize) -> StdRng {
     // misestimations. This has the added benefit that repeated measurements will consider the
     // same nodes, reducing jitter and making this a pure function.
 
-    // Initialize a buffer suitable for the seed, which might be larger then our length bytes.
+    // Initialize a buffer suitable for the seed, which might be larger than our length bytes.
     let mut seed = <StdRng as SeedableRng>::Seed::default();
     let len_be = len.to_be_bytes();
 
@@ -54,7 +54,7 @@ fn scale_sample(len: usize, sampled: usize) -> usize {
     sampled * len / SAMPLE_SIZE
 }
 
-/// Extrapolate memory usage of a Vec by from a random subset of `SAMPLE_SIZE` items.
+/// Extrapolate memory usage of a `Vec` by from a random subset of `SAMPLE_SIZE` items.
 #[allow(clippy::ptr_arg)]
 pub fn vec_sample<T>(vec: &Vec<T>) -> usize
 where
@@ -73,7 +73,7 @@ where
     }
 }
 
-/// Extrapolate memory usage of a HashMap by from a random subset of `SAMPLE_SIZE` items.
+/// Extrapolate memory usage of a `HashMap` by from a random subset of `SAMPLE_SIZE` items.
 pub fn hashmap_sample<K, V>(map: &HashMap<K, V>) -> usize
 where
     K: DataSize,
