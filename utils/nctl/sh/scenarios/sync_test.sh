@@ -65,7 +65,7 @@ function do_send_wasm_deploys() {
     # NOTE: Maybe make these arguments to the test?
     local BATCH_COUNT=1
     local BATCH_SIZE=1
-    local TRANSFER_AMOUNT=10000
+    local TRANSFER_AMOUNT=2500000000
     log_step "sending Wasm deploys"
     # prepare wasm batch
     prepare_wasm_batch "$TRANSFER_AMOUNT" "$BATCH_COUNT" "$BATCH_SIZE"
