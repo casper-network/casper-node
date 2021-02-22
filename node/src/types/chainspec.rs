@@ -303,7 +303,7 @@ mod tests {
             assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
-            for (_, value) in &spec.protocol_config.global_state_update.unwrap().0 {
+            for value in spec.protocol_config.global_state_update.unwrap().0.values() {
                 assert!(StoredValue::from_bytes(value).is_ok());
             }
         }
