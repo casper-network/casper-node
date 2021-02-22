@@ -316,8 +316,6 @@ async fn get_switch_block_hash(
     *switch_block_hash
 }
 
-// TODO remove ignore once joiner test is consistent again.
-#[ignore]
 #[tokio::test]
 async fn test_joiner() {
     testing::init_logging();
