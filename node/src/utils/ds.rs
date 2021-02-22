@@ -2,6 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    mem,
     mem::size_of,
 };
 
@@ -63,13 +64,15 @@ where
     if vec.len() < SAMPLE_SIZE {
         vec.estimate_heap_size()
     } else {
+        let base_size = vec.capacity() * mem::size_of::<T>();
+
         let mut rng = sampling_rng(vec.len());
         let sampled = vec
             .as_slice()
             .choose_multiple(&mut rng, SAMPLE_SIZE)
-            .map(DataSize::estimate_heap_size)
+            .map(|v| v.estimate_heap_size())
             .sum();
-        scale_sample(vec.len(), sampled)
+        base_size + scale_sample(vec.len(), sampled)
     }
 }
 
@@ -82,15 +85,78 @@ where
     if map.len() < SAMPLE_SIZE {
         map.estimate_heap_size()
     } else {
+        let base_size = map.capacity() * (size_of::<V>() + size_of::<K>() + size_of::<usize>());
+
         let mut rng = sampling_rng(map.len());
 
         let sampled = map
-            .values()
+            .iter()
             .choose_multiple(&mut rng, SAMPLE_SIZE)
             .into_iter()
-            .map(DataSize::estimate_heap_size)
+            .map(|(k, v)| k.estimate_heap_size() + v.estimate_heap_size())
+            .map(|v| v)
             .sum();
 
-        scale_sample(map.len(), sampled)
+        base_size + scale_sample(map.len(), sampled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use datasize::DataSize;
+
+    use super::{hashmap_sample, vec_sample, SAMPLE_SIZE};
+
+    #[test]
+    fn vec_sample_below_sample_size() {
+        let data: Vec<Box<u32>> = vec![];
+
+        assert_eq!(vec_sample(&data), data.estimate_heap_size());
+
+        assert!(SAMPLE_SIZE > 3);
+        let data2: Vec<Box<u32>> = vec![Box::new(1), Box::new(2), Box::new(3)];
+
+        assert_eq!(vec_sample(&data2), data2.estimate_heap_size());
+    }
+
+    #[test]
+    fn vec_sample_above_sample_size() {
+        let num_items = SAMPLE_SIZE * 5;
+
+        // We make all items equal in size, so that we know the outcome of a random sampling.
+        let data: Vec<Vec<u32>> = (0..num_items)
+            .map(|_| vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+            .collect();
+
+        assert_eq!(vec_sample(&data), data.estimate_heap_size());
+    }
+
+    #[test]
+    fn hashmap_sample_below_sample_size() {
+        let data: HashMap<u32, Box<u32>> = HashMap::new();
+
+        assert_eq!(hashmap_sample(&data), data.estimate_heap_size());
+
+        assert!(SAMPLE_SIZE > 3);
+        let mut data2: HashMap<u32, Box<u32>> = HashMap::new();
+        data2.insert(1, Box::new(1));
+        data2.insert(2, Box::new(2));
+        data2.insert(3, Box::new(3));
+
+        assert_eq!(hashmap_sample(&data2), data2.estimate_heap_size());
+    }
+
+    #[test]
+    fn hashmap_sample_above_sample_size() {
+        let num_items = SAMPLE_SIZE * 5;
+
+        // We make all items equal in size, so that we know the outcome of a random sampling.
+        let data: HashMap<usize, Vec<u32>> = (0..num_items)
+            .map(|idx| (idx, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
+            .collect();
+
+        assert_eq!(hashmap_sample(&data), data.estimate_heap_size());
     }
 }
