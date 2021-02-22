@@ -5,6 +5,7 @@ mod accounts_config;
 mod core_config;
 mod deploy_config;
 mod error;
+mod global_state_update;
 mod highway_config;
 mod network_config;
 mod parse_toml;
@@ -28,7 +29,8 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 pub(crate) use self::accounts_config::AccountConfig;
 pub(crate) use self::{
     accounts_config::AccountsConfig, core_config::CoreConfig, deploy_config::DeployConfig,
-    highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
+    network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
 pub use self::{error::Error, protocol_config::ActivationPoint};
 #[cfg(test)]
