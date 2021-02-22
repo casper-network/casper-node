@@ -97,7 +97,7 @@ impl FromBytes for AccountConfig {
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
 pub struct DelegatorConfig {
-    valdiator_public_key: PublicKey,
+    validator_public_key: PublicKey,
     delegator_public_key: PublicKey,
     balance: Motes,
     delegated_amount: Motes,
@@ -105,21 +105,21 @@ pub struct DelegatorConfig {
 
 impl DelegatorConfig {
     pub fn new(
-        valdiator_public_key: PublicKey,
+        validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         balance: Motes,
         delegated_amount: Motes,
     ) -> Self {
         Self {
-            valdiator_public_key,
+            validator_public_key,
             delegator_public_key,
             balance,
             delegated_amount,
         }
     }
 
-    pub fn valdiator_public_key(&self) -> PublicKey {
-        self.valdiator_public_key
+    pub fn validator_public_key(&self) -> PublicKey {
+        self.validator_public_key
     }
 
     pub fn delegator_public_key(&self) -> PublicKey {
@@ -137,7 +137,7 @@ impl DelegatorConfig {
 
 impl Distribution<DelegatorConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DelegatorConfig {
-        let valdiator_public_key = SecretKey::ed25519(rng.gen()).into();
+        let validator_public_key = SecretKey::ed25519(rng.gen()).into();
         let delegator_public_key = SecretKey::ed25519(rng.gen()).into();
 
         let mut u512_array = [0u8; 64];
@@ -148,7 +148,7 @@ impl Distribution<DelegatorConfig> for Standard {
         let delegated_amount = Motes::new(U512::from(u512_array));
 
         DelegatorConfig::new(
-            valdiator_public_key,
+            validator_public_key,
             delegator_public_key,
             balance,
             delegated_amount,
@@ -159,7 +159,7 @@ impl Distribution<DelegatorConfig> for Standard {
 impl ToBytes for DelegatorConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.valdiator_public_key.to_bytes()?);
+        buffer.extend(self.validator_public_key.to_bytes()?);
         buffer.extend(self.delegator_public_key.to_bytes()?);
         buffer.extend(self.balance.to_bytes()?);
         buffer.extend(self.delegated_amount.to_bytes()?);
@@ -167,7 +167,7 @@ impl ToBytes for DelegatorConfig {
     }
 
     fn serialized_length(&self) -> usize {
-        self.valdiator_public_key.serialized_length()
+        self.validator_public_key.serialized_length()
             + self.delegator_public_key.serialized_length()
             + self.balance.serialized_length()
             + self.delegated_amount.serialized_length()
@@ -176,12 +176,12 @@ impl ToBytes for DelegatorConfig {
 
 impl FromBytes for DelegatorConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (valdiator_public_key, remainder) = FromBytes::from_bytes(bytes)?;
+        let (validator_public_key, remainder) = FromBytes::from_bytes(bytes)?;
         let (delegator_public_key, remainder) = FromBytes::from_bytes(remainder)?;
         let (balance, remainder) = FromBytes::from_bytes(remainder)?;
         let (delegated_amount, remainder) = FromBytes::from_bytes(remainder)?;
         let delegator_config = DelegatorConfig {
-            valdiator_public_key,
+            validator_public_key,
             delegator_public_key,
             balance,
             delegated_amount,

@@ -24,7 +24,7 @@ balance = "1000000000000000000"
 bonded_amount = "200000000000000"
 
 [[delegators]]
-valdiator_public_key = "01b3feeec1d91c7c2f070052315258eeaaf7c24029a80a1aea285814e9f9a20d36"
+validator_public_key = "01b3feeec1d91c7c2f070052315258eeaaf7c24029a80a1aea285814e9f9a20d36"
 delegator_public_key = "020248509e67db3127f82d5224c5c18eac00f96d1edeadbadc8eb2c8606227b56873"
 balance = "1000000000000000000"
 delegated_amount = "100000000000001"
