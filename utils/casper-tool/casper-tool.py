@@ -301,7 +301,7 @@ def create_accounts_toml(output_file, pubkeys):
         account = {
             'public_key': key_hex,
             'balance': f'{motes}',
-            'staked_amount': f'{weight}'
+            'bonded_amount': f'{weight}'
         }
         accounts += [account]
     
