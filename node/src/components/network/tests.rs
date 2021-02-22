@@ -69,14 +69,20 @@ impl Reactor for TestReactor {
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let chainspec = Chainspec::random(rng);
         let network_identity = NetworkIdentity::new();
-        let (network_component, effects) =
-            NetworkComponent::new(event_queue, config, network_identity, &chainspec, false)?;
+        let (network_component, effects) = NetworkComponent::new(
+            event_queue,
+            config,
+            registry,
+            network_identity,
+            &chainspec,
+            false,
+        )?;
 
         Ok((
             TestReactor { network_component },

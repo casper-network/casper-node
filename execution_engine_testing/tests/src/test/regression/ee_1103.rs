@@ -11,8 +11,9 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    auction::{ARG_DELEGATOR, ARG_VALIDATOR},
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
+    runtime_args,
+    system::auction::{ARG_DELEGATOR, ARG_VALIDATOR},
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -38,7 +39,7 @@ static DELEGATOR_2: Lazy<PublicKey> =
 static DELEGATOR_3: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([207; SecretKey::ED25519_LENGTH]).into());
 
-// These values were chosen to correspond to the values in accounts.csv
+// These values were chosen to correspond to the values in accounts.toml
 // at the time of their introduction.
 
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));

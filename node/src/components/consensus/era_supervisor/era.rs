@@ -1,10 +1,12 @@
 use std::{
     collections::{BTreeMap, HashSet},
+    env,
     fmt::{self, Debug, Display, Formatter},
 };
 
 use datasize::DataSize;
 use itertools::Itertools;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
@@ -22,6 +24,11 @@ use crate::{
     },
     types::{ProtoBlock, Timestamp},
 };
+
+const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
+    "CASPER_ENABLE_DETAILED_CONSENSUS_METRICS";
+static CASPER_ENABLE_DETAILED_CONSENSUS_METRICS: Lazy<bool> =
+    Lazy::new(|| env::var(CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR).is_ok());
 
 #[derive(
     DataSize,
@@ -50,16 +57,6 @@ impl EraId {
 
     pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, including this one.
-    pub(crate) fn iter_bonded(&self, bonded_eras: u64) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(bonded_eras)..=self.0).map(EraId)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
-    pub(crate) fn iter_other(&self, count: u64) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(count)..self.0).map(EraId)
     }
 
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.
@@ -300,15 +297,16 @@ where
             let any_ref = consensus.as_any();
 
             if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
-                // TODO: Allow switching between `detailed`, `flat` and `off` via envvar or config.
-                let detailed = (*highway).estimate_detailed_heap_size();
-
-                match serde_json::to_string(&detailed) {
-                    Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
-                    Err(err) => warn!(%err, "error encoding consensus memory metrics"),
+                if *CASPER_ENABLE_DETAILED_CONSENSUS_METRICS {
+                    let detailed = (*highway).estimate_detailed_heap_size();
+                    match serde_json::to_string(&detailed) {
+                        Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
+                        Err(err) => warn!(%err, "error encoding consensus memory metrics"),
+                    }
+                    detailed.total()
+                } else {
+                    (*highway).estimate_heap_size()
                 }
-
-                detailed.total()
             } else {
                 warn!(
                     "could not downcast consensus protocol to \

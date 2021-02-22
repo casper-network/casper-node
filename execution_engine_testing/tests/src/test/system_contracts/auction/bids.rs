@@ -24,13 +24,14 @@ use casper_types::{
     self,
     account::AccountHash,
     api_error::ApiError,
-    auction::{
+    runtime_args,
+    system::auction::{
         self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
         METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
     },
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -48,9 +49,9 @@ const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
 const ADD_BID_AMOUNT_2: u64 = 47_500;
-const ADD_BID_DELEGATION_RATE_1: DelegationRate = 125;
+const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
 const BID_AMOUNT_2: u64 = 5_000;
-const ADD_BID_DELEGATION_RATE_2: DelegationRate = 126;
+const ADD_BID_DELEGATION_RATE_2: DelegationRate = 15;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";

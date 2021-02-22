@@ -182,6 +182,11 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .add(sender, pvv, now);
     }
 
+    /// Returns the timestamps at which we are supposed to add cached vertices.
+    pub(crate) fn timestamps_to_add_vertices(&self) -> Vec<Timestamp> {
+        self.vertices_to_be_added_later.keys().cloned().collect()
+    }
+
     /// Schedules calls to `add_vertex` on any vertices in `vertices_to_be_added_later` which are
     /// scheduled for after the given `transpired_timestamp`.  In general the specified `timestamp`
     /// is approximately `Timestamp::now()`.  Vertices keyed by timestamps chronologically before

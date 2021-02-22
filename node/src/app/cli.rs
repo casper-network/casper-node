@@ -201,6 +201,11 @@ impl Cli {
 
                 match validator_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(ExitCode::Success) => (),
+                    ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigInt)
+                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigQuit)
+                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigTerm) => {
+                        process::exit(exit_code as i32)
+                    }
                     reactor_exit => error!("validator should not exit with {:?}", reactor_exit),
                 }
             }

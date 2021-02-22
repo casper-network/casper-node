@@ -1,10 +1,13 @@
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{PublicKey, SecretKey, U512};
 
 use crate::{
-    types::{Chainspec, Timestamp},
+    types::{
+        chainspec::{AccountConfig, AccountsConfig},
+        Chainspec, Timestamp,
+    },
     utils::Loadable,
 };
 
@@ -24,13 +27,14 @@ where
     T: Into<U512>,
 {
     let mut chainspec = Chainspec::from_resources("test/valid/0_9_0");
-    chainspec.network_config.accounts = stakes
+    let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {
             let motes = Motes::new(stake.into());
-            GenesisAccount::new(pk, pk.to_account_hash(), motes, motes)
+            AccountConfig::new(pk, motes, motes)
         })
         .collect();
+    chainspec.network_config.accounts_config = AccountsConfig::new(accounts);
     chainspec.network_config.timestamp = Timestamp::now();
 
     // Every era has exactly two blocks.

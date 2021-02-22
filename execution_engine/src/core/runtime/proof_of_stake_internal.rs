@@ -1,7 +1,6 @@
 use casper_types::{
     account::AccountHash,
-    proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider},
-    system_contract_errors::pos::Error,
+    system::proof_of_stake::{Error, MintProvider, ProofOfStake, RuntimeProvider},
     BlockTime, Key, Phase, TransferredTo, URef, U512,
 };
 

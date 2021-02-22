@@ -69,12 +69,12 @@ function _set_net_chainspec()
     )
     python3 -c "${SCRIPT[*]}"
 
-    # Set accounts.csv.
-    touch "$PATH_TO_NET"/chainspec/accounts.csv
+    # Set accounts.toml.
+    touch "$PATH_TO_NET"/chainspec/accounts.toml
 }
 
 #######################################
-# Sets entry in chainspec's accounts.csv.
+# Sets entry in chainspec's accounts.toml.
 # Arguments:
 #   Path to file containing an ed25519 public key in hex format.
 #   Initial account balance (in motes).
@@ -91,9 +91,12 @@ function _set_chainspec_account()
     PATH_TO_NET=$(get_path_to_net)
     ACCOUNT_KEY=$(cat "$PATH_TO_ACCOUNT_KEY")
 
-	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
-	${ACCOUNT_KEY},$INITIAL_BALANCE,$INITIAL_WEIGHT
-	EOM
+    cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[[accounts]]
+public_key = "${ACCOUNT_KEY}"
+balance = "$INITIAL_BALANCE"
+staked_amount = "$INITIAL_WEIGHT"
+EOM
 }
 
 #######################################

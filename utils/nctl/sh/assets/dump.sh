@@ -15,7 +15,7 @@ fi
 mkdir -p "$PATH_TO_DUMP"
 
 # Dump chainspec.
-cp "$PATH_TO_NET"/chainspec/accounts.csv "$PATH_TO_DUMP"/accounts.csv
+cp "$PATH_TO_NET"/chainspec/accounts.toml "$PATH_TO_DUMP"/accounts.toml
 cp "$PATH_TO_NET"/chainspec/chainspec.toml "$PATH_TO_DUMP"
 
 # Dump daemon.

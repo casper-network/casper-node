@@ -84,6 +84,7 @@ use casper_execution_engine::{
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
+        put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
@@ -95,7 +96,7 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
@@ -113,7 +114,7 @@ use crate::{
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, Timestamp,
+        FinalizedBlock, Item, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -122,7 +123,6 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
     RpcServerAnnouncement,
 };
-use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -784,8 +784,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the switch block at the given era ID.
-    // TODO - remove once used.
-    #[allow(unused)]
     pub(crate) async fn get_switch_block_at_era_id_from_storage(
         self,
         era_id: EraId,
@@ -1467,6 +1465,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Get our public key from consensus, and if we're a validator, the next round length.
+    pub(crate) async fn consensus_status(self) -> (PublicKey, Option<TimeDiff>)
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
+    }
+
     /// Check if validator is bonded in the future era (`era_id`).
     /// This information is known only by the Contract Runtime since consensus component
     /// knows only about currently active eras.
@@ -1491,6 +1498,25 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Collects the switch blocks from the eras identified by provided era IDs. Returns
+    /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
+    /// `None` if at least one was missing.
+    pub(crate) async fn collect_switch_blocks<I: IntoIterator<Item = EraId>>(
+        self,
+        era_ids: I,
+    ) -> Option<HashMap<EraId, BlockHeader>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(era_ids.into_iter().map(|era_id| {
+            self.get_switch_block_at_era_id_from_storage(era_id)
+                .map(move |maybe_block| maybe_block.map(|block| (era_id, block.take_header())))
+        }))
+        .await
+        .into_iter()
+        .collect()
     }
 }
 

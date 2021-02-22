@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
+    system::auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
     AccessRights, PublicKey, SecretKey, URef, U512,
 };
 
@@ -94,6 +94,8 @@ pub struct JsonBid {
     delegation_rate: DelegationRate,
     /// The delegators.
     delegators: Vec<JsonDelegator>,
+    /// Is this an inactive validator.
+    inactive: bool,
 }
 
 impl From<Bid> for JsonBid {
@@ -110,6 +112,7 @@ impl From<Bid> for JsonBid {
             staked_amount: *bid.staked_amount(),
             delegation_rate: *bid.delegation_rate(),
             delegators: json_delegators,
+            inactive: bid.inactive(),
         }
     }
 }

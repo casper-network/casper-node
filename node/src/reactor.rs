@@ -50,15 +50,16 @@ use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::IntoNanoseconds;
 use serde::Serialize;
+use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     utils::{self, WeightedRoundRobin},
-    NodeRng,
+    NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
@@ -224,6 +225,8 @@ pub trait Finalize: Sized {
 struct AllocatedMem {
     /// Total allocated memory in bytes.
     allocated: u64,
+    /// Total consumed memory in bytes.
+    consumed: u64,
     /// Total system memory in bytes.
     total: u64,
 }
@@ -280,6 +283,9 @@ struct RunnerMetrics {
     /// Total allocated RAM in bytes, as reported by jemalloc.
     allocated_ram_bytes: IntGauge,
 
+    /// Total consumed RAM in bytes, as reported by sys-info.
+    consumed_ram_bytes: IntGauge,
+
     /// Total system RAM in bytes, as reported by sys-info.
     total_ram_bytes: IntGauge,
 }
@@ -320,11 +326,14 @@ impl RunnerMetrics {
 
         let allocated_ram_bytes =
             IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+        let consumed_ram_bytes =
+            IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
         let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
 
         registry.register(Box::new(events.clone()))?;
         registry.register(Box::new(event_dispatch_duration.clone()))?;
         registry.register(Box::new(allocated_ram_bytes.clone()))?;
+        registry.register(Box::new(consumed_ram_bytes.clone()))?;
         registry.register(Box::new(total_ram_bytes.clone()))?;
 
         Ok(RunnerMetrics {
@@ -332,6 +341,7 @@ impl RunnerMetrics {
             event_dispatch_duration,
             registry: registry.clone(),
             allocated_ram_bytes,
+            consumed_ram_bytes,
             total_ram_bytes,
         })
     }
@@ -348,6 +358,9 @@ impl Drop for RunnerMetrics {
         self.registry
             .unregister(Box::new(self.allocated_ram_bytes.clone()))
             .expect("did not expect deregistering allocated_ram_bytes to fail");
+        self.registry
+            .unregister(Box::new(self.consumed_ram_bytes.clone()))
+            .expect("did not expect deregistering consumed_ram_bytes to fail");
         self.registry
             .unregister(Box::new(self.total_ram_bytes.clone()))
             .expect("did not expect deregistering total_ram_bytes to fail");
@@ -454,9 +467,15 @@ where
                 self.last_metrics = now;
             }
 
-            if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
+            if let Some(AllocatedMem {
+                allocated,
+                consumed,
+                total,
+            }) = Self::get_allocated_memory()
+            {
                 debug!(%allocated, %total, "memory allocated");
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
+                self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);
                 if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
                     let threshold_bytes = threshold_mb * 1024 * 1024;
@@ -474,11 +493,11 @@ where
         }
 
         // Dump event queue if requested, stopping the world.
-        if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
+        if QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
             self.dump_queues().await;
             // Indicate we are done with the dump.
-            crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+            QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let (event, q) = self.scheduler.pop().await;
@@ -534,6 +553,7 @@ where
 
         // mem_info gives us kB
         let total = mem_info.total * 1024;
+        let consumed = total - (mem_info.free * 1024);
 
         // whereas jemalloc_ctl gives us the numbers in bytes
         match jemalloc_epoch::mib() {
@@ -562,7 +582,11 @@ where
             }
         };
 
-        Some(AllocatedMem { allocated, total })
+        Some(AllocatedMem {
+            allocated,
+            consumed,
+            total,
+        })
     }
 
     /// Handles dumping queue contents to files in /tmp.
@@ -599,6 +623,7 @@ where
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
+    #[cfg(test)]
     pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<()> {
         if self.scheduler.item_count() == 0 {
             None
@@ -608,14 +633,23 @@ where
         }
     }
 
-    /// Runs the reactor until `maybe_exit()` returns Some.
+    /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
+    /// signal.
     #[inline]
     pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
         loop {
-            if let Some(reactor_exit) = self.reactor.maybe_exit() {
-                return reactor_exit;
+            match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
+                0 => {
+                    if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                        return reactor_exit;
+                    }
+                    self.crank(rng).await;
+                }
+                SIGINT => return ReactorExit::ProcessShouldExit(ExitCode::SigInt),
+                SIGQUIT => return ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
+                SIGTERM => return ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                _ => error!("should be unreachable - bug in signal handler"),
             }
-            self.crank(rng).await;
         }
     }
 

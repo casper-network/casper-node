@@ -112,7 +112,7 @@ nctl-view-chain-spec
 
 ### nctl-view-chain-spec-accounts  
 
-Displays a chain's accounts.csv file.
+Displays a chain's accounts.toml file.
 
 ```
 nctl-view-chain-spec-accounts 

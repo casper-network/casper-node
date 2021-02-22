@@ -90,5 +90,19 @@ mod proptests {
              let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
              assert_eq!(trie, deserialized_trie)
         }
+
+        #[test]
+        fn bincode_roundtrip_trie(trie in trie_arb()) {
+           let bincode_bytes = bincode::serialize(&trie)?;
+           let deserialized_trie = bincode::deserialize(&bincode_bytes)?;
+           assert_eq!(trie, deserialized_trie)
+        }
+
+        #[test]
+        fn bincode_roundtrip_trie_pointer_block(pointer_block in trie_pointer_block_arb()) {
+             let bincode_bytes = bincode::serialize(&pointer_block)?;
+             let deserialized_pointer_block = bincode::deserialize(&bincode_bytes)?;
+             assert_eq!(pointer_block, deserialized_pointer_block)
+        }
     }
 }

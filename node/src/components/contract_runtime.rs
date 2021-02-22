@@ -32,7 +32,7 @@ use casper_execution_engine::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{auction::ValidatorWeights, ProtocolVersion};
+use casper_types::{system::auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::Component,
@@ -78,6 +78,7 @@ pub struct ContractRuntimeMetrics {
     apply_effect: Histogram,
     commit_upgrade: Histogram,
     run_query: Histogram,
+    commit_step: Histogram,
     get_balance: Histogram,
     get_validator_weights: Histogram,
     get_era_validators: Histogram,
@@ -100,6 +101,8 @@ const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
 const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
 const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
+const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
+const COMMIT_STEP_HELP: &str = "tracking run of engine_state.commit_step in seconds.";
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
@@ -148,6 +151,7 @@ impl ContractRuntimeMetrics {
                 APPLY_EFFECT_HELP,
             )?,
             run_query: register_histogram_metric(registry, RUN_QUERY_NAME, RUN_QUERY_HELP)?,
+            commit_step: register_histogram_metric(registry, COMMIT_STEP_NAME, COMMIT_STEP_HELP)?,
             commit_upgrade: register_histogram_metric(
                 registry,
                 COMMIT_UPGRADE_NAME,
@@ -442,7 +446,7 @@ where
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let result = engine_state.commit_step(correlation_id, step_request);
-                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        metrics.commit_step.observe(start.elapsed().as_secs_f64());
                         result
                     })
                     .await

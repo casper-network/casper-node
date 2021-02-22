@@ -5,8 +5,9 @@ extern crate alloc;
 
 use casper_contract::contract_api::{runtime, system};
 use casper_types::{
-    auction::{self, DelegationRate},
-    runtime_args, PublicKey, RuntimeArgs, U512,
+    runtime_args,
+    system::auction::{self, DelegationRate},
+    PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

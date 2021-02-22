@@ -10,6 +10,7 @@ use casper_types::ExecutionResult;
 
 use super::{Config, Storage};
 use crate::{
+    components::consensus::EraId,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
@@ -19,6 +20,19 @@ use crate::{
     utils::WithDir,
 };
 
+fn new_config(harness: &ComponentHarness<()>) -> Config {
+    const MIB: usize = 1024 * 1024;
+
+    // Restrict all stores to 50 mibibytes, to catch issues before filling up the entire disk.
+    Config {
+        path: harness.tmp.path().join("storage"),
+        max_block_store_size: 50 * MIB,
+        max_deploy_store_size: 50 * MIB,
+        max_deploy_metadata_store_size: 50 * MIB,
+        max_state_store_size: 50 * MIB,
+    }
+}
+
 /// Storage component test fixture.
 ///
 /// Creates a storage component in a temporary directory.
@@ -26,22 +40,23 @@ use crate::{
 /// # Panics
 ///
 /// Panics if setting up the storage fixture fails.
-fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
-    const MIB: usize = 1024 * 1024;
+fn storage_fixture(harness: &ComponentHarness<()>) -> Storage {
+    let cfg = new_config(harness);
+    Storage::new(&WithDir::new(harness.tmp.path(), cfg), None)
+        .expect("could not create storage component fixture")
+}
 
-    // Restrict all stores to 50 mibibytes, to catch issues before filling up the entire disk.
-    let cfg = Config {
-        path: harness.tmp.path().join("storage"),
-        max_block_store_size: 50 * MIB,
-        max_deploy_store_size: 50 * MIB,
-        max_deploy_metadata_store_size: 50 * MIB,
-        max_state_store_size: 50 * MIB,
-    };
-
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg)).expect(
-        "could not create storage component
-    fixture",
-    )
+/// Storage component test fixture.
+///
+/// Creates a storage component in a temporary directory, but with a hard reset to a specified era.
+///
+/// # Panics
+///
+/// Panics if setting up the storage fixture fails.
+fn storage_fixture_with_hard_reset(harness: &ComponentHarness<()>, reset_era_id: EraId) -> Storage {
+    let cfg = new_config(harness);
+    Storage::new(&WithDir::new(harness.tmp.path(), cfg), Some(reset_era_id))
+        .expect("could not create storage component fixture")
 }
 
 /// Creates a random block with a specific block height.
@@ -208,7 +223,7 @@ fn save_state<T>(
 #[test]
 fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let response = get_block(&mut harness, &mut storage, block_hash);
@@ -220,7 +235,7 @@ fn get_block_of_non_existing_block_returns_none() {
 #[test]
 fn can_put_and_get_block() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // Create a random block, store and load it.
     let block = Box::new(Block::random(&mut harness.rng));
@@ -253,7 +268,7 @@ fn can_put_and_get_block() {
 #[test]
 fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // Create a random block, load and store it.
     let block_33 = random_block_at_height(&mut harness.rng, 33);
@@ -329,7 +344,7 @@ fn can_retrieve_block_by_height() {
 #[should_panic(expected = "duplicate entries")]
 fn different_block_at_height_is_fatal() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
     let block_44_a = random_block_at_height(&mut harness.rng, 44);
@@ -348,7 +363,7 @@ fn different_block_at_height_is_fatal() {
 #[test]
 fn get_vec_of_non_existing_deploy_returns_nones() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let deploy_id = DeployHash::random(&mut harness.rng);
     let response = get_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
@@ -362,7 +377,7 @@ fn get_vec_of_non_existing_deploy_returns_nones() {
 #[test]
 fn can_retrieve_store_and_load_deploys() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // Create a random deploy, store and load it.
     let deploy = Box::new(Deploy::random(&mut harness.rng));
@@ -410,7 +425,7 @@ fn can_retrieve_store_and_load_deploys() {
 #[test]
 fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let total = 1000;
     let batch_size = 25;
@@ -436,7 +451,7 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 #[test]
 fn store_execution_results_for_two_blocks() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let deploy = Deploy::random(&mut harness.rng);
 
@@ -488,7 +503,7 @@ fn store_execution_results_for_two_blocks() {
 #[test]
 fn store_random_execution_results() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // We store results for two different blocks. Each block will have five deploys executed in it,
     // with two of these deploys being shared by both blocks, while the remaining three are unique
@@ -594,7 +609,7 @@ fn store_random_execution_results() {
 #[should_panic(expected = "duplicate execution result")]
 fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let deploy_hash = DeployHash::random(&mut harness.rng);
@@ -614,7 +629,7 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
 #[test]
 fn store_identical_execution_results() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let deploy_hash = DeployHash::random(&mut harness.rng);
@@ -641,7 +656,7 @@ fn store_and_load_state_data() {
     let key2 = b"exkey-2".to_vec();
 
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // Initially, both keys should return nothing.
     let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
@@ -682,7 +697,7 @@ fn persist_state_data() {
     let key = b"sample-key-1".to_vec();
 
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
     assert!(load.is_none());
@@ -702,7 +717,7 @@ fn persist_state_data() {
         .on_disk(on_disk)
         .rng(rng)
         .build();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let load = load_state::<StateData>(&mut harness, &mut storage, key.into());
     assert_eq!(load, Some(data));
@@ -711,7 +726,7 @@ fn persist_state_data() {
 #[test]
 fn test_legacy_interface() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let deploy = Box::new(Deploy::random(&mut harness.rng));
     let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
@@ -730,7 +745,7 @@ fn test_legacy_interface() {
 #[test]
 fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
@@ -755,7 +770,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         .on_disk(on_disk)
         .rng(rng)
         .build();
-    let mut storage = storage_fixture(&mut harness);
+    let mut storage = storage_fixture(&harness);
 
     let actual_block = get_block(&mut harness, &mut storage, *block.hash())
         .expect("missing block we stored earlier");
@@ -775,4 +790,59 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         get_block_at_height(&mut harness, &mut storage, 42).expect("block index was not restored"),
         *block
     );
+}
+
+#[test]
+fn should_hard_reset() {
+    let blocks_count = 8_usize;
+    let blocks_per_era = 3;
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
+    let blocks: Vec<Block> = (0..blocks_count)
+        .map(|index| {
+            let is_switch = index % blocks_per_era == blocks_per_era - 1;
+            Block::random_with_specifics(
+                &mut harness.rng,
+                EraId(index as u64 / 3),
+                index as u64,
+                is_switch,
+            )
+        })
+        .collect();
+
+    for block in &blocks {
+        assert!(put_block(
+            &mut harness,
+            &mut storage,
+            Box::new(block.clone())
+        ));
+    }
+    // Check the highest block is #7.
+    assert_eq!(
+        Some(blocks[blocks_count - 1].clone()),
+        get_highest_block(&mut harness, &mut storage)
+    );
+
+    // Initialize a new storage with a hard reset to era 2, effectively hiding blocks 6 and 7.
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(2));
+    // Check the highest block is #5.
+    assert_eq!(
+        Some(blocks[blocks_count - blocks_per_era].clone()),
+        get_highest_block(&mut harness, &mut storage)
+    );
+
+    // Initialize a new storage with a hard reset to era 1, effectively hiding blocks 3-7.
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(1));
+    // Check the highest block is #2.
+    assert_eq!(
+        Some(blocks[blocks_count - (2 * blocks_per_era)].clone()),
+        get_highest_block(&mut harness, &mut storage)
+    );
+
+    // Initialize a new storage with a hard reset to era 0, effectively hiding all blocks.
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(0));
+    // Check the highest block is `None`.
+    assert!(get_highest_block(&mut harness, &mut storage).is_none());
 }

@@ -209,9 +209,9 @@ def create_network(
         )
         pubkeys[n] = pubkey_hex
 
-    accounts_path = os.path.join(chain_path, "accounts.csv")
+    accounts_path = os.path.join(chain_path, "accounts.toml")
     show_val("accounts file", accounts_path)
-    create_accounts_csv(open(accounts_path, "w"), pubkeys)
+    create_accounts_toml(open(accounts_path, "w"), pubkeys)
 
 
 def create_chainspec(template, network_name, genesis_in, contract_paths):
@@ -290,13 +290,22 @@ def create_node(
     return open(os.path.join(key_path, "public_key_hex")).read().strip()
 
 
-def create_accounts_csv(output_file, pubkeys):
+def create_accounts_toml(output_file, pubkeys):
     items = list(pubkeys.items())
     items.sort()
+
+    accounts = []
     for id, key_hex in items:
         motes = 1000000000000000
         weight = 10000000000000
-        output_file.write("{},{},{}\n".format(key_hex, motes, weight))
+        account = {
+            'public_key': key_hex,
+            'balance': f'{motes}',
+            'staked_amount': f'{weight}'
+        }
+        accounts += [account]
+    
+    toml.dump(accounts, output_file)
 
 
 def run_client(argv0, *args):

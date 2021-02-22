@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::auction::EraInfo;
+use casper_types::system::auction::EraInfo;
 
 use crate::{
     crypto::hash::Digest,

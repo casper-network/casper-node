@@ -1,4 +1,4 @@
-import {toBytesArrayU8, toBytesString, toBytesI32, toBytesU32, toBytesStringList, toBytesU64} from "./bytesrepr";
+import {toBytesArrayU8, toBytesString, toBytesI32, toBytesU32, toBytesU8, toBytesStringList, toBytesU64} from "./bytesrepr";
 import {U512} from "./bignum";
 import {URef} from "./uref";
 import {Key} from "./key";
@@ -124,6 +124,13 @@ export class CLValue {
      */
     static fromU512(value: U512): CLValue {
         return new CLValue(value.toBytes(), new CLType(CLTypeTag.U512));
+    }
+
+    /**
+     * Creates a `CLValue` holding an unsigned 64-bit integer.
+     */
+    static fromU8(value: u8): CLValue {
+        return new CLValue(toBytesU8(value), new CLType(CLTypeTag.U8));
     }
 
     /**

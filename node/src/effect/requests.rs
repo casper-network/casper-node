@@ -24,15 +24,19 @@ use casper_execution_engine::{
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
+        put_trie::InsertedTrieKeyAndMissingDescendants,
         query::{QueryRequest, QueryResult},
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
-    shared::{additive_map::AdditiveMap, transform::Transform},
-    storage::{global_state::CommitResult, protocol_data::ProtocolData},
+    shared::{
+        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
+        transform::Transform,
+    },
+    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::{EraValidators, ValidatorWeights},
+    system::auction::{EraValidators, ValidatorWeights},
     ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
 
@@ -49,14 +53,9 @@ use crate::{
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, NodeId, ProtoBlock, StatusFeed, Timestamp,
+        FinalizedBlock, Item, NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
     },
     utils::DisplayIter,
-};
-use casper_execution_engine::{
-    core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants,
-    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::trie::Trie,
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
@@ -960,6 +959,8 @@ pub enum ConsensusRequest {
     HandleLinearBlock(Box<Block>, Responder<Option<FinalitySignature>>),
     /// Check whether validator identifying with the public key is bonded.
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
+    /// Request for our public key, and if we're a validator, the next round length.
+    Status(Responder<(PublicKey, Option<TimeDiff>)>),
 }
 
 /// ChainspecLoader component requests.

@@ -38,9 +38,11 @@ use casper_execution_engine::{
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
-    auction::{self, DelegationRate},
-    mint, proof_of_stake, runtime_args,
-    system_contract_type::AUCTION,
+    runtime_args,
+    system::{
+        auction::{self, DelegationRate},
+        mint, proof_of_stake, AUCTION,
+    },
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -55,7 +57,7 @@ const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
 const TRANSFER_AMOUNT: u64 = 123;
-const BID_DELEGATION_RATE: DelegationRate = 123;
+const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;

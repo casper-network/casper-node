@@ -25,16 +25,17 @@ use tracing::{debug, error};
 
 use casper_types::{
     account::AccountHash,
-    auction::{
-        EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_REWARD_FACTORS,
-        ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY,
-        VALIDATOR_SLOTS_KEY,
-    },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    mint::ROUND_SEIGNIORAGE_RATE_KEY,
-    proof_of_stake,
-    system_contract_errors::{self},
+    system::{
+        auction::{
+            EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
+        proof_of_stake,
+    },
     AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -868,12 +869,10 @@ where
 
             let transfer_result = match actual_result {
                 Some(Ok(())) => Ok(()),
-                Some(Err(mint_error)) => {
-                    match system_contract_errors::mint::Error::try_from(mint_error) {
-                        Ok(mint_error) => Err(ApiError::from(mint_error)),
-                        Err(_) => Err(ApiError::Transfer),
-                    }
-                }
+                Some(Err(mint_error)) => match mint::Error::try_from(mint_error) {
+                    Ok(mint_error) => Err(ApiError::from(mint_error)),
+                    Err(_) => Err(ApiError::Transfer),
+                },
                 None => Err(ApiError::Transfer),
             };
 

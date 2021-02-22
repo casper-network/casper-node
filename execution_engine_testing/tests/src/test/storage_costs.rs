@@ -21,15 +21,17 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
-#[cfg(not(feature = "use-as-wasm"))]
-use casper_types::{
-    auction::{self, DelegationRate},
-    runtime_args,
-    system_contract_type::AUCTION,
-};
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     CLValue, ContractHash, ProtocolVersion, RuntimeArgs, U512,
+};
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_types::{
+    runtime_args,
+    system::{
+        auction::{self, DelegationRate},
+        AUCTION,
+    },
 };
 
 use num_rational::Ratio;
@@ -203,7 +205,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
 #[test]
 fn should_verify_isolated_auction_storage_is_free() {
     const BOND_AMOUNT: u64 = 42;
-    const DELEGATION_RATE: DelegationRate = 123;
+    const DELEGATION_RATE: DelegationRate = 10;
 
     let mut builder = initialize_isolated_storage_costs();
 

@@ -18,12 +18,11 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, INITIAL_ERA_ID,
-        METHOD_SLASH, UNBONDING_PURSES_KEY,
-    },
     runtime_args,
-    system_contract_errors::auction,
+    system::auction::{
+        self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
+        INITIAL_ERA_ID, METHOD_SLASH, UNBONDING_PURSES_KEY,
+    },
     ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -46,6 +45,7 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
+const DELEGATION_RATE: DelegationRate = 42;
 
 #[ignore]
 #[test]
@@ -78,7 +78,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
-            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .build();
@@ -373,7 +373,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
-            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .build();
@@ -550,7 +550,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
-            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .with_protocol_version(new_protocol_version)

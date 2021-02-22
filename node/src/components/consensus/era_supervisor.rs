@@ -5,6 +5,8 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+mod era;
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
@@ -31,6 +33,7 @@ use crate::{
     components::consensus::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
+        config::ProtocolConfig,
         consensus_protocol::{
             BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
             ProtocolOutcome,
@@ -43,17 +46,14 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
-        ProtoBlock, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
+        FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
 };
 
 pub use self::era::{Era, EraId};
-use crate::{components::consensus::config::ProtocolConfig, types::Block};
-
-mod era;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -113,6 +113,10 @@ pub struct EraSupervisor<I> {
     next_upgrade_activation_point: Option<ActivationPoint>,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
+    /// Set to true when InitializeEras is handled.
+    /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
+    /// component.
+    is_initialized: bool,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -126,10 +130,11 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Creates a new `EraSupervisor`, starting in era 0.
+    /// Creates a new `EraSupervisor`, starting in the indicated current era.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
         timestamp: Timestamp,
+        current_era: EraId,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validators: BTreeMap<PublicKey, U512>,
@@ -138,7 +143,6 @@ where
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
-        mut rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
@@ -150,11 +154,11 @@ where
             .expect("failure to setup and register ConsensusMetrics");
         let genesis_start_time = protocol_config.timestamp;
 
-        let mut era_supervisor = Self {
+        let era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
             public_signing_key,
-            current_era: EraId(0),
+            current_era,
             protocol_config,
             config,
             new_consensus,
@@ -167,21 +171,18 @@ where
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             next_executed_height: 0,
+            is_initialized: false,
         };
 
-        let outcomes = era_supervisor.new_era(
-            EraId(0),
-            timestamp,
-            validators,
-            vec![], // no banned validators in era 0
-            0,      // hardcoded seed for era 0
-            genesis_start_time,
-            0, // the first block has height 0
-            state_root_hash,
-        );
-        let effects = era_supervisor
-            .handling_wrapper(effect_builder, &mut rng)
-            .handle_consensus_outcomes(EraId(0), outcomes);
+        let effects = effect_builder
+            .collect_switch_blocks(era_supervisor.iter_past_other(current_era, bonded_eras * 3))
+            .event(move |switch_blocks| Event::InitializeEras {
+                switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
+                validators,
+                state_root_hash,
+                timestamp,
+                genesis_start_time,
+            });
 
         Ok((era_supervisor, effects))
     }
@@ -226,6 +227,30 @@ where
         u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
     }
 
+    /// Returns an iterator over era IDs of `num_eras` past eras, plus the provided one.
+    pub(crate) fn iter_past(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
+        (self
+            .protocol_config
+            .last_activation_point
+            .0
+            .max(era_id.0.saturating_sub(num_eras))..=era_id.0)
+            .map(EraId)
+    }
+
+    /// Returns an iterator over era IDs of `num_eras` past eras, excluding the provided one.
+    pub(crate) fn iter_past_other(
+        &self,
+        era_id: EraId,
+        num_eras: u64,
+    ) -> impl Iterator<Item = EraId> {
+        (self
+            .protocol_config
+            .last_activation_point
+            .0
+            .max(era_id.0.saturating_sub(num_eras))..era_id.0)
+            .map(EraId)
+    }
+
     /// Starts a new era; panics if it already exists.
     #[allow(clippy::too_many_arguments)] // FIXME
     fn new_era(
@@ -234,6 +259,7 @@ where
         timestamp: Timestamp,
         validators: BTreeMap<PublicKey, U512>,
         newly_slashed: Vec<PublicKey>,
+        slashed: HashSet<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -255,13 +281,6 @@ where
             era = era_id.0,
             "starting era",
         );
-
-        let slashed = era_id
-            .iter_other(self.bonded_eras)
-            .flat_map(|e_id| &self.active_eras[&e_id].newly_slashed)
-            .chain(&newly_slashed)
-            .cloned()
-            .collect();
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
@@ -396,6 +415,22 @@ where
             None => error!(era = self.current_era.0, "current era not initialized"),
         }
     }
+
+    pub(crate) fn recreate_timers<'a, REv: ReactorEventT<I>>(
+        &'a mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &'a mut NodeRng,
+    ) -> Effects<Event<I>> {
+        let current_era = self.current_era;
+        let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
+        self.handling_wrapper(effect_builder, rng)
+            .handle_consensus_outcomes(current_era, outcomes)
+    }
+
+    /// Returns true if initialization of the first eras is finished.
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.is_initialized
+    }
 }
 
 /// A mutable `EraSupervisor` reference, together with an `EffectBuilder`.
@@ -475,8 +510,8 @@ where
                     trace!(era = era_id.0, "not handling message; era too old");
                     return Effects::new();
                 }
-                era_id
-                    .iter_bonded(self.era_supervisor.bonded_eras)
+                self.era_supervisor
+                    .iter_past(era_id, self.era_supervisor.bonded_eras)
                     .flat_map(|e_id| {
                         self.delegate_to_era(e_id, |consensus, _| {
                             consensus.request_evidence(sender.clone(), &pub_key)
@@ -503,8 +538,9 @@ where
             warn!(era = era_id.0, "new proto block in outdated era");
             return Effects::new();
         }
-        let accusations = era_id
-            .iter_bonded(self.era_supervisor.bonded_eras)
+        let accusations = self
+            .era_supervisor
+            .iter_past(era_id, self.era_supervisor.bonded_eras)
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
@@ -596,6 +632,93 @@ where
         }
     }
 
+    pub(super) fn handle_initialize_eras(
+        &mut self,
+        switch_blocks: HashMap<EraId, BlockHeader>,
+        validators: BTreeMap<PublicKey, U512>,
+        state_root_hash: Digest,
+        timestamp: Timestamp,
+        genesis_start_time: Timestamp,
+    ) -> Effects<Event<I>> {
+        let last_activation_point = self.era_supervisor.protocol_config.last_activation_point;
+        let current_era = self.era_supervisor.current_era;
+        let mut effects: Effects<Event<I>> = Default::default();
+
+        for era_id in self
+            .era_supervisor
+            .iter_past(current_era, self.era_supervisor.bonded_eras * 2)
+        {
+            // TODO: make sure that we use a switch block for regular (non-emergency) upgrades, too
+            let maybe_switch_block = (era_id > last_activation_point)
+                .then(|| EraId(era_id.0 - 1))
+                .and_then(|switch_id| switch_blocks.get(&switch_id));
+
+            let newly_slashed = maybe_switch_block
+                .and_then(|bhdr| bhdr.era_end())
+                .map(|era_end| era_end.equivocators.clone())
+                .unwrap_or_default();
+
+            let slashed = self
+                .era_supervisor
+                .iter_past_other(era_id, self.era_supervisor.bonded_eras)
+                .filter_map(|old_id| switch_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
+                .flat_map(|era_end| era_end.equivocators.clone())
+                .collect();
+
+            let booking_era_id = EraId(
+                era_id
+                    .0
+                    .saturating_sub(self.era_supervisor.protocol_config.auction_delay + 1),
+            );
+
+            let seed = if let Some(booking_block) = switch_blocks.get(&booking_era_id) {
+                EraSupervisor::<I>::era_seed(booking_block.hash(), booking_block.accumulated_seed())
+            } else {
+                0
+            };
+
+            let (validators, start_height, state_root_hash, era_start_time) =
+                if let Some(switch_block) = maybe_switch_block {
+                    (
+                        switch_block
+                            .next_era_validator_weights()
+                            .cloned()
+                            .expect("switch block should have era validator weights"),
+                        switch_block.height() + 1,
+                        *switch_block.state_root_hash(),
+                        switch_block.timestamp(),
+                    )
+                } else {
+                    // TODO: the start height should be 1 more than the last block before the last
+                    // upgrade, and the state hash should be the (potentially modified) state hash
+                    // from that block
+                    (validators.clone(), 0, state_root_hash, genesis_start_time)
+                };
+
+            let results = self.era_supervisor.new_era(
+                current_era,
+                timestamp,
+                validators,
+                newly_slashed,
+                slashed,
+                seed,
+                era_start_time,
+                start_height,
+                state_root_hash,
+            );
+
+            effects.extend(
+                self.era_supervisor
+                    .handling_wrapper(self.effect_builder, self.rng)
+                    .handle_consensus_outcomes(current_era, results),
+            );
+        }
+
+        self.era_supervisor.is_initialized = true;
+
+        effects
+    }
+
     pub(super) fn handle_create_new_era(
         &mut self,
         block: Block,
@@ -622,11 +745,19 @@ where
         let seed =
             EraSupervisor::<I>::era_seed(booking_block_hash, block.header().accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
+        let slashed = self
+            .era_supervisor
+            .iter_past_other(era_id, self.era_supervisor.bonded_eras)
+            .flat_map(|e_id| &self.era_supervisor.active_eras[&e_id].newly_slashed)
+            .chain(&newly_slashed)
+            .cloned()
+            .collect();
         let outcomes = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
             newly_slashed,
+            slashed,
             seed,
             block.header().timestamp(),
             block.height() + 1,
@@ -674,15 +805,15 @@ where
     {
         outcomes
             .into_iter()
-            .flat_map(|result| self.handle_consensus_result(era_id, result))
+            .flat_map(|result| self.handle_consensus_outcome(era_id, result))
             .collect()
     }
 
     /// Returns `true` if any of the most recent eras has evidence against the validator with key
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
-        era_id
-            .iter_bonded(self.era_supervisor.bonded_eras)
+        self.era_supervisor
+            .iter_past(era_id, self.era_supervisor.bonded_eras)
             .any(|eid| self.era(eid).consensus.has_evidence(&pub_key))
     }
 
@@ -696,7 +827,7 @@ where
         self.era_supervisor.active_eras.get_mut(&era_id).unwrap()
     }
 
-    fn handle_consensus_result(
+    fn handle_consensus_outcome(
         &mut self,
         era_id: EraId,
         consensus_result: ProtocolOutcome<I, ClContext>,
@@ -778,8 +909,15 @@ where
                 // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = terminal_block_data.map(|tbd| EraReport {
                     rewards: tbd.rewards,
-                    equivocators: era.accusations(),
-                    inactive_validators: tbd.inactive_validators,
+                    // TODO: In the first 90 days we don't slash, and we just report all
+                    // equivocators as "inactive" instead. Change this back 90 days after launch,
+                    // and put era.accusations() into equivocators instead of inactive_validators.
+                    equivocators: vec![],
+                    inactive_validators: tbd
+                        .inactive_validators
+                        .into_iter()
+                        .chain(era.accusations())
+                        .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.into(),
@@ -870,8 +1008,9 @@ where
                 }
                 effects
             }
-            ProtocolOutcome::SendEvidence(sender, pub_key) => era_id
-                .iter_other(self.era_supervisor.bonded_eras)
+            ProtocolOutcome::SendEvidence(sender, pub_key) => self
+                .era_supervisor
+                .iter_past_other(era_id, self.era_supervisor.bonded_eras)
                 .flat_map(|e_id| {
                     self.delegate_to_era(e_id, |consensus, _| {
                         consensus.request_evidence(sender.clone(), &pub_key)
@@ -929,6 +1068,19 @@ where
             .get(&era_id)
             .map_or(false, |cp| cp.is_bonded_validator(&vid));
         responder.respond(is_bonded).ignore()
+    }
+
+    pub(super) fn status(
+        &self,
+        responder: Responder<(PublicKey, Option<TimeDiff>)>,
+    ) -> Effects<Event<I>> {
+        let public_key = self.era_supervisor.public_signing_key;
+        let round_length = self
+            .era_supervisor
+            .active_eras
+            .get(&self.era_supervisor.current_era)
+            .and_then(|era| era.consensus.next_round_length());
+        responder.respond((public_key, round_length)).ignore()
     }
 
     fn disconnect(&self, sender: I) -> Effects<Event<I>> {
