@@ -47,8 +47,9 @@ impl NetworkConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
-        let accounts_config =
-            AccountsConfig::new(vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()]);
+        let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
+        let delegators = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
+        let accounts_config = AccountsConfig::new(accounts, delegators);
 
         NetworkConfig {
             name,
