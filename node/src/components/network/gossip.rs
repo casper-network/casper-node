@@ -1,6 +1,7 @@
 //! This module is home to types/functions related to using libp2p's `GossipSub` behavior, used for
 //! gossiping data to subscribed peers.
 
+use datasize::DataSize;
 use libp2p::{
     core::{ProtocolName, PublicKey},
     gossipsub::{Gossipsub, GossipsubConfigBuilder, MessageAuthenticity, Topic, ValidationMode},
@@ -17,6 +18,7 @@ const PROTOCOL_NAME_INNER: &str = "validator/gossip";
 
 pub(super) static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("all".into()));
 
+#[derive(DataSize, Debug)]
 pub(super) struct GossipMessage(pub Vec<u8>);
 
 impl GossipMessage {
