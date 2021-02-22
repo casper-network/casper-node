@@ -55,27 +55,6 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::NewURef))
     }
 
-    fn write_balance_entry(&mut self, purse_key: URef, balance_uref: URef) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(Key::URef(balance_uref)).map_err(|_| Error::CLValue)?;
-        self.context
-            .write_purse_uref(purse_key, cl_value)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::WriteLocal))
-    }
-
-    fn read_balance_entry(&mut self, purse_key: &URef) -> Result<Option<Key>, Error> {
-        let maybe_value = self
-            .context
-            .read_purse_uref(purse_key)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
-        match maybe_value {
-            Some(value) => {
-                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
-                Ok(Some(value))
-            }
-            None => Ok(None),
-        }
-    }
-
     fn read<T: CLTyped + FromBytes>(&mut self, uref: URef) -> Result<Option<T>, Error> {
         let maybe_value = self
             .context
@@ -102,6 +81,35 @@ where
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .metered_add_gs(uref, cl_value)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
+        let maybe_value = self
+            .context
+            .read_gs_direct(&Key::Balance(uref.addr()))
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+        match maybe_value {
+            Some(StoredValue::CLValue(value)) => {
+                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
+                Ok(Some(value))
+            }
+            Some(_cl_value) => Err(Error::CLValue),
+            None => Ok(None),
+        }
+    }
+
+    fn write_balance(&mut self, uref: URef, balance: U512) -> Result<(), Error> {
+        let cl_value = CLValue::from_t(balance).map_err(|_| Error::CLValue)?;
+        self.context
+            .metered_write_gs_unsafe(Key::Balance(uref.addr()), StoredValue::CLValue(cl_value))
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn add_balance(&mut self, uref: URef, value: U512) -> Result<(), Error> {
+        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
+        self.context
+            .metered_add_gs_unsafe(Key::Balance(uref.addr()), StoredValue::CLValue(cl_value))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 }

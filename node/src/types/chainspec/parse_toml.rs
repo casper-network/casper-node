@@ -10,15 +10,16 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::{
-    core::engine_state::genesis::GenesisAccount,
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
+use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 use super::{
-    Chainspec, CoreConfig, DeployConfig, Error, HighwayConfig, NetworkConfig, ProtocolConfig,
+    accounts_config::AccountsConfig, Chainspec, CoreConfig, DeployConfig, Error, HighwayConfig,
+    NetworkConfig, ProtocolConfig,
 };
-use crate::{types::Timestamp, utils};
+use crate::{
+    types::Timestamp,
+    utils::{self, Loadable},
+};
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -76,14 +77,13 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
         .parent()
         .unwrap_or_else(|| Path::new(""));
 
-    // accounts.csv must live in the same directory as chainspec.toml.
-    let accounts: Vec<GenesisAccount> =
-        super::parse_accounts_csv(root).map_err(Error::LoadChainspecAccounts)?;
+    // accounts.toml must live in the same directory as chainspec.toml.
+    let accounts_config = AccountsConfig::from_path(root)?;
 
     let network_config = NetworkConfig {
         name: toml_chainspec.network.name,
         timestamp: toml_chainspec.network.timestamp,
-        accounts,
+        accounts_config,
     };
 
     Ok(Chainspec {

@@ -6,8 +6,7 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::shared::transform::Transform;
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
+use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -16,69 +15,6 @@ const TEST_PURSE_NAME: &str = "test_purse";
 const ARG_PURSE_NAME: &str = "purse_name";
 
 static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
-
-fn get_purse_key_from_mint_transform(mint_transform: &Transform) -> Key {
-    let keys = if let Transform::AddKeys(keys) = mint_transform {
-        keys
-    } else {
-        panic!(
-            "Mint transform is expected to be an AddKeys variant instead got {:?}",
-            mint_transform
-        );
-    };
-
-    // Exactly one new key which is the new purse created
-    assert_eq!(keys.len(), 1);
-    let (map_key, map_value) = keys.iter().next().unwrap();
-
-    // Decode uref name
-    assert!(
-        map_key.starts_with("uref-"),
-        format!(
-            "expected uref to start with uref- but the map contains {:?}",
-            keys
-        )
-    );
-
-    let decoded_purse = base16::decode(&map_key[5..69]).expect("should decode base16");
-    assert_eq!(decoded_purse.len(), 32);
-
-    *map_value
-}
-
-#[ignore]
-#[test]
-fn should_insert_mint_add_keys_transform() {
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE},
-    )
-    .build();
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        ACCOUNT_1_ADDR,
-        CONTRACT_CREATE_PURSE_01,
-        runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
-    )
-    .build();
-
-    let mint_transform: &Transform = {
-        let result = WasmTestBuilder::default()
-            .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-            .exec(exec_request_1)
-            .expect_success()
-            .commit()
-            .exec(exec_request_2)
-            .expect_success()
-            .commit()
-            .finish();
-
-        let mint_contract_hash = result.builder().get_mint_contract_hash();
-        &result.builder().get_transforms()[0][&mint_contract_hash.into()]
-    };
-
-    get_purse_key_from_mint_transform(mint_transform); // <-- assert equivalent
-}
 
 #[ignore]
 #[test]

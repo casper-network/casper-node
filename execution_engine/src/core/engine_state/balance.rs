@@ -10,8 +10,7 @@ pub enum BalanceResult {
     RootNotFound,
     Success {
         motes: U512,
-        purse_proof: Box<TrieMerkleProof<Key, StoredValue>>,
-        balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
+        proof: Box<TrieMerkleProof<Key, StoredValue>>,
     },
 }
 
@@ -23,18 +22,9 @@ impl BalanceResult {
         }
     }
 
-    pub fn proofs(
-        self,
-    ) -> Option<(
-        TrieMerkleProof<Key, StoredValue>,
-        TrieMerkleProof<Key, StoredValue>,
-    )> {
+    pub fn proof(self) -> Option<TrieMerkleProof<Key, StoredValue>> {
         match self {
-            BalanceResult::Success {
-                purse_proof,
-                balance_proof,
-                ..
-            } => Some((*purse_proof, *balance_proof)),
+            BalanceResult::Success { proof, .. } => Some(*proof),
             _ => None,
         }
     }
