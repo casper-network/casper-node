@@ -2,15 +2,20 @@ use std::path::Path;
 
 use datasize::DataSize;
 use num::Zero;
+#[cfg(test)]
 use rand::{distributions::Standard, prelude::*};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, SecretKey, U512,
+    PublicKey,
 };
+#[cfg(test)]
+use casper_types::{SecretKey, U512};
 
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::utils::{self, Loadable};
 
 use super::error::ChainspecAccountsLoadError;
@@ -48,8 +53,23 @@ impl AccountConfig {
     pub fn is_genesis_validator(&self) -> bool {
         !self.bonded_amount.is_zero()
     }
+
+    #[cfg(test)]
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let public_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
+        let balance = Motes::new(U512::from(rng.gen::<u64>()));
+        let bonded_amount = Motes::new(U512::from(rng.gen::<u64>()));
+
+        AccountConfig {
+            public_key,
+            balance,
+            bonded_amount,
+        }
+    }
 }
 
+#[cfg(test)]
 impl Distribution<AccountConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountConfig {
         let public_key = SecretKey::ed25519(rng.gen()).into();
@@ -133,8 +153,25 @@ impl DelegatorConfig {
     pub fn delegated_amount(&self) -> Motes {
         self.delegated_amount
     }
+
+    #[cfg(test)]
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let validator_public_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
+        let delegator_public_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
+        let balance = Motes::new(U512::from(rng.gen::<u64>()));
+        let delegated_amount = Motes::new(U512::from(rng.gen::<u64>()));
+
+        DelegatorConfig {
+            validator_public_key,
+            delegator_public_key,
+            balance,
+            delegated_amount,
+        }
+    }
 }
 
+#[cfg(test)]
 impl Distribution<DelegatorConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DelegatorConfig {
         let validator_public_key = SecretKey::ed25519(rng.gen()).into();
@@ -211,6 +248,28 @@ impl AccountsConfig {
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
     }
+
+    #[cfg(test)]
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let alpha = AccountConfig::random(rng);
+        let accounts = vec![
+            alpha,
+            AccountConfig::random(rng),
+            AccountConfig::random(rng),
+            AccountConfig::random(rng),
+        ];
+
+        let mut delegator = DelegatorConfig::random(rng);
+        delegator.validator_public_key = alpha.public_key;
+
+        let delegators = vec![delegator];
+
+        AccountsConfig {
+            accounts,
+            delegators,
+        }
+    }
 }
 
 impl ToBytes for AccountsConfig {
@@ -262,5 +321,17 @@ impl From<AccountsConfig> for Vec<GenesisAccount> {
             genesis_accounts.push(genesis_account);
         }
         genesis_accounts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialization_roundtrip() {
+        let mut rng = TestRng::new();
+        let accounts_config = AccountsConfig::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&accounts_config);
     }
 }
