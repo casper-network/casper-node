@@ -40,7 +40,8 @@ pub enum State {
         /// The validator set for the most recent block being synchronized.
         validators_for_latest_block: BTreeMap<PublicKey, U512>,
     },
-    /// Synchronizing done.
+    /// Synchronizing done. The single field contains the highest block seen during the
+    /// synchronization process.
     Done(Option<Box<Block>>),
 }
 

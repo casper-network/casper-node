@@ -84,10 +84,10 @@ type BlockHeight = u64;
 /// The Block executor component.
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
-    /// Height of the highest known block
-    highest_block_height: Option<u64>,
-    /// Summary of the highest known block
-    highest_block_summary: Option<ExecutedBlockSummary>,
+    /// Height of the highest known block at the time of initializing the component.
+    initial_block_height: Option<u64>,
+    /// Summary of the highest known block.
+    initial_block_summary: Option<ExecutedBlockSummary>,
     initial_state_root_hash: Digest,
     protocol_version: ProtocolVersion,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
@@ -112,14 +112,14 @@ impl BlockExecutor {
         registry: Registry,
     ) -> Self {
         let metrics = BlockExecutorMetrics::new(registry).unwrap();
-        let highest_block_summary = highest_block_header.map(|hdr| ExecutedBlockSummary {
+        let initial_block_summary = highest_block_header.map(|hdr| ExecutedBlockSummary {
             hash: hdr.hash(),
             state_root_hash: initial_state_root_hash,
             accumulated_seed: hdr.accumulated_seed(),
         });
         BlockExecutor {
-            highest_block_height: highest_block_header.map(|hdr| hdr.height()),
-            highest_block_summary,
+            initial_block_height: highest_block_header.map(|hdr| hdr.height()),
+            initial_block_summary,
             initial_state_root_hash,
             protocol_version: ProtocolVersion::from_parts(
                 protocol_version.major as u32,
@@ -430,14 +430,14 @@ impl BlockExecutor {
         state_root_hash: Digest,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Block {
-        let (parent_summary_hash, parent_seed) = if self.is_highest_block_child(&finalized_block) {
-            // Genesis, no parent summary.
+        let (parent_summary_hash, parent_seed) = if self.is_initial_block_child(&finalized_block) {
+            // The first block after the initial one, no parent summary.
             (
-                self.highest_block_summary
+                self.initial_block_summary
                     .as_ref()
                     .map(|summary| summary.hash)
                     .unwrap_or_else(|| BlockHash::new(Digest::default())),
-                self.highest_block_summary
+                self.initial_block_summary
                     .as_ref()
                     .map(|summary| summary.accumulated_seed)
                     .unwrap_or_default(),
@@ -469,7 +469,7 @@ impl BlockExecutor {
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
-        if self.is_highest_block_child(finalized_block) {
+        if self.is_initial_block_child(finalized_block) {
             Some(self.initial_state_root_hash)
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
@@ -481,10 +481,12 @@ impl BlockExecutor {
         }
     }
 
-    fn is_highest_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
+    /// Returns true if the `finalized_block` is an immediate child of the initial block, ie.
+    /// either genesis or the highest known block at the time of initializing the component.
+    fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
         finalized_block.height()
             == self
-                .highest_block_height
+                .initial_block_height
                 .map(|height| height + 1)
                 .unwrap_or(0)
     }

@@ -338,6 +338,11 @@ where
                     genesis_start_time,
                 );
 
+                // TODO: remove that when possible
+                // This is needed because we want to make sure that we only try to handle linear
+                // chain blocks once the eras are initialized. It's possible that we will get
+                // events with linear chain blocks before that - in such a case we cache the
+                // requests and only handle them here.
                 for queued_event in mem::take(&mut handling_es.era_supervisor.enqueued_events) {
                     effects.extend(handling_es.era_supervisor.handle_event(
                         effect_builder,
