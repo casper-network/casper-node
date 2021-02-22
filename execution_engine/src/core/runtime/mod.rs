@@ -95,6 +95,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Transfer(_) => None,
         Key::DeployInfo(_) => None,
         Key::EraInfo(_) => None,
+        Key::Balance(_) => None,
     }
 }
 
@@ -2981,25 +2982,15 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let balance_uref_key = match self.context.read_purse_uref(&purse)? {
-            Some(cl_value) => {
-                let key: Key = cl_value.into_t()?;
-                if key.as_uref().is_none() {
-                    return Err(Error::KeyIsNotAURef(key));
-                }
-                key
+        let maybe_value = self.context.read_gs_direct(&Key::Balance(purse.addr()))?;
+        match maybe_value {
+            Some(StoredValue::CLValue(value)) => {
+                let value = CLValue::into_t(value)?;
+                Ok(Some(value))
             }
-            None => return Ok(None),
-        };
-        let ret = match self.context.read_gs_direct(&balance_uref_key)? {
-            Some(StoredValue::CLValue(cl_value)) => {
-                let balance: U512 = cl_value.into_t()?;
-                Some(balance)
-            }
-            Some(_) => return Err(Error::UnexpectedStoredValueVariant),
-            None => None,
-        };
-        Ok(ret)
+            Some(_) => Err(Error::UnexpectedStoredValueVariant),
+            None => Ok(None),
+        }
     }
 
     fn get_balance_host_buffer(
