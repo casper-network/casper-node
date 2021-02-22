@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use std::{
-    mem::size_of,
+    mem,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -75,7 +75,7 @@ impl<T> CountingSender<T> {
         self.do_send(0, message)
     }
 
-    /// Returns the count, i.e. message currently inside the channel.
+    /// Returns the count, i.e. messages currently inside the channel.
     #[inline]
     pub fn len(&self) -> usize {
         self.counter.load(Ordering::SeqCst)
@@ -90,7 +90,7 @@ where
     #[inline]
     pub fn send_datasized(&self, message: T) -> Result<usize, SendError<T>> {
         self.do_send(
-            message.estimate_heap_size() + size_of::<(usize, T)>(),
+            message.estimate_heap_size() + mem::size_of::<(usize, T)>(),
             message,
         )
     }
@@ -125,7 +125,7 @@ impl<T> CountingReceiver<T> {
         })
     }
 
-    /// Returns the count, i.e. message currently inside the channel.
+    /// Returns the count, i.e. messages currently inside the channel.
     #[inline]
     pub fn len(&self) -> usize {
         self.counter.load(Ordering::SeqCst)
