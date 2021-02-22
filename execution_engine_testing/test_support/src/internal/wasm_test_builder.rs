@@ -711,15 +711,7 @@ where
     }
 
     pub fn get_purse_balance(&self, purse: URef) -> U512 {
-        let purse_addr = purse.addr();
-        let balance_mapping_key = Key::Hash(purse_addr);
-
-        let base_key = self
-            .query(None, balance_mapping_key, &[])
-            .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
-            .and_then(|cl_value| cl_value.into_t().map_err(|error| format!("{:?}", error)))
-            .expect("should find balance uref");
-
+        let base_key = Key::Balance(purse.addr());
         self.query(None, base_key, &[])
             .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
             .and_then(|cl_value| cl_value.into_t().map_err(|error| format!("{:?}", error)))

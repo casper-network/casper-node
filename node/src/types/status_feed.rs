@@ -20,8 +20,8 @@ use crate::{
         consensus::EraId,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
-    crypto::hash::Digest,
-    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, Timestamp},
+    crypto::{hash::Digest, AsymmetricKeyExt},
+    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, TimeDiff, Timestamp},
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
@@ -43,6 +43,8 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
+        our_public_signing_key: *PublicKey::doc_example(),
+        round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION.clone())
@@ -90,6 +92,10 @@ pub struct StatusFeed<I> {
     pub peers: BTreeMap<I, String>,
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
+    /// Our public signing key.
+    pub our_public_signing_key: PublicKey,
+    /// The next round length if this node is a validator.
+    pub round_length: Option<TimeDiff>,
     /// The compiled node version.
     pub version: &'static str,
 }
@@ -99,11 +105,14 @@ impl<I> StatusFeed<I> {
         last_added_block: Option<Block>,
         peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
+        (our_public_signing_key, round_length): (PublicKey, Option<TimeDiff>),
     ) -> Self {
         StatusFeed {
             last_added_block,
             peers,
             chainspec_info,
+            our_public_signing_key,
+            round_length,
             version: crate::VERSION_STRING.as_str(),
         }
     }
@@ -149,6 +158,10 @@ pub struct GetStatusResult {
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
+    /// Our public signing key.
+    pub our_public_signing_key: PublicKey,
+    /// The next round length if this node is a validator.
+    pub round_length: Option<TimeDiff>,
     /// Information about the next scheduled upgrade.
     pub next_upgrade: Option<NextUpgrade>,
     /// The compiled node version.
@@ -157,23 +170,19 @@ pub struct GetStatusResult {
 
 impl GetStatusResult {
     pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: Version) -> Self {
-        let chainspec_name = status_feed.chainspec_info.name;
-        let starting_state_root_hash = status_feed
-            .chainspec_info
-            .starting_state_root_hash
-            .to_string();
-        let peers = PeersMap::from(status_feed.peers);
-        let last_added_block_info = status_feed.last_added_block.map(Into::into);
-        let next_upgrade = status_feed.chainspec_info.next_upgrade;
-        let build_version = crate::VERSION_STRING.clone();
         GetStatusResult {
             api_version,
-            chainspec_name,
-            starting_state_root_hash,
-            peers,
-            last_added_block_info,
-            next_upgrade,
-            build_version,
+            chainspec_name: status_feed.chainspec_info.name,
+            starting_state_root_hash: status_feed
+                .chainspec_info
+                .starting_state_root_hash
+                .to_string(),
+            peers: PeersMap::from(status_feed.peers),
+            last_added_block_info: status_feed.last_added_block.map(Into::into),
+            our_public_signing_key: status_feed.our_public_signing_key,
+            round_length: status_feed.round_length,
+            next_upgrade: status_feed.chainspec_info.next_upgrade,
+            build_version: crate::VERSION_STRING.clone(),
         }
     }
 }

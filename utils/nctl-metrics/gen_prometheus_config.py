@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 
 import toml
 
@@ -17,9 +18,14 @@ for node_dir in os.listdir(nodes_dir):
     if not os.path.isdir(node_path) or not node_dir.startswith("node-"):
         continue
 
-    config = toml.load(open(os.path.join(node_path, "config", "node-config.toml")))
-    addr = config["rest_server"]["address"].replace("0.0.0.0", "127.0.0.1")
-    addrs.append(addr)
+    cfg_path = os.path.join(node_path, "config", "1_0_0", "config.toml")
+    try:
+        config = toml.load(open(cfg_path))
+        addr = config["rest_server"]["address"].replace("0.0.0.0", "127.0.0.1")
+        addrs.append(addr)
+    except Exception as e:
+        sys.stderr.write("error loading {}\n".format(cfg_path))
+        continue
 
 
 # Slightly dirty, we're not dealing with an extra dependency to generate YAML just yet and just

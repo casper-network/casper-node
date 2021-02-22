@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use casper_types::{runtime_args, system::mint, ApiError, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{runtime_args, system::mint, ApiError, CLValue, RuntimeArgs, U512};
 
 use casper_engine_test_support::{
     internal::{
@@ -74,32 +74,8 @@ fn should_run_purse_to_purse_transfer() {
 
     // Assert secondary purse value after successful transfer
     let purse_secondary_key = default_account.named_keys()["purse:secondary"];
-    let _purse_main_key = default_account.named_keys()["purse:main"];
-
-    // Lookup key used to find the actual purse uref
-    // TODO: This should be more consistent
-    let purse_secondary_lookup_key = purse_secondary_key
-        .as_uref()
-        .unwrap()
-        .remove_access_rights()
-        .to_formatted_string();
-
-    let mint_contract_hash = builder.get_mint_contract_hash();
-    let mint_contract = builder
-        .get_contract(mint_contract_hash)
-        .expect("should have mint contract");
-
-    // Find `purse:secondary`.
-    let purse_secondary_uref = mint_contract.named_keys()[&purse_secondary_lookup_key];
-    let purse_secondary_key: Key = purse_secondary_uref.normalize();
-    let purse_secondary_balance = CLValue::try_from(
-        builder
-            .query(None, purse_secondary_key, &[])
-            .expect("should have main purse balance"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let purse_secondary_uref = purse_secondary_key.into_uref().unwrap();
+    let purse_secondary_balance = builder.get_purse_balance(purse_secondary_uref);
 
     // Final balance of the destination purse
     assert_eq!(purse_secondary_balance, U512::from(PURSE_TO_PURSE_AMOUNT));
@@ -167,32 +143,8 @@ fn should_run_purse_to_purse_transfer_with_error() {
 
     // Assert secondary purse value after successful transfer
     let purse_secondary_key = default_account.named_keys()["purse:secondary"];
-    let _purse_main_key = default_account.named_keys()["purse:main"];
-
-    // Lookup key used to find the actual purse uref
-    // TODO: This should be more consistent
-    let purse_secondary_lookup_key = purse_secondary_key
-        .as_uref()
-        .unwrap()
-        .remove_access_rights()
-        .to_formatted_string();
-
-    let mint_contract_uref = builder.get_mint_contract_hash();
-    let mint_contract = builder
-        .get_contract(mint_contract_uref)
-        .expect("should have mint contract");
-
-    // Find `purse:secondary` for a balance
-    let purse_secondary_uref = mint_contract.named_keys()[&purse_secondary_lookup_key];
-    let purse_secondary_key: Key = purse_secondary_uref.normalize();
-    let purse_secondary_balance = CLValue::try_from(
-        builder
-            .query(None, purse_secondary_key, &[])
-            .expect("should have main purse balance"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let purse_secondary_uref = purse_secondary_key.into_uref().unwrap();
+    let purse_secondary_balance = builder.get_purse_balance(purse_secondary_uref);
 
     // Final balance of the destination purse equals to 0 as this purse is created
     // as new.

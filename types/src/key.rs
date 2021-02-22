@@ -25,7 +25,7 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     system::auction::EraId,
-    uref::{self, URef, UREF_SERIALIZED_LENGTH},
+    uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
 };
 
@@ -35,10 +35,12 @@ const UREF_ID: u8 = 2;
 const TRANSFER_ID: u8 = 3;
 const DEPLOY_INFO_ID: u8 = 4;
 const ERA_INFO_ID: u8 = 5;
+const BALANCE_ID: u8 = 6;
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
 const ERA_INFO_PREFIX: &str = "era-";
+const BALANCE_PREFIX: &str = "balance-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -56,6 +58,7 @@ const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIAL
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
+const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -84,6 +87,8 @@ pub enum Key {
     DeployInfo(DeployHash),
     /// A `Key` under which we store an era info.
     EraInfo(EraId),
+    /// A `Key` under which we store a purse balance.
+    Balance(URefAddr),
 }
 
 #[derive(Debug)]
@@ -160,6 +165,7 @@ impl Key {
             Key::Transfer(_) => String::from("Key::Transfer"),
             Key::DeployInfo(_) => String::from("Key::DeployInfo"),
             Key::EraInfo(_) => String::from("Key::EraInfo"),
+            Key::Balance(_) => String::from("Key::Balance"),
         }
     }
 
@@ -194,6 +200,9 @@ impl Key {
             }
             Key::EraInfo(era_id) => {
                 format!("{}{}", ERA_INFO_PREFIX, era_id.to_string())
+            }
+            Key::Balance(uref_addr) => {
+                format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
             }
         }
     }
@@ -273,6 +282,7 @@ impl Display for Key {
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
+            Key::Balance(uref_addr) => write!(f, "Key::Balance({}", HexFmt(uref_addr)),
         }
     }
 }
@@ -347,6 +357,10 @@ impl ToBytes for Key {
                 result.push(ERA_INFO_ID);
                 result.append(&mut era_id.to_bytes()?);
             }
+            Key::Balance(uref) => {
+                result.push(BALANCE_ID);
+                result.append(&mut uref.to_bytes()?);
+            }
         }
         Ok(result)
     }
@@ -361,6 +375,7 @@ impl ToBytes for Key {
             Key::Transfer(_) => KEY_TRANSFER_SERIALIZED_LENGTH,
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
+            Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
         }
     }
 }
@@ -393,6 +408,10 @@ impl FromBytes for Key {
                 let (era_id, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::EraInfo(era_id), rem))
             }
+            BALANCE_ID => {
+                let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
+                Ok((Key::Balance(uref_addr), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -423,6 +442,7 @@ mod serde_helpers {
         Transfer(String),
         DeployInfo(String),
         EraInfo(String),
+        Balance(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -435,6 +455,7 @@ mod serde_helpers {
                 Key::Transfer(_) => HumanReadable::Transfer(formatted_string),
                 Key::DeployInfo(_) => HumanReadable::DeployInfo(formatted_string),
                 Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
+                Key::Balance(_) => HumanReadable::Balance(formatted_string),
             }
         }
     }
@@ -449,7 +470,8 @@ mod serde_helpers {
                 | HumanReadable::URef(formatted_string)
                 | HumanReadable::Transfer(formatted_string)
                 | HumanReadable::DeployInfo(formatted_string)
-                | HumanReadable::EraInfo(formatted_string) => {
+                | HumanReadable::EraInfo(formatted_string)
+                | HumanReadable::Balance(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -464,6 +486,7 @@ mod serde_helpers {
         Transfer(&'a TransferAddr),
         DeployInfo(&'a DeployHash),
         EraInfo(&'a u64),
+        Balance(&'a URefAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -475,6 +498,7 @@ mod serde_helpers {
                 Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
+                Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
             }
         }
     }

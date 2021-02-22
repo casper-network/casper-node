@@ -4,7 +4,7 @@ use parity_wasm::elements::Module;
 
 use casper_types::{
     account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, Key,
+    ContractWasm, ContractWasmHash, Key, URef,
 };
 
 use crate::{
@@ -33,16 +33,17 @@ pub trait TrackingCopyExt<R> {
         account_hash: AccountHash,
     ) -> Result<Account, Self::Error>;
 
+    // TODO: make this a static method
     /// Gets the purse balance key for a given purse id
     fn get_purse_balance_key(
-        &mut self,
+        &self,
         correlation_id: CorrelationId,
         purse_key: Key,
     ) -> Result<Key, Self::Error>;
 
     /// Gets the balance at a given balance key
     fn get_purse_balance(
-        &mut self,
+        &self,
         correlation_id: CorrelationId,
         balance_key: Key,
     ) -> Result<Motes, Self::Error>;
@@ -128,26 +129,18 @@ where
     }
 
     fn get_purse_balance_key(
-        &mut self,
-        correlation_id: CorrelationId,
+        &self,
+        _correlation_id: CorrelationId,
         purse_key: Key,
     ) -> Result<Key, Self::Error> {
-        let balance_key: Key = purse_key
-            .uref_to_hash()
+        let balance_key: URef = purse_key
+            .into_uref()
             .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
-        let stored_value: StoredValue = self
-            .read(correlation_id, &balance_key)
-            .map_err(Into::into)?
-            .ok_or(execution::Error::KeyNotFound(purse_key))?;
-        let cl_value: CLValue = stored_value
-            .try_into()
-            .map_err(execution::Error::TypeMismatch)?;
-        let balance_key: Key = cl_value.into_t()?;
-        Ok(balance_key)
+        Ok(Key::Balance(balance_key.addr()))
     }
 
     fn get_purse_balance(
-        &mut self,
+        &self,
         correlation_id: CorrelationId,
         key: Key,
     ) -> Result<Motes, Self::Error> {

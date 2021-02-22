@@ -2,9 +2,11 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
+use casper_client::Error;
 use casper_node::rpcs::docs::ListRpcs;
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
+
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
     Verbose,
@@ -27,16 +29,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListRpcs {
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
 
-        let response = casper_client::list_rpcs(maybe_rpc_id, node_address, verbosity_level)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+        casper_client::list_rpcs(maybe_rpc_id, node_address, verbosity_level).map(Success::from)
     }
 }

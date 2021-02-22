@@ -148,7 +148,6 @@ steps:
   commands:
     - "apt update"
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
-    - "$(pwd)/ci/test_casper-node_deb.sh $(pwd)"
 
 - name: put-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
