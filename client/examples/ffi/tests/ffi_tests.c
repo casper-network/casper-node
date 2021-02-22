@@ -46,7 +46,7 @@ void test_should_get_last_error_after_bad_request(void) {
 
     unsigned char error[255] = {0};
     int bytes_read = casper_get_last_error(error, 255);
-    TEST_ASSERT_EQUAL_STRING("failed to get rpc response: builder error: relative URL without a base",
+    TEST_ASSERT_EQUAL_STRING("Failed to get RPC response: builder error: relative URL without a base",
                              error);
 }
 
