@@ -37,15 +37,13 @@ function main() {
     do_start_node "5"
     do_start_node "4"
     do_start_node "3"
-    # 10. Check sync of network
+    # 10. Verify all nodes are in sync
     check_network_sync
     # 11. Ensure era proceeds after restart
     do_await_era_change "2"
-    # 12. Check sync of nodes again
+    # 12. Verify all nodes are in sync
     check_network_sync
-    # 13. Verify all nodes are in sync
-    check_network_sync
-    # 14-16. Compare stalled lfb hash to current
+    # 13-15. Compare stalled lfb hash to current
     assert_chain_progressed "5" "$STALLED_LFB"
     assert_chain_progressed "4" "$STALLED_LFB"
     assert_chain_progressed "3" "$STALLED_LFB"
