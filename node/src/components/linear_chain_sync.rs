@@ -155,6 +155,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
         block: &Block,
+        override_start_downloading_deploys: bool,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
@@ -171,10 +172,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_header,
                 ..
             } => {
-                let should_start_downloading_deploys = highest_block_header
-                    .as_ref()
-                    .map(|hdr| hdr.hash() == *block.header().parent_hash())
-                    .unwrap_or(false)
+                let should_start_downloading_deploys = override_start_downloading_deploys
+                    || highest_block_header
+                        .as_ref()
+                        .map(|hdr| hdr.hash() == *block.header().parent_hash())
+                        .unwrap_or(false)
                     || block.header().is_genesis_child();
                 if should_start_downloading_deploys {
                     info!("linear chain downloaded. Start downloading deploys.");
@@ -506,34 +508,14 @@ where
                         }
                     }
                     BlockByHeightResult::FromStorage(block) => {
-                        match self.state {
-                            State::SyncingTrustedHash {
-                                highest_block_header: Some(ref hdr),
-                                ref validator_weights,
-                                ..
-                            } => {
-                                info!(%block_height, "Read a block from storage while syncing up\
-                                    to trusted hash; Starting at the highest known block\
-                                    instead.");
-                                let peer = self.peers.random_unsafe();
-                                // Kick off syncing trusted hash descendants.
-                                let height = hdr.height();
-                                let hash = hdr.hash();
-                                let weights = validator_weights.clone();
-                                self.state = State::sync_descendants(hash, *block, weights);
-                                fetch_block_at_height(effect_builder, peer, height + 1)
-                            }
-                            _ => {
-                                // We shouldn't get invalid data from the storage.
-                                // If we do, it's a bug.
-                                assert_eq!(block.height(), block_height, "Block height mismatch.");
-                                trace!(%block_height, "Linear block found in the local storage.");
-                                // When syncing descendants of a trusted hash, we might have some of
-                                // them in our local storage. If
-                                // that's the case, just continue.
-                                self.block_downloaded(rng, effect_builder, &block)
-                            }
-                        }
+                        // We shouldn't get invalid data from the storage.
+                        // If we do, it's a bug.
+                        assert_eq!(block.height(), block_height, "Block height mismatch.");
+                        trace!(%block_height, "Linear block found in the local storage.");
+                        // When syncing descendants of a trusted hash, we might have some of
+                        // them in our local storage. If
+                        // that's the case, just continue.
+                        self.block_downloaded(rng, effect_builder, &block, false)
                     }
                     BlockByHeightResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_height();
@@ -561,7 +543,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, &block)
+                        self.block_downloaded(rng, effect_builder, &block, false)
                     }
                 }
             }
@@ -586,9 +568,18 @@ where
                         // We shouldn't get invalid data from the storage.
                         // If we do, it's a bug.
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
-                        trace!(%block_hash, "linear block found in the local storage.");
-                        // TODO if block is a switch block, start downloading descendants.
-                        self.block_downloaded(rng, effect_builder, &block)
+                        trace!(%block_hash, "Linear block found in the local storage.");
+                        // if we got a switch block, we can switch to downloading deploys - we
+                        // should have all the previous blocks and we can use the weights from the
+                        // switch block for validating later blocks
+                        // TODO: this might be wrong if this is the last switch block before an
+                        // upgrade and the upgrade changed the validator set!
+                        self.block_downloaded(
+                            rng,
+                            effect_builder,
+                            &block,
+                            block.header().next_era_validator_weights().is_some(),
+                        )
                     }
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();
@@ -615,7 +606,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, &block)
+                        self.block_downloaded(rng, effect_builder, &block, false)
                     }
                 }
             }
