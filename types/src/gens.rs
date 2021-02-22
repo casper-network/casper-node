@@ -66,6 +66,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
+        account_hash_arb().prop_map(Key::Bid),
     ]
 }
 
