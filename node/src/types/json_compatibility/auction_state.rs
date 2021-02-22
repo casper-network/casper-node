@@ -30,23 +30,26 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
+    let validator_public_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+    let delegator_public_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
+
     let delegator = Delegator::new(
+        delegator_public_key,
         U512::from(10),
         bonding_purse,
-        SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into(),
+        validator_public_key,
     );
     let mut delegators = BTreeMap::new();
-    delegators.insert(
-        PublicKey::from(SecretKey::ed25519([44; SecretKey::ED25519_LENGTH])),
-        delegator,
+    delegators.insert(delegator_public_key, delegator);
+
+    let bid = Bid::locked(
+        validator_public_key,
+        bonding_purse,
+        staked_amount,
+        release_era,
     );
-
-    let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
-
-    let bid = Bid::locked(public_key_1, bonding_purse, staked_amount, release_era);
-
     let mut bids = BTreeMap::new();
-    bids.insert(public_key_1, bid);
+    bids.insert(validator_public_key, bid);
 
     bids
 });

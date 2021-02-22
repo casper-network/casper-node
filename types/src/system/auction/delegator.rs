@@ -18,18 +18,25 @@ use crate::{
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Delegator {
+    delegator_public_key: PublicKey,
     staked_amount: U512,
     bonding_purse: URef,
-    delegatee: PublicKey,
+    validator_public_key: PublicKey,
 }
 
 impl Delegator {
     /// Creates a new [`Delegator`]
-    pub fn new(staked_amount: U512, bonding_purse: URef, delegatee: PublicKey) -> Self {
+    pub fn new(
+        delegator_public_key: PublicKey,
+        staked_amount: U512,
+        bonding_purse: URef,
+        validator_public_key: PublicKey,
+    ) -> Self {
         Delegator {
+            delegator_public_key,
             staked_amount,
             bonding_purse,
-            delegatee,
+            validator_public_key,
         }
     }
 
@@ -77,29 +84,33 @@ impl CLTyped for Delegator {
 impl ToBytes for Delegator {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.delegator_public_key.to_bytes()?);
         buffer.extend(self.staked_amount.to_bytes()?);
         buffer.extend(self.bonding_purse.to_bytes()?);
-        buffer.extend(self.delegatee.to_bytes()?);
+        buffer.extend(self.validator_public_key.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.staked_amount.serialized_length()
+        self.delegator_public_key.serialized_length()
+            + self.staked_amount.serialized_length()
             + self.bonding_purse.serialized_length()
-            + self.delegatee.serialized_length()
+            + self.validator_public_key.serialized_length()
     }
 }
 
 impl FromBytes for Delegator {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (delegator_public_key, bytes) = PublicKey::from_bytes(bytes)?;
         let (staked_amount, bytes) = U512::from_bytes(bytes)?;
         let (bonding_purse, bytes) = URef::from_bytes(bytes)?;
-        let (delegatee, bytes) = PublicKey::from_bytes(bytes)?;
+        let (validator_public_key, bytes) = PublicKey::from_bytes(bytes)?;
         Ok((
             Delegator {
+                delegator_public_key,
                 staked_amount,
                 bonding_purse,
-                delegatee,
+                validator_public_key,
             },
             bytes,
         ))
