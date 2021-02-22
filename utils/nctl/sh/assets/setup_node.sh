@@ -50,9 +50,12 @@ function setup_node()
     fi
 
     # Set chainspec account.
-	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
-	$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"),$NCTL_INITIAL_BALANCE_VALIDATOR,$POS_WEIGHT
-	EOM
+	cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[[accounts]]
+public_key = "$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID")"
+balance = "$NCTL_INITIAL_BALANCE_VALIDATOR"
+staked_amount = "$POS_WEIGHT"
+EOM
 }
 
 #######################################

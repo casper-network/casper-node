@@ -23,7 +23,6 @@ casper-execution-engine = { version = "0.9.0", path = "../execution_engine" }
 casper-node-macros = { version = "0.9.0", path = "../node_macros" }
 casper-types = { version = "0.9.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
-csv = "1.1.3"
 datasize = { version = "0.2.6", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types", "tokio-types"] }
 derive_more = "0.99.7"
 derp = "0.0.14"

@@ -2,7 +2,7 @@
 Description=Casper Node
 Documentation=https://docs.casperlabs.io
 ConditionPathExists=/etc/casper/config.toml
-ConditionPathExists=/etc/casper/accounts.csv
+ConditionPathExists=/etc/casper/accounts.toml
 ConditionPathExists=/etc/casper/chainspec.toml
 After=network-online.target
 

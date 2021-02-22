@@ -9,11 +9,11 @@ cd /etc/casper
 NETWORK_NAME="casper-delta"
 
 BASE_PATH="https://casper-node.s3.us-east-2.amazonaws.com/${NETWORK_NAME}"
-ACCOUNTS_CSV_PATH="${BASE_PATH}/accounts.csv"
+ACCOUNTS_TOML_PATH="${BASE_PATH}/accounts.toml"
 CHAINSPEC_TOML_PATH="${BASE_PATH}/chainspec.toml"
 VALIDATION_PATH="${BASE_PATH}/validation.md5"
 
-files=("accounts.csv" "chainspec.toml" "validation.md5")
+files=("accounts.toml" "chainspec.toml" "validation.md5")
 for file in "${files[@]}"; do
   if [[ -f $file ]]; then
     echo "deleting old $file."
@@ -21,7 +21,7 @@ for file in "${files[@]}"; do
   fi
 done
 
-curl -sLJO $ACCOUNTS_CSV_PATH
+curl -sLJO $ACCOUNTS_TOML_PATH
 curl -sLJO $CHAINSPEC_TOML_PATH
 curl -sLJO $VALIDATION_PATH
 

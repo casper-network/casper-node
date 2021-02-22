@@ -1,0 +1,9 @@
+[[accounts]]
+public_key = "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179"
+balance = "1000000000000000000000000000"
+bonded_amount = "0"
+
+[[accounts]]
+public_key = "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18"
+balance = "1000000000000000000"
+bonded_amount = "500000000000000"
