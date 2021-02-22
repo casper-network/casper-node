@@ -13,7 +13,7 @@ use rand::{
 };
 
 /// Number of items to sample when sampling a large collection.
-const SAMPLE_SIZE: usize = 100;
+const SAMPLE_SIZE: usize = 50;
 
 /// Estimate memory usage of a hashmap of keys and values each with no heap allocations.
 pub fn hash_map_fixed_size<K, V>(hashmap: &HashMap<K, V>) -> usize {
@@ -51,8 +51,7 @@ fn sampling_rng(len: usize) -> StdRng {
 /// Given a length and a total of `sampled` bytes from sampling `SAMPLE_SIZE` items, return an
 /// estimate for the total heap memory consumption of the collection.
 fn scale_sample(len: usize, sampled: usize) -> usize {
-    let scaling_factor = len as f64 / SAMPLE_SIZE as f64;
-    (sampled as f64 * scaling_factor).round() as usize
+    sampled * len / SAMPLE_SIZE
 }
 
 /// Extrapolate memory usage of a Vec by from a random subset of `SAMPLE_SIZE` items.
