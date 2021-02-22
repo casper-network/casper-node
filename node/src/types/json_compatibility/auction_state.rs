@@ -41,9 +41,9 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
         delegator,
     );
 
-    let bid = Bid::locked(bonding_purse, staked_amount, release_era);
-
     let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+
+    let bid = Bid::locked(public_key_1, bonding_purse, staked_amount, release_era);
 
     let mut bids = BTreeMap::new();
     bids.insert(public_key_1, bid);

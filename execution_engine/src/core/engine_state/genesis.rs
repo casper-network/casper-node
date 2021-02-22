@@ -649,8 +649,12 @@ where
                 )?;
                 let release_timestamp_millis =
                     genesis_timestamp_millis + locked_funds_period_millis;
-                let founding_validator =
-                    Bid::locked(purse_uref, *staked_amount, release_timestamp_millis);
+                let founding_validator = Bid::locked(
+                    *public_key,
+                    purse_uref,
+                    *staked_amount,
+                    release_timestamp_millis,
+                );
                 validators.insert(*public_key, founding_validator);
             }
             validators
