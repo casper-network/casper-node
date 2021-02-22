@@ -2,7 +2,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{EraId, EraInfo, Error},
-    CLTyped, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, TransferredTo, URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -12,9 +12,6 @@ pub trait RuntimeProvider {
 
     /// Gets named key under a `name`.
     fn get_key(&self, name: &str) -> Option<Key>;
-
-    /// Returns a 32-byte BLAKE2b digest
-    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
 }
 
 /// Provides functionality of a contract storage.

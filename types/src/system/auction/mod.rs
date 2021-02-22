@@ -97,7 +97,7 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&public_key);
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -144,7 +144,7 @@ pub trait Auction:
     /// The function returns a the new amount of motes remaining in the bid. If the target bid
     /// does not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&public_key);
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -200,7 +200,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key);
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -255,7 +255,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key);
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -559,7 +559,7 @@ pub trait Auction:
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
     fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
-        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&validator_public_key);
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }

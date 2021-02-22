@@ -170,9 +170,7 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
                 let account_hash =
-                    AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), |x| {
-                        provider.blake2b(x)
-                    });
+                    AccountHash::from_public_key(unbonding_purse.unbonder_public_key());
 
                 // Move funds from bid purse to unbonding purse
                 provider

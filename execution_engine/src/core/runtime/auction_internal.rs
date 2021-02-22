@@ -1,12 +1,11 @@
 use casper_types::{
-    account,
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
         AccountProvider, Auction, EraInfo, Error, MintProvider, RuntimeProvider, StorageProvider,
         SystemProvider,
     },
-    CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, Key, TransferredTo, URef, U512,
 };
 
 use super::Runtime;
@@ -103,10 +102,6 @@ where
 
     fn get_key(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
-    }
-
-    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        account::blake2b(data)
     }
 }
 

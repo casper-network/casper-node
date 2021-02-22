@@ -242,10 +242,7 @@ impl AccountHash {
     }
 
     #[doc(hidden)]
-    pub fn from_public_key(
-        public_key: &PublicKey,
-        blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
-    ) -> Self {
+    pub fn from_public_key(public_key: &PublicKey) -> Self {
         const SYSTEM_LOWERCASE: &str = "system";
         const ED25519_LOWERCASE: &str = "ed25519";
         const SECP256K1_LOWERCASE: &str = "secp256k1";
@@ -266,7 +263,7 @@ impl AccountHash {
             data
         };
         // Hash the preimage data using blake2b256 and return it.
-        let digest = blake2b_hash_fn(preimage);
+        let digest = blake2b(preimage);
         Self::new(digest)
     }
 }
@@ -342,7 +339,7 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
 
 impl From<&PublicKey> for AccountHash {
     fn from(public_key: &PublicKey) -> Self {
-        AccountHash::from_public_key(public_key, blake2b)
+        AccountHash::from_public_key(public_key)
     }
 }
 
