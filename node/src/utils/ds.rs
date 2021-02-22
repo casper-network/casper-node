@@ -94,7 +94,6 @@ where
             .choose_multiple(&mut rng, SAMPLE_SIZE)
             .into_iter()
             .map(|(k, v)| k.estimate_heap_size() + v.estimate_heap_size())
-            .map(|v| v)
             .sum();
 
         base_size + scale_sample(map.len(), sampled)
@@ -102,6 +101,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(clippy::assertions_on_constants)] // used by sanity checks around `SAMPLE_SIZE`
 mod tests {
     use std::collections::HashMap;
 
