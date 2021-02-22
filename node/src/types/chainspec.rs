@@ -200,6 +200,7 @@ mod tests {
         motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
+        stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
     use casper_types::U512;
@@ -301,6 +302,10 @@ mod tests {
         } else {
             assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
             assert!(spec.network_config.accounts_config.accounts().is_empty());
+            assert!(spec.protocol_config.global_state_update.is_some());
+            for (_, value) in &spec.protocol_config.global_state_update.unwrap().0 {
+                assert!(StoredValue::from_bytes(value).is_ok());
+            }
         }
 
         assert_eq!(spec.network_config.name, "test-chain");
