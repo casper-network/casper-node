@@ -8,8 +8,6 @@
 //! for `T` and `send_datasized` is used instead of send. Internally it stores the size of each item
 //! instead of recalculating on `recv` to avoid underflows due to interior mutability.
 
-#![allow(dead_code)]
-
 use std::{
     mem,
     sync::{
@@ -51,6 +49,7 @@ pub struct CountingSender<T> {
 
 impl<T> CountingSender<T> {
     /// Internal sending function.
+    // This function allows implementing a non-counting `send` function if needed.
     #[inline]
     fn do_send(&self, size: usize, message: T) -> Result<usize, SendError<T>> {
         // We increase the counters before attempting to add values, to avoid a race that would
@@ -69,14 +68,9 @@ impl<T> CountingSender<T> {
             .map(|_| count)
     }
 
-    /// Sends a message down the channel, increasing the count on success.
-    #[inline]
-    pub fn send(&self, message: T) -> Result<usize, SendError<T>> {
-        self.do_send(0, message)
-    }
-
     /// Returns the count, i.e. messages currently inside the channel.
     #[inline]
+    #[allow(dead_code)] // TODO: Remove once this function is used.
     pub fn len(&self) -> usize {
         self.counter.load(Ordering::SeqCst)
     }
@@ -127,6 +121,7 @@ impl<T> CountingReceiver<T> {
 
     /// Returns the count, i.e. messages currently inside the channel.
     #[inline]
+    #[allow(dead_code)] // TODO: Remove once this function is used.
     pub fn len(&self) -> usize {
         self.counter.load(Ordering::SeqCst)
     }
