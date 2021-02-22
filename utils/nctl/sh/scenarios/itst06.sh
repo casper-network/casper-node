@@ -133,8 +133,15 @@ function do_get_another_node() {
 }
 
 function do_background_wasmless_transfers() {
-    bash "$NCTL"/sh/contracts-transfers/do_dispatch_native.sh transfers=100 amount=2500000000 node="$NODE_ID" &
-    sleep 5
+    nohup bash "$NCTL"/sh/contracts-transfers/do_dispatch_native.sh \
+        transfers=100 \
+        amount=2500000000 \
+        node="$NODE_ID" \
+        # Do not create a nohup.out file.
+        >/dev/null 2>&1 \
+        &
+
+    sleep 1
     log_step "initiated background wasmless transfers"
 }
 
