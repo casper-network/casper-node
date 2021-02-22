@@ -95,7 +95,8 @@ function _set_chainspec_account()
 [[accounts]]
 public_key = "${ACCOUNT_KEY}"
 balance = "$INITIAL_BALANCE"
-staked_amount = "$INITIAL_WEIGHT"
+bonded_amount = "$INITIAL_WEIGHT"
+
 EOM
 }
 
