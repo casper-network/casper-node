@@ -75,6 +75,11 @@ impl Bid {
         &self.staked_amount
     }
 
+    /// Gets the staked amount of the provided bid
+    pub fn staked_amount_mut(&mut self) -> &mut U512 {
+        &mut self.staked_amount
+    }
+
     /// Gets the delegation rate of the provided bid
     pub fn delegation_rate(&self) -> &DelegationRate {
         &self.delegation_rate

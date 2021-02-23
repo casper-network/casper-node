@@ -116,6 +116,9 @@ pub trait Auction:
         let mut validators = detail::get_bids(self)?;
         let new_amount = match validators.get_mut(&public_key) {
             Some(bid) => {
+                if bid.inactive() {
+                    bid.activate();
+                }
                 self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
                 bid.with_delegation_rate(delegation_rate)
@@ -158,7 +161,7 @@ pub trait Auction:
 
         // Fails if requested amount is greater than either the total stake or the amount of vested
         // stake.
-        let new_amount = bid.decrease_stake(amount, era_end_timestamp_millis)?;
+        let updated_stake = bid.decrease_stake(amount, era_end_timestamp_millis)?;
 
         detail::create_unbonding_purse(
             self,
@@ -168,7 +171,7 @@ pub trait Auction:
             amount,
         )?;
 
-        if new_amount.is_zero() {
+        if updated_stake.is_zero() {
             // Automatically unbond delegators
             for (delegator_public_key, delegator) in bid.delegators() {
                 detail::create_unbonding_purse(
@@ -180,13 +183,14 @@ pub trait Auction:
                 )?;
             }
 
-            // NOTE: Assumed safe as we're checking for existence above
-            bids.remove(&public_key).unwrap();
+            *bid.delegators_mut() = BTreeMap::new();
+
+            bid.deactivate();
         }
 
         detail::set_bids(self, bids)?;
 
-        Ok(new_amount)
+        Ok(updated_stake)
     }
 
     /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
@@ -309,9 +313,11 @@ pub trait Auction:
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // Remove bid for given validator, saving its delegators
-            if let Some(bid) = bids.remove(&validator_public_key) {
+            // Burn stake, deactivate
+            if let Some(bid) = bids.get_mut(&validator_public_key) {
                 burned_amount += *bid.staked_amount();
+                *bid.staked_amount_mut() = U512::zero();
+                bid.deactivate();
                 bids_modified = true;
             };
 

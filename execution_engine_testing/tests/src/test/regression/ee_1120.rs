@@ -281,8 +281,10 @@ fn should_run_ee_1120_slash_delegators() {
     // Compare bids after slashing validator 2
     let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
     assert_ne!(bids_before, bids_after);
-    assert_eq!(bids_after.len(), 1);
-    assert!(!bids_after.contains_key(&VALIDATOR_2));
+    assert_eq!(bids_after.len(), 2);
+    let validator_2_bid = bids_after.get(&VALIDATOR_2).unwrap();
+    assert!(validator_2_bid.inactive());
+    assert!(validator_2_bid.staked_amount().is_zero());
 
     assert!(bids_after.contains_key(&VALIDATOR_1));
     assert_eq!(bids_after[&VALIDATOR_1].delegators().len(), 2);
@@ -334,7 +336,11 @@ fn should_run_ee_1120_slash_delegators() {
     builder.exec(slash_request_2).expect_success().commit();
 
     let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(bids_after.is_empty());
+    assert_eq!(bids_after.len(), 2);
+    let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
+    assert!(validator_1_bid.inactive());
+    assert!(validator_1_bid.staked_amount().is_zero());
+
     let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(unbond_purses_after.is_empty());
 }

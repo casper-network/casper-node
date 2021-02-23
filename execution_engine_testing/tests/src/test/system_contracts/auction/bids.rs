@@ -1477,10 +1477,10 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .expect_success();
 
     let bids_after: Bids = builder.get_value(auction, auction::BIDS_KEY);
-    assert!(
-        bids_after.get(&VALIDATOR_1).is_none(),
-        "does not have validator 1 bid and delegator bids are removed as well"
-    );
+    let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
+    assert!(validator_1_bid.inactive());
+    assert!(validator_1_bid.staked_amount().is_zero());
+
     let unbonding_purses_after: UnbondingPurses =
         builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
@@ -1691,10 +1691,10 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .expect_success();
 
     let bids_after: Bids = builder.get_value(auction, auction::BIDS_KEY);
-    assert!(
-        bids_after.get(&VALIDATOR_1).is_none(),
-        "does not have validator 1 bid and delegator bids are removed as well"
-    );
+    let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
+    assert!(validator_1_bid.inactive());
+    assert!(validator_1_bid.staked_amount().is_zero());
+
     let unbonding_purses_before: UnbondingPurses =
         builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
 
