@@ -152,7 +152,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
         block: &Block,
-        override_start_downloading_deploys: bool,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
@@ -169,11 +168,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_header,
                 ..
             } => {
-                let should_start_downloading_deploys = override_start_downloading_deploys
-                    || highest_block_header
-                        .as_ref()
-                        .map(|hdr| hdr.hash() == *block.header().parent_hash())
-                        .unwrap_or(false)
+                let should_start_downloading_deploys = highest_block_header
+                    .as_ref()
+                    .map(|hdr| hdr.hash() == *block.header().parent_hash())
+                    .unwrap_or(false)
                     || block.header().is_genesis_child();
                 if should_start_downloading_deploys {
                     info!("linear chain downloaded. Start downloading deploys.");
@@ -457,7 +455,7 @@ where
                         // When syncing descendants of a trusted hash, we might have some of
                         // them in our local storage. If
                         // that's the case, just continue.
-                        self.block_downloaded(rng, effect_builder, &block, false)
+                        self.block_downloaded(rng, effect_builder, &block)
                     }
                     BlockByHeightResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_height();
@@ -485,7 +483,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, &block, false)
+                        self.block_downloaded(rng, effect_builder, &block)
                     }
                 }
             }
@@ -512,9 +510,21 @@ where
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                         trace!(%block_hash, "Linear block found in the local storage.");
                         // We hit a block that we already had in the storage - which should mean
-                        // that we also have all of its ancestors; we can switch to downloading
-                        // deploys now
-                        self.block_downloaded(rng, effect_builder, &block, true)
+                        // that we also have all of its ancestors, so we switch to traversing the
+                        // chain forwards and downloading the deploys.
+                        // We don't want to download and execute a block we already have, so
+                        // instead of calling self.block_downloaded(), we take a shortcut:
+                        match &mut self.state {
+                            State::SyncingTrustedHash {
+                                ref mut latest_block,
+                                ..
+                            } => {
+                                *latest_block = Box::new(Some((&*block).clone()));
+                            }
+                            _ => (),
+                        }
+                        self.state.block_downloaded(&block);
+                        self.block_handled(rng, effect_builder, *block)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();
@@ -541,7 +551,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, &block, false)
+                        self.block_downloaded(rng, effect_builder, &block)
                     }
                 }
             }
