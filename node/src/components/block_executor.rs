@@ -84,8 +84,8 @@ type BlockHeight = u64;
 /// The Block executor component.
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
-    /// Height of the highest known block at the time of initializing the component.
-    initial_block_height: Option<u64>,
+    /// Height of the child of the highest known block at the time of initializing the component.
+    initial_block_child_height: u64,
     /// Summary of the highest known block.
     initial_block_summary: Option<ExecutedBlockSummary>,
     initial_state_root_hash: Digest,
@@ -118,7 +118,7 @@ impl BlockExecutor {
             accumulated_seed: hdr.accumulated_seed(),
         });
         BlockExecutor {
-            initial_block_height: highest_block_header.map(|hdr| hdr.height()),
+            initial_block_child_height: highest_block_header.map_or(0, |hdr| hdr.height() + 1),
             initial_block_summary,
             initial_state_root_hash,
             protocol_version: ProtocolVersion::from_parts(
@@ -483,11 +483,7 @@ impl BlockExecutor {
     /// Returns true if the `finalized_block` is an immediate child of the initial block, ie.
     /// either genesis or the highest known block at the time of initializing the component.
     fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
-        finalized_block.height()
-            == self
-                .initial_block_height
-                .map(|height| height + 1)
-                .unwrap_or(0)
+        finalized_block.height() == self.initial_block_child_height
     }
 }
 
