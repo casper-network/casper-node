@@ -217,11 +217,11 @@ where
         }
     }
 
+    /// The booking block for era N is the last block of era N - AUCTION_DELAY - 1
+    /// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
+    /// We make sure not to go below the last upgrade activation point, because we will not have
+    /// any eras from before that.
     fn booking_block_height(&self, era_id: EraId) -> u64 {
-        // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
-        // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
-        // We make sure not to go below the last upgrade activation point, because we will not have
-        // any eras from before that.
         let after_booking_era_id = EraId(
             era_id
                 .0
@@ -444,7 +444,7 @@ where
         rng: &'a mut NodeRng,
     ) -> Effects<Event<I>> {
         let current_era = self.current_era;
-        trace!(?current_era, "current era");
+        trace!(?current_era, "recreating timers");
         let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
         self.handling_wrapper(effect_builder, rng)
             .handle_consensus_outcomes(current_era, outcomes)

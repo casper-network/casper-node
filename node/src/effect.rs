@@ -1519,9 +1519,9 @@ impl<REv> EffectBuilder<REv> {
         futures::future::join_all(
             era_ids
                 .into_iter()
-                .filter(|era_id| *era_id != EraId(0)) /* we would get None for that era and that
-                would make it seem like the entire
-                function failed */
+                // we would get None for era 0 and that would make it seem like the entire
+                // function failed
+                .filter(|era_id| *era_id != EraId(0))
                 .map(|era_id| {
                     self.get_switch_block_for_era_id_from_storage(era_id)
                         .map(move |maybe_block| {
