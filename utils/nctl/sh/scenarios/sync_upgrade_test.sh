@@ -2,6 +2,7 @@
 
 source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/views/utils.sh
+source "$NCTL"/sh/assets/upgrade.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 
 # Exit if any of the commands fail.
@@ -9,11 +10,13 @@ set -e
 
 #######################################
 # Runs an integration tests that tries to sync a new node
-# to an already running network.
+# with an upgraded network.
 #
 # Arguments:
-#   `node=XXX` ID of a new node.
-#   `timeout=XXX` timeout (in seconds) when syncing.
+#   `node=XXX` ID of a new node. Default=6
+#   `timeout=XXX` timeout (in seconds) when syncing. Default=300 seconds.
+#   `version=X_Y_Z` new protocol version to upgrade to. Default=2_0_0.
+#   `era=X` at which the upgrade should take place. Default=3.
 #######################################
 function main() {
     log "------------------------------------------------------------"
@@ -28,18 +31,22 @@ function main() {
     do_send_transfers
     # 3. Wait until they're all included in the chain.
     do_await_deploy_inclusion
-    # 4. Take a note of the last finalized block hash
+    # 4. Upgrade the network
+    do_upgrade_network
+    # 5. Wait for the network to upgrade.
+    do_await_network_upgrade
+    # 6. Take a note of the last finalized block hash
     do_read_lfb_hash
-    # 5. Send batch of Wasm deploys
+    # 7. Send batch of Wasm deploys
     do_send_wasm_deploys
-    # 6. Send batch of native transfers
+    # 8. Send batch of native transfers
     do_send_transfers
-    # 7. Wait until they're all included in the chain.
-    # 8. Start the node in sync mode using hash from 4)
+    # 9. Wait until they're all included in the chain.
+    do_await_deploy_inclusion
+    # 10. Start the node in sync mode using hash from 4)
     do_start_new_node "$NEW_NODE_ID"
-    # 9. Wait until it's synchronized.
-    # 10. Verify that its last finalized block matches other nodes'.
-    # nctl-view-chain-root-hash
+    # 11. Wait until it's synchronized
+    #     and verify that its last finalized block matches other nodes'.
     do_await_full_synchronization "$NEW_NODE_ID"
 
     log "------------------------------------------------------------"
@@ -51,12 +58,34 @@ function log_step() {
     local COMMENT=${1}
     log "------------------------------------------------------------"
     log "STEP $STEP: $COMMENT"
+    log "------------------------------------------------------------"
     STEP=$((STEP + 1))
 }
 
 function do_await_genesis_era_to_complete() {
     log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -lt 1 ]; do
+    while [ "$(get_chain_era)" != "1" ]; do
+        sleep 1.0
+    done
+}
+
+function do_upgrade_network() {
+    log_step "scheduling the network upgrade to version ${PROTOCOL_VERSION} at era ${ACTIVATE_ERA}"
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
+        _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
+    done
+}
+
+function do_await_network_upgrade() {
+    log_step "wait for the network to upgrade"
+    local WAIT_TIME_SEC=0
+    local WAIT_UNTIL=$((ACTIVATE_ERA + 2))
+    while [ "$(get_chain_era)" != "$WAIT_UNTIL" ]; do
+    if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+        log "ERROR: Failed to upgrade the network in ${SYNC_TIMEOUT_SEC} seconds"
+            exit 1
+        fi
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
 }
@@ -65,7 +94,7 @@ function do_send_wasm_deploys() {
     # NOTE: Maybe make these arguments to the test?
     local BATCH_COUNT=1
     local BATCH_SIZE=1
-    local TRANSFER_AMOUNT=2500000000
+    local TRANSFER_AMOUNT=10000
     log_step "sending Wasm deploys"
     # prepare wasm batch
     prepare_wasm_batch "$TRANSFER_AMOUNT" "$BATCH_COUNT" "$BATCH_SIZE"
@@ -173,6 +202,8 @@ function prepare_wasm_batch() {
 unset NEW_NODE_ID
 unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
+unset ACTIVATE_ERA
+unset PROTOCOL_VERSION
 STEP=0
 
 for ARGUMENT in "$@"; do
@@ -181,11 +212,15 @@ for ARGUMENT in "$@"; do
     case "$KEY" in
         node) NEW_NODE_ID=${VALUE} ;;
         timeout) SYNC_TIMEOUT_SEC=${VALUE} ;;
+        era) ACTIVATE_ERA=${VALUE} ;;
+        version) PROTOCOL_VERSION=${VALUE} ;;
         *) ;;
     esac
 done
 
 NEW_NODE_ID=${NEW_NODE_ID:-"6"}
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
+ACTIVATE_ERA=${ACTIVATE_ERA:-"3"}
+PROTOCOL_VERSION=${PROTOCOL_VERSION:-"2_0_0"}
 
-main "$NEW_NODE_ID"
+main

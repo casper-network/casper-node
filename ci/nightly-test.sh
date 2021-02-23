@@ -38,6 +38,7 @@ function start_run_teardown() {
 }
 
 start_run_teardown "sync_test.sh node=6 timeout=500"
+start_run_teardown "sync_upgrade_test.sh node=6 timeout=500"
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
 
