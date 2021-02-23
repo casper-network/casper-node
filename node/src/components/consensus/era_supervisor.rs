@@ -610,10 +610,6 @@ where
         let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
-            // We have to do that to let linear chain sync work after an upgrade - it might go back
-            // in history further than the point at which the era supervisor was initialized, send
-            // us blocks from the past, and then expect that we handle them and emit this event.
-            effects.extend(self.effect_builder.announce_block_handled(block).ignore());
             return effects;
         }
         if block.header().is_switch_block() {
