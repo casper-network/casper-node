@@ -915,12 +915,12 @@ impl reactor::Reactor for Reactor {
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
                 block_hash,
-                block_header,
+                block,
             }) => {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::BlockAdded {
                         block_hash,
-                        block_header,
+                        block,
                     });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
