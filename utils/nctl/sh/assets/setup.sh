@@ -134,33 +134,6 @@ EOM
 }
 
 #######################################
-# Sets entry in chainspec's accounts.toml.
-# Arguments:
-#   Path to file containing an ed25519 public key in hex format.
-#   Initial account balance (in motes).
-#   Staking weight - validator's only (optional).
-#######################################
-function _set_chainspec_delegator()
-{
-    local PATH_TO_ACCOUNT_KEY=${1}
-    local INITIAL_BALANCE=${2}
-    local INITIAL_WEIGHT=${3:-0}
-    local ACCOUNT_KEY
-    local PATH_TO_NET
-
-    PATH_TO_NET=$(get_path_to_net)
-    ACCOUNT_KEY=$(cat "$PATH_TO_ACCOUNT_KEY")
-
-    cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
-[[delegators]]
-public_key = "${ACCOUNT_KEY}"
-balance = "$INITIAL_BALANCE"
-bonded_amount = "$INITIAL_WEIGHT"
-
-EOM
-}
-
-#######################################
 # Sets assets pertaining to network daemon.
 # Globals:
 #   NCTL - path to nctl home directory.
