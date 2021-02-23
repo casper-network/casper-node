@@ -19,8 +19,8 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalizedBlock, Item, Timestamp,
+        Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
+        Item, Timestamp,
     },
     utils::Source,
 };
@@ -218,8 +218,8 @@ pub enum LinearChainAnnouncement {
     BlockAdded {
         /// Block hash.
         block_hash: BlockHash,
-        /// Block header.
-        block_header: Box<BlockHeader>,
+        /// Block.
+        block: Box<Block>,
     },
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
