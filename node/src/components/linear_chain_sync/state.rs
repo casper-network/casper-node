@@ -1,10 +1,9 @@
-use std::{collections::BTreeMap, fmt::Display};
+use std::fmt::Display;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::types::{Block, BlockHash, BlockHeader};
-use casper_types::{PublicKey, U512};
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub enum State {
@@ -25,8 +24,6 @@ pub enum State {
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<Option<Block>>,
-        /// The weights of the validators for latest block being added.
-        validator_weights: BTreeMap<PublicKey, U512>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
@@ -37,8 +34,6 @@ pub enum State {
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
-        /// The validator set for the most recent block being synchronized.
-        validators_for_latest_block: BTreeMap<PublicKey, U512>,
     },
     /// Synchronizing done. The single field contains the highest block seen during the
     /// synchronization process.
@@ -73,7 +68,6 @@ impl State {
     pub fn sync_trusted_hash(
         trusted_hash: BlockHash,
         highest_block_header: Option<BlockHeader>,
-        validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Self {
         State::SyncingTrustedHash {
             trusted_hash,
@@ -81,20 +75,14 @@ impl State {
             highest_block_seen: 0,
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
-            validator_weights,
         }
     }
 
-    pub fn sync_descendants(
-        trusted_hash: BlockHash,
-        latest_block: Block,
-        validators_for_latest_block: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    pub fn sync_descendants(trusted_hash: BlockHash, latest_block: Block) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
-            validators_for_latest_block,
         }
     }
 
