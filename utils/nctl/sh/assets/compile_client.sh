@@ -13,7 +13,11 @@ source "$NCTL"/sh/utils/main.sh
 pushd "$NCTL_CASPER_HOME" || exit
 
 # Build client utility.
-cargo build --release --package casper-client
+if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+    cargo build --package casper-client
+else
+    cargo build --release --package casper-client
+fi
 
 # Build client side contracts.
 make build-contract-rs/add-bid

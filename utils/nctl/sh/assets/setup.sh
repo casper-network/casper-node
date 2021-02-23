@@ -27,8 +27,12 @@ function _set_net_bin()
     PATH_TO_BIN="$(get_path_to_net)"/bin
     mkdir -p "$PATH_TO_BIN"
 
+    if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+        cp "$NCTL_CASPER_HOME"/target/debug/casper-client "$PATH_TO_BIN"
+    else
+        cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_BIN"
+    fi
 
-    cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_BIN"
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
 	do
         cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
@@ -108,7 +112,7 @@ EOM
 #   Initial user account balance.
 #   Initial user staking weight.
 #######################################
-function _set_chainspec_account_for_user()
+function _set_chainspec_account_for_delegator()
 {
     local PATH_TO_ACCOUNT_KEY_OF_USER=${1}
     local PATH_TO_ACCOUNT_KEY_OF_VALIDATOR=${2}
@@ -129,6 +133,34 @@ balance = "$BALANCE_OF_USER"
 delegated_amount = "$WEIGHT_OF_USER"
 delegator_public_key = "${ACCOUNT_KEY_OF_USER}"
 validator_public_key = "${ACCOUNT_KEY_OF_VALIDATOR}"
+
+EOM
+}
+
+#######################################
+# Sets entry in chainspec's accounts.toml for a user account.
+# Arguments:
+#   Path to file containing a user's ed25519 public key in hex format.
+#   Path to file containing a validator's ed25519 public key in hex format.
+#   Initial user account balance.
+#   Initial user staking weight.
+#######################################
+function _set_chainspec_account_for_user()
+{
+    local PATH_TO_ACCOUNT_KEY_OF_USER=${1}
+    local BALANCE_OF_USER=${2}
+
+    local ACCOUNT_KEY_OF_USER
+    local PATH_TO_NET
+
+    PATH_TO_NET=$(get_path_to_net)
+    ACCOUNT_KEY_OF_USER=$(cat "$PATH_TO_ACCOUNT_KEY_OF_USER")
+
+    cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[[accounts]]
+balance = "$BALANCE_OF_USER"
+bonded_amount = "0"
+public_key = "${ACCOUNT_KEY_OF_USER}"
 
 EOM
 }
@@ -192,14 +224,18 @@ function _set_net_users()
     PATH_TO_NET=$(get_path_to_net)
     mkdir "$PATH_TO_NET"/users
 
+    # Set keys.
     for USER_ID in $(seq 1 "$COUNT_USERS")
     do
         "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+    done
+
+    # Set user accounts.
+    for USER_ID in $(seq 1 "$COUNT_USERS")
+    do
         _set_chainspec_account_for_user \
             "$PATH_TO_NET"/users/user-"$USER_ID"/public_key_hex \
-            "$PATH_TO_NET"/nodes/node-"$USER_ID"/keys/public_key_hex \
-            "$NCTL_INITIAL_BALANCE_USER" \
-            "$NCTL_INITIAL_DELEGATION_AMOUNT"
+            "$NCTL_INITIAL_BALANCE_USER" 
     done
 }
 

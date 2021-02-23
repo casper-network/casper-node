@@ -12,6 +12,10 @@ source "$NCTL"/sh/utils/main.sh
 
 pushd "$NCTL_CASPER_NODE_LAUNCHER_HOME" || exit
 
-cargo build --release 
+if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+    cargo build
+else
+    cargo build --release
+fi
 
 popd || exit
