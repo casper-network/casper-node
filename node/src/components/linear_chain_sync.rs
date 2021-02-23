@@ -35,6 +35,8 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
+use casper_types::{PublicKey, U512};
+
 use self::event::{BlockByHashResult, DeploysResult};
 
 use super::{
@@ -81,6 +83,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         storage: &Storage,
         init_hash: Option<BlockHash>,
         highest_block_header: Option<BlockHeader>,
+        _genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, Err>
     where
