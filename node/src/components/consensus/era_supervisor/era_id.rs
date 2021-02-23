@@ -49,6 +49,11 @@ impl EraId {
     pub(crate) fn saturating_sub(&self, x: u64) -> EraId {
         EraId(self.0.saturating_sub(x))
     }
+
+    /// Returns whether this is era 0.
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl Add<u64> for EraId {

@@ -3,7 +3,6 @@
 mod memory_metrics;
 
 use std::{
-    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
     sync::Arc,
@@ -15,8 +14,6 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
-
-use casper_types::{PublicKey, U512};
 
 #[cfg(not(feature = "fast-sync"))]
 use crate::components::linear_chain_sync::{self, LinearChainSync};
@@ -483,14 +480,6 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new(&registry)?;
 
-        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
-            .chainspec()
-            .network_config
-            .chainspec_validator_stakes()
-            .into_iter()
-            .map(|(pk, motes)| (pk, motes.value()))
-            .collect();
-
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
@@ -500,7 +489,6 @@ impl reactor::Reactor for Reactor {
             &storage,
             init_hash,
             chainspec_loader.initial_block_header().cloned(),
-            validator_weights.clone(),
             maybe_next_activation_point,
         )?;
 
@@ -512,8 +500,8 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
-            validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),

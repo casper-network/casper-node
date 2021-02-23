@@ -35,8 +35,8 @@ use crate::{
         announcements::ConsensusAnnouncement,
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, NetworkRequest,
-            StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -118,7 +118,7 @@ pub enum Event<I> {
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
         key_blocks: HashMap<EraId, BlockHeader>,
-        validators: BTreeMap<PublicKey, U512>,
+        maybe_validators: Option<BTreeMap<PublicKey, U512>>,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     },
@@ -246,6 +246,7 @@ pub trait ReactorEventT<I>:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
+    + From<LinearChainRequest<I>>
 {
 }
 
@@ -260,6 +261,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
+        + From<LinearChainRequest<I>>
 {
 }
 
@@ -323,13 +325,13 @@ where
             }
             Event::InitializeEras {
                 key_blocks,
-                validators,
+                maybe_validators,
                 timestamp,
                 genesis_start_time,
             } => {
                 let mut effects = handling_es.handle_initialize_eras(
                     key_blocks,
-                    validators,
+                    maybe_validators,
                     timestamp,
                     genesis_start_time,
                 );

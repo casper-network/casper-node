@@ -3,11 +3,7 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::Serialize;
 
-use casper_execution_engine::shared::motes::Motes;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::AccountsConfig;
 #[cfg(test)]
@@ -22,23 +18,6 @@ pub struct NetworkConfig {
     pub(crate) timestamp: Timestamp,
     /// Validator accounts specified in the chainspec.
     pub(crate) accounts_config: AccountsConfig,
-}
-
-impl NetworkConfig {
-    /// Returns a vector of chainspec validators' public key and their stake.
-    pub fn chainspec_validator_stakes(&self) -> Vec<(PublicKey, Motes)> {
-        self.accounts_config
-            .accounts()
-            .iter()
-            .filter_map(|account_config| {
-                if account_config.is_genesis_validator() {
-                    Some((account_config.public_key(), account_config.bonded_amount()))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
 }
 
 #[cfg(test)]
