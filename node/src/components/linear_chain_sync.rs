@@ -29,7 +29,7 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{convert::Infallible, fmt::Display, mem};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -517,14 +517,12 @@ where
                         // chain forwards and downloading the deploys.
                         // We don't want to download and execute a block we already have, so
                         // instead of calling self.block_downloaded(), we take a shortcut:
-                        match &mut self.state {
-                            State::SyncingTrustedHash {
-                                ref mut latest_block,
-                                ..
-                            } => {
-                                *latest_block = Box::new(Some((&*block).clone()));
-                            }
-                            _ => (),
+                        if let State::SyncingTrustedHash {
+                            ref mut latest_block,
+                            ..
+                        } = &mut self.state
+                        {
+                            *latest_block = Box::new(Some((&*block).clone()));
                         }
                         self.state.block_downloaded(&block);
                         self.block_handled(rng, effect_builder, *block)
