@@ -413,6 +413,22 @@ steps:
     CARGO_TOKEN:
       from_secret: crates_io_token
 
+- name: as-contract-publish
+  image: plugins/npm
+  settings:
+    username:
+      from_secret: npm_user
+    token:
+      from_secret: npm_token
+    email:
+      from_secret: npm_email
+    folder:
+    - "smart_contracts/contract-as"
+    fail_on_version_conflict:
+    - true
+    access:
+    - "public"
+
 trigger:
   ref:
   - refs/tags/v*
