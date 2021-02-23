@@ -3,8 +3,9 @@
 #######################################
 # Compiles client software.
 # Globals:
-#   NCTL_CASPER_HOME - path to casper node repo.
 #   NCTL - path to nctl home directory.
+#   NCTL_CASPER_HOME - path to casper node repo.
+#   NCTL_COMPILE_TARGET - flag indicating whether software compilation target is release | debug.
 ########################################
 
 # Import utils.

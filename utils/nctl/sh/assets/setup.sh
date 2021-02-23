@@ -2,11 +2,9 @@
 #
 # Sets assets required to run an N node network.
 # Arguments:
-#   Network ordinal identifier.
-#   Count of nodes to setup.
-#   Count of nodes that will be bootstraps.
-#   Count of users to setup.
-#   Delay in seconds to apply to genesis timestamp.
+#   Network ordinal identifier (default=1).
+#   Count of nodes to setup (default=5).
+#   Delay in seconds to apply to genesis timestamp (default=30).
 
 #######################################
 # Imports
@@ -17,8 +15,6 @@ source "$NCTL"/sh/assets/setup_node.sh
 
 #######################################
 # Sets network bin folder.
-# Arguments:
-#   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _set_net_bin()
 {
@@ -43,6 +39,7 @@ function _set_net_bin()
 # Sets assets pertaining to network chainspec.
 # Arguments:
 #   Delay in seconds to apply to genesis timestamp.
+#   Number of genesis nodes.
 #######################################
 function _set_net_chainspec()
 {
@@ -82,7 +79,7 @@ function _set_net_chainspec()
 # Arguments:
 #   Path to file containing an ed25519 public key in hex format.
 #   Initial account balance (in motes).
-#   Staking weight - validator's only (optional).
+#   Initial account staking weight (default=0).
 #######################################
 function _set_chainspec_account()
 {
@@ -105,7 +102,7 @@ EOM
 }
 
 #######################################
-# Sets entry in chainspec's accounts.toml for a user account.
+# Sets entry in chainspec's accounts.toml for a delegator account.
 # Arguments:
 #   Path to file containing a user's ed25519 public key in hex format.
 #   Path to file containing a validator's ed25519 public key in hex format.
@@ -141,9 +138,7 @@ EOM
 # Sets entry in chainspec's accounts.toml for a user account.
 # Arguments:
 #   Path to file containing a user's ed25519 public key in hex format.
-#   Path to file containing a validator's ed25519 public key in hex format.
 #   Initial user account balance.
-#   Initial user staking weight.
 #######################################
 function _set_chainspec_account_for_user()
 {
@@ -190,8 +185,6 @@ function _set_net_daemon()
 
 #######################################
 # Sets assets pertaining to network faucet account.
-# Arguments:
-#   Path to network directory.
 #######################################
 function _set_net_faucet()
 {
@@ -227,7 +220,11 @@ function _set_net_users()
     # Set keys.
     for USER_ID in $(seq 1 "$COUNT_USERS")
     do
-        "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+        if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+            "$NCTL_CASPER_HOME"/target/debug/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+        else
+            "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+        fi    
     done
 
     # Set user accounts.
@@ -286,7 +283,6 @@ function _set_node_chainspecs()
 #   NET_ID - ordinal identifier of network being setup.
 # Arguments:
 #   Count of nodes to setup.
-#   Count of users to setup.
 #   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _main()

@@ -3,8 +3,6 @@
 #######################################
 # Sets assets pertaining to a single node.
 # Globals:
-#   NCTL_CASPER_HOME - path to node software github repo.
-#   NCTL_VALIDATOR_BASE_WEIGHT - base weight applied to validator POS.
 #   NCTL_INITIAL_BALANCE_VALIDATOR - initial balance of a lucky validator.
 #   NCTL_ACCOUNT_TYPE_NODE - node account type enum.
 # Arguments:
@@ -89,7 +87,6 @@ function _setup_bin()
 # Sets entry in node's config.toml.
 # Arguments:
 #   Node ordinal identifier.
-#   Path node's config file.
 #######################################
 function _setup_config()
 {
