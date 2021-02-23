@@ -18,6 +18,7 @@ use crate::{
         trie_store::TrieStore,
     },
 };
+use std::collections::HashSet;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadResult<V> {
@@ -242,6 +243,71 @@ where
 {
     let mut missing_descendants = Vec::new();
     let mut trie_keys_to_visit_queue = vec![trie_key];
+    while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
+        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
+        if let Some(trie_value) = &maybe_retrieved_trie {
+            let hash_of_trie_value = {
+                let node_bytes = trie_value.to_bytes()?;
+                Blake2bHash::new(&node_bytes)
+            };
+            if trie_key != hash_of_trie_value {
+                warn!(
+                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
+                     adding to list of missing nodes",
+                    trie_key, trie_value, hash_of_trie_value
+                );
+                missing_descendants.push(trie_key);
+                continue;
+            }
+        }
+        match maybe_retrieved_trie {
+            // If we can't find the trie_key; it is missing and we'll return it
+            None => {
+                missing_descendants.push(trie_key);
+            }
+            // If we could retrieve the node and it is a leaf, the search can move on
+            Some(Trie::Leaf { .. }) => (),
+            // If we hit a pointer block, queue up all of the nodes it points to
+            Some(Trie::Node { pointer_block }) => {
+                for (_, pointer) in pointer_block.to_indexed_pointers() {
+                    match pointer {
+                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
+                            trie_keys_to_visit_queue.push(descendant_leaf_trie_key)
+                        }
+                        Pointer::NodePointer(descendant_node_trie_key) => {
+                            trie_keys_to_visit_queue.push(descendant_node_trie_key)
+                        }
+                    }
+                }
+            }
+            // If we hit an extension block, add its pointer to the queue
+            Some(Trie::Extension { pointer, .. }) => {
+                trie_keys_to_visit_queue.push(pointer.into_hash())
+            }
+        }
+    }
+    Ok(missing_descendants)
+}
+
+/// Given a root hash, find any try keys that are descendant from it that are:
+/// 1. referenced but not present in the database
+/// 2. referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
+pub fn trie_key_integrity_check<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &T,
+    store: &S,
+    trie_keys: HashSet<Blake2bHash>,
+) -> Result<Vec<Blake2bHash>, E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let mut missing_descendants = Vec::new();
+    let mut trie_keys_to_visit_queue: Vec<Blake2bHash> = trie_keys.into_iter().collect();
     while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
         if let Some(trie_value) = &maybe_retrieved_trie {

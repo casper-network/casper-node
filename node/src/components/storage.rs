@@ -78,8 +78,10 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
+use std::collections::HashSet;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -719,6 +721,24 @@ impl Storage {
         } else {
             None
         }
+    }
+
+    pub fn get_state_root_hashes_for_trie_check(&self) -> Option<HashSet<Blake2bHash>> {
+        let mut blake_hashes: HashSet<Blake2bHash> = HashSet::new();
+        let header_txn = match self.env.begin_ro_txn() {
+            Ok(txn) => txn,
+            Err(_) => return None,
+        };
+        let mut cursor = match header_txn.open_ro_cursor(self.block_header_db) {
+            Ok(cursor) => cursor,
+            Err(_) => return None,
+        };
+        for (_, raw_val) in cursor.iter() {
+            let header: BlockHeader = lmdb_ext::deserialize(raw_val).ok()?;
+            let blake_hash = Blake2bHash::new(header.state_root_hash().as_ref());
+            blake_hashes.insert(blake_hash);
+        }
+        Some(blake_hashes)
     }
 
     /// Retrieves a single block in a separate transaction from storage.

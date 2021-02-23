@@ -21,6 +21,7 @@ use crate::storage::{
         TrieStore,
     },
 };
+use std::collections::HashSet;
 
 /// A reader of state
 pub trait StateReader<K, V> {
@@ -122,6 +123,13 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Self::Error>;
+
+    /// Return the missing or corrupt keys for an integrity check.
+    fn trie_key_integrity_check(
+        &self,
+        correlation_id: CorrelationId,
+        trie_keys: HashSet<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 

@@ -42,6 +42,7 @@ use crate::{
     NodeRng, StorageConfig,
 };
 use casper_execution_engine::shared::newtypes::Blake2bHash;
+use std::collections::HashSet;
 
 /// The contract runtime components.
 #[derive(DataSize)]
@@ -601,6 +602,18 @@ impl ContractRuntime {
         match self
             .engine_state
             .missing_trie_keys(correlation_id, trie_key)
+        {
+            Ok(keys) => keys,
+            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
+        }
+    }
+
+    /// Retrieve trie keys for the integrity check.
+    pub fn trie_store_check(&self, trie_keys: HashSet<Blake2bHash>) -> Vec<Blake2bHash> {
+        let correlation_id = CorrelationId::new();
+        match self
+            .engine_state
+            .trie_integrity_check(correlation_id, trie_keys)
         {
             Ok(keys) => keys,
             Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
