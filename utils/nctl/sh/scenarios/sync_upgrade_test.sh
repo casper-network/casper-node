@@ -78,8 +78,14 @@ function do_upgrade_network() {
 
 function do_await_network_upgrade() {
     log_step "wait for the network to upgrade"
+    local WAIT_TIME_SEC=0
     local WAIT_UNTIL=$((ACTIVATE_ERA + 2))
     while [ "$(get_chain_era)" != "$WAIT_UNTIL" ]; do
+    if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+        log "ERROR: Failed to upgrade the network in ${SYNC_TIMEOUT_SEC} seconds"
+            exit 1
+        fi
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
 }
