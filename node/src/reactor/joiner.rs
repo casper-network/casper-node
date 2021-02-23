@@ -500,7 +500,6 @@ impl reactor::Reactor for Reactor {
             &storage,
             init_hash,
             chainspec_loader.highest_block_header().cloned(),
-            validator_weights.clone(),
             maybe_next_activation_point,
         )?;
 

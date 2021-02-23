@@ -29,13 +29,11 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
+use std::{convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
-
-use casper_types::{PublicKey, U512};
 
 use self::event::{BlockByHashResult, DeploysResult};
 
@@ -83,7 +81,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         storage: &Storage,
         init_hash: Option<BlockHash>,
         highest_block_header: Option<BlockHeader>,
-        genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, Err>
     where
@@ -98,7 +95,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             )?)
         } else {
             let state = init_hash.map_or(State::None, |init_hash| {
-                State::sync_trusted_hash(init_hash, highest_block_header, genesis_validator_weights)
+                State::sync_trusted_hash(init_hash, highest_block_header)
             });
             let state_key = create_state_key(&chainspec);
             Ok(LinearChainSync {
@@ -226,7 +223,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         // Reset peers before creating new requests.
         self.peers.reset(rng);
         let block_height = block.height();
-        let mut curr_state = mem::replace(&mut self.state, State::None);
+        let curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
             State::None | State::Done(_) => {
                 panic!("Block handled when in {:?} state.", &curr_state)
@@ -235,7 +232,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash {
                 highest_block_seen,
                 ref latest_block,
-                ref mut validator_weights,
                 ..
             } if highest_block_seen != block_height => {
                 match latest_block.as_ref() {
@@ -245,11 +241,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     ),
                     None => panic!("Unexpected block execution results."),
                 }
-                if let Some(validator_weights_for_new_era) =
-                    block.header().next_era_validator_weights()
-                {
-                    *validator_weights = validator_weights_for_new_era.clone();
-                }
                 self.state = curr_state;
                 self.fetch_next_block_deploys(effect_builder)
             }
@@ -258,7 +249,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
-                validator_weights,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
@@ -272,24 +262,16 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block, validator_weights);
+                self.state = State::sync_descendants(trusted_hash, block);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
-                ref latest_block,
-                ref mut validators_for_latest_block,
-                ..
+                ref latest_block, ..
             } => {
                 assert_eq!(
                     **latest_block, block,
                     "Block execution result doesn't match received block."
                 );
-                match block.header().next_era_validator_weights() {
-                    None => (),
-                    Some(validators_for_next_era) => {
-                        *validators_for_latest_block = validators_for_next_era.clone();
-                    }
-                }
                 self.state = curr_state;
                 self.fetch_next_block(effect_builder, rng, &block)
             }
@@ -438,61 +420,14 @@ where
                         self.metrics.reset_start_time();
                         fetch_block_at_height(effect_builder, init_peer, next_block_height)
                     }
-                    State::SyncingTrustedHash {
-                        trusted_hash,
-                        highest_block_header,
-                        ..
-                    } => {
+                    State::SyncingTrustedHash { trusted_hash, .. } => {
                         trace!(?trusted_hash, "start synchronization");
-                        match highest_block_header.as_ref() {
-                            Some(hdr) if hdr.era_id().0 > 0 => {
-                                self.peers.push(init_peer);
-                                effect_builder
-                                    .get_switch_block_at_era_id_from_storage(EraId(
-                                        hdr.era_id().0 - 1,
-                                    ))
-                                    .event(|block| {
-                                        Event::GotInitialValidators(
-                                            block
-                                                .expect(
-                                                    "should have switch block for the latest era",
-                                                )
-                                                .header()
-                                                .next_era_validator_weights()
-                                                .expect("switch block should have era validators")
-                                                .clone(),
-                                        )
-                                    })
-                            }
-                            _ => {
-                                // Start synchronization.
-                                self.metrics.reset_start_time();
-                                fetch_block_by_hash(effect_builder, init_peer, *trusted_hash)
-                            }
-                        }
+                        // Start synchronization.
+                        self.metrics.reset_start_time();
+                        fetch_block_by_hash(effect_builder, init_peer, *trusted_hash)
                     }
                 }
             }
-            Event::GotInitialValidators(validators) => match &mut self.state {
-                State::SyncingTrustedHash {
-                    trusted_hash,
-                    validator_weights,
-                    ..
-                } => {
-                    let init_peer = self.peers.random_unsafe();
-                    *validator_weights = validators;
-                    self.metrics.reset_start_time();
-                    fetch_block_by_hash(effect_builder, init_peer, *trusted_hash)
-                }
-                state => {
-                    warn!(
-                        "should not have received `GotInitialValidators` event when in state \
-                            {:?}",
-                        state
-                    );
-                    Effects::new()
-                }
-            },
             Event::GetBlockHeightResult(block_height, fetch_result) => {
                 match fetch_result {
                     BlockByHeightResult::Absent(peer) => {
@@ -576,17 +511,10 @@ where
                         // If we do, it's a bug.
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                         trace!(%block_hash, "Linear block found in the local storage.");
-                        // if we got a switch block, we can switch to downloading deploys - we
-                        // should have all the previous blocks and we can use the weights from the
-                        // switch block for validating later blocks
-                        // TODO: this might be wrong if this is the last switch block before an
-                        // upgrade and the upgrade changed the validator set!
-                        self.block_downloaded(
-                            rng,
-                            effect_builder,
-                            &block,
-                            block.header().next_era_validator_weights().is_some(),
-                        )
+                        // We hit a block that we already had in the storage - which should mean
+                        // that we also have all of its ancestors; we can switch to downloading
+                        // deploys now
+                        self.block_downloaded(rng, effect_builder, &block, true)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();

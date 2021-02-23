@@ -808,14 +808,8 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         let era_before = EraId(era_id.0.checked_sub(1)?);
-        self.make_request(
-            |responder| StorageRequest::GetSwitchBlockAtEraId {
-                era_id: era_before,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
+        self.get_switch_block_at_era_id_from_storage(era_before)
+            .await
     }
 
     /// Requests the highest switch block.
