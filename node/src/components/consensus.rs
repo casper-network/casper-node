@@ -35,8 +35,9 @@ use crate::{
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -92,7 +93,7 @@ pub enum Event<I> {
         block_context: BlockContext,
     },
     #[from]
-    ConsensusRequest(requests::ConsensusRequest),
+    ConsensusRequest(ConsensusRequest),
     /// The proto-block has been validated.
     ResolveValidity {
         era_id: EraId,
@@ -293,10 +294,9 @@ where
                 proto_block,
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
-            Event::ConsensusRequest(requests::ConsensusRequest::HandleLinearBlock(
-                block,
-                responder,
-            )) => handling_es.handle_linear_chain_block(*block, responder),
+            Event::ConsensusRequest(ConsensusRequest::HandleLinearBlock(block, responder)) => {
+                handling_es.handle_linear_chain_block(*block, responder)
+            }
             Event::ResolveValidity {
                 era_id,
                 sender,
@@ -358,11 +358,12 @@ where
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }
-            Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
-                era_id,
-                pk,
-                responder,
-            )) => handling_es.is_bonded_validator(era_id, pk, responder),
+            Event::ConsensusRequest(ConsensusRequest::IsBondedValidator(era_id, pk, responder)) => {
+                handling_es.is_bonded_validator(era_id, pk, responder)
+            }
+            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
+                handling_es.status(responder)
+            }
         }
     }
 }

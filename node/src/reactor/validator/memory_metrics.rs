@@ -1,6 +1,10 @@
+use std::env;
+
 use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use tracing::{debug, warn};
+
+use crate::components::network::ENABLE_LIBP2P_NET_ENV_VAR;
 
 use super::Reactor;
 
@@ -150,7 +154,11 @@ impl MemoryMetrics {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;
-        let net = reactor.small_network.estimate_heap_size() as i64;
+        let net = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
+            reactor.network.estimate_heap_size() as i64
+        } else {
+            reactor.small_network.estimate_heap_size() as i64
+        };
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;

@@ -42,8 +42,8 @@ use crate::{
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, RpcRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            MetricsRequest, NetworkInfoRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -62,6 +62,7 @@ pub trait ReactorEventT:
     + From<RpcServerAnnouncement>
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
+    + From<ConsensusRequest>
     + From<LinearChainRequest<NodeId>>
     + From<MetricsRequest>
     + From<NetworkInfoRequest<NodeId>>
@@ -76,6 +77,7 @@ impl<REv> ReactorEventT for REv where
         + From<RpcServerAnnouncement>
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
+        + From<ConsensusRequest>
         + From<LinearChainRequest<NodeId>>
         + From<MetricsRequest>
         + From<NetworkInfoRequest<NodeId>>
@@ -270,12 +272,14 @@ where
                     main_responder: responder,
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
-                let (last_added_block, peers, chainspec_info) = join!(
+                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                     effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info(),
+                    effect_builder.consensus_status()
                 );
-                let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
+                let status_feed =
+                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
                 responder.respond(status_feed).await;
             }
             .ignore(),

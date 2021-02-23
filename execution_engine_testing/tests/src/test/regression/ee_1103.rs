@@ -39,7 +39,7 @@ static DELEGATOR_2: Lazy<PublicKey> =
 static DELEGATOR_3: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([207; SecretKey::ED25519_LENGTH]).into());
 
-// These values were chosen to correspond to the values in accounts.csv
+// These values were chosen to correspond to the values in accounts.toml
 // at the time of their introduction.
 
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));

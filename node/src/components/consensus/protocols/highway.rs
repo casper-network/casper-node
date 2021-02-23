@@ -357,22 +357,19 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Returns the median round exponent of all the validators that haven't been observed to be
     /// malicious, as seen by the current panorama.
     /// Returns `None` if there are no correct validators in the panorama.
-    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+    fn median_round_exp(&self) -> Option<u8> {
         self.highway.state().median_round_exp()
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    pub(crate) fn next_era_round_succ_meter(
-        &self,
-        era_start_timestamp: Timestamp,
-    ) -> RoundSuccessMeter<C> {
+    fn next_era_round_succ_meter(&self, era_start_timestamp: Timestamp) -> RoundSuccessMeter<C> {
         self.round_success_meter.next_era(era_start_timestamp)
     }
 
     /// Returns an iterator over all the values that are expected to become finalized, but are not
     /// finalized yet.
-    pub(crate) fn non_finalized_values(
+    fn non_finalized_values(
         &self,
         mut fork_choice: Option<C::Hash>,
     ) -> impl Iterator<Item = &C::ConsensusValue> {
@@ -782,5 +779,9 @@ where
         );
 
         outcomes
+    }
+
+    fn next_round_length(&self) -> Option<TimeDiff> {
+        self.highway.next_round_length()
     }
 }

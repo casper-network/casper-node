@@ -5,8 +5,6 @@ mod runtime_provider;
 mod storage_provider;
 mod system_provider;
 
-use core::convert::TryFrom;
-
 use num_rational::Ratio;
 
 use crate::{account::AccountHash, Key, URef, U512};
@@ -29,15 +27,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidNonEmptyPurseCreation);
         }
 
-        let balance_uref: URef = self.new_uref(initial_balance)?;
         let purse_uref: URef = self.new_uref(())?;
-        let purse_uref_name = purse_uref.remove_access_rights().to_formatted_string();
-
-        // store balance uref so that the runtime knows the mint has full access
-        self.put_key(&purse_uref_name, balance_uref.into())?;
-
-        // store association between purse id and balance uref
-        self.write_balance_entry(purse_uref, balance_uref)?;
+        self.write_balance(purse_uref, initial_balance)?;
 
         if !is_empty_purse {
             // get total supply uref if exists, otherwise create it.
@@ -92,11 +83,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
     /// Read balance of given `purse`.
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let balance_uref: URef = match self.read_balance_entry(&purse)? {
-            Some(key) => TryFrom::<Key>::try_from(key).map_err(|_| Error::InvalidAccessRights)?,
-            None => return Ok(None),
-        };
-        match self.read(balance_uref)? {
+        match self.read_balance(purse)? {
             some @ Some(_) => Ok(some),
             None => Err(Error::PurseNotFound),
         }
@@ -114,23 +101,18 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if !source.is_writeable() || !target.is_addable() {
             return Err(Error::InvalidAccessRights);
         }
-        let source_balance: URef = match self.read_balance_entry(&source)? {
-            Some(key) => TryFrom::<Key>::try_from(key).map_err(|_| Error::InvalidAccessRights)?,
+        let source_balance: U512 = match self.read_balance(source)? {
+            Some(source_balance) => source_balance,
             None => return Err(Error::SourceNotFound),
         };
-        let source_value: U512 = match self.read(source_balance)? {
-            Some(source_value) => source_value,
-            None => return Err(Error::SourceNotFound),
-        };
-        if amount > source_value {
+        if amount > source_balance {
             return Err(Error::InsufficientFunds);
         }
-        let target_balance: URef = match self.read_balance_entry(&target)? {
-            Some(key) => TryFrom::<Key>::try_from(key).map_err(|_| Error::InvalidAccessRights)?,
-            None => return Err(Error::DestNotFound),
-        };
-        self.write(source_balance, source_value - amount)?;
-        self.add(target_balance, amount)?;
+        if self.read_balance(target)?.is_none() {
+            return Err(Error::DestNotFound);
+        }
+        self.write_balance(source, source_balance - amount)?;
+        self.add_balance(target, amount)?;
         self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())
     }

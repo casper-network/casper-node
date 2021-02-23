@@ -6,6 +6,7 @@
 
 use std::{fmt::Debug, future::Future, io, iter, pin::Pin};
 
+use datasize::DataSize;
 use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
 use futures_io::{AsyncRead, AsyncWrite};
 use libp2p::{
@@ -16,15 +17,22 @@ use libp2p::{
 };
 
 use super::{Config, Error, PayloadT, ProtocolId};
-use crate::types::{Chainspec, NodeId};
+use crate::{
+    components::networking_metrics::NetworkingMetrics,
+    types::{Chainspec, NodeId},
+};
 
 /// The inner portion of the `ProtocolId` for the one-way message behavior.  A standard prefix and
 /// suffix will be applied to create the full protocol name.
 const PROTOCOL_NAME_INNER: &str = "validator/one-way";
 
 /// Constructs a new libp2p behavior suitable for use by one-way messaging.
-pub(super) fn new_behavior(config: &Config, chainspec: &Chainspec) -> RequestResponse<Codec> {
-    let codec = Codec::from(config);
+pub(super) fn new_behavior(
+    config: &Config,
+    net_metrics: &NetworkingMetrics,
+    chainspec: &Chainspec,
+) -> RequestResponse<Codec> {
+    let codec = Codec::new(config, net_metrics);
     let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
     let request_response_config = RequestResponseConfig::from(config);
     RequestResponse::new(
@@ -34,8 +42,10 @@ pub(super) fn new_behavior(config: &Config, chainspec: &Chainspec) -> RequestRes
     )
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(super) struct Outgoing {
+    // Datasize note: `PeerId` can be skipped, as in our case it should be 100% stack allocated.
+    #[data_size(skip)]
     pub destination: PeerId,
     pub message: Vec<u8>,
 }
@@ -82,12 +92,20 @@ impl From<Outgoing> for Vec<u8> {
 #[derive(Debug, Clone)]
 pub(super) struct Codec {
     max_message_size: u32,
+    read_futures_in_flight: prometheus::Gauge,
+    read_futures_total: prometheus::Gauge,
+    write_futures_in_flight: prometheus::Gauge,
+    write_futures_total: prometheus::Gauge,
 }
 
-impl From<&Config> for Codec {
-    fn from(config: &Config) -> Self {
-        Codec {
+impl Codec {
+    pub(super) fn new(config: &Config, net_metrics: &NetworkingMetrics) -> Self {
+        Self {
             max_message_size: config.max_one_way_message_size,
+            read_futures_in_flight: net_metrics.read_futures_in_flight.clone(),
+            read_futures_total: net_metrics.read_futures_total.clone(),
+            write_futures_in_flight: net_metrics.write_futures_in_flight.clone(),
+            write_futures_total: net_metrics.write_futures_total.clone(),
         }
     }
 }
@@ -146,8 +164,16 @@ impl RequestResponseCodec for Codec {
         Self: 'async_trait,
         T: AsyncRead + Unpin + Send + 'async_trait,
     {
+        self.read_futures_in_flight.inc();
+        self.read_futures_total.inc();
+        let gauge = self.read_futures_in_flight.clone();
+
         // For one-way messages, where no response will be sent by the peer, just return Ok(()).
-        async { Ok(()) }.boxed()
+        async move {
+            gauge.dec();
+            Ok(())
+        }
+        .boxed()
     }
 
     fn write_request<'life0, 'life1, 'life2, 'async_trait, T>(
@@ -200,7 +226,14 @@ impl RequestResponseCodec for Codec {
         Self: 'async_trait,
         T: AsyncWrite + Unpin + Send + 'async_trait,
     {
+        self.write_futures_in_flight.inc();
+        self.write_futures_total.inc();
+        let gauge = self.write_futures_in_flight.clone();
         // For one-way messages, where no response will be sent by the peer, just return Ok(()).
-        async { Ok(()) }.boxed()
+        async move {
+            gauge.dec();
+            Ok(())
+        }
+        .boxed()
     }
 }

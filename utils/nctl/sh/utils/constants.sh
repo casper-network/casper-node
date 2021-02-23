@@ -41,16 +41,19 @@ export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)
 export NCTL_DEFAULT_GAS_PRICE=10
 
 # Default amount used when making transfers.
-export NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
+export NCTL_DEFAULT_TRANSFER_AMOUNT=2500000000   # (1e9)
 
 # Intitial balance of faucet account.
 export NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000000000000   # (1e33)
 
 # Intitial balance of user account.
-export NCTL_INITIAL_BALANCE_USER=1000000000000000000   # (1e18)
+export NCTL_INITIAL_BALANCE_USER=1000000000000000000000000000000000   # (1e33)
 
 # Intitial balance of validator account.
 export NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
+
+# Intitial delegation amount of a user account.
+export NCTL_INITIAL_DELEGATION_AMOUNT=1000000000   # (1e9)
 
 # Base weight applied to a validator at genesis.
 export NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000   # (1e15)

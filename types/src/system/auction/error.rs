@@ -133,11 +133,15 @@ pub enum Error {
     #[fail(display = "Transfer error")]
     Transfer = 36,
 
+    /// Delegation rate exceeds rate.
+    #[fail(display = "Delegation rate too large")]
+    DelegationRateTooLarge = 37,
+
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
     #[fail(display = "GasLimit")]
-    GasLimit = 37,
+    GasLimit,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -209,6 +213,7 @@ impl TryFrom<u8> for Error {
                 Ok(Error::MissingSeigniorageRecipients)
             }
             d if d == Error::Transfer as u8 => Ok(Error::Transfer),
+            d if d == Error::DelegationRateTooLarge as u8 => Ok(Error::DelegationRateTooLarge),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             _ => Err(TryFromU8ForError(())),
         }
