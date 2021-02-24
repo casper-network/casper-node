@@ -22,12 +22,10 @@ use crate::storage::{
     trie_store::{
         in_memory::InMemoryTrieStore,
         operations::{
-            self, missing_trie_keys, put_trie, read, read_with_proof, trie_key_integrity_check,
-            ReadResult, WriteResult,
+            self, missing_trie_keys, put_trie, read, read_with_proof, ReadResult, WriteResult,
         },
     },
 };
-use std::collections::HashSet;
 
 pub struct InMemoryGlobalState {
     pub environment: Arc<InMemoryEnvironment>,
@@ -261,7 +259,7 @@ impl StateProvider for InMemoryGlobalState {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_key: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -274,24 +272,6 @@ impl StateProvider for InMemoryGlobalState {
             >(correlation_id, &txn, self.trie_store.deref(), trie_key)?;
         txn.commit()?;
         Ok(missing_descendants)
-    }
-
-    /// Finds all the keys of missing descendants for an integrity check.
-    fn trie_key_integrity_check(
-        &self,
-        correlation_id: CorrelationId,
-        trie_keys: HashSet<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_keys = trie_key_integrity_check::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
-        txn.commit()?;
-        Ok(missing_keys)
     }
 }
 

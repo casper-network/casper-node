@@ -1682,7 +1682,7 @@ where
         let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
         let missing_descendant_trie_keys = self
             .state
-            .missing_trie_keys(correlation_id, inserted_trie_key)?;
+            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
         Ok(InsertedTrieKeyAndMissingDescendants::new(
             inserted_trie_key,
             missing_descendant_trie_keys,
@@ -1698,7 +1698,7 @@ where
         Error: From<S::Error>,
     {
         self.state
-            .missing_trie_keys(correlation_id, trie_key)
+            .missing_trie_keys(correlation_id, vec![trie_key])
             .map_err(Error::from)
     }
 
@@ -1710,8 +1710,9 @@ where
     where
         Error: From<S::Error>,
     {
+        let trie_keys: Vec<Blake2bHash> = trie_keys.into_iter().collect();
         self.state
-            .trie_key_integrity_check(correlation_id, trie_keys)
+            .missing_trie_keys(correlation_id, trie_keys)
             .map_err(Error::from)
     }
 

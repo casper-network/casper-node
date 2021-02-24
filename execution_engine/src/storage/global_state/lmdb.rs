@@ -18,13 +18,9 @@ use crate::storage::{
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         lmdb::LmdbTrieStore,
-        operations::{
-            missing_trie_keys, put_trie, read, read_with_proof, trie_key_integrity_check,
-            ReadResult,
-        },
+        operations::{missing_trie_keys, put_trie, read, read_with_proof, ReadResult},
     },
 };
-use std::collections::HashSet;
 
 pub struct LmdbGlobalState {
     pub environment: Arc<LmdbEnvironment>,
@@ -221,7 +217,7 @@ impl StateProvider for LmdbGlobalState {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_key: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -231,25 +227,6 @@ impl StateProvider for LmdbGlobalState {
                 self.trie_store.deref(),
                 trie_key,
             )?;
-        txn.commit()?;
-        Ok(missing_descendants)
-    }
-
-    /// Finds all the keys for missing descendants for integrity check.
-    fn trie_key_integrity_check(
-        &self,
-        correlation_id: CorrelationId,
-        trie_keys: HashSet<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            trie_key_integrity_check::<
-                Key,
-                StoredValue,
-                lmdb::RoTransaction,
-                LmdbTrieStore,
-                Self::Error,
-            >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
         txn.commit()?;
         Ok(missing_descendants)
     }
