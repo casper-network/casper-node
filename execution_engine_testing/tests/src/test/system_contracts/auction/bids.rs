@@ -109,6 +109,7 @@ static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DE
 static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
 const VALIDATOR_1_STAKE: u64 = 1_000_000;
 const DELEGATOR_1_STAKE: u64 = 1_500_000;
+const DELEGATOR_1_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 const DELEGATOR_2_STAKE: u64 = 2_000_000;
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
@@ -1914,5 +1915,73 @@ fn should_handle_evictions() {
             *BID_ACCOUNT_1_PK,
             *BID_ACCOUNT_2_PK
         ])
+    );
+}
+
+#[ignore]
+#[test]
+fn should_setup_genesis_delegators() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let account_2 = GenesisAccount::account(
+            *ACCOUNT_2_PK,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BOND.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+
+    let _account_1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should install account 1");
+    let _account_2 = builder
+        .get_account(*ACCOUNT_2_ADDR)
+        .expect("should install account 2");
+
+    let delegator_1 = builder
+        .get_account(*DELEGATOR_1_ADDR)
+        .expect("should install delegator 1");
+    assert_eq!(
+        builder.get_purse_balance(delegator_1.main_purse()),
+        U512::from(DELEGATOR_1_BALANCE)
+    );
+
+    let auction = builder.get_auction_contract_hash();
+
+    let bids: Bids = builder.get_value(auction, auction::BIDS_KEY);
+    assert_eq!(
+        bids.keys().cloned().collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK,])
+    );
+
+    let account_1_bid_entry = bids.get(&*ACCOUNT_1_PK).expect("should have account 1 bid");
+    assert_eq!(account_1_bid_entry.delegators().len(), 1);
+    let account_1_delegator_1_entry = account_1_bid_entry
+        .delegators()
+        .get(&*DELEGATOR_1)
+        .expect("account 1 should have delegator 1");
+    assert_eq!(
+        *account_1_delegator_1_entry.staked_amount(),
+        U512::from(DELEGATOR_1_STAKE)
     );
 }

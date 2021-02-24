@@ -19,7 +19,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bid, Bids, DelegationRate, SeigniorageRecipient, SeigniorageRecipients,
+            Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient, SeigniorageRecipients,
             SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
             ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
             ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
@@ -175,14 +175,14 @@ impl GenesisAccount {
     }
 
     /// The public key (if any) associated with the account.
-    pub fn public_key(&self) -> Option<PublicKey> {
+    pub fn public_key(&self) -> PublicKey {
         match self {
-            GenesisAccount::System => None,
-            GenesisAccount::Account { public_key, .. } => Some(*public_key),
+            GenesisAccount::System => PublicKey::System,
+            GenesisAccount::Account { public_key, .. } => *public_key,
             GenesisAccount::Delegator {
                 delegator_public_key,
                 ..
-            } => Some(*delegator_public_key),
+            } => *delegator_public_key,
         }
     }
 
@@ -237,6 +237,24 @@ impl GenesisAccount {
     /// Is this a delegator account.
     pub fn is_delegator(&self) -> bool {
         matches!(self, GenesisAccount::Delegator { .. })
+    }
+
+    /// Details about the genesis delegator.
+    pub fn as_delegator(&self) -> Option<(&PublicKey, &PublicKey, &Motes, &Motes)> {
+        match self {
+            GenesisAccount::Delegator {
+                validator_public_key,
+                delegator_public_key,
+                balance,
+                delegated_amount,
+            } => Some((
+                validator_public_key,
+                delegator_public_key,
+                balance,
+                delegated_amount,
+            )),
+            _ => None,
+        }
     }
 }
 
@@ -476,6 +494,12 @@ impl ExecConfig {
         self.accounts
             .iter()
             .filter(|&genesis_account| genesis_account.is_validator())
+    }
+
+    pub fn get_bonded_delegators(&self) -> impl Iterator<Item = &GenesisAccount> {
+        self.accounts
+            .iter()
+            .filter(|genesis_account| genesis_account.is_delegator())
     }
 
     pub fn accounts(&self) -> &[GenesisAccount] {
@@ -741,38 +765,61 @@ where
 
         let mut named_keys = NamedKeys::new();
 
-        let genesis_validators: BTreeMap<PublicKey, U512> = self
-            .exec_config
-            .accounts()
-            .iter()
-            .filter_map(|genesis_account| {
-                if genesis_account.is_validator() {
-                    Some((
-                        genesis_account
-                            .public_key()
-                            .ok_or(GenesisError::MissingPublicKey)
-                            .ok()?,
-                        genesis_account.staked_amount().value(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let genesis_validators = self.exec_config.get_bonded_validators();
+
+        let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
         let validators = {
             let mut validators = Bids::new();
 
-            for (public_key, staked_amount) in genesis_validators.iter() {
+            for genesis_validator in genesis_validators {
+                let public_key = genesis_validator.public_key();
+                let staked_amount = genesis_validator.staked_amount();
+                debug_assert_ne!(public_key, PublicKey::System);
+
                 let purse_uref = self.create_purse(
-                    *staked_amount,
+                    staked_amount.value(),
                     DeployHash::new(public_key.to_account_hash().value()),
                 )?;
                 let release_timestamp_millis =
                     genesis_timestamp_millis + locked_funds_period_millis;
-                let founding_validator =
-                    Bid::locked(purse_uref, *staked_amount, release_timestamp_millis);
-                validators.insert(*public_key, founding_validator);
+                let founding_validator = {
+                    let mut bid =
+                        Bid::locked(purse_uref, staked_amount.value(), release_timestamp_millis);
+
+                    // Set up delegator entries attached to genesis validators
+                    for genesis_delegator in &genesis_delegators {
+                        // NOTE: Assumed safe as "genesis_delegators" is filtered out to contain
+                        // only Delegator variants.
+                        debug_assert!(genesis_delegator.as_delegator().is_some());
+                        let (
+                            validator_public_key,
+                            delegator_public_key,
+                            _delegator_balance,
+                            delegator_delegated_amount,
+                        ) = genesis_delegator
+                            .as_delegator()
+                            .expect("should have delegator variant");
+                        if *validator_public_key == public_key {
+                            let purse_uref = self.create_purse(
+                                staked_amount.value(),
+                                DeployHash::new(delegator_public_key.to_account_hash().value()),
+                            )?;
+
+                            let delegator = Delegator::new(
+                                delegator_delegated_amount.value(),
+                                purse_uref,
+                                *validator_public_key,
+                            );
+                            bid.delegators_mut()
+                                .insert(*delegator_public_key, delegator);
+                        }
+                    }
+
+                    bid
+                };
+
+                validators.insert(public_key, founding_validator);
             }
             validators
         };
