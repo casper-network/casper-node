@@ -908,7 +908,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        if self.linear_chain_sync.stopped_for_upgrade() && self.consensus.is_initialized() {
+        if self.linear_chain_sync.stopped_for_upgrade() {
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
         } else if self.linear_chain_sync.is_synced() && self.consensus.is_initialized() {
             Some(ReactorExit::ProcessShouldContinue)
