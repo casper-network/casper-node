@@ -15,9 +15,6 @@ export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
 NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
 export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
 
-# Set type of daemon to run.
-export NCTL_DAEMON_TYPE=${NCTL_DAEMON_TYPE:-supervisord}
-
 # ###############################################################
 # UTILS
 # ###############################################################
