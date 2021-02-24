@@ -1852,49 +1852,6 @@ where
 
         let base_key = Key::from(protocol_data.auction());
 
-        let slashed_validators = match step_request.slashed_validators() {
-            Ok(slashed_validators) => slashed_validators,
-            Err(error) => {
-                error!(
-                    "failed to deserialize validator_ids for slashing: {}",
-                    error.to_string()
-                );
-                return Ok(StepResult::Serialization(error));
-            }
-        };
-
-        let slash_args = {
-            let mut runtime_args = RuntimeArgs::new();
-            runtime_args
-                .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
-                .map_err(|e| Error::Exec(e.into()))?;
-            runtime_args
-        };
-
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::Slash,
-            system_module.clone(),
-            slash_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys.clone(),
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
-
-        if let Some(exec_error) = execution_result.take_error() {
-            return Ok(StepResult::SlashingError(exec_error));
-        }
-
         let reward_factors = match step_request.reward_factors() {
             Ok(reward_factors) => reward_factors,
             Err(error) => {
@@ -1940,6 +1897,49 @@ where
 
         if let Some(exec_error) = execution_result.take_error() {
             return Ok(StepResult::DistributeError(exec_error));
+        }
+
+        let slashed_validators = match step_request.slashed_validators() {
+            Ok(slashed_validators) => slashed_validators,
+            Err(error) => {
+                error!(
+                    "failed to deserialize validator_ids for slashing: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+
+        let slash_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args
+                .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
+                .map_err(|e| Error::Exec(e.into()))?;
+            runtime_args
+        };
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::Slash,
+            system_module.clone(),
+            slash_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if let Some(exec_error) = execution_result.take_error() {
+            return Ok(StepResult::SlashingError(exec_error));
         }
 
         if step_request.run_auction {
