@@ -22,6 +22,9 @@ use crate::{
     Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
 };
 
+use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
+pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
+
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     vec(any::<u8>(), 32).prop_map(|b| {
         let mut res = [0u8; 32];
@@ -65,6 +68,10 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
+        transfer_addr_arb().prop_map(Key::Transfer),
+        deploy_hash_arb().prop_map(Key::DeployInfo),
+        any::<u64>().prop_map(Key::EraInfo),
+        u8_slice_32().prop_map(Key::Balance)
     ]
 }
 

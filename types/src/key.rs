@@ -26,7 +26,7 @@ use crate::{
     contracts::{ContractHash, ContractPackageHash},
     system::auction::EraId,
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+    DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const ACCOUNT_ID: u8 = 0;
@@ -50,6 +50,8 @@ pub const KEY_HASH_LENGTH: usize = 32;
 pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
+/// The number of bytes in a [`Key::Balance`].
+pub const KEY_BALANCE_LENGTH: usize = UREF_ADDR_LENGTH;
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -58,7 +60,7 @@ const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIAL
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
-const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
+const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_BALANCE_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -225,6 +227,10 @@ impl Key {
             Ok(Key::URef(uref))
         } else if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
             Ok(Key::EraInfo(u64::from_str(era_id_str)?))
+        } else if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
+            Ok(Key::Balance(HashAddr::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?))
         } else {
             Err(FromStrError::InvalidPrefix)
         }
@@ -511,6 +517,7 @@ mod serde_helpers {
         Transfer(TransferAddr),
         DeployInfo(DeployHash),
         EraInfo(EraId),
+        Balance(URefAddr),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -522,6 +529,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
+                BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
             }
         }
     }
@@ -806,5 +814,16 @@ mod tests {
         round_trip(&Key::Transfer(TransferAddr::new(array)));
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(array));
+
+        let zeros = [0; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(zeros)));
+        round_trip(&Key::Hash(zeros));
+        round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(zeros)));
+        round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
+        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(zeros));
     }
 }
