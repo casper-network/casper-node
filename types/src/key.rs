@@ -815,5 +815,16 @@ mod tests {
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
+        round_trip(&Key::Balance(array));
+
+        let zeros = [0; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(zeros)));
+        round_trip(&Key::Hash(zeros));
+        round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(zeros)));
+        round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
+        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(zeros));
     }
 }

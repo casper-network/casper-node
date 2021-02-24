@@ -49,7 +49,7 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::proptest;
 
-    use casper_types::{bytesrepr, Key};
+    use casper_types::{bytesrepr, gens::key_arb, Key};
 
     use crate::{
         shared::stored_value::StoredValue,
@@ -78,6 +78,11 @@ mod proptests {
         }
 
         #[test]
+        fn roundtrip_key(key in key_arb()) {
+            bytesrepr::test_serialization_roundtrip(&key);
+        }
+
+        #[test]
         fn serde_roundtrip_trie_pointer_block(pointer_block in trie_pointer_block_arb()) {
              let json_str = serde_json::to_string(&pointer_block)?;
              let deserialized_pointer_block: PointerBlock = serde_json::from_str(&json_str)?;
@@ -103,6 +108,20 @@ mod proptests {
              let bincode_bytes = bincode::serialize(&pointer_block)?;
              let deserialized_pointer_block = bincode::deserialize(&bincode_bytes)?;
              assert_eq!(pointer_block, deserialized_pointer_block)
+        }
+
+        #[test]
+        fn bincode_roundtrip_key(key in key_arb()) {
+             let bincode_bytes = bincode::serialize(&key)?;
+             let deserialized_key = bincode::deserialize(&bincode_bytes)?;
+             assert_eq!(key, deserialized_key)
+        }
+
+        #[test]
+        fn serde_roundtrip_key(key in key_arb()) {
+             let json_str = serde_json::to_string(&key)?;
+             let deserialized_key = serde_json::from_str(&json_str)?;
+             assert_eq!(key, deserialized_key)
         }
     }
 }
