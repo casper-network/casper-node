@@ -284,6 +284,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 );
                 if self.is_chain_end(&block) {
                     self.mark_done();
+                    return Effects::new();
                 }
                 match block.header().next_era_validator_weights() {
                     None => (),
