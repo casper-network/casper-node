@@ -47,9 +47,7 @@ use super::{
 };
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock,
-    },
+    types::{ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
