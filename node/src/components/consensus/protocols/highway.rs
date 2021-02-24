@@ -152,16 +152,17 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let max_round_exp = params.max_round_exp();
         let round_exp = params.init_round_exp();
         let start_timestamp = params.start_timestamp();
+        let round_success_meter = prev_cp
+            .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
+            .map(|highway_proto| highway_proto.next_era_round_succ_meter(start_timestamp))
+            .unwrap_or_else(|| {
+                RoundSuccessMeter::new(round_exp, min_round_exp, max_round_exp, start_timestamp)
+            });
         let hw_proto = Box::new(HighwayProtocol {
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
-            round_success_meter: RoundSuccessMeter::new(
-                round_exp,
-                min_round_exp,
-                max_round_exp,
-                start_timestamp,
-            ),
+            round_success_meter,
             synchronizer: Synchronizer::new(config.pending_vertex_timeout),
         });
         (hw_proto, outcomes)
@@ -336,6 +337,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Returns `None` if there are no correct validators in the panorama.
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
         self.highway.state().median_round_exp()
+    }
+
+    /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
+    /// appropriate.
+    pub(crate) fn next_era_round_succ_meter(
+        &self,
+        era_start_timestamp: Timestamp,
+    ) -> RoundSuccessMeter<C> {
+        self.round_success_meter.next_era(era_start_timestamp)
     }
 
     /// Returns an iterator over all the values that are expected to become finalized, but are not
