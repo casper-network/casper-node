@@ -442,18 +442,11 @@ impl ChainspecLoader {
             .global_state_update
             .as_ref()
             .map(|state_update| {
-                // TODO - confirm we're using base64 encoding for this.
                 state_update
                     .0
                     .iter()
-                    .map(|(key, encoded_bytes)| {
-                        let decoded_bytes = base64::decode(encoded_bytes).unwrap_or_else(|error| {
-                            panic!(
-                                "failed to base64 decode global state value for upgrade: {}",
-                                error
-                            )
-                        });
-                        let stored_value: StoredValue = bytesrepr::deserialize(decoded_bytes)
+                    .map(|(key, stored_value_bytes)| {
+                        let stored_value: StoredValue = bytesrepr::deserialize(stored_value_bytes)
                             .unwrap_or_else(|error| {
                                 panic!(
                                 "failed to parse global state value as StoredValue for upgrade: {}",
