@@ -293,21 +293,17 @@ impl ChainspecLoader {
         self.highest_block_header().map(|hdr| hdr.hash())
     }
 
+    /// This returns the era at which we will be starting the operation, assuming the highest known
+    /// block is the last one. It will return the era of the highest known block, unless it is a
+    /// switch block, in which case it returns the successor to the era of the highest known block.
     pub(crate) fn starting_era(&self) -> EraId {
         // We want to start the Era Supervisor at the era right after the highest block we
         // have. If the block is a switch block, that will be the era that comes next. If
         // it's not, we continue the era the highest block belongs to.
-        if self
-            .highest_block_header()
-            .and_then(|hdr| hdr.era_end())
-            .is_some()
-        {
-            // we know that header is `Some`
-            self.highest_block_header().unwrap().era_id().successor()
-        } else {
-            self.highest_block_header()
-                .map(|hdr| hdr.era_id())
-                .unwrap_or(EraId(0))
+        match self.highest_block_header() {
+            Some(header) if header.is_switch_block() => header.era_id().successor(),
+            Some(header) => header.era_id(),
+            None => EraId(0),
         }
     }
 

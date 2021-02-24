@@ -798,6 +798,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests the switch block _for_ the given era ID, ie. the switch block at the era before
+    /// (if one exists).
+    pub(crate) async fn get_switch_block_for_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        let era_before = era_id.checked_sub(1)?;
+        self.get_switch_block_at_era_id_from_storage(era_before)
+            .await
+    }
+
     /// Requests the highest switch block.
     // TODO - remove once used.
     #[allow(unused)]
@@ -1505,14 +1519,11 @@ impl<REv> EffectBuilder<REv> {
         futures::future::join_all(
             era_ids
                 .into_iter()
-                .filter_map(|era_id| {
-                    era_id
-                        .0
-                        .checked_sub(1)
-                        .map(|prev_era_num| (EraId(prev_era_num), era_id))
-                })
-                .map(|(prev_era_id, era_id)| {
-                    self.get_switch_block_at_era_id_from_storage(prev_era_id)
+                // we would get None for era 0 and that would make it seem like the entire
+                // function failed
+                .filter(|era_id| *era_id != EraId(0))
+                .map(|era_id| {
+                    self.get_switch_block_for_era_id_from_storage(era_id)
                         .map(move |maybe_block| {
                             maybe_block.map(|block| (era_id, block.take_header()))
                         })

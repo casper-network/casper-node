@@ -50,10 +50,11 @@ use crate::{
     NodeRng,
 };
 
-pub use self::era::{Era, EraId};
+pub use self::{era::Era, era_id::EraId};
 use crate::{components::consensus::config::ProtocolConfig, types::Block};
 
 mod era;
+mod era_id;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -217,15 +218,14 @@ where
         }
     }
 
+    /// The booking block for era N is the last block of era N - AUCTION_DELAY - 1
+    /// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
+    /// We make sure not to go below the last upgrade activation point, because we will not have
+    /// any eras from before that.
     fn booking_block_height(&self, era_id: EraId) -> u64 {
-        // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
-        // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
-        let after_booking_era_id = EraId(
-            era_id
-                .0
-                .saturating_sub(self.protocol_config.auction_delay)
-                .max(self.protocol_config.last_activation_point.0),
-        );
+        let after_booking_era_id = era_id
+            .saturating_sub(self.protocol_config.auction_delay)
+            .max(self.protocol_config.last_activation_point);
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
@@ -252,8 +252,8 @@ where
         (self
             .protocol_config
             .last_activation_point
-            .0
-            .max(era_id.0.saturating_sub(num_eras))..=era_id.0)
+            .max(era_id.saturating_sub(num_eras))
+            .0..=era_id.0)
             .map(EraId)
     }
 
@@ -266,8 +266,8 @@ where
         (self
             .protocol_config
             .last_activation_point
-            .0
-            .max(era_id.0.saturating_sub(num_eras))..era_id.0)
+            .max(era_id.saturating_sub(num_eras))
+            .0..era_id.0)
             .map(EraId)
     }
 
@@ -442,7 +442,7 @@ where
         rng: &'a mut NodeRng,
     ) -> Effects<Event<I>> {
         let current_era = self.current_era;
-        info!(?current_era, "current era");
+        trace!(?current_era, "recreating timers");
         let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
         self.handling_wrapper(effect_builder, rng)
             .handle_consensus_outcomes(current_era, outcomes)
@@ -608,8 +608,6 @@ where
         let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
-            // we have to do that to let linear chain sync work after an upgrade
-            effects.extend(self.effect_builder.announce_block_handled(block).ignore());
             return effects;
         }
         if block.header().is_switch_block() {
@@ -734,7 +732,7 @@ where
                 };
 
             let results = self.era_supervisor.new_era(
-                current_era,
+                era_id,
                 timestamp,
                 validators,
                 newly_slashed,
@@ -748,7 +746,7 @@ where
             effects.extend(
                 self.era_supervisor
                     .handling_wrapper(self.effect_builder, self.rng)
-                    .handle_consensus_outcomes(current_era, results),
+                    .handle_consensus_outcomes(era_id, results),
             );
         }
 
