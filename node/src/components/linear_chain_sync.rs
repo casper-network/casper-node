@@ -283,7 +283,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns whether `block` can be considered tip of the chain.
     fn is_chain_end(&self, block: &Block) -> bool {
-        let acceptable_drift_millis = 5000;
+        // 1 minute.
+        let acceptable_drift_millis = 60 * 1000;
         block.header().timestamp().elapsed().millis() <= acceptable_drift_millis
     }
 
