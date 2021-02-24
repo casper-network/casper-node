@@ -118,9 +118,8 @@ const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 fn should_run_add_bid() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_1_ADDR,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             Motes::new(BID_ACCOUNT_1_BOND.into()),
         );
@@ -225,9 +224,8 @@ fn should_run_add_bid() {
 fn should_run_delegate_and_undelegate() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_1_ADDR,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             Motes::new(BID_ACCOUNT_1_BOND.into()),
         );
@@ -388,21 +386,18 @@ fn should_calculate_era_validators() {
     assert_ne!(*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR,);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
-        let account_2 = GenesisAccount::new(
+        let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
-            *ACCOUNT_2_ADDR,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Motes::new(ACCOUNT_2_BOND.into()),
         );
-        let account_3 = GenesisAccount::new(
+        let account_3 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_1_ADDR,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             Motes::new(BID_ACCOUNT_1_BOND.into()),
         );
@@ -544,15 +539,13 @@ fn should_calculate_era_validators() {
 fn should_get_first_seigniorage_recipients() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
-        let account_2 = GenesisAccount::new(
+        let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
-            *ACCOUNT_2_ADDR,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Motes::new(ACCOUNT_2_BOND.into()),
         );
@@ -745,9 +738,8 @@ fn should_release_founder_stake() {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
@@ -875,9 +867,8 @@ fn should_release_founder_stake() {
 fn should_fail_to_get_era_validators() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
@@ -901,9 +892,8 @@ fn should_fail_to_get_era_validators() {
 #[ignore]
 #[test]
 fn should_use_era_validators_endpoint_for_first_era() {
-    let extra_accounts = vec![GenesisAccount::new(
+    let extra_accounts = vec![GenesisAccount::account(
         *ACCOUNT_1_PK,
-        *ACCOUNT_1_ADDR,
         Motes::new(ACCOUNT_1_BALANCE.into()),
         Motes::new(ACCOUNT_1_BOND.into()),
     )];
@@ -939,27 +929,23 @@ fn should_calculate_era_validators_multiple_new_bids() {
     assert_ne!(*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR,);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
-        let account_2 = GenesisAccount::new(
+        let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
-            *ACCOUNT_2_ADDR,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Motes::new(ACCOUNT_2_BOND.into()),
         );
-        let account_3 = GenesisAccount::new(
+        let account_3 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_1_ADDR,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             Motes::new(BID_ACCOUNT_1_BOND.into()),
         );
-        let account_4 = GenesisAccount::new(
+        let account_4 = GenesisAccount::account(
             *BID_ACCOUNT_2_PK,
-            *BID_ACCOUNT_2_ADDR,
             Motes::new(BID_ACCOUNT_2_BALANCE.into()),
             Motes::new(BID_ACCOUNT_2_BOND.into()),
         );
@@ -1800,27 +1786,23 @@ fn should_handle_evictions() {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
-        let account_2 = GenesisAccount::new(
+        let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
-            *ACCOUNT_2_ADDR,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Motes::new(ACCOUNT_2_BOND.into()),
         );
-        let account_3 = GenesisAccount::new(
+        let account_3 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_1_ADDR,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             Motes::new(300_000.into()),
         );
-        let account_4 = GenesisAccount::new(
+        let account_4 = GenesisAccount::account(
             *BID_ACCOUNT_2_PK,
-            *BID_ACCOUNT_2_ADDR,
             Motes::new(BID_ACCOUNT_2_BALANCE.into()),
             Motes::new(400_000.into()),
         );

@@ -47,9 +47,8 @@ const VESTING_WEEKS: u64 = 14;
 #[test]
 fn should_run_ee_1119_dont_slash_delegated_validators() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );

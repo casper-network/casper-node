@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
@@ -41,9 +42,8 @@ static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_00
 #[test]
 fn should_run_ee_1129_underfunded_delegate_call() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
@@ -104,11 +104,10 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()),
+            Motes::zero(),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

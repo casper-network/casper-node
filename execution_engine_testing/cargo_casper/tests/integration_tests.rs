@@ -70,6 +70,7 @@ fn run_tool_and_resulting_tests() {
     fs::remove_dir_all(&temp_dir).unwrap();
 }
 
+#[ignore]
 #[test]
 fn should_run_casperlabs_node() {
     run_tool_and_resulting_tests();

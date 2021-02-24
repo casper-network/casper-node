@@ -250,9 +250,8 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
+        let account = GenesisAccount::account(
             account_1_public_key,
-            account_1_hash,
             Motes::new(account_1_balance),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );

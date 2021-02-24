@@ -75,16 +75,14 @@ pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
-    let genesis_account = GenesisAccount::new(
+    let genesis_account = GenesisAccount::account(
         *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        *DEFAULT_ACCOUNT_ADDR,
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
         Motes::zero(),
     );
     ret.push(genesis_account);
-    let proposer_account = GenesisAccount::new(
+    let proposer_account = GenesisAccount::account(
         *DEFAULT_PROPOSER_PUBLIC_KEY,
-        *DEFAULT_PROPOSER_ADDR,
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
         Motes::zero(),
     );

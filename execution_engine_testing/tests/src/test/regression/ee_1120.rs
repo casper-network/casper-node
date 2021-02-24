@@ -40,7 +40,6 @@ static DELEGATOR_1: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
 
 static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]));
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
@@ -51,15 +50,13 @@ const VALIDATOR_2_STAKE: u64 = 350_000;
 #[test]
 fn should_run_ee_1120_slash_delegators() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
-        let validator_2 = GenesisAccount::new(
+        let validator_2 = GenesisAccount::account(
             *VALIDATOR_2,
-            *VALIDATOR_2_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_2_STAKE.into()),
         );
