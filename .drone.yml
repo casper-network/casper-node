@@ -191,22 +191,25 @@ steps:
   commands:
     - "./ci/build_update_package.sh"
 
-#- name: put-upgrade_package-s3
-#  image: casperlabs/s3cmd-build:latest
-#  commands:
-#    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
-#  environment:
-#    CL_VAULT_TOKEN:
-#      from_secret: vault_token
-#    CL_VAULT_HOST:
-#      from_secret: vault_host
-#  when:
-#    branch:
-#      - master
-#      - dev
-#      - "release-*"
-#    event:
-#      - push
+- name: upload-to-s3-genesis
+  image: plugins/s3
+  settings:
+    bucket: 'genesis.casperlabs.io'
+    region: 'us-west-2'
+    access_key:
+      from_secret: drone_genesis_key_id
+    secret_key:
+      from_secret: drone_genesis_secret
+    source: "target/upgrade_build/**/*"
+    strip_prefix: 'target/upgrade_build/'
+    target: "/drone/$DRONE_COMMIT/"
+  when:
+    branch:
+      - master
+      - dev
+      - "release-*"
+    event:
+      - push
 
 depends_on:
   - pre-checks

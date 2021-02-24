@@ -5,12 +5,13 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+GENESIS_FILES_DIR="$ROOT_DIR/resources/production"
 NODE_BUILD_TARGET="$ROOT_DIR/target/release/casper-node"
-UPGRADE_DIR="$ROOT_DIR/target/upgrade_build"
+PROTOCOL_VERSION=$(cat "$GENESIS_FILES_DIR/chainspec.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['protocol']['version'].replace('.','_'))")
+UPGRADE_DIR="$ROOT_DIR/target/upgrade_build/$PROTOCOL_VERSION"
 BIN_DIR="$UPGRADE_DIR/bin"
 CONFIG_DIR="$UPGRADE_DIR/config"
 NODE_BUILD_DIR="$ROOT_DIR/node"
-GENESIS_FILES_DIR="$ROOT_DIR/resources/production"
 
 echo "Building casper-node"
 cd "$NODE_BUILD_DIR"
