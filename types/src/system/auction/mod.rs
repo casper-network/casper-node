@@ -236,7 +236,7 @@ pub trait Auction:
                 let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
-                let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
+                let delegator = Delegator::unlocked(amount, bonding_purse, validator_public_key);
                 delegators.insert(delegator_public_key, delegator);
                 amount
             }
@@ -283,7 +283,9 @@ pub trait Auction:
                     *delegator.bonding_purse(),
                     amount,
                 )?;
-                let updated_stake = delegator.decrease_stake(amount)?;
+
+                let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+                let updated_stake = delegator.decrease_stake(amount, era_end_timestamp_millis)?;
                 if updated_stake == U512::zero() {
                     delegators.remove(&delegator_public_key);
                 };
@@ -370,7 +372,9 @@ pub trait Auction:
         // Process bids
         let mut bids_modified = false;
         for (validator_public_key, bid) in bids.iter_mut() {
-            bids_modified = bid.process(era_end_timestamp_millis);
+            if bid.process(era_end_timestamp_millis) {
+                bids_modified = true;
+            }
 
             if evicted_validators.contains(validator_public_key) {
                 bids_modified = bid.deactivate()

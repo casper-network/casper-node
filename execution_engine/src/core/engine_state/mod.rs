@@ -166,20 +166,16 @@ where
         );
 
         // Create mint
-        let mint_hash = genesis_installer.create_mint().map_err(Error::Genesis)?;
+        let mint_hash = genesis_installer.create_mint()?;
 
         // Create accounts
-        genesis_installer
-            .create_accounts()
-            .map_err(Error::Genesis)?;
+        genesis_installer.create_accounts()?;
 
         // Create proof of stake
-        let proof_of_stake_hash = genesis_installer
-            .create_proof_of_stake()
-            .map_err(Error::Genesis)?;
+        let proof_of_stake_hash = genesis_installer.create_proof_of_stake()?;
 
         // Create auction
-        let auction_hash = genesis_installer.create_auction().map_err(Error::Genesis)?;
+        let auction_hash = genesis_installer.create_auction()?;
 
         // Create standard payment
         let standard_payment_hash = genesis_installer.create_standard_payment();

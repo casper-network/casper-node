@@ -128,14 +128,16 @@ pub enum Error {
     /// Missing seigniorage recipients for given era.
     #[fail(display = "Missing seigniorage recipients for given era")]
     MissingSeigniorageRecipients = 35,
-
     /// Failed to transfer funds.
     #[fail(display = "Transfer error")]
     Transfer = 36,
-
     /// Delegation rate exceeds rate.
     #[fail(display = "Delegation rate too large")]
     DelegationRateTooLarge = 37,
+    /// Raised whenever a delegator's funds are still locked in but an attempt to undelegate was
+    /// made.
+    #[fail(display = "Delegator's funds are locked")]
+    DelegatorFundsLocked = 38,
 
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
@@ -214,6 +216,7 @@ impl TryFrom<u8> for Error {
             }
             d if d == Error::Transfer as u8 => Ok(Error::Transfer),
             d if d == Error::DelegationRateTooLarge as u8 => Ok(Error::DelegationRateTooLarge),
+            d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             _ => Err(TryFromU8ForError(())),
         }

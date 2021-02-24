@@ -33,7 +33,7 @@
 //! let account_addr = AccountHash::new(MY_ADDR);
 //!
 //! let mut context = TestContextBuilder::new()
-//!     .with_public_key(public_key, account_addr, U512::from(128_000_000_000_000u64))
+//!     .with_public_key(public_key, U512::from(128_000_000_000_000u64))
 //!     .build();
 //!
 //! // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths

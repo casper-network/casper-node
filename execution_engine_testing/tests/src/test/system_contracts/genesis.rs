@@ -35,9 +35,8 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
         let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
         let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
-        GenesisAccount::new(
+        GenesisAccount::account(
             *ACCOUNT_1_PUBLIC_KEY,
-            *ACCOUNT_1_ADDR,
             account_1_balance,
             account_1_bonded_amount,
         )
@@ -45,9 +44,8 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_2 = {
         let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
         let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
-        GenesisAccount::new(
+        GenesisAccount::account(
             *ACCOUNT_2_PUBLIC_KEY,
-            *ACCOUNT_2_ADDR,
             account_2_balance,
             account_2_bonded_amount,
         )
@@ -157,15 +155,15 @@ fn should_track_total_token_supply_in_mint() {
     let total_supply = builder.total_supply(None);
 
     let expected_balance: U512 = accounts.iter().map(|item| item.balance().value()).sum();
-    let expected_bonded_amount: U512 = accounts
+    let expected_staked_amount: U512 = accounts
         .iter()
-        .map(|item| item.bonded_amount().value())
+        .map(|item| item.staked_amount().value())
         .sum();
 
     // check total supply against expected
     assert_eq!(
         total_supply,
-        expected_balance + expected_bonded_amount,
+        expected_balance + expected_staked_amount,
         "unexpected total supply"
     )
 }

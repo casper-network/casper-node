@@ -168,18 +168,9 @@ impl TestContextBuilder {
     /// the Genesis block.
     ///
     /// Note: `initial_balance` represents the number of motes.
-    pub fn with_public_key(
-        mut self,
-        public_key: PublicKey,
-        account_hash: AccountHash,
-        initial_balance: U512,
-    ) -> Self {
-        let new_account = GenesisAccount::new(
-            public_key,
-            account_hash,
-            Motes::new(initial_balance),
-            Motes::zero(),
-        );
+    pub fn with_public_key(mut self, public_key: PublicKey, initial_balance: U512) -> Self {
+        let new_account =
+            GenesisAccount::account(public_key, Motes::new(initial_balance), Motes::zero());
         self.genesis_config
             .ee_config_mut()
             .push_account(new_account);
