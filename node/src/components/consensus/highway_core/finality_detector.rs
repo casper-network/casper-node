@@ -22,7 +22,7 @@ use horizon::Horizon;
 
 /// An error returned if the configured fault tolerance has been exceeded.
 #[derive(Debug)]
-pub(crate) struct FttExceeded(Weight);
+pub(crate) struct FttExceeded(pub Weight);
 
 /// An incremental finality detector.
 ///

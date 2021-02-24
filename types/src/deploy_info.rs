@@ -90,7 +90,8 @@ impl ToBytes for DeployInfo {
     }
 }
 
-#[cfg(test)]
+/// Generators for a [`Deploy`]
+#[cfg(any(feature = "gens", test))]
 pub(crate) mod gens {
     use alloc::vec::Vec;
 
@@ -122,6 +123,7 @@ pub(crate) mod gens {
         array::uniform32(<u8>::arbitrary()).prop_map(AccountHash::new)
     }
 
+    /// Creates an arbitrary [`Deploy`]
     pub fn deploy_info_arb() -> impl Strategy<Value = DeployInfo> {
         let transfers_length_range = 0..5;
         (
