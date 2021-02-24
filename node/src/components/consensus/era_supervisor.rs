@@ -732,7 +732,7 @@ where
                 };
 
             let results = self.era_supervisor.new_era(
-                current_era,
+                era_id,
                 timestamp,
                 validators,
                 newly_slashed,
@@ -746,7 +746,7 @@ where
             effects.extend(
                 self.era_supervisor
                     .handling_wrapper(self.effect_builder, self.rng)
-                    .handle_consensus_outcomes(current_era, results),
+                    .handle_consensus_outcomes(era_id, results),
             );
         }
 
