@@ -35,7 +35,7 @@ use casper_execution_engine::{
     },
     shared::stored_value::StoredValue,
 };
-use casper_types::{bytesrepr, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
@@ -446,13 +446,14 @@ impl ChainspecLoader {
                     .0
                     .iter()
                     .map(|(key, stored_value_bytes)| {
-                        let stored_value: StoredValue = bytesrepr::deserialize(stored_value_bytes)
+                        let stored_value = StoredValue::from_bytes(stored_value_bytes)
                             .unwrap_or_else(|error| {
                                 panic!(
                                 "failed to parse global state value as StoredValue for upgrade: {}",
                                 error
                             )
-                            });
+                            })
+                            .0;
                         (*key, stored_value)
                     })
                     .collect()
