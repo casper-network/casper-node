@@ -67,15 +67,20 @@ impl From<GetBlockResult> for ListDeploysResult {
     }
 }
 
-/// Creates a Write trait object for File or Stdout respective to the path value passed
-/// Stdout is used when None
+/// Creates a `Write` trait object respective to the path value passed.  A `File` is returned if
+/// `maybe_path` is `Some`.  If `maybe_path` is `None`, a `Stdout` or `Sink` is returned; `Sink` for
+/// test configuration to avoid cluttering test output.
 pub(super) fn output_or_stdout(maybe_path: Option<&str>) -> io::Result<Box<dyn Write>> {
     match maybe_path {
         Some(output_path) => File::create(&output_path).map(|file| {
             let write: Box<dyn Write> = Box::new(file);
             write
         }),
-        None => Ok(Box::new(io::stdout())),
+        None => Ok(if cfg!(test) {
+            Box::new(io::sink())
+        } else {
+            Box::new(io::stdout())
+        }),
     }
 }
 
