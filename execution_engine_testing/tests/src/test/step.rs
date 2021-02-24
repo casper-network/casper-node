@@ -110,11 +110,9 @@ fn should_step() {
     builder.step(step_request);
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert!(
-        !bids_after_slashing.contains_key(&ACCOUNT_1_PK),
-        "should not have entry in bids table after slashing {:?}",
-        bids_after_slashing
-    );
+    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
+    assert!(account_1_bid.inactive());
+    assert!(account_1_bid.staked_amount().is_zero());
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_ne!(

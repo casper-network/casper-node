@@ -186,7 +186,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     );
 
     let bids: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(bids.is_empty());
+    let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
+    assert!(default_account_bid.inactive());
+    assert!(default_account_bid.staked_amount().is_zero());
 
     let account_balance_after_slashing = builder.get_purse_balance(unbonding_purse);
     assert_eq!(account_balance_after_slashing, account_balance_before);
