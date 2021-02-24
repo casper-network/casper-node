@@ -338,10 +338,13 @@ where
 
         // If there are no pending connections, we failed to resolve any.
         if model.pending.is_empty() && !cfg.known_addresses.is_empty() {
-            effects.extend(fatal!(
-                effect_builder,
-                "was given known addresses, but failed to resolve any of them"
-            ));
+            effects.extend(
+                fatal!(
+                    effect_builder,
+                    "was given known addresses, but failed to resolve any of them"
+                )
+                .ignore(),
+            );
         } else {
             // Start broadcasting our public listening address.
             effects.extend(model.gossip_our_address(effect_builder));
@@ -781,7 +784,8 @@ where
                     effect_builder,
                     "{}: failed to connect to any known node, now isolated",
                     self.our_id
-                );
+                )
+                .ignore();
             }
         }
         Effects::new()

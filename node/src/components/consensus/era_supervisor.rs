@@ -742,6 +742,7 @@ where
                     "attempted to create a new era with a non-switch block header: {}",
                     block
                 )
+                .ignore()
             }
         };
         let newly_slashed = era_end.equivocators.clone();
@@ -1047,6 +1048,7 @@ where
                 inactive era = {}",
                 self.era_supervisor.current_era
             )
+            .ignore()
         } else {
             Default::default()
         }
