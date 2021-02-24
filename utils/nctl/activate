@@ -15,9 +15,6 @@ export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
 NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
 export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
 
-# Set type of daemon to run.
-export NCTL_DAEMON_TYPE=${NCTL_DAEMON_TYPE:-supervisord}
-
 # ###############################################################
 # UTILS
 # ###############################################################
@@ -133,9 +130,3 @@ alias nctl-erc20-view-balances='source $NCTL/sh/contracts-erc20/view_balances.sh
 alias nctl-kv-storage-get-key='source $NCTL/sh/contracts-kv/get_key.sh'
 alias nctl-kv-storage-install='source $NCTL/sh/contracts-kv/do_install.sh'
 alias nctl-kv-storage-set-key='source $NCTL/sh/contracts-kv/set_key.sh'
-
-# Contracts #5: Counter.
-# alias nctl-counter-install='source $NCTL/sh/contracts-counter/do_install.sh'
-# alias nctl-counter-increment='source $NCTL/sh/contracts-counter/do_increment.sh'
-# alias nctl-counter-decrement='source $NCTL/sh/contracts-counter/do_decrement.sh'
-# alias nctl-counter-view='source $NCTL/sh/contracts-counter/view.sh'

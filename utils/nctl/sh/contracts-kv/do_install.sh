@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 source "$NCTL"/sh/utils/main.sh
-source "$NCTL"/sh/contracts-erc20/utils.sh
+source "$NCTL"/sh/contracts-kv/utils.sh
 
 #######################################
 # KV-STORAGE: Installs contract under network faucet account.

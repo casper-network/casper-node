@@ -230,6 +230,7 @@ impl FromBytes for DelegatorConfig {
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
     accounts: Vec<AccountConfig>,
+    #[serde(default)]
     delegators: Vec<DelegatorConfig>,
 }
 

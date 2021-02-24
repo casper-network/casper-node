@@ -441,7 +441,7 @@ where
                 );
                 effects.extend(
                     effect_builder
-                        .announce_block_added(block_hash, block.take_header())
+                        .announce_block_added(block_hash, block)
                         .ignore(),
                 );
                 effects

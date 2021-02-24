@@ -1150,16 +1150,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block_header: BlockHeader)
+    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block: Box<Block>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                LinearChainAnnouncement::BlockAdded {
-                    block_hash,
-                    block_header: Box::new(block_header),
-                },
+                LinearChainAnnouncement::BlockAdded { block_hash, block },
                 QueueKind::Regular,
             )
             .await
@@ -1527,6 +1524,6 @@ impl<REv> EffectBuilder<REv> {
 #[macro_export]
 macro_rules! fatal {
     ($effect_builder:expr, $($arg:tt)*) => {
-        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string()).ignore()
+        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string())
     };
 }

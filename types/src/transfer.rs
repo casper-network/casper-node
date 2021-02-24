@@ -391,8 +391,9 @@ impl Distribution<TransferAddr> for Standard {
     }
 }
 
-#[cfg(test)]
-mod gens {
+/// Generators for [`Transfer`]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
     use proptest::prelude::{prop::option, Arbitrary, Strategy};
 
     use crate::{
@@ -401,6 +402,7 @@ mod gens {
         Transfer,
     };
 
+    /// Creates an arbitrary [`Transfer`]
     pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
         (
             deploy_hash_arb(),

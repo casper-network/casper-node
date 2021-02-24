@@ -2,11 +2,9 @@
 #
 # Sets assets required to run an N node network.
 # Arguments:
-#   Network ordinal identifier.
-#   Count of nodes to setup.
-#   Count of nodes that will be bootstraps.
-#   Count of users to setup.
-#   Delay in seconds to apply to genesis timestamp.
+#   Network ordinal identifier (default=1).
+#   Count of nodes to setup (default=5).
+#   Delay in seconds to apply to genesis timestamp (default=30).
 
 #######################################
 # Imports
@@ -17,8 +15,6 @@ source "$NCTL"/sh/assets/setup_node.sh
 
 #######################################
 # Sets network bin folder.
-# Arguments:
-#   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _set_net_bin()
 {
@@ -27,8 +23,12 @@ function _set_net_bin()
     PATH_TO_BIN="$(get_path_to_net)"/bin
     mkdir -p "$PATH_TO_BIN"
 
+    if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+        cp "$NCTL_CASPER_HOME"/target/debug/casper-client "$PATH_TO_BIN"
+    else
+        cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_BIN"
+    fi
 
-    cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_BIN"
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
 	do
         cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
@@ -39,6 +39,7 @@ function _set_net_bin()
 # Sets assets pertaining to network chainspec.
 # Arguments:
 #   Delay in seconds to apply to genesis timestamp.
+#   Number of genesis nodes.
 #######################################
 function _set_net_chainspec()
 {
@@ -78,7 +79,7 @@ function _set_net_chainspec()
 # Arguments:
 #   Path to file containing an ed25519 public key in hex format.
 #   Initial account balance (in motes).
-#   Staking weight - validator's only (optional).
+#   Initial account staking weight (default=0).
 #######################################
 function _set_chainspec_account()
 {
@@ -96,6 +97,66 @@ function _set_chainspec_account()
 public_key = "${ACCOUNT_KEY}"
 balance = "$INITIAL_BALANCE"
 bonded_amount = "$INITIAL_WEIGHT"
+
+EOM
+}
+
+#######################################
+# Sets entry in chainspec's accounts.toml for a delegator account.
+# Arguments:
+#   Path to file containing a user's ed25519 public key in hex format.
+#   Path to file containing a validator's ed25519 public key in hex format.
+#   Initial user account balance.
+#   Initial user staking weight.
+#######################################
+function _set_chainspec_account_for_delegator()
+{
+    local PATH_TO_ACCOUNT_KEY_OF_USER=${1}
+    local PATH_TO_ACCOUNT_KEY_OF_VALIDATOR=${2}
+    local BALANCE_OF_USER=${3}
+    local WEIGHT_OF_USER=${4:-0}
+
+    local ACCOUNT_KEY_OF_USER
+    local ACCOUNT_KEY_OF_VALIDATOR
+    local PATH_TO_NET
+
+    PATH_TO_NET=$(get_path_to_net)
+    ACCOUNT_KEY_OF_USER=$(cat "$PATH_TO_ACCOUNT_KEY_OF_USER")
+    ACCOUNT_KEY_OF_VALIDATOR=$(cat "$PATH_TO_ACCOUNT_KEY_OF_VALIDATOR")
+
+    cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[[delegators]]
+balance = "$BALANCE_OF_USER"
+delegated_amount = "$WEIGHT_OF_USER"
+delegator_public_key = "${ACCOUNT_KEY_OF_USER}"
+validator_public_key = "${ACCOUNT_KEY_OF_VALIDATOR}"
+
+EOM
+}
+
+#######################################
+# Sets entry in chainspec's accounts.toml for a user account.
+# Arguments:
+#   Path to file containing a user's ed25519 public key in hex format.
+#   Initial user account balance.
+#######################################
+function _set_chainspec_account_for_user()
+{
+    local PATH_TO_ACCOUNT_KEY_OF_USER=${1}
+    local BALANCE_OF_USER=${2}
+
+    local ACCOUNT_KEY_OF_USER
+    local PATH_TO_NET
+
+    PATH_TO_NET=$(get_path_to_net)
+    ACCOUNT_KEY_OF_USER=$(cat "$PATH_TO_ACCOUNT_KEY_OF_USER")
+
+    cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[[accounts]]
+balance = "$BALANCE_OF_USER"
+bonded_amount = "0"
+public_key = "${ACCOUNT_KEY_OF_USER}"
+
 EOM
 }
 
@@ -124,8 +185,6 @@ function _set_net_daemon()
 
 #######################################
 # Sets assets pertaining to network faucet account.
-# Arguments:
-#   Path to network directory.
 #######################################
 function _set_net_faucet()
 {
@@ -142,6 +201,39 @@ function _set_net_faucet()
     _set_chainspec_account \
         "$PATH_TO_NET"/faucet/public_key_hex \
         "$NCTL_INITIAL_BALANCE_FAUCET"
+}
+
+#######################################
+# Sets assets pertaining to all users within network.
+# Arguments:
+#   Count of users to setup.
+#######################################
+function _set_net_users()
+{
+    local COUNT_USERS=${1}
+    local PATH_TO_NET
+
+    # Set directory.
+    PATH_TO_NET=$(get_path_to_net)
+    mkdir "$PATH_TO_NET"/users
+
+    # Set keys.
+    for USER_ID in $(seq 1 "$COUNT_USERS")
+    do
+        if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+            "$NCTL_CASPER_HOME"/target/debug/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+        else
+            "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
+        fi    
+    done
+
+    # Set user accounts.
+    for USER_ID in $(seq 1 "$COUNT_USERS")
+    do
+        _set_chainspec_account_for_user \
+            "$PATH_TO_NET"/users/user-"$USER_ID"/public_key_hex \
+            "$NCTL_INITIAL_BALANCE_USER" 
+    done
 }
 
 #######################################
@@ -186,42 +278,17 @@ function _set_node_chainspecs()
 }
 
 #######################################
-# Sets assets pertaining to all users within network.
-# Arguments:
-#   Count of users to setup.
-#######################################
-function _set_net_users()
-{
-    local COUNT_USERS=${1}
-    local PATH_TO_NET
-
-    # Set directory.
-    PATH_TO_NET=$(get_path_to_net)
-    mkdir "$PATH_TO_NET"/users
-
-    for USER_ID in $(seq 1 "$COUNT_USERS")
-    do
-        "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
-        _set_chainspec_account \
-            "$PATH_TO_NET"/users/user-"$USER_ID"/public_key_hex \
-            "$NCTL_INITIAL_BALANCE_VALIDATOR"
-    done
-}
-
-#######################################
 # Main
 # Globals:
 #   NET_ID - ordinal identifier of network being setup.
 # Arguments:
 #   Count of nodes to setup.
-#   Count of users to setup.
 #   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _main()
 {
     local COUNT_NODES=${1}
-    local COUNT_USERS=${2}
-    local GENESIS_DELAY=${3}
+    local GENESIS_DELAY=${2}
     local PATH_TO_NET
 
     # Tear down previous.
@@ -247,7 +314,7 @@ function _main()
     _set_nodes "$COUNT_NODES"
 
     log "... setting users"
-    _set_net_users "$COUNT_USERS"
+    _set_net_users "$COUNT_NODES"
 
     log "... setting daemon"
     _set_net_daemon
@@ -265,7 +332,6 @@ function _main()
 unset GENESIS_DELAY_SECONDS
 unset NET_ID
 unset NODE_COUNT
-unset USER_COUNT
 
 for ARGUMENT in "$@"
 do
@@ -275,7 +341,6 @@ do
         delay) GENESIS_DELAY_SECONDS=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         nodes) NODE_COUNT=${VALUE} ;;
-        users) USER_COUNT=${VALUE} ;;
         *)
     esac
 done
@@ -284,10 +349,9 @@ done
 export NET_ID=${NET_ID:-1}
 GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
 NODE_COUNT=${NODE_COUNT:-5}
-USER_COUNT=${USER_COUNT:-5}
 
 if [ 3 -gt "$NODE_COUNT" ]; then
     log_error "Invalid input: |nodes| MUST BE >= 3"
 else
-    _main "$NODE_COUNT" "$USER_COUNT" "$GENESIS_DELAY_SECONDS"
+    _main "$NODE_COUNT" "$GENESIS_DELAY_SECONDS"
 fi

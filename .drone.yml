@@ -41,6 +41,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -74,6 +75,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -120,6 +122,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -161,6 +164,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -177,6 +181,7 @@ steps:
   when:
     branch:
     - master
+    - dev
     - "release-*"
     event:
     - push
@@ -198,6 +203,7 @@ steps:
 #  when:
 #    branch:
 #      - master
+#      - dev
 #      - "release-*"
 #    event:
 #      - push
@@ -210,6 +216,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -236,6 +243,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -256,6 +264,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -269,6 +278,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -296,6 +306,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -336,6 +347,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -400,6 +412,22 @@ steps:
   environment:
     CARGO_TOKEN:
       from_secret: crates_io_token
+
+- name: as-contract-publish
+  image: plugins/npm
+  settings:
+    username:
+      from_secret: npm_user
+    token:
+      from_secret: npm_token
+    email:
+      from_secret: npm_email
+    folder:
+    - "smart_contracts/contract-as"
+    fail_on_version_conflict:
+    - true
+    access:
+    - "public"
 
 trigger:
   ref:
