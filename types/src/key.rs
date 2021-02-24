@@ -20,7 +20,7 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, TryFromSliceForAccountHashError},
+    account::{self, AccountHash, AccountHashBytes, TryFromSliceForAccountHashError},
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
@@ -36,11 +36,13 @@ const TRANSFER_ID: u8 = 3;
 const DEPLOY_INFO_ID: u8 = 4;
 const ERA_INFO_ID: u8 = 5;
 const BALANCE_ID: u8 = 6;
+const BID_ID: u8 = 7;
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
 const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
+const BID_PREFIX: &str = "bid-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -59,6 +61,7 @@ const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRA
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
+const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -89,6 +92,8 @@ pub enum Key {
     EraInfo(EraId),
     /// A `Key` under which we store a purse balance.
     Balance(URefAddr),
+    /// A `Key` under which we store bid information
+    Bid(AccountHash),
 }
 
 #[derive(Debug)]
@@ -166,6 +171,7 @@ impl Key {
             Key::DeployInfo(_) => String::from("Key::DeployInfo"),
             Key::EraInfo(_) => String::from("Key::EraInfo"),
             Key::Balance(_) => String::from("Key::Balance"),
+            Key::Bid(_) => String::from("Key::Bid"),
         }
     }
 
@@ -204,6 +210,9 @@ impl Key {
             Key::Balance(uref_addr) => {
                 format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
             }
+            Key::Bid(account_hash) => {
+                format!("{}{}", BID_PREFIX, base16::encode_lower(&account_hash))
+            }
         }
     }
 
@@ -229,6 +238,10 @@ impl Key {
             Ok(Key::Balance(URefAddr::try_from(
                 base16::decode(hex)?.as_ref(),
             )?))
+        } else if let Some(hex) = input.strip_prefix(BID_PREFIX) {
+            Ok(Key::Bid(AccountHash::new(AccountHashBytes::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?)))
         } else {
             Err(FromStrError::InvalidPrefix)
         }
@@ -287,6 +300,7 @@ impl Display for Key {
             Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
             Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
+            Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
         }
     }
 }
@@ -365,6 +379,10 @@ impl ToBytes for Key {
                 result.push(BALANCE_ID);
                 result.append(&mut uref_addr.to_bytes()?);
             }
+            Key::Bid(account_hash) => {
+                result.push(BID_ID);
+                result.append(&mut account_hash.to_bytes()?);
+            }
         }
         Ok(result)
     }
@@ -380,6 +398,7 @@ impl ToBytes for Key {
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
+            Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
         }
     }
 }
@@ -416,6 +435,10 @@ impl FromBytes for Key {
                 let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
                 Ok((Key::Balance(uref_addr), rem))
             }
+            BID_ID => {
+                let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
+                Ok((Key::Bid(account_hash), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -431,6 +454,7 @@ impl Distribution<Key> for Standard {
             4 => Key::DeployInfo(rng.gen()),
             5 => Key::EraInfo(rng.gen()),
             6 => Key::Balance(rng.gen()),
+            7 => Key::Bid(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -448,6 +472,7 @@ mod serde_helpers {
         DeployInfo(String),
         EraInfo(String),
         Balance(String),
+        Bid(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -461,6 +486,7 @@ mod serde_helpers {
                 Key::DeployInfo(_) => HumanReadable::DeployInfo(formatted_string),
                 Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
                 Key::Balance(_) => HumanReadable::Balance(formatted_string),
+                Key::Bid(_) => HumanReadable::Bid(formatted_string),
             }
         }
     }
@@ -476,7 +502,8 @@ mod serde_helpers {
                 | HumanReadable::Transfer(formatted_string)
                 | HumanReadable::DeployInfo(formatted_string)
                 | HumanReadable::EraInfo(formatted_string)
-                | HumanReadable::Balance(formatted_string) => {
+                | HumanReadable::Balance(formatted_string)
+                | HumanReadable::Bid(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -492,6 +519,7 @@ mod serde_helpers {
         DeployInfo(&'a DeployHash),
         EraInfo(&'a u64),
         Balance(&'a URefAddr),
+        Bid(&'a AccountHash),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -504,6 +532,7 @@ mod serde_helpers {
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
+                Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
             }
         }
     }
@@ -517,6 +546,7 @@ mod serde_helpers {
         DeployInfo(DeployHash),
         EraInfo(EraId),
         Balance(URefAddr),
+        Bid(AccountHash),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -529,6 +559,7 @@ mod serde_helpers {
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
+                BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
             }
         }
     }
@@ -796,6 +827,7 @@ mod tests {
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
+        round_trip(&Key::Bid(AccountHash::new(array)));
     }
 
     #[test]
@@ -815,7 +847,7 @@ mod tests {
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
-        round_trip(&Key::Balance(array));
+        round_trip(&Key::Bid(AccountHash::new(array)));
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
 
@@ -825,6 +857,7 @@ mod tests {
         round_trip(&Key::Transfer(TransferAddr::new(zeros)));
         round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
         round_trip(&Key::EraInfo(42));
-        round_trip(&Key::Balance(zeros));
+        round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
+        round_trip(&Key::Bid(AccountHash::new(zeros)));
     }
 }
