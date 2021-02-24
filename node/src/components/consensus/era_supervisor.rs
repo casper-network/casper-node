@@ -1025,12 +1025,12 @@ where
                 .collect(),
             ProtocolOutcome::WeAreFaulty => Default::default(),
             ProtocolOutcome::DoppelgangerDetected => Default::default(),
-            // TODO: Replace the panic with the appropriate shutdown effect once that's possible.
-            ProtocolOutcome::FttExceeded => self
-                .effect_builder
-                .set_timeout(Duration::from_millis(FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS))
-                .then(|_| async move { panic!("shutting down: too many faulty validators") })
-                .ignore(),
+            ProtocolOutcome::FttExceeded => {
+                let eb = self.effect_builder;
+                eb.set_timeout(Duration::from_millis(FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS))
+                    .then(move |_| fatal!(eb, "too many faulty validators"))
+                    .ignore()
+            }
         }
     }
 
