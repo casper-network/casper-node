@@ -24,7 +24,6 @@ use crate::{
         small_network::SmallNetworkIdentity,
         Component,
     },
-    crypto::hash::Digest,
     effect::{
         announcements::{GossiperAnnouncement, NetworkAnnouncement},
         requests::{NetworkRequest, StorageRequest},
@@ -119,7 +118,7 @@ impl Reactor for TestReactor {
             cfg,
             registry,
             small_network_identity,
-            Digest::default(),
+            "test_network".to_string(),
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
