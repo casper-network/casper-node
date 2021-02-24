@@ -203,6 +203,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     **latest_block, block_header,
                     "Block execution result doesn't match received block."
                 );
+                if self.is_chain_end(&block_header) {
+                    self.mark_done();
+                }
                 match block_header.next_era_validator_weights() {
                     None => (),
                     Some(validators_for_next_era) => {
@@ -213,6 +216,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 self.fetch_next_block(effect_builder, rng, &block_header)
             }
         }
+    }
+
+    /// Returns whether `block` can be considered tip of the chain.
+    fn is_chain_end(&self, header: &BlockHeader) -> bool {
+        // 1 minute.
+        let acceptable_drift_millis = 60 * 1000;
+        header.timestamp().elapsed().millis() <= acceptable_drift_millis
     }
 
     /// Returns effects for fetching next block's deploys.
