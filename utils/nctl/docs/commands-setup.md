@@ -32,16 +32,16 @@ Compiles casper client + client contracts using `make` + `cargo`.
 List previously created network assets.
 
 
-### nctl-assets-setup net={W:-1} nodes={X:-5} users={Y:-5} bootstraps={Z:-1}
+### nctl-assets-setup net={X:-1} nodes={Y:-5} delay={Z:-30}
 
 Sets up assets required to run a local network - this includes binaries, chainspec, config, faucet, keys ... etc.  NCTL creates assets for 2 nodesets: genesis & non-genesis - this permits testing nodeset rotation scenarios (see `nctl-rotate`). 
 
 ```
 nctl-assets-setup
 
-nctl-assets-setup net=1 nodes=5 users=5 bootstraps=1  (same as above)
+nctl-assets-setup net=1 nodes=5 deelay=30  (same as above)
 
-nctl-assets-setup net=2 nodes=10 users=10 bootstraps=4
+nctl-assets-setup net=2 nodes=10 delay=60
 ```
 
 ### nctl-assets-teardown net={X:-1}
