@@ -22,6 +22,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
@@ -54,6 +55,10 @@ use crate::{
 };
 
 pub use self::era::{Era, EraId};
+
+/// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
+/// fault tolerance threshold.
+const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -737,6 +742,7 @@ where
                     "attempted to create a new era with a non-switch block header: {}",
                     block
                 )
+                .ignore()
             }
         };
         let newly_slashed = era_end.equivocators.clone();
@@ -1019,6 +1025,12 @@ where
                 .collect(),
             ProtocolOutcome::WeAreFaulty => Default::default(),
             ProtocolOutcome::DoppelgangerDetected => Default::default(),
+            ProtocolOutcome::FttExceeded => {
+                let eb = self.effect_builder;
+                eb.set_timeout(Duration::from_millis(FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS))
+                    .then(move |_| fatal!(eb, "too many faulty validators"))
+                    .ignore()
+            }
         }
     }
 
@@ -1032,9 +1044,11 @@ where
         if should_emit_error {
             fatal!(
                 self.effect_builder,
-                "Consensus shutting down due to inability to participate in the network; inactive era = {}",
+                "Consensus shutting down due to inability to participate in the network; \
+                inactive era = {}",
                 self.era_supervisor.current_era
             )
+            .ignore()
         } else {
             Default::default()
         }

@@ -26,7 +26,7 @@ use crate::{
         consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::FinalityDetector,
+            finality_detector::{FinalityDetector, FttExceeded},
             highway::{Dependency, GetDepOutcome, Highway, Params, ValidVertex, Vertex},
             state::{Observation, Panorama},
             validators::{ValidatorIndex, Validators},
@@ -246,11 +246,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         outcomes
     }
 
-    fn detect_finality(&mut self) -> impl Iterator<Item = ProtocolOutcome<I, C>> + '_ {
-        self.finality_detector
-            .run(&self.highway)
-            .expect("too many faulty validators")
-            .map(ProtocolOutcome::FinalizedBlock)
+    fn detect_finality(&mut self) -> ProtocolOutcomes<I, C> {
+        let faulty_weight = match self.finality_detector.run(&self.highway) {
+            Ok(iter) => return iter.map(ProtocolOutcome::FinalizedBlock).collect(),
+            Err(FttExceeded(weight)) => weight.0,
+        };
+        error!(
+            %faulty_weight,
+            total_weight = %self.highway.state().total_weight().0,
+            "too many faulty validators"
+        );
+        self.log_participation();
+        vec![ProtocolOutcome::FttExceeded]
     }
 
     /// Adds the given vertices to the protocol state, if possible, or requests missing
