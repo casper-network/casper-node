@@ -71,7 +71,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         transfer_addr_arb().prop_map(Key::Transfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
         any::<u64>().prop_map(Key::EraInfo),
-        u8_slice_32().prop_map(Key::Balance)
+        uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
     ]
 }
 

@@ -50,8 +50,6 @@ pub const KEY_HASH_LENGTH: usize = 32;
 pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
-/// The number of bytes in a [`Key::Balance`].
-pub const KEY_BALANCE_LENGTH: usize = UREF_ADDR_LENGTH;
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -60,7 +58,7 @@ const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIAL
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
-const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_BALANCE_LENGTH;
+const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -228,7 +226,7 @@ impl Key {
         } else if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
             Ok(Key::EraInfo(u64::from_str(era_id_str)?))
         } else if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
-            Ok(Key::Balance(HashAddr::try_from(
+            Ok(Key::Balance(URefAddr::try_from(
                 base16::decode(hex)?.as_ref(),
             )?))
         } else {
@@ -288,7 +286,7 @@ impl Display for Key {
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
-            Key::Balance(uref_addr) => write!(f, "Key::Balance({}", HexFmt(uref_addr)),
+            Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
         }
     }
 }
@@ -363,9 +361,9 @@ impl ToBytes for Key {
                 result.push(ERA_INFO_ID);
                 result.append(&mut era_id.to_bytes()?);
             }
-            Key::Balance(uref) => {
+            Key::Balance(uref_addr) => {
                 result.push(BALANCE_ID);
-                result.append(&mut uref.to_bytes()?);
+                result.append(&mut uref_addr.to_bytes()?);
             }
         }
         Ok(result)
@@ -432,6 +430,7 @@ impl Distribution<Key> for Standard {
             3 => Key::Transfer(rng.gen()),
             4 => Key::DeployInfo(rng.gen()),
             5 => Key::EraInfo(rng.gen()),
+            6 => Key::Balance(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -796,6 +795,7 @@ mod tests {
         round_trip(&Key::Transfer(TransferAddr::new(array)));
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
     }
 
     #[test]
@@ -814,6 +814,7 @@ mod tests {
         round_trip(&Key::Transfer(TransferAddr::new(array)));
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
         round_trip(&Key::Balance(array));
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
