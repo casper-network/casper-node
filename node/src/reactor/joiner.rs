@@ -908,13 +908,13 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        (self.linear_chain_sync.is_synced() && self.consensus.is_initialized()).then(|| {
-            if self.linear_chain_sync.stopped_for_upgrade() {
-                ReactorExit::ProcessShouldExit(ExitCode::Success)
-            } else {
-                ReactorExit::ProcessShouldContinue
-            }
-        })
+        if self.linear_chain_sync.stopped_for_upgrade() && self.consensus.is_initialized() {
+            Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
+        } else if self.linear_chain_sync.is_synced() && self.consensus.is_initialized() {
+            Some(ReactorExit::ProcessShouldContinue)
+        } else {
+            None
+        }
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
