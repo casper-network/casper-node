@@ -807,7 +807,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<StorageRequest>,
     {
-        let era_before = EraId(era_id.0.checked_sub(1)?);
+        let era_before = era_id.checked_sub(1)?;
         self.get_switch_block_at_era_id_from_storage(era_before)
             .await
     }

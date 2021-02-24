@@ -6,6 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 mod era;
+mod era_id;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
@@ -53,7 +54,7 @@ use crate::{
     NodeRng,
 };
 
-pub use self::era::{Era, EraId};
+pub use self::{era::Era, era_id::EraId};
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -222,12 +223,9 @@ where
     /// We make sure not to go below the last upgrade activation point, because we will not have
     /// any eras from before that.
     fn booking_block_height(&self, era_id: EraId) -> u64 {
-        let after_booking_era_id = EraId(
-            era_id
-                .0
-                .saturating_sub(self.protocol_config.auction_delay)
-                .max(self.protocol_config.last_activation_point.0),
-        );
+        let after_booking_era_id = era_id
+            .saturating_sub(self.protocol_config.auction_delay)
+            .max(self.protocol_config.last_activation_point);
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
@@ -254,8 +252,8 @@ where
         (self
             .protocol_config
             .last_activation_point
-            .0
-            .max(era_id.0.saturating_sub(num_eras))..=era_id.0)
+            .max(era_id.saturating_sub(num_eras))
+            .0..=era_id.0)
             .map(EraId)
     }
 
@@ -268,8 +266,8 @@ where
         (self
             .protocol_config
             .last_activation_point
-            .0
-            .max(era_id.0.saturating_sub(num_eras))..era_id.0)
+            .max(era_id.saturating_sub(num_eras))
+            .0..era_id.0)
             .map(EraId)
     }
 
