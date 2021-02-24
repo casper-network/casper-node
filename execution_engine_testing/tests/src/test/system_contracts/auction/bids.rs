@@ -114,6 +114,7 @@ const VALIDATOR_1_STAKE: u64 = 1_000_000;
 const DELEGATOR_1_STAKE: u64 = 1_500_000;
 const DELEGATOR_1_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 const DELEGATOR_2_STAKE: u64 = 2_000_000;
+const DELEGATOR_2_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -1919,6 +1920,99 @@ fn should_handle_evictions() {
             *BID_ACCOUNT_2_PK
         ])
     );
+}
+
+#[should_panic(expected = "OrphanedDelegator")]
+#[ignore]
+#[test]
+fn should_validate_orphaned_genesis_delegators() {
+    let missing_validator = SecretKey::ed25519([123; 32]).into();
+
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let account_2 = GenesisAccount::account(
+            *ACCOUNT_2_PK,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BOND.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        let orphaned_delegator = GenesisAccount::delegator(
+            missing_validator,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(delegator_1);
+        tmp.push(orphaned_delegator);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+}
+
+#[should_panic(expected = "DuplicatedDelegatorEntry")]
+#[ignore]
+#[test]
+fn should_validate_duplicated_genesis_delegators() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BOND.into()),
+        );
+        let account_2 = GenesisAccount::account(
+            *ACCOUNT_2_PK,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BOND.into()),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        let duplicated_delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(DELEGATOR_1_STAKE.into()),
+        );
+        let duplicated_delegator_2 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_2,
+            Motes::new(DELEGATOR_2_BALANCE.into()),
+            Motes::new(DELEGATOR_2_STAKE.into()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(delegator_1);
+        tmp.push(duplicated_delegator_1);
+        tmp.push(duplicated_delegator_2);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
 }
 
 #[ignore]

@@ -21,7 +21,7 @@ pub enum Error {
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
     #[error("Genesis error.")]
-    Genesis(GenesisError),
+    Genesis(Box<GenesisError>),
     #[error("Wasm preprocessing error: {0}")]
     WasmPreprocessing(#[from] wasm_prep::PreprocessingError),
     #[error("Wasm serialization error: {0:?}")]
@@ -74,6 +74,12 @@ impl From<bytesrepr::Error> for Error {
 impl From<mint::Error> for Error {
     fn from(error: mint::Error) -> Self {
         Error::Mint(format!("{}", error))
+    }
+}
+
+impl From<GenesisError> for Error {
+    fn from(genesis_error: GenesisError) -> Self {
+        Self::Genesis(Box::new(genesis_error))
     }
 }
 

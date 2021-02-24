@@ -586,6 +586,14 @@ pub enum GenesisError {
     ExecutionError(execution::Error),
     MintError(mint::Error),
     CLValue(String),
+    OrphanedDelegator {
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+    },
+    DuplicatedDelegatorEntry {
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+    },
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -767,9 +775,23 @@ where
 
         let mut named_keys = NamedKeys::new();
 
-        let genesis_validators = self.exec_config.get_bonded_validators();
+        let genesis_validators: Vec<_> = self.exec_config.get_bonded_validators().collect();
 
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
+
+        // Make sure all delegators have corresponding genesis validator entries
+        for (&validator_public_key, &delegator_public_key, ..) in &genesis_delegators {
+            if genesis_validators
+                .iter()
+                .find(|genesis_validator| genesis_validator.public_key() == validator_public_key)
+                .is_none()
+            {
+                return Err(GenesisError::OrphanedDelegator {
+                    validator_public_key,
+                    delegator_public_key,
+                });
+            }
+        }
 
         let validators = {
             let mut validators = Bids::new();
@@ -791,13 +813,13 @@ where
 
                     // Set up delegator entries attached to genesis validators
                     for (
-                        validator_public_key,
-                        delegator_public_key,
+                        &validator_public_key,
+                        &delegator_public_key,
                         _delegator_balance,
-                        delegator_delegated_amount,
+                        &delegator_delegated_amount,
                     ) in &genesis_delegators
                     {
-                        if **validator_public_key == public_key {
+                        if validator_public_key == public_key {
                             let purse_uref = self.create_purse(
                                 delegator_delegated_amount.value(),
                                 DeployHash::new(delegator_public_key.to_account_hash().value()),
@@ -806,11 +828,20 @@ where
                             let delegator = Delegator::locked(
                                 delegator_delegated_amount.value(),
                                 purse_uref,
-                                **validator_public_key,
+                                validator_public_key,
                                 release_timestamp_millis,
                             );
-                            bid.delegators_mut()
-                                .insert(**delegator_public_key, delegator);
+
+                            if bid
+                                .delegators_mut()
+                                .insert(delegator_public_key, delegator)
+                                .is_some()
+                            {
+                                return Err(GenesisError::DuplicatedDelegatorEntry {
+                                    validator_public_key,
+                                    delegator_public_key,
+                                });
+                            }
                         }
                     }
 
