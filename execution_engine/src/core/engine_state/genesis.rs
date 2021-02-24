@@ -496,10 +496,12 @@ impl ExecConfig {
             .filter(|&genesis_account| genesis_account.is_validator())
     }
 
-    pub fn get_bonded_delegators(&self) -> impl Iterator<Item = &GenesisAccount> {
+    pub fn get_bonded_delegators(
+        &self,
+    ) -> impl Iterator<Item = (&PublicKey, &PublicKey, &Motes, &Motes)> {
         self.accounts
             .iter()
-            .filter(|genesis_account| genesis_account.is_delegator())
+            .filter_map(|genesis_account| genesis_account.as_delegator())
     }
 
     pub fn accounts(&self) -> &[GenesisAccount] {
@@ -788,19 +790,14 @@ where
                         Bid::locked(purse_uref, staked_amount.value(), release_timestamp_millis);
 
                     // Set up delegator entries attached to genesis validators
-                    for genesis_delegator in &genesis_delegators {
-                        // NOTE: Assumed safe as "genesis_delegators" is filtered out to contain
-                        // only Delegator variants.
-                        debug_assert!(genesis_delegator.as_delegator().is_some());
-                        let (
-                            validator_public_key,
-                            delegator_public_key,
-                            _delegator_balance,
-                            delegator_delegated_amount,
-                        ) = genesis_delegator
-                            .as_delegator()
-                            .expect("should have delegator variant");
-                        if *validator_public_key == public_key {
+                    for (
+                        validator_public_key,
+                        delegator_public_key,
+                        _delegator_balance,
+                        delegator_delegated_amount,
+                    ) in &genesis_delegators
+                    {
+                        if **validator_public_key == public_key {
                             let purse_uref = self.create_purse(
                                 delegator_delegated_amount.value(),
                                 DeployHash::new(delegator_public_key.to_account_hash().value()),
@@ -809,11 +806,11 @@ where
                             let delegator = Delegator::locked(
                                 delegator_delegated_amount.value(),
                                 purse_uref,
-                                *validator_public_key,
+                                **validator_public_key,
                                 release_timestamp_millis,
                             );
                             bid.delegators_mut()
-                                .insert(*delegator_public_key, delegator);
+                                .insert(**delegator_public_key, delegator);
                         }
                     }
 
