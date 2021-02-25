@@ -289,6 +289,25 @@ impl GenesisAccount {
         }
     }
 
+    /// What is the delegation rate of a validator.
+    pub fn delegation_rate(&self) -> DelegationRate {
+        match self {
+            GenesisAccount::Account {
+                validator: Some(genesis_validator),
+                ..
+            } => genesis_validator.delegation_rate(),
+            GenesisAccount::System
+            | GenesisAccount::Account {
+                validator: None, ..
+            }
+            | GenesisAccount::Delegator { .. } => {
+                // This value represents a delegation rate in invalid state that system is supposed
+                // to reject if used.
+                DelegationRate::max_value()
+            }
+        }
+    }
+
     /// Is this a virtual system account.
     pub fn is_system_account(&self) -> bool {
         matches!(self, GenesisAccount::System { .. })
@@ -883,28 +902,25 @@ where
         let validators = {
             let mut validators = Bids::new();
 
-            for genesis_account in genesis_validators {
-                let genesis_validator = match genesis_account.validator() {
-                    Some(genesis_validator) => genesis_validator,
-                    None => continue,
-                };
+            for genesis_validator in genesis_validators {
+                let public_key = genesis_validator.public_key();
 
-                let public_key = genesis_account.public_key();
-
-                if genesis_validator.bonded_amount().is_zero() {
+                let staked_amount = genesis_validator.staked_amount();
+                if staked_amount.is_zero() {
                     return Err(GenesisError::InvalidBondAmount { public_key });
                 }
 
-                if genesis_validator.delegation_rate() > DELEGATION_RATE_DENOMINATOR {
+                let delegation_rate = genesis_validator.delegation_rate();
+                if delegation_rate > DELEGATION_RATE_DENOMINATOR {
                     return Err(GenesisError::InvalidDelegationRate {
                         public_key,
-                        delegation_rate: genesis_validator.delegation_rate(),
+                        delegation_rate,
                     });
                 }
                 debug_assert_ne!(public_key, PublicKey::System);
 
                 let purse_uref = self.create_purse(
-                    genesis_validator.bonded_amount().value(),
+                    staked_amount.value(),
                     DeployHash::new(public_key.to_account_hash().value()),
                 )?;
                 let release_timestamp_millis =
@@ -913,8 +929,8 @@ where
                     let mut bid = Bid::locked(
                         public_key,
                         purse_uref,
-                        genesis_validator.bonded_amount().value(),
-                        genesis_validator.delegation_rate(),
+                        staked_amount.value(),
+                        delegation_rate,
                         release_timestamp_millis,
                     );
 
