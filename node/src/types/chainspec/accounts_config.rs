@@ -312,15 +312,24 @@ impl Loadable for AccountsConfig {
 impl From<AccountsConfig> for Vec<GenesisAccount> {
     fn from(accounts_config: AccountsConfig) -> Self {
         let mut genesis_accounts = Vec::with_capacity(accounts_config.accounts.len());
-        for account in accounts_config.accounts {
-            let genesis_account = GenesisAccount::new(
-                account.public_key,
-                account.public_key.to_account_hash(),
-                account.balance,
-                account.bonded_amount,
+        for account_config in accounts_config.accounts {
+            let genesis_account = GenesisAccount::account(
+                account_config.public_key,
+                account_config.balance,
+                account_config.bonded_amount,
             );
             genesis_accounts.push(genesis_account);
         }
+        for delegator_config in accounts_config.delegators {
+            let genesis_account = GenesisAccount::delegator(
+                delegator_config.validator_public_key,
+                delegator_config.delegator_public_key,
+                delegator_config.balance,
+                delegator_config.delegated_amount,
+            );
+            genesis_accounts.push(genesis_account);
+        }
+
         genesis_accounts
     }
 }

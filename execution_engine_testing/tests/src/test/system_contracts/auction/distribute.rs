@@ -322,10 +322,9 @@ fn should_distribute_delegation_rate_zero() {
             *VALIDATOR_1,
             validator_1_balance + U512::from(VALIDATOR_1_STAKE),
         );
-        assert!(
-            get_validator_bid(&mut builder, *VALIDATOR_1).is_none(),
-            "validator 1 should have zero stake after withdrawing full amount"
-        );
+        let validator_1_bid = get_validator_bid(&mut builder, *VALIDATOR_1).unwrap();
+        assert!(validator_1_bid.inactive());
+        assert!(validator_1_bid.staked_amount().is_zero());
         U512::zero()
     };
     assert_eq!(validator_1_balance, U512::zero());
@@ -613,10 +612,11 @@ fn should_withdraw_bids_after_distribute() {
             *VALIDATOR_1,
             withdraw_bid_amount,
         );
-        assert!(
-            get_validator_bid(&mut builder, *VALIDATOR_1).is_none(),
-            "validator 1 should have zero stake after withdrawing full amount"
-        );
+
+        let bid = get_validator_bid(&mut builder, *VALIDATOR_1).unwrap();
+        assert!(bid.inactive());
+        assert!(bid.staked_amount().is_zero());
+
         withdraw_bid_amount
     };
     assert!(!validator_1_balance.is_zero());

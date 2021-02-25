@@ -47,9 +47,8 @@ const VESTING_WEEKS: u64 = 14;
 #[test]
 fn should_run_ee_1119_dont_slash_delegated_validators() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
@@ -242,7 +241,9 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     );
 
     let bids: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(!bids.contains_key(&VALIDATOR_1)); // still bid upon
+    let validator_1_bid = bids.get(&VALIDATOR_1).unwrap();
+    assert!(validator_1_bid.inactive());
+    assert!(validator_1_bid.staked_amount().is_zero());
 
     let total_supply_after_slashing: U512 =
         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);

@@ -295,9 +295,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 fn delegate_and_undelegate_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
@@ -420,9 +419,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
@@ -539,9 +537,8 @@ fn mint_transfer_has_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );

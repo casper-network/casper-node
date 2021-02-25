@@ -252,6 +252,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Bid(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -654,6 +658,7 @@ where
             Key::DeployInfo(_) => true,
             Key::EraInfo(_) => true,
             Key::Balance(_) => false,
+            Key::Bid(_) => true,
         }
     }
 
@@ -666,6 +671,7 @@ where
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
             Key::Balance(_) => false,
+            Key::Bid(_) => false,
         }
     }
 
@@ -678,6 +684,7 @@ where
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
             Key::Balance(_) => false,
+            Key::Bid(_) => false,
         }
     }
 

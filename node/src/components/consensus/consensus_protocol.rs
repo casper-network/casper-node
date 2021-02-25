@@ -110,6 +110,9 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     WeAreFaulty,
     /// We've received a unit from a doppelganger.
     DoppelgangerDetected,
+    /// Too many faulty validators. The protocol's fault tolerance threshold has been exceeded and
+    /// consensus cannot continue.
+    FttExceeded,
     /// We want to disconnect from a sender of invalid data.
     Disconnect(I),
 }

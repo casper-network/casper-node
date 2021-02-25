@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -6,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
-    account::AccountHash, system::auction, ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, system::auction, ApiError, PublicKey, RuntimeArgs, SecretKey,
 };
 
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
@@ -21,11 +22,10 @@ const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
+        let account = GenesisAccount::account(
             *VALID_PUBLIC_KEY,
-            *VALID_ADDR,
             Motes::new(VALID_BALANCE.into()),
-            Motes::new(U512::zero()),
+            Motes::zero(),
         );
         tmp.push(account);
         tmp

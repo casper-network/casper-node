@@ -121,15 +121,15 @@ mod tests {
             delegators: BTreeMap::from_iter(vec![
                 (
                     validator_key,
-                    Delegator::new(delegator_1_key, U512::max_value(), uref, validator_key),
+                    Delegator::unlocked(delegator_1_key, U512::max_value(), uref, validator_key),
                 ),
                 (
                     validator_key,
-                    Delegator::new(delegator_2_key, U512::max_value(), uref, validator_key),
+                    Delegator::unlocked(delegator_2_key, U512::max_value(), uref, validator_key),
                 ),
                 (
                     validator_key,
-                    Delegator::new(delegator_3_key, U512::zero(), uref, validator_key),
+                    Delegator::unlocked(delegator_3_key, U512::zero(), uref, validator_key),
                 ),
             ]),
         };
