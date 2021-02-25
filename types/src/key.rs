@@ -26,17 +26,8 @@ use crate::{
     contracts::{ContractHash, ContractPackageHash},
     system::auction::EraId,
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    DeployHash, Tagged, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
-
-const ACCOUNT_ID: u8 = 0;
-const HASH_ID: u8 = 1;
-const UREF_ID: u8 = 2;
-const TRANSFER_ID: u8 = 3;
-const DEPLOY_INFO_ID: u8 = 4;
-const ERA_INFO_ID: u8 = 5;
-const BALANCE_ID: u8 = 6;
-const BID_ID: u8 = 7;
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
@@ -70,6 +61,20 @@ impl From<HashAddr> for Key {
     fn from(addr: HashAddr) -> Self {
         Key::Hash(addr)
     }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum KeyTag {
+    Account = 0,
+    Hash = 1,
+    URef = 2,
+    Transfer = 3,
+    DeployInfo = 4,
+    EraInfo = 5,
+    Balance = 6,
+    Bid = 7,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -311,6 +316,28 @@ impl Debug for Key {
     }
 }
 
+impl Tagged<KeyTag> for Key {
+    fn tag(&self) -> KeyTag {
+        match self {
+            Key::Account(_) => KeyTag::Account,
+            Key::Hash(_) => KeyTag::Hash,
+            Key::URef(_) => KeyTag::URef,
+            Key::Transfer(_) => KeyTag::Transfer,
+            Key::DeployInfo(_) => KeyTag::DeployInfo,
+            Key::EraInfo(_) => KeyTag::EraInfo,
+            Key::Balance(_) => KeyTag::Balance,
+            Key::Bid(_) => KeyTag::Bid,
+        }
+    }
+}
+
+impl Tagged<u8> for Key {
+    fn tag(&self) -> u8 {
+        let key_tag: KeyTag = self.tag();
+        key_tag as u8
+    }
+}
+
 impl From<URef> for Key {
     fn from(uref: URef) -> Key {
         Key::URef(uref)
@@ -350,37 +377,30 @@ impl From<ContractPackageHash> for Key {
 impl ToBytes for Key {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
+        result.push(self.tag());
         match self {
             Key::Account(account_hash) => {
-                result.push(ACCOUNT_ID);
                 result.append(&mut account_hash.to_bytes()?);
             }
             Key::Hash(hash) => {
-                result.push(HASH_ID);
                 result.append(&mut hash.to_bytes()?);
             }
             Key::URef(uref) => {
-                result.push(UREF_ID);
                 result.append(&mut uref.to_bytes()?);
             }
             Key::Transfer(addr) => {
-                result.push(TRANSFER_ID);
                 result.append(&mut addr.to_bytes()?);
             }
             Key::DeployInfo(addr) => {
-                result.push(DEPLOY_INFO_ID);
                 result.append(&mut addr.to_bytes()?);
             }
             Key::EraInfo(era_id) => {
-                result.push(ERA_INFO_ID);
                 result.append(&mut era_id.to_bytes()?);
             }
             Key::Balance(uref_addr) => {
-                result.push(BALANCE_ID);
                 result.append(&mut uref_addr.to_bytes()?);
             }
             Key::Bid(account_hash) => {
-                result.push(BID_ID);
                 result.append(&mut account_hash.to_bytes()?);
             }
         }
@@ -405,37 +425,37 @@ impl ToBytes for Key {
 
 impl FromBytes for Key {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (id, remainder) = u8::from_bytes(bytes)?;
-        match id {
-            ACCOUNT_ID => {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            tag if tag == KeyTag::Account as u8 => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Account(account_hash), rem))
             }
-            HASH_ID => {
+            tag if tag == KeyTag::Hash as u8 => {
                 let (hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::Hash(hash), rem))
             }
-            UREF_ID => {
+            tag if tag == KeyTag::URef as u8 => {
                 let (uref, rem) = URef::from_bytes(remainder)?;
                 Ok((Key::URef(uref), rem))
             }
-            TRANSFER_ID => {
+            tag if tag == KeyTag::Transfer as u8 => {
                 let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
                 Ok((Key::Transfer(transfer_addr), rem))
             }
-            DEPLOY_INFO_ID => {
+            tag if tag == KeyTag::DeployInfo as u8 => {
                 let (deploy_hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
-            ERA_INFO_ID => {
+            tag if tag == KeyTag::EraInfo as u8 => {
                 let (era_id, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::EraInfo(era_id), rem))
             }
-            BALANCE_ID => {
+            tag if tag == KeyTag::Balance as u8 => {
                 let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
                 Ok((Key::Balance(uref_addr), rem))
             }
-            BID_ID => {
+            tag if tag == KeyTag::Bid as u8 => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Bid(account_hash), rem))
             }
