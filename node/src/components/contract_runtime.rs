@@ -250,17 +250,6 @@ fn register_histogram_metric(
     Ok(histogram)
 }
 
-/// Create prometheus IntGauge and register.
-fn register_gauge_metric(
-    registry: &Registry,
-    metric_name: &str,
-    metric_help: &str,
-) -> Result<IntGauge, prometheus::Error> {
-    let gauge = IntGauge::new(metric_name, metric_help)?;
-    registry.register(Box::new(gauge.clone()))?;
-    Ok(gauge)
-}
-
 impl ContractRuntimeMetrics {
     /// Constructor of metrics which creates and registers metrics objects for use.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {

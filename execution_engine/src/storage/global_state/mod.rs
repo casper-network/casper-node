@@ -1,11 +1,7 @@
 pub mod in_memory;
 pub mod lmdb;
 
-use std::{
-    fmt,
-    hash::BuildHasher,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::{fmt, hash::BuildHasher};
 
 use crate::shared::{
     additive_map::AdditiveMap,
