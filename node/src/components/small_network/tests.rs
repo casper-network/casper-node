@@ -120,6 +120,7 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             Digest::default(),
+            "test-network".to_string(),
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();

@@ -158,8 +158,11 @@ where
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
     /// The hash of the chainspec.  We only remain connected to peers with the same
-    /// `genesis_config_hash` as us.
+    /// `genesis_config_hash` or `network_name` as us.
     genesis_config_hash: Digest,
+    /// Name of the network we participate in.  We only remain connected to peers with the same
+    /// `genesis_config_hash` or `network_name` as us.
+    network_name: String,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -198,6 +201,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         genesis_config_hash: Digest,
+        network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         // Assert we have at least one known address in the config.
@@ -232,6 +236,7 @@ where
                 blocklist: HashMap::new(),
                 gossip_interval: cfg.gossip_interval,
                 genesis_config_hash,
+                network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
@@ -294,6 +299,7 @@ where
             blocklist: HashMap::new(),
             gossip_interval: cfg.gossip_interval,
             genesis_config_hash,
+            network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -444,6 +450,7 @@ where
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
                     genesis_config_hash: self.genesis_config_hash,
+                    network_name: self.network_name.clone(),
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -543,6 +550,7 @@ where
 
         let handshake = Message::Handshake {
             genesis_config_hash: self.genesis_config_hash,
+            network_name: self.network_name.clone(),
         };
         let peer_id_cloned = peer_id.clone();
         effects.extend(
@@ -690,7 +698,23 @@ where
         match msg {
             Message::Handshake {
                 genesis_config_hash,
+                network_name,
             } => {
+                if network_name == self.network_name {
+                    // Skip the hash check if the network names match.
+                    return Effects::new();
+                } else if !network_name.is_empty() {
+                    // If the network name is not an empty string and doesn't match ours, reject.
+                    info!(
+                        our_id=%self.our_id,
+                        %peer_id,
+                        our_network=?self.network_name,
+                        their_network=?network_name,
+                        "dropping connection due to network name mismatch"
+                    );
+                    return self.remove(effect_builder, &peer_id, false);
+                }
+
                 if genesis_config_hash != self.genesis_config_hash {
                     info!(
                         our_id=%self.our_id,
@@ -701,6 +725,7 @@ where
                     );
                     return self.remove(effect_builder, &peer_id, false);
                 }
+
                 Effects::new()
             }
             Message::Payload(payload) => effect_builder

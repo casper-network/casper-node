@@ -6,7 +6,11 @@ use crate::crypto::hash::Digest;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Message<P> {
-    Handshake { genesis_config_hash: Digest },
+    Handshake {
+        genesis_config_hash: Digest,
+        #[serde(default)]
+        network_name: String,
+    },
     Payload(P),
 }
 
@@ -15,7 +19,8 @@ impl<P: Display> Display for Message<P> {
         match self {
             Message::Handshake {
                 genesis_config_hash,
-            } => write!(f, "handshake: {}", genesis_config_hash),
+                network_name,
+            } => write!(f, "handshake: {} -- {}", genesis_config_hash, network_name),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
