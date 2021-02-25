@@ -680,7 +680,7 @@ pub enum GenesisError {
     },
     InvalidBondAmount {
         public_key: PublicKey,
-    }
+    },
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -892,9 +892,7 @@ where
                 let public_key = genesis_account.public_key();
 
                 if genesis_validator.bonded_amount().is_zero() {
-                    return Err(GenesisError::InvalidBondAmount {
-                        public_key,
-                    });
+                    return Err(GenesisError::InvalidBondAmount { public_key });
                 }
 
                 if genesis_validator.delegation_rate() > DELEGATION_RATE_DENOMINATOR {
