@@ -24,6 +24,7 @@ use crate::{
         small_network::SmallNetworkIdentity,
         Component,
     },
+    crypto::hash::Digest,
     effect::{
         announcements::{GossiperAnnouncement, NetworkAnnouncement},
         requests::{NetworkRequest, StorageRequest},

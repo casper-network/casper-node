@@ -230,7 +230,7 @@ where
                 pending: HashSet::new(),
                 blocklist: HashMap::new(),
                 gossip_interval: cfg.gossip_interval,
-                network_name,
+                network_name: network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
@@ -292,7 +292,7 @@ where
             pending: HashSet::new(),
             blocklist: HashMap::new(),
             gossip_interval: cfg.gossip_interval,
-            network_name,
+            network_name: network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -442,7 +442,7 @@ where
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
-                    network_name: self.network_name.clone(),
+                    network_name: self.network_name.clone()
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
