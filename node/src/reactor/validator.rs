@@ -440,8 +440,10 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec().as_ref(),
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
-        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
-        contract_runtime.set_genesis_state_root_hash(genesis_state_root_hash);
+        contract_runtime.set_initial_state(
+            chainspec_loader.initial_state_root_hash(),
+            chainspec_loader.initial_block_header(),
+        );
         contract_runtime.set_parent_map_from_block(latest_block);
 
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));

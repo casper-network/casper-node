@@ -175,7 +175,8 @@ impl Reactor {
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let contract_runtime = ContractRuntime::new(
-            chainspec_loader.genesis_state_root_hash(),
+            chainspec_loader.initial_state_root_hash(),
+            chainspec_loader.initial_block_header(),
             protocol_version.clone(),
             storage_config,
             &config.value().contract_runtime,

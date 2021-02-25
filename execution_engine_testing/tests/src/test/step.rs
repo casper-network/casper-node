@@ -11,7 +11,6 @@ use casper_execution_engine::{
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
-    account::AccountHash,
     system::{
         auction::{
             Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
@@ -24,13 +23,11 @@ use casper_types::{
 
 static ACCOUNT_1_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([200; SecretKey::ED25519_LENGTH]).into());
-static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 const ACCOUNT_1_BALANCE: u64 = 100_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000_000;
 
 static ACCOUNT_2_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([202; SecretKey::ED25519_LENGTH]).into());
-static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PK));
 const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
@@ -52,15 +49,13 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account_1 = GenesisAccount::new(
+        let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
-            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
-        let account_2 = GenesisAccount::new(
+        let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
-            *ACCOUNT_2_ADDR,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Motes::new(ACCOUNT_2_BOND.into()),
         );
@@ -110,11 +105,9 @@ fn should_step() {
     builder.step(step_request);
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
-    assert!(
-        !bids_after_slashing.contains_key(&ACCOUNT_1_PK),
-        "should not have entry in bids table after slashing {:?}",
-        bids_after_slashing
-    );
+    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
+    assert!(account_1_bid.inactive());
+    assert!(account_1_bid.staked_amount().is_zero());
 
     let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_ne!(

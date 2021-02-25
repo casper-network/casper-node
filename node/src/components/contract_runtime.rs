@@ -53,8 +53,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, BlockLike, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
-        NodeId,
+        Block, BlockHash, BlockHeader, BlockLike, Chainspec, Deploy, DeployHash, DeployHeader,
+        FinalizedBlock, NodeId,
     },
     utils::WithDir,
     NodeRng, StorageConfig,
@@ -150,7 +150,7 @@ type BlockHeight = u64;
 /// The contract runtime components.
 #[derive(DataSize)]
 pub struct ContractRuntime {
-    genesis_state_root_hash: Option<Digest>,
+    initial_state: InitialState,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
 
@@ -719,12 +719,14 @@ pub enum ConfigError {
 
 impl ContractRuntime {
     pub(crate) fn new(
-        genesis_state_root_hash: Option<Digest>,
+        initial_state_root_hash: Digest,
+        initial_block_header: Option<&BlockHeader>,
         protocol_version: Version,
         storage_config: WithDir<StorageConfig>,
         contract_runtime_config: &Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
+        let initial_state = InitialState::new(initial_state_root_hash, initial_block_header);
         let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
@@ -751,7 +753,7 @@ impl ContractRuntime {
 
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
         Ok(ContractRuntime {
-            genesis_state_root_hash,
+            initial_state,
             protocol_version: ProtocolVersion::from_parts(
                 protocol_version.major as u32,
                 protocol_version.minor as u32,
@@ -786,9 +788,12 @@ impl ContractRuntime {
         )
     }
 
-    /// Sets the genesis_state_root_hash for the contract_runtime.
-    pub(crate) fn set_genesis_state_root_hash(&mut self, genesis_state_root_hash: Option<Digest>) {
-        self.genesis_state_root_hash = genesis_state_root_hash;
+    pub(crate) fn set_initial_state(
+        &mut self,
+        initial_state_root_hash: Digest,
+        initial_block_header: Option<&BlockHeader>,
+    ) {
+        self.initial_state = InitialState::new(initial_state_root_hash, initial_block_header);
     }
 
     /// Adds the "parent map" to the instance of `ContractRuntime`.
@@ -1088,9 +1093,21 @@ impl ContractRuntime {
         state_root_hash: Digest,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Block {
-        let (parent_summary_hash, parent_seed) = if finalized_block.is_genesis_child() {
-            // Genesis, no parent summary.
-            (BlockHash::new(Digest::default()), Digest::default())
+        let (parent_summary_hash, parent_seed) = if self.is_initial_block_child(&finalized_block) {
+            // The first block after the initial one: get initial block summary if we have one, or
+            // if not, this should be the genesis child and so we take the default values.
+            (
+                self.initial_state
+                    .block_summary
+                    .as_ref()
+                    .map(|summary| summary.hash)
+                    .unwrap_or_else(|| BlockHash::new(Digest::default())),
+                self.initial_state
+                    .block_summary
+                    .as_ref()
+                    .map(|summary| summary.accumulated_seed)
+                    .unwrap_or_default(),
+            )
         } else {
             let parent_block_height = finalized_block.height() - 1;
             let summary = self
@@ -1118,8 +1135,8 @@ impl ContractRuntime {
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
-        if finalized_block.is_genesis_child() {
-            self.genesis_state_root_hash
+        if self.is_initial_block_child(finalized_block) {
+            Some(self.initial_state.state_root_hash)
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.
@@ -1128,6 +1145,12 @@ impl ContractRuntime {
                 .get(&parent_block_height)
                 .map(|summary| summary.state_root_hash)
         }
+    }
+
+    /// Returns true if the `finalized_block` is an immediate child of the initial block, ie.
+    /// either genesis or the highest known block at the time of initializing the component.
+    fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
+        finalized_block.height() == self.initial_state.child_height
     }
 }
 /// Holds the state of an ongoing execute-commit cycle spawned from a given `Event::Request`.
@@ -1142,4 +1165,32 @@ pub struct RequestState {
     /// Current state root hash of global storage.  Is initialized with the parent block's
     /// state hash, and is updated after each commit.
     pub state_root_hash: Digest,
+}
+
+#[derive(DataSize, Debug, Default)]
+struct InitialState {
+    /// Height of the child of the highest known block at the time of initializing the component.
+    /// Required for the block executor to know when to stop looking for parent blocks when getting
+    /// the pre-state hash for execution. With upgrades, we could get a wrong hash if we went too
+    /// far.
+    child_height: u64,
+    /// Summary of the highest known block.
+    block_summary: Option<ExecutedBlockSummary>,
+    /// Initial state root hash.
+    state_root_hash: Digest,
+}
+
+impl InitialState {
+    fn new(state_root_hash: Digest, block_header: Option<&BlockHeader>) -> Self {
+        let block_summary = block_header.map(|hdr| ExecutedBlockSummary {
+            hash: hdr.hash(),
+            state_root_hash,
+            accumulated_seed: hdr.accumulated_seed(),
+        });
+        Self {
+            child_height: block_header.map_or(0, |hdr| hdr.height() + 1),
+            block_summary,
+            state_root_hash,
+        }
+    }
 }

@@ -1,10 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::{
-    collections::BTreeMap,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -13,10 +10,9 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    Key,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
+use super::GlobalStateUpdate;
 
 use crate::components::consensus::EraId;
 #[cfg(test)]
@@ -39,41 +35,6 @@ impl ActivationPoint {
 impl Display for ActivationPoint {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "upgrade activation point {}", self.era_id)
-    }
-}
-
-/// Type storing the information about modifications to be applied to the global state.
-/// It stores the serialized `StoredValue`s corresponding to keys to be modified.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
-pub struct GlobalStateUpdate(pub(crate) BTreeMap<Key, Bytes>);
-
-impl ToBytes for GlobalStateUpdate {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-#[cfg(test)]
-impl GlobalStateUpdate {
-    fn random(rng: &mut TestRng) -> Self {
-        let entries = rng.gen_range(0, 10);
-        let mut map = BTreeMap::new();
-        for _ in 0..entries {
-            map.insert(rng.gen(), rng.gen());
-        }
-        Self(map)
-    }
-}
-
-impl FromBytes for GlobalStateUpdate {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (update, remainder) = BTreeMap::<Key, Bytes>::from_bytes(bytes)?;
-        let global_state_update = GlobalStateUpdate(update);
-        Ok((global_state_update, remainder))
     }
 }
 
@@ -153,13 +114,6 @@ impl FromBytes for ProtocolConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn global_state_update_bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
-        let update = GlobalStateUpdate::random(&mut rng);
-        bytesrepr::test_serialization_roundtrip(&update);
-    }
 
     #[test]
     fn protocol_config_bytesrepr_roundtrip() {

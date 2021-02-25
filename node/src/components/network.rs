@@ -319,6 +319,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                         "Could not acquire `known_addresses_mut` mutex: {:?}",
                         err
                     )
+                    .ignore()
                 }
             };
             if let Some(state) = known_addresses.get_mut(address) {
@@ -916,7 +917,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::ExpiredListenAddress(address) => {
                 self.listening_addresses.retain(|addr| *addr != address);
                 if self.listening_addresses.is_empty() {
-                    return fatal!(effect_builder, "no remaining listening addresses");
+                    return fatal!(effect_builder, "no remaining listening addresses").ignore();
                 }
                 debug!(%address, "{}: listening address expired", self.our_id);
                 Effects::new()
@@ -925,7 +926,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 // If the listener closed without an error, we're already shutting down the server.
                 // Otherwise, we need to kill the node as it cannot function without a listener.
                 match reason {
-                    Err(error) => fatal!(effect_builder, "listener closed: {}", error),
+                    Err(error) => fatal!(effect_builder, "listener closed: {}", error).ignore(),
                     Ok(()) => {
                         debug!("{}: listener closed", self.our_id);
                         Effects::new()

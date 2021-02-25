@@ -1,4 +1,5 @@
 use crate::types::{ActivationPoint, Block, BlockHash};
+
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]

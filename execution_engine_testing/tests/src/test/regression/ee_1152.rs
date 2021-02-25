@@ -30,7 +30,6 @@ static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DELEGATOR_1_SECRET_KEY));
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
 const VALIDATOR_STAKE: u64 = 1_000_000_000;
@@ -40,15 +39,13 @@ const DELEGATE_AMOUNT: u64 = 1_234_567;
 #[test]
 fn should_run_ee_1152_regression_test() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_STAKE.into()),
         );
-        let validator_2 = GenesisAccount::new(
+        let validator_2 = GenesisAccount::account(
             *DELEGATOR_1,
-            *DELEGATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_STAKE.into()),
         );

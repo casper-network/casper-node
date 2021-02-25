@@ -23,6 +23,7 @@ use crate::{
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
+    crypto::hash::Digest,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
@@ -170,6 +171,7 @@ impl reactor::Reactor for Reactor {
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime = ContractRuntime::new(
+            Digest::random(rng),
             None,
             Version::new(1, 0, 0),
             storage_withdir,
