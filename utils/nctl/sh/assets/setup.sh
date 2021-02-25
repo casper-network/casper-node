@@ -96,6 +96,8 @@ function _set_chainspec_account()
 [[accounts]]
 public_key = "${ACCOUNT_KEY}"
 balance = "$INITIAL_BALANCE"
+
+[[accounts.validator]]
 bonded_amount = "$INITIAL_WEIGHT"
 
 EOM
@@ -154,7 +156,6 @@ function _set_chainspec_account_for_user()
     cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
 [[accounts]]
 balance = "$BALANCE_OF_USER"
-bonded_amount = "0"
 public_key = "${ACCOUNT_KEY_OF_USER}"
 
 EOM

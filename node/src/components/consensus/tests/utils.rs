@@ -1,11 +1,12 @@
+use num::Zero;
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 
 use crate::{
     types::{
-        chainspec::{AccountConfig, AccountsConfig},
+        chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
         Chainspec, Timestamp,
     },
     utils::Loadable,
@@ -31,7 +32,8 @@ where
         .into_iter()
         .map(|(pk, stake)| {
             let motes = Motes::new(stake.into());
-            AccountConfig::new(pk, motes, motes)
+            let validator_config = ValidatorConfig::new(motes, DelegationRate::zero());
+            AccountConfig::new(pk, motes, Some(validator_config))
         })
         .collect();
     let delegators = vec![];

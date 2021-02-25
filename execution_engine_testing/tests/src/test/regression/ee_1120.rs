@@ -1,18 +1,22 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
     system::auction::{
-        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
-        METHOD_SLASH, UNBONDING_PURSES_KEY,
+        Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+        ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -53,12 +57,18 @@ fn should_run_ee_1120_slash_delegators() {
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         let validator_2 = GenesisAccount::account(
             *VALIDATOR_2,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_2_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_2_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

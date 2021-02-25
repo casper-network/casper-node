@@ -37,9 +37,9 @@ impl Bid {
         validator_public_key: PublicKey,
         bonding_purse: URef,
         staked_amount: U512,
+        delegation_rate: DelegationRate,
         release_timestamp_millis: u64,
     ) -> Self {
-        let delegation_rate = 0;
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let delegators = BTreeMap::new();
         let inactive = false;
@@ -329,6 +329,7 @@ mod tests {
         let validator_release_timestamp = TIMESTAMP_MILLIS;
         let validator_bonding_purse = URef::new([42; 32], AccessRights::ADD);
         let validator_staked_amount = U512::from(1000);
+        let validator_delegation_rate = 0;
 
         let delegator_1_release_timestamp = TIMESTAMP_MILLIS + 1;
         let delegator_1_bonding_purse = URef::new([52; 32], AccessRights::ADD);
@@ -358,6 +359,7 @@ mod tests {
             validator_pk,
             validator_bonding_purse,
             validator_staked_amount,
+            validator_delegation_rate,
             validator_release_timestamp,
         );
 

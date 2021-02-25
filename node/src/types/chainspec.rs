@@ -26,7 +26,7 @@ use casper_execution_engine::{
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
-pub(crate) use self::accounts_config::AccountConfig;
+pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
 pub(crate) use self::{
     accounts_config::AccountsConfig, core_config::CoreConfig, deploy_config::DeployConfig,
     global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,

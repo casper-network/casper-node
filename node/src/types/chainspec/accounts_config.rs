@@ -2,6 +2,7 @@
 //! genesis, and set up auction contract with validators and delegators.
 mod account_config;
 mod delegator_config;
+mod validator_config;
 
 use std::path::Path;
 
@@ -18,6 +19,7 @@ use crate::utils::{self, Loadable};
 use super::error::ChainspecAccountsLoadError;
 pub use account_config::AccountConfig;
 pub use delegator_config::DelegatorConfig;
+pub use validator_config::ValidatorConfig;
 
 const CHAINSPEC_ACCOUNTS_FILENAME: &str = "accounts.toml";
 

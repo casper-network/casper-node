@@ -1,4 +1,5 @@
 use assert_matches::assert_matches;
+use num_traits::Zero;
 
 use casper_engine_test_support::{
     internal::{
@@ -11,7 +12,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{genesis::GenesisAccount, Error as EngineError},
+        engine_state::{
+            genesis::{GenesisAccount, GenesisValidator},
+            Error as EngineError,
+        },
         execution::Error,
     },
     shared::motes::Motes,
@@ -255,7 +259,10 @@ fn should_fail_unbonding_validator_with_locked_funds() {
         let account = GenesisAccount::account(
             account_1_public_key,
             Motes::new(account_1_balance),
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account);
         tmp

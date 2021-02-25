@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use std::collections::BTreeSet;
 
 use casper_engine_test_support::{
@@ -8,11 +9,14 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
+    system::auction::{DelegationRate, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
@@ -51,22 +55,34 @@ fn should_run_ee_1045_squash_validators() {
     let account_1 = GenesisAccount::account(
         *ACCOUNT_1_PK,
         Motes::new(ACCOUNT_1_BALANCE.into()),
-        Motes::new(ACCOUNT_1_BOND.into()),
+        Some(GenesisValidator::new(
+            Motes::new(ACCOUNT_1_BOND.into()),
+            DelegationRate::zero(),
+        )),
     );
     let account_2 = GenesisAccount::account(
         *ACCOUNT_2_PK,
         Motes::new(ACCOUNT_2_BALANCE.into()),
-        Motes::new(ACCOUNT_2_BOND.into()),
+        Some(GenesisValidator::new(
+            Motes::new(ACCOUNT_2_BOND.into()),
+            DelegationRate::zero(),
+        )),
     );
     let account_3 = GenesisAccount::account(
         *ACCOUNT_3_PK,
         Motes::new(ACCOUNT_3_BALANCE.into()),
-        Motes::new(ACCOUNT_3_BOND.into()),
+        Some(GenesisValidator::new(
+            Motes::new(ACCOUNT_3_BOND.into()),
+            DelegationRate::zero(),
+        )),
     );
     let account_4 = GenesisAccount::account(
         *ACCOUNT_4_PK,
         Motes::new(ACCOUNT_4_BALANCE.into()),
-        Motes::new(ACCOUNT_4_BOND.into()),
+        Some(GenesisValidator::new(
+            Motes::new(ACCOUNT_4_BOND.into()),
+            DelegationRate::zero(),
+        )),
     );
 
     let round_1_validator_squash = vec![*ACCOUNT_2_PK, *ACCOUNT_4_PK];
