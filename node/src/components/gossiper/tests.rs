@@ -77,7 +77,7 @@ impl From<StorageRequest> for Event {
 
 impl From<ContractRuntimeRequest> for Event {
     fn from(request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(contract_runtime::Event::Request(request))
+        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 

@@ -25,6 +25,7 @@ use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
 };
+
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -50,7 +51,7 @@ use crate::{
         announcements::{
             ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            NetworkAnnouncement,
+            LinearChainBlock, NetworkAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -246,7 +247,7 @@ impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event 
 
 impl From<ContractRuntimeRequest> for Event {
     fn from(request: ContractRuntimeRequest) -> Event {
-        Event::ContractRuntime(contract_runtime::Event::Request(request))
+        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 
@@ -715,10 +716,13 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::LinearChainBlock {
-                block,
-                execution_results,
-            }) => {
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::LinearChainBlock(
+                linear_chain_block,
+            )) => {
+                let LinearChainBlock {
+                    block,
+                    execution_results,
+                } = *linear_chain_block;
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
 

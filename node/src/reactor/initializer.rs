@@ -41,7 +41,8 @@ pub enum Event {
     #[from]
     Chainspec(chainspec_loader::Event),
 
-    /// Storage event.
+    /// Storage event.:65
+
     #[from]
     Storage(#[serde(skip_serializing)] storage::Event),
 
@@ -62,7 +63,7 @@ impl From<StorageRequest> for Event {
 
 impl From<ContractRuntimeRequest> for Event {
     fn from(request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(contract_runtime::Event::Request(request))
+        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
     }
 }
 

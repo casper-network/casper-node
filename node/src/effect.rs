@@ -659,10 +659,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.0
             .schedule(
-                ContractRuntimeAnnouncement::LinearChainBlock {
-                    block,
-                    execution_results,
-                },
+                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
                 QueueKind::Regular,
             )
             .await

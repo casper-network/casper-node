@@ -12,6 +12,7 @@ use std::{
 pub use config::Config;
 use semver::Version;
 use smallvec::SmallVec;
+
 pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
 use datasize::DataSize;
@@ -65,12 +66,20 @@ use crate::{
 pub enum Event {
     /// A request made of the contract runtime component.
     #[from]
-    Request(ContractRuntimeRequest),
+    Request(Box<ContractRuntimeRequest>),
     /// Indicates that block has already been finalized and executed in the past.
     BlockAlreadyExists(Box<Block>),
     /// Indicates that a block is not known yet, and needs to be executed.
-    BlockIsNew(FinalizedBlock),
+    BlockIsNew(Box<FinalizedBlock>),
 
+    /// Results received by the contract runtime.
+    #[from]
+    Result(Box<ContractRuntimeResult>),
+}
+
+/// Contract runtime component event.
+#[derive(Debug, From)]
+pub enum ContractRuntimeResult {
     /// Received all requested deploys.
     GetDeploysResult {
         /// The block that needs the deploys for execution.
@@ -311,380 +320,395 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(ContractRuntimeRequest::GetProtocolData {
-                protocol_version,
-                responder,
-            }) => {
-                let result = self
-                    .engine_state
-                    .get_protocol_data(protocol_version)
-                    .map(|inner| inner.map(Box::new));
+            Event::Request(request) => {
+                match *request {
+                    ContractRuntimeRequest::GetProtocolData {
+                        protocol_version,
+                        responder,
+                    } => {
+                        let result = self
+                            .engine_state
+                            .get_protocol_data(protocol_version)
+                            .map(|inner| inner.map(Box::new));
 
-                responder.respond(result).ignore()
-            }
-            Event::Request(ContractRuntimeRequest::CommitGenesis {
-                chainspec,
-                responder,
-            }) => {
-                let result = self.commit_genesis(chainspec);
-                responder.respond(result).ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Execute {
-                execute_request,
-                responder,
-            }) => {
-                trace!(?execute_request, "execute");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.run_execute(correlation_id, *execute_request);
-                    metrics.run_execute.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "execute result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                responder,
-            }) => {
-                trace!(?state_root_hash, ?effects, "commit");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result =
-                        engine_state.apply_effect(correlation_id, state_root_hash.into(), effects);
-                    metrics.apply_effect.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "commit result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Upgrade {
-                upgrade_config,
-                responder,
-            }) => {
-                trace!(?upgrade_config, "upgrade");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.commit_upgrade(correlation_id, *upgrade_config);
-                    metrics
-                        .commit_upgrade
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "upgrade result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Query {
-                query_request,
-                responder,
-            }) => {
-                trace!(?query_request, "query");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.run_query(correlation_id, query_request);
-                    metrics.run_query.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "query result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::GetBalance {
-                balance_request,
-                responder,
-            }) => {
-                trace!(?balance_request, "balance");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.get_purse_balance(
-                        correlation_id,
-                        balance_request.state_hash(),
-                        balance_request.purse_uref(),
-                    );
-                    metrics.get_balance.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "balance result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::IsBonded {
-                state_root_hash,
-                era_id,
-                protocol_version,
-                public_key: validator_key,
-                responder,
-            }) => {
-                trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                let request =
-                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let era_validators = engine_state.get_era_validators(correlation_id, request);
-                    metrics
-                        .get_validator_weights
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "is validator bonded result");
-                    let is_bonded = era_validators.and_then(|validator_map| {
-                        match validator_map.get(&era_id.0) {
-                            None => Err(GetEraValidatorsError::EraValidatorsMissing),
-                            Some(era_validators) => Ok(era_validators.contains_key(&validator_key)),
+                        responder.respond(result).ignore()
+                    }
+                    ContractRuntimeRequest::CommitGenesis {
+                        chainspec,
+                        responder,
+                    } => {
+                        let result = self.commit_genesis(chainspec);
+                        responder.respond(result).ignore()
+                    }
+                    ContractRuntimeRequest::Execute {
+                        execute_request,
+                        responder,
+                    } => {
+                        trace!(?execute_request, "execute");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.run_execute(correlation_id, *execute_request);
+                            metrics.run_execute.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "execute result");
+                            responder.respond(result).await
                         }
-                    });
-                    responder.respond(is_bonded).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::GetEraValidators { request, responder }) => {
-                trace!(?request, "get era validators request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                // Increment the counter to track the amount of times GetEraValidators was
-                // requested.
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let era_validators =
-                        engine_state.get_era_validators(correlation_id, request.into());
-                    metrics
-                        .get_era_validators
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "get era validators response");
-                    responder.respond(era_validators).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::GetValidatorWeightsByEraId {
-                request,
-                responder,
-            }) => {
-                trace!(?request, "get validator weights by era id request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                // Increment the counter to track the amount of times GetEraValidatorsByEraId was
-                // requested.
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let era_id = request.era_id().into();
-                    let era_validators =
-                        engine_state.get_era_validators(correlation_id, request.into());
-                    let result: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
-                        match era_validators {
-                            Ok(era_validators) => {
-                                let validator_weights = era_validators.get(&era_id).cloned();
-                                Ok(validator_weights)
-                            }
-                            Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
-                            Err(error) => Err(error),
-                        };
-                    metrics
-                        .get_era_validator_weights_by_era_id
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get validator weights by era id response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Step {
-                step_request,
-                responder,
-            }) => {
-                trace!(?step_request, "step request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.commit_step(correlation_id, step_request);
-                    metrics.commit_step.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "step response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::ReadTrie {
-                trie_key,
-                responder,
-            }) => {
-                trace!(?trie_key, "read_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.read_trie(correlation_id, trie_key);
-                    metrics.read_trie.observe(start.elapsed().as_secs_f64());
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(?error, "read_trie_request");
-                            None
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::Commit {
+                        state_root_hash,
+                        effects,
+                        responder,
+                    } => {
+                        trace!(?state_root_hash, ?effects, "commit");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.apply_effect(
+                                correlation_id,
+                                state_root_hash.into(),
+                                effects,
+                            );
+                            metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "commit result");
+                            responder.respond(result).await
                         }
-                    };
-                    trace!(?result, "read_trie response");
-                    responder.respond(result).await
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::Upgrade {
+                        upgrade_config,
+                        responder,
+                    } => {
+                        trace!(?upgrade_config, "upgrade");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result =
+                                engine_state.commit_upgrade(correlation_id, *upgrade_config);
+                            metrics
+                                .commit_upgrade
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "upgrade result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::Query {
+                        query_request,
+                        responder,
+                    } => {
+                        trace!(?query_request, "query");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.run_query(correlation_id, query_request);
+                            metrics.run_query.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "query result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::GetBalance {
+                        balance_request,
+                        responder,
+                    } => {
+                        trace!(?balance_request, "balance");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.get_purse_balance(
+                                correlation_id,
+                                balance_request.state_hash(),
+                                balance_request.purse_uref(),
+                            );
+                            metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "balance result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::IsBonded {
+                        state_root_hash,
+                        era_id,
+                        protocol_version,
+                        public_key: validator_key,
+                        responder,
+                    } => {
+                        trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        let request =
+                            GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let era_validators =
+                                engine_state.get_era_validators(correlation_id, request);
+                            metrics
+                                .get_validator_weights
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?era_validators, "is validator bonded result");
+                            let is_bonded = era_validators.and_then(|validator_map| {
+                                match validator_map.get(&era_id.0) {
+                                    None => Err(GetEraValidatorsError::EraValidatorsMissing),
+                                    Some(era_validators) => {
+                                        Ok(era_validators.contains_key(&validator_key))
+                                    }
+                                }
+                            });
+                            responder.respond(is_bonded).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::GetEraValidators { request, responder } => {
+                        trace!(?request, "get era validators request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        // Increment the counter to track the amount of times GetEraValidators was
+                        // requested.
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let era_validators =
+                                engine_state.get_era_validators(correlation_id, request.into());
+                            metrics
+                                .get_era_validators
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?era_validators, "get era validators response");
+                            responder.respond(era_validators).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder } => {
+                        trace!(?request, "get validator weights by era id request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        // Increment the counter to track the amount of times
+                        // GetEraValidatorsByEraId was requested.
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let era_id = request.era_id().into();
+                            let era_validators =
+                                engine_state.get_era_validators(correlation_id, request.into());
+                            let result: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
+                                match era_validators {
+                                    Ok(era_validators) => {
+                                        let validator_weights =
+                                            era_validators.get(&era_id).cloned();
+                                        Ok(validator_weights)
+                                    }
+                                    Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
+                                    Err(error) => Err(error),
+                                };
+                            metrics
+                                .get_era_validator_weights_by_era_id
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "get validator weights by era id response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::Step {
+                        step_request,
+                        responder,
+                    } => {
+                        trace!(?step_request, "step request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.commit_step(correlation_id, step_request);
+                            metrics.commit_step.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "step response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::ReadTrie {
+                        trie_key,
+                        responder,
+                    } => {
+                        trace!(?trie_key, "read_trie request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.read_trie(correlation_id, trie_key);
+                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                            let result = match result {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    error!(?error, "read_trie_request");
+                                    None
+                                }
+                            };
+                            trace!(?result, "read_trie response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::PutTrie { trie, responder } => {
+                        trace!(?trie, "put_trie request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state
+                                .put_trie_and_find_missing_descendant_trie_keys(
+                                    correlation_id,
+                                    &*trie,
+                                );
+                            metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "put_trie response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::MissingTrieKeys {
+                        trie_key,
+                        responder,
+                    } => {
+                        trace!(?trie_key, "missing_trie_keys request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.missing_trie_keys(correlation_id, trie_key);
+                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "missing_trie_keys response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
+                        debug!(?finalized_block, "execute block");
+                        effect_builder
+                            .get_block_at_height_local(finalized_block.height())
+                            .event(move |maybe_block| {
+                                maybe_block.map(Box::new).map_or_else(
+                                    || Event::BlockIsNew(Box::new(finalized_block)),
+                                    Event::BlockAlreadyExists,
+                                )
+                            })
+                    }
                 }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::PutTrie { trie, responder }) => {
-                trace!(?trie, "put_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state
-                        .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
-                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "put_trie response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::MissingTrieKeys {
-                trie_key,
-                responder,
-            }) => {
-                trace!(?trie_key, "missing_trie_keys request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, trie_key);
-                    metrics.read_trie.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "missing_trie_keys response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::ExecuteBlock(finalized_block)) => {
-                debug!(?finalized_block, "execute block");
-                effect_builder
-                    .get_block_at_height_local(finalized_block.height())
-                    .event(move |maybe_block| {
-                        maybe_block.map(Box::new).map_or_else(
-                            || Event::BlockIsNew(finalized_block),
-                            Event::BlockAlreadyExists,
-                        )
-                    })
             }
             Event::BlockAlreadyExists(block) => {
                 effect_builder.handle_linear_chain_block(*block).ignore()
             }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
-            Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),
-            Event::GetDeploysResult {
-                finalized_block,
-                deploys,
-            } => {
-                trace!(total = %deploys.len(), ?deploys, "fetched deploys");
-                self.handle_get_deploys_result(effect_builder, finalized_block, deploys)
+            Event::BlockIsNew(finalized_block) => {
+                self.get_deploys(effect_builder, *finalized_block)
             }
+            Event::Result(contract_runtime_result) => match *contract_runtime_result {
+                ContractRuntimeResult::GetDeploysResult {
+                    finalized_block,
+                    deploys,
+                } => {
+                    trace!(total = %deploys.len(), ?deploys, "fetched deploys");
+                    self.handle_get_deploys_result(effect_builder, finalized_block, deploys)
+                }
 
-            Event::GetParentResult {
-                finalized_block,
-                deploys,
-                parent,
-            } => {
-                trace!(parent_found = %parent.is_some(), finalized_height = %finalized_block.height(), "fetched parent");
-                let parent_summary =
-                    parent.map(
-                        |(hash, accumulated_seed, state_root_hash)| ExecutedBlockSummary {
+                ContractRuntimeResult::GetParentResult {
+                    finalized_block,
+                    deploys,
+                    parent,
+                } => {
+                    trace!(parent_found = %parent.is_some(), finalized_height = %finalized_block.height(), "fetched parent");
+                    let parent_summary = parent.map(|(hash, accumulated_seed, state_root_hash)| {
+                        ExecutedBlockSummary {
                             hash,
                             state_root_hash,
                             accumulated_seed,
-                        },
-                    );
-                self.handle_get_parent_result(
-                    effect_builder,
-                    finalized_block,
-                    deploys,
-                    parent_summary,
-                )
-            }
+                        }
+                    });
+                    self.handle_get_parent_result(
+                        effect_builder,
+                        finalized_block,
+                        deploys,
+                        parent_summary,
+                    )
+                }
 
-            Event::DeployExecutionResult {
-                state,
-                deploy_hash,
-                deploy_header,
-                result,
-            } => {
-                trace!(?state, %deploy_hash, ?result, "deploy execution result");
-                // As for now a given state is expected to exist.
-                let execution_results = result.unwrap();
-                self.commit_execution_effects(
-                    effect_builder,
+                ContractRuntimeResult::DeployExecutionResult {
                     state,
                     deploy_hash,
                     deploy_header,
-                    execution_results,
-                )
-            }
+                    result,
+                } => {
+                    trace!(?state, %deploy_hash, ?result, "deploy execution result");
+                    // As for now a given state is expected to exist.
+                    let execution_results = result.unwrap();
+                    self.commit_execution_effects(
+                        effect_builder,
+                        state,
+                        deploy_hash,
+                        deploy_header,
+                        execution_results,
+                    )
+                }
 
-            Event::CommitExecutionEffects {
-                mut state,
-                commit_result,
-            } => {
-                trace!(?state, ?commit_result, "commit result");
-                match commit_result {
-                    Ok(CommitResult::Success { state_root }) => {
-                        debug!(?state_root, "commit succeeded");
-                        state.state_root_hash = state_root.into();
-                        self.execute_next_deploy_or_create_block(effect_builder, state)
-                    }
-                    _ => {
-                        // When commit fails we panic as we'll not be able to execute the next
-                        // block.
-                        error!(
-                            ?commit_result,
-                            "commit failed - internal contract runtime error"
-                        );
-                        panic!("unable to commit");
+                ContractRuntimeResult::CommitExecutionEffects {
+                    mut state,
+                    commit_result,
+                } => {
+                    trace!(?state, ?commit_result, "commit result");
+                    match commit_result {
+                        Ok(CommitResult::Success { state_root }) => {
+                            debug!(?state_root, "commit succeeded");
+                            state.state_root_hash = state_root.into();
+                            self.execute_next_deploy_or_create_block(effect_builder, state)
+                        }
+                        _ => {
+                            // When commit fails we panic as we'll not be able to execute the next
+                            // block.
+                            error!(
+                                ?commit_result,
+                                "commit failed - internal contract runtime error"
+                            );
+                            panic!("unable to commit");
+                        }
                     }
                 }
-            }
 
-            Event::RunStepResult { mut state, result } => {
-                trace!(?result, "run step result");
-                match result {
-                    Ok(StepResult::Success {
-                        post_state_hash,
-                        next_era_validators,
-                    }) => {
-                        state.state_root_hash = post_state_hash.into();
-                        self.finalize_block_execution(
-                            effect_builder,
-                            state,
-                            Some(next_era_validators),
-                        )
-                    }
-                    _ => {
-                        // When step fails, the auction process is broken and we should panic.
-                        error!(?result, "run step failed - internal contract runtime error");
-                        panic!("unable to run step");
+                ContractRuntimeResult::RunStepResult { mut state, result } => {
+                    trace!(?result, "run step result");
+                    match result {
+                        Ok(StepResult::Success {
+                            post_state_hash,
+                            next_era_validators,
+                        }) => {
+                            state.state_root_hash = post_state_hash.into();
+                            self.finalize_block_execution(
+                                effect_builder,
+                                state,
+                                Some(next_era_validators),
+                            )
+                        }
+                        _ => {
+                            // When step fails, the auction process is broken and we should panic.
+                            error!(?result, "run step failed - internal contract runtime error");
+                            panic!("unable to run step");
+                        }
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -814,9 +838,11 @@ impl ContractRuntime {
             .map(|hash| **hash)
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
-            let result_event = move |_| Event::GetDeploysResult {
-                finalized_block,
-                deploys: VecDeque::new(),
+            let result_event = move |_| {
+                Event::Result(Box::new(ContractRuntimeResult::GetDeploysResult {
+                    finalized_block,
+                    deploys: VecDeque::new(),
+                }))
             };
             return effect_builder.immediately().event(result_event);
         }
@@ -827,21 +853,23 @@ impl ContractRuntime {
         // Get all deploys in order they appear in the finalized block.
         effect_builder
             .get_deploys_from_storage(deploy_hashes)
-            .event(move |result| Event::GetDeploysResult {
-                finalized_block,
-                deploys: result
-                    .into_iter()
-                    // Assumes all deploys are present
-                    .map(|maybe_deploy| {
-                        maybe_deploy.unwrap_or_else(|| {
-                            panic!(
+            .event(move |result| {
+                Event::Result(Box::new(ContractRuntimeResult::GetDeploysResult {
+                    finalized_block,
+                    deploys: result
+                        .into_iter()
+                        // Assumes all deploys are present
+                        .map(|maybe_deploy| {
+                            maybe_deploy.unwrap_or_else(|| {
+                                panic!(
                                 "deploy for block in era={} and height={} is expected to exist \
                                 in the storage",
                                 era_id, height
                             )
+                            })
                         })
-                    })
-                    .collect(),
+                        .collect(),
+                }))
             })
     }
 
@@ -921,9 +949,12 @@ impl ContractRuntime {
                     next_era_id: state.finalized_block.era_id().successor().into(),
                     era_end_timestamp_millis,
                 };
-                return effect_builder
-                    .run_step(request)
-                    .event(|result| Event::RunStepResult { state, result });
+                return effect_builder.run_step(request).event(|result| {
+                    Event::Result(Box::new(ContractRuntimeResult::RunStepResult {
+                        state,
+                        result,
+                    }))
+                });
             }
         };
         let deploy_hash = *next_deploy.id();
@@ -945,11 +976,13 @@ impl ContractRuntime {
         // the deploy and the execution results would be lost.
         effect_builder
             .request_execute(execute_request)
-            .event(move |result| Event::DeployExecutionResult {
-                state,
-                deploy_hash,
-                deploy_header,
-                result,
+            .event(move |result| {
+                Event::Result(Box::new(ContractRuntimeResult::DeployExecutionResult {
+                    state,
+                    deploy_hash,
+                    deploy_header,
+                    result,
+                }))
             })
     }
 
@@ -973,16 +1006,18 @@ impl ContractRuntime {
             let height = finalized_block.height();
             effect_builder
                 .get_block_at_height_local(height - 1)
-                .event(|parent| Event::GetParentResult {
-                    finalized_block,
-                    deploys,
-                    parent: parent.map(|b| {
-                        (
-                            *b.hash(),
-                            b.header().accumulated_seed(),
-                            *b.state_root_hash(),
-                        )
-                    }),
+                .event(|parent| {
+                    Event::Result(Box::new(ContractRuntimeResult::GetParentResult {
+                        finalized_block,
+                        deploys,
+                        parent: parent.map(|b| {
+                            (
+                                *b.hash(),
+                                b.header().accumulated_seed(),
+                                *b.state_root_hash(),
+                            )
+                        }),
+                    }))
                 })
         }
     }
@@ -1064,9 +1099,11 @@ impl ContractRuntime {
         };
         effect_builder
             .request_commit(state.state_root_hash, execution_effect.transforms)
-            .event(|commit_result| Event::CommitExecutionEffects {
-                state,
-                commit_result,
+            .event(|commit_result| {
+                Event::Result(Box::new(ContractRuntimeResult::CommitExecutionEffects {
+                    state,
+                    commit_result,
+                }))
             })
     }
 
