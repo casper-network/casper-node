@@ -83,7 +83,7 @@ use crate::{
         trie::Trie,
     },
 };
-use std::collections::HashSet;
+
 
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
@@ -1696,12 +1696,11 @@ where
     pub fn trie_integrity_check(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: HashSet<Blake2bHash>,
+        trie_keys: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Error>
     where
         Error: From<S::Error>,
     {
-        let trie_keys: Vec<Blake2bHash> = trie_keys.into_iter().collect();
         self.state
             .missing_trie_keys(correlation_id, trie_keys)
             .map_err(Error::from)

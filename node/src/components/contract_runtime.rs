@@ -42,7 +42,7 @@ use crate::{
     NodeRng, StorageConfig,
 };
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use std::collections::HashSet;
+
 
 /// The contract runtime components.
 #[derive(DataSize)]
@@ -618,7 +618,7 @@ impl ContractRuntime {
     }
 
     /// Retrieve trie keys for the integrity check.
-    pub fn trie_store_check(&self, trie_keys: HashSet<Blake2bHash>) -> Vec<Blake2bHash> {
+    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
         let correlation_id = CorrelationId::new();
         match self
             .engine_state

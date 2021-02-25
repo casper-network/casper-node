@@ -230,7 +230,7 @@ pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    trie_key: Vec<Blake2bHash>,
+    mut trie_keys_to_visit: Vec<Blake2bHash>,
 ) -> Result<Vec<Blake2bHash>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -241,8 +241,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut missing_descendants = Vec::new();
-    let mut trie_keys_to_visit_queue = trie_key;
-    while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
+    while let Some(trie_key) = trie_keys_to_visit.pop() {
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
         if let Some(trie_value) = &maybe_retrieved_trie {
             let hash_of_trie_value = {
@@ -271,19 +270,22 @@ where
                 for (_, pointer) in pointer_block.to_indexed_pointers() {
                     match pointer {
                         Pointer::LeafPointer(descendant_leaf_trie_key) => {
-                            trie_keys_to_visit_queue.push(descendant_leaf_trie_key)
+                            trie_keys_to_visit.push(descendant_leaf_trie_key)
                         }
                         Pointer::NodePointer(descendant_node_trie_key) => {
-                            trie_keys_to_visit_queue.push(descendant_node_trie_key)
+                            trie_keys_to_visit.push(descendant_node_trie_key)
                         }
                     }
                 }
             }
             // If we hit an extension block, add its pointer to the queue
             Some(Trie::Extension { pointer, .. }) => {
-                trie_keys_to_visit_queue.push(pointer.into_hash())
+                trie_keys_to_visit.push(pointer.into_hash())
             }
         }
+        // TODO Use BTreeSet when pop_first() is added to stable from nightly.
+        trie_keys_to_visit.sort();
+        trie_keys_to_visit.dedup();
     }
     Ok(missing_descendants)
 }

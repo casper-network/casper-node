@@ -164,10 +164,12 @@ impl Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
 
-        if let Some(blake_hashes) = storage.get_state_root_hashes_for_trie_check() {
-            let missing_trie_keys = contract_runtime.trie_store_check(blake_hashes);
+        if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
+            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
             if !missing_trie_keys.is_empty() {
-                panic!("Fatal error! Trie-Key store is not empty. Wipe the DB to ensure operations")
+                panic!("Fatal error! Trie-Key store is not empty.\n {:?}\n \
+                Wipe the DB to ensure operations.\n Present state_roots: {:?}",
+                       missing_trie_keys, state_roots.clone())
             }
         }
 
