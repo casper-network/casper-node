@@ -16,7 +16,7 @@ use casper_types::{
     contracts::NamedKeys,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion,
+    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
     RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
@@ -424,6 +424,13 @@ where
                 key, error
             ))
         })
+    }
+
+    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_keys(self.correlation_id, key_tag)
+            .map_err(Into::into)
     }
 
     pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
