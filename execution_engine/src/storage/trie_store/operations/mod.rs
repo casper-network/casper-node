@@ -279,9 +279,7 @@ where
                 }
             }
             // If we hit an extension block, add its pointer to the queue
-            Some(Trie::Extension { pointer, .. }) => {
-                trie_keys_to_visit.push(pointer.into_hash())
-            }
+            Some(Trie::Extension { pointer, .. }) => trie_keys_to_visit.push(pointer.into_hash()),
         }
         // TODO Use BTreeSet when pop_first() is added to stable from nightly.
         trie_keys_to_visit.sort();

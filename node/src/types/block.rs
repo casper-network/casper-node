@@ -1005,7 +1005,7 @@ impl BlockSignatures {
         for (key, signature) in self.proofs.iter() {
             match crypto::verify(bytes.clone(), signature, key) {
                 Ok(_) => continue,
-                Err(error) => return Err(error)
+                Err(error) => return Err(error),
             }
         }
         Ok(())

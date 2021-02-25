@@ -25,7 +25,7 @@ use casper_execution_engine::{
         genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
         GetEraValidatorsRequest,
     },
-    shared::newtypes::CorrelationId,
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
@@ -41,8 +41,6 @@ use crate::{
     utils::WithDir,
     NodeRng, StorageConfig,
 };
-use casper_execution_engine::shared::newtypes::Blake2bHash;
-
 
 /// The contract runtime components.
 #[derive(DataSize)]
@@ -605,7 +603,7 @@ impl ContractRuntime {
         )
     }
 
-    /// Retrieve missing trie-keys for a DB check at upgrade.
+    /// Retrieves missing trie-keys for a DB check at upgrade.
     pub fn retrieve_missing_keys(&self, trie_key: Blake2bHash) -> Vec<Blake2bHash> {
         let correlation_id = CorrelationId::new();
         match self

@@ -82,7 +82,6 @@ use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
-
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 
@@ -779,7 +778,6 @@ impl Storage {
 
         blake_hashes.sort();
         blake_hashes.dedup();
-
 
         Some(blake_hashes)
     }
