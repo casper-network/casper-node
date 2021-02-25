@@ -103,7 +103,7 @@ fn test_highway_protocol_handle_message_parse_error() {
     let msg = vec![];
     let mut rng = TestRng::new();
     let mut effects: Vec<ProtocolOutcome<NodeId, ClContext>> =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
+        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), &mut rng);
 
     assert_eq!(effects.len(), 1);
 
@@ -149,8 +149,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
-    let mut outcomes =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
+    let mut outcomes = highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), &mut rng);
     assert_eq!(outcomes.len(), 1);
 
     let maybe_protocol_outcome = outcomes.pop();
@@ -207,7 +206,7 @@ fn send_a_valid_wire_unit() {
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
 
-    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
+    let mut outcomes = highway_protocol.handle_message(sender, msg, &mut rng);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
@@ -259,7 +258,7 @@ fn detect_doppelganger() {
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
+    let mut outcomes = highway_protocol.handle_message(sender, msg, &mut rng);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::DoppelgangerDetected => return,

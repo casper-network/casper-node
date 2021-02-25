@@ -17,6 +17,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
+    mem,
     time::Duration,
 };
 
@@ -117,7 +118,7 @@ pub enum Event<I> {
     },
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
-        switch_blocks: HashMap<EraId, BlockHeader>,
+        key_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
         state_root_hash: Digest,
         timestamp: Timestamp,
@@ -323,18 +324,35 @@ where
                 handling_es.handle_create_new_era(*block, booking_block_hash)
             }
             Event::InitializeEras {
-                switch_blocks,
+                key_blocks,
                 validators,
                 state_root_hash,
                 timestamp,
                 genesis_start_time,
-            } => handling_es.handle_initialize_eras(
-                switch_blocks,
-                validators,
-                state_root_hash,
-                timestamp,
-                genesis_start_time,
-            ),
+            } => {
+                let mut effects = handling_es.handle_initialize_eras(
+                    key_blocks,
+                    validators,
+                    state_root_hash,
+                    timestamp,
+                    genesis_start_time,
+                );
+
+                // TODO: remove that when possible
+                // This is needed because we want to make sure that we only try to handle linear
+                // chain blocks once the eras are initialized. It's possible that we will get
+                // events with linear chain blocks before that - in such a case we cache the
+                // requests and only handle them here.
+                for queued_request in mem::take(&mut handling_es.era_supervisor.enqueued_requests) {
+                    effects.extend(handling_es.era_supervisor.handle_event(
+                        effect_builder,
+                        handling_es.rng,
+                        queued_request.into(),
+                    ));
+                }
+
+                effects
+            }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
             Event::GotUpgradeActivationPoint(activation_point) => {

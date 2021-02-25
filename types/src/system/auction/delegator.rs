@@ -14,36 +14,45 @@ use crate::{
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Delegator {
+    delegator_public_key: PublicKey,
     staked_amount: U512,
     bonding_purse: URef,
-    delegatee: PublicKey,
+    validator_public_key: PublicKey,
     vesting_schedule: Option<VestingSchedule>,
 }
 
 impl Delegator {
     /// Creates a new [`Delegator`]
-    pub fn unlocked(staked_amount: U512, bonding_purse: URef, delegatee: PublicKey) -> Self {
+    pub fn unlocked(
+        delegator_public_key: PublicKey,
+        staked_amount: U512,
+        bonding_purse: URef,
+        validator_public_key: PublicKey,
+    ) -> Self {
         let vesting_schedule = None;
         Delegator {
+            delegator_public_key,
             staked_amount,
             bonding_purse,
-            delegatee,
+            validator_public_key,
             vesting_schedule,
         }
     }
 
     /// Creates new instance of a [`Delegator`] with locked funds.
     pub fn locked(
+        delegator_public_key: PublicKey,
         staked_amount: U512,
         bonding_purse: URef,
-        delegatee: PublicKey,
+        validator_public_key: PublicKey,
         release_timestamp_millis: u64,
     ) -> Self {
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         Delegator {
+            delegator_public_key,
             staked_amount,
             bonding_purse,
-            delegatee,
+            validator_public_key,
             vesting_schedule,
         }
     }
@@ -59,8 +68,8 @@ impl Delegator {
     }
 
     /// Returns delegatee
-    pub fn delegatee(&self) -> &PublicKey {
-        &self.delegatee
+    pub fn validator_public_key(&self) -> &PublicKey {
+        &self.validator_public_key
     }
 
     /// Decreases the stake of the provided bid
@@ -132,32 +141,36 @@ impl CLTyped for Delegator {
 impl ToBytes for Delegator {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.delegator_public_key.to_bytes()?);
         buffer.extend(self.staked_amount.to_bytes()?);
         buffer.extend(self.bonding_purse.to_bytes()?);
-        buffer.extend(self.delegatee.to_bytes()?);
+        buffer.extend(self.validator_public_key.to_bytes()?);
         buffer.extend(self.vesting_schedule.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.staked_amount.serialized_length()
+        self.delegator_public_key.serialized_length()
+            + self.staked_amount.serialized_length()
             + self.bonding_purse.serialized_length()
-            + self.delegatee.serialized_length()
+            + self.validator_public_key.serialized_length()
             + self.vesting_schedule.serialized_length()
     }
 }
 
 impl FromBytes for Delegator {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (delegator_public_key, bytes) = PublicKey::from_bytes(bytes)?;
         let (staked_amount, bytes) = U512::from_bytes(bytes)?;
         let (bonding_purse, bytes) = URef::from_bytes(bytes)?;
-        let (delegatee, bytes) = PublicKey::from_bytes(bytes)?;
+        let (validator_public_key, bytes) = PublicKey::from_bytes(bytes)?;
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Delegator {
+                delegator_public_key,
                 staked_amount,
                 bonding_purse,
-                delegatee,
+                validator_public_key,
                 vesting_schedule,
             },
             bytes,
@@ -173,15 +186,22 @@ mod tests {
     fn serialization_roundtrip() {
         let staked_amount = U512::one();
         let bonding_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-        let delegatee = SecretKey::ed25519([43; 32]).into();
-        let unlocked_delegator = Delegator::unlocked(staked_amount, bonding_purse, delegatee);
+        let delegator_public_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+        let validator_public_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
+        let unlocked_delegator = Delegator::unlocked(
+            delegator_public_key,
+            staked_amount,
+            bonding_purse,
+            validator_public_key,
+        );
         bytesrepr::test_serialization_roundtrip(&unlocked_delegator);
 
         let release_timestamp_millis = 42;
         let locked_delegator = Delegator::locked(
+            delegator_public_key,
             staked_amount,
             bonding_purse,
-            delegatee,
+            validator_public_key,
             release_timestamp_millis,
         );
         bytesrepr::test_serialization_roundtrip(&locked_delegator);

@@ -894,6 +894,19 @@ impl<C: Context> State<C> {
         result
     }
 
+    /// Drops all state other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.units.clear();
+        self.blocks.clear();
+        for obs in self.panorama.iter_mut() {
+            if obs.is_correct() {
+                *obs = Observation::None;
+            }
+        }
+        self.endorsements.clear();
+        self.incomplete_endorsements.clear();
+    }
+
     /// Validates whether a unit with the given panorama and `endorsed` set satsifies the
     /// Limited Naïveté Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
