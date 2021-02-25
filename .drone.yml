@@ -202,7 +202,7 @@ steps:
       from_secret: drone_genesis_secret
     source: "target/upgrade_build/**/*"
     strip_prefix: 'target/upgrade_build/'
-    target: "/drone/$DRONE_COMMIT/"
+    target: "/drone/${DRONE_COMMIT}/"
   when:
     branch:
       - master
