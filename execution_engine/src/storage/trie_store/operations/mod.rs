@@ -914,7 +914,6 @@ where
 /// Returns the iterator over the keys in the subtrie matching `prefix`.
 ///
 /// The root should be the apex of the trie.
-#[cfg(test)]
 pub fn keys_with_prefix<'a, 'b, K, V, T, S>(
     _correlation_id: CorrelationId,
     txn: &'b T,
