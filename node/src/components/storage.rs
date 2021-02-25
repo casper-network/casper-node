@@ -309,6 +309,44 @@ impl Storage {
         drop(cursor);
         drop(block_txn);
 
+        info!("Checking block body db");
+        let body_txn = env.begin_ro_txn()?;
+        let mut cursor = body_txn.open_ro_cursor(block_body_db)?;
+
+        for (raw_key, raw_val) in cursor.iter() {
+            let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+            assert_eq!(
+                raw_key,
+                body.hash().as_ref(),
+                "found corrupt block body in database"
+            );
+        }
+        info!("block body db check complete");
+        drop(cursor);
+        drop(body_txn);
+
+        info!("Checking block_metadata_db");
+        let signature_txn = env.begin_ro_txn()?;
+        let mut cursor = signature_txn.open_ro_cursor(block_metadata_db)?;
+
+        for (raw_key, raw_val) in cursor.iter() {
+            let signature: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+            // Signature verification could be very slow process
+            // It iterates over every signature and verifies them.
+            match signature.verify() {
+                Ok(_) => continue,
+                Err(error) => error!("Error: {} in signature verification. This could indicate a corruption error in the database", error)
+            }
+            assert_eq!(
+                raw_key,
+                signature.block_hash.as_ref(),
+                "Corruption in block_metadata_db"
+            );
+        }
+        info!("Check for block_metadata_db complete");
+        drop(cursor);
+        drop(signature_txn);
+
         Ok(Storage {
             root,
             env,

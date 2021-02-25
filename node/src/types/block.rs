@@ -1003,6 +1003,19 @@ impl BlockSignatures {
     pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
         self.proofs.contains_key(public_key)
     }
+
+    /// Verify the signatures contained within.
+    pub(crate) fn verify(&self) -> crypto::Result<()> {
+        let mut bytes = self.block_hash.inner().to_vec();
+        bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
+        for (key, signature) in self.proofs.iter() {
+            match crypto::verify(bytes.clone(), signature, key) {
+                Ok(_) => continue,
+                Err(error) => return Err(error)
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Display for BlockSignatures {
