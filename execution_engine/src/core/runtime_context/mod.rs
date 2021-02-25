@@ -571,6 +571,7 @@ where
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
+            StoredValue::Bid(_) => Ok(()),
         }
     }
 
