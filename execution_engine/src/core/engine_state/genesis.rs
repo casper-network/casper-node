@@ -446,11 +446,7 @@ impl FromBytes for GenesisAccount {
                 let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
                 let (balance, remainder) = FromBytes::from_bytes(remainder)?;
                 let (validator, remainder) = FromBytes::from_bytes(remainder)?;
-                let genesis_account = GenesisAccount::account(
-                    public_key,
-                    balance,
-                    Some(GenesisValidator::new(validator, DelegationRate::zero())),
-                );
+                let genesis_account = GenesisAccount::account(public_key, balance, validator);
                 Ok((genesis_account, remainder))
             }
             tag if tag == GenesisAccountTag::Delegator as u8 => {
