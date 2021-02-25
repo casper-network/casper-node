@@ -49,6 +49,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         _chainspec: &Chainspec,
         _storage: &Storage,
         init_hash: Option<BlockHash>,
+        _highest_block_header: Option<BlockHeader>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
         _next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, Err>
@@ -297,7 +298,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         }
     }
 
-    fn latest_block(&self) -> Option<&Block> {
+    pub(crate) fn latest_block(&self) -> Option<&Block> {
         match &self.state {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
