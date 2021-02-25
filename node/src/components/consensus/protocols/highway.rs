@@ -26,7 +26,7 @@ use crate::{
         consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::FinalityDetector,
+            finality_detector::{FinalityDetector, FttExceeded},
             highway::{Dependency, GetDepOutcome, Highway, Params, ValidVertex, Vertex},
             state::{Observation, Panorama},
             validators::{ValidatorIndex, Validators},
@@ -246,11 +246,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         outcomes
     }
 
-    fn detect_finality(&mut self) -> impl Iterator<Item = ProtocolOutcome<I, C>> + '_ {
-        self.finality_detector
-            .run(&self.highway)
-            .expect("too many faulty validators")
-            .map(ProtocolOutcome::FinalizedBlock)
+    fn detect_finality(&mut self) -> ProtocolOutcomes<I, C> {
+        let faulty_weight = match self.finality_detector.run(&self.highway) {
+            Ok(iter) => return iter.map(ProtocolOutcome::FinalizedBlock).collect(),
+            Err(FttExceeded(weight)) => weight.0,
+        };
+        error!(
+            %faulty_weight,
+            total_weight = %self.highway.state().total_weight().0,
+            "too many faulty validators"
+        );
+        self.log_participation();
+        vec![ProtocolOutcome::FttExceeded]
     }
 
     /// Adds the given vertices to the protocol state, if possible, or requests missing
@@ -357,22 +364,19 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Returns the median round exponent of all the validators that haven't been observed to be
     /// malicious, as seen by the current panorama.
     /// Returns `None` if there are no correct validators in the panorama.
-    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+    fn median_round_exp(&self) -> Option<u8> {
         self.highway.state().median_round_exp()
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    pub(crate) fn next_era_round_succ_meter(
-        &self,
-        era_start_timestamp: Timestamp,
-    ) -> RoundSuccessMeter<C> {
+    fn next_era_round_succ_meter(&self, era_start_timestamp: Timestamp) -> RoundSuccessMeter<C> {
         self.round_success_meter.next_era(era_start_timestamp)
     }
 
     /// Returns an iterator over all the values that are expected to become finalized, but are not
     /// finalized yet.
-    pub(crate) fn non_finalized_values(
+    fn non_finalized_values(
         &self,
         mut fork_choice: Option<C::Hash>,
     ) -> impl Iterator<Item = &C::ConsensusValue> {
@@ -782,5 +786,9 @@ where
         );
 
         outcomes
+    }
+
+    fn next_round_length(&self) -> Option<TimeDiff> {
+        self.highway.next_round_length()
     }
 }

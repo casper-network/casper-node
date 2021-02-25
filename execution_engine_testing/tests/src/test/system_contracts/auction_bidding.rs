@@ -45,6 +45,7 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
+const DELEGATION_RATE: DelegationRate = 42;
 
 #[ignore]
 #[test]
@@ -77,7 +78,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
-            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .build();
@@ -185,7 +186,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     );
 
     let bids: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(bids.is_empty());
+    let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
+    assert!(default_account_bid.inactive());
+    assert!(default_account_bid.staked_amount().is_zero());
 
     let account_balance_after_slashing = builder.get_purse_balance(unbonding_purse);
     assert_eq!(account_balance_after_slashing, account_balance_before);
@@ -249,9 +252,8 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
+        let account = GenesisAccount::account(
             account_1_public_key,
-            account_1_hash,
             Motes::new(account_1_balance),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -372,7 +374,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
-            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .build();
@@ -549,7 +551,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
             ARG_PUBLIC_KEY => default_public_key_arg,
-            ARG_DELEGATION_RATE => DelegationRate::from(42u8),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
     .with_protocol_version(new_protocol_version)

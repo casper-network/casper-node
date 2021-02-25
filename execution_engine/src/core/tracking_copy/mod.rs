@@ -462,6 +462,14 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         self.reader.read_with_proof(correlation_id, key)
     }
+
+    fn keys_with_prefix(
+        &self,
+        correlation_id: CorrelationId,
+        prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        self.reader.keys_with_prefix(correlation_id, prefix)
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -564,32 +572,16 @@ pub fn validate_query_proof(
 
 pub fn validate_balance_proof(
     hash: &Blake2bHash,
-    purse_proof: &TrieMerkleProof<Key, StoredValue>,
     balance_proof: &TrieMerkleProof<Key, StoredValue>,
     expected_purse_key: Key,
     expected_motes: &U512,
 ) -> Result<(), ValidationError> {
     let expected_balance_key = expected_purse_key
-        .uref_to_hash()
+        .into_uref()
+        .map(|uref| Key::Balance(uref.addr()))
         .ok_or_else(|| ValidationError::KeyIsNotAURef(expected_purse_key.to_owned()))?;
 
-    if purse_proof.key() != &expected_balance_key {
-        return Err(ValidationError::UnexpectedKey);
-    }
-
-    if hash != &purse_proof.compute_state_hash()? {
-        return Err(ValidationError::InvalidProofHash);
-    }
-
-    let purse_proof_stored_value = purse_proof.value().to_owned();
-
-    let purse_balance_clvalue: CLValue = purse_proof_stored_value
-        .try_into()
-        .map_err(|_| ValidationError::ValueToCLValueConversion)?;
-
-    let purse_balance_key: Key = purse_balance_clvalue.into_t()?;
-
-    if balance_proof.key() != &purse_balance_key.normalize() {
+    if balance_proof.key() != &expected_balance_key.normalize() {
         return Err(ValidationError::UnexpectedKey);
     }
 

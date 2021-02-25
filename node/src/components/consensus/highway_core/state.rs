@@ -41,7 +41,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
-    utils::weighted_median,
+    utils::{ds, weighted_median},
 };
 use block::Block;
 use tallies::Tallies;
@@ -155,9 +155,11 @@ where
     /// All units imported so far, by hash.
     /// This is a downward closed set: A unit must only be added here once all of its dependencies
     /// have been added as well, and it has been fully validated.
+    #[data_size(with = ds::hashmap_sample)]
     units: HashMap<C::Hash, Unit<C>>,
     /// All blocks, by hash. All block hashes are also unit hashes, but units that did not
     /// introduce a new block don't have their own entry here.
+    #[data_size(with = ds::hashmap_sample)]
     blocks: HashMap<C::Hash, Block<C>>,
     /// List of faulty validators and their type of fault.
     /// Every validator that has an equivocation in `units` must have an entry here, but there can
@@ -168,10 +170,12 @@ where
     panorama: Panorama<C>,
     /// All currently endorsed units, by hash: units that have enough endorsements to be cited even
     /// if they naively cite an equivocator.
+    #[data_size(with = ds::hashmap_sample)]
     endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 1/2 of stake endorsing them.
     /// Signatures are stored in a map so that a single validator sending lots of signatures for
     /// different units doesn't cause us to allocate a lot of memory.
+    #[data_size(with = ds::hashmap_sample)]
     incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     /// Timestamp of the last ping or unit we received from each validator.
     pings: ValidatorMap<Timestamp>,

@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -39,13 +40,10 @@ static DELEGATOR_2: Lazy<PublicKey> =
 static DELEGATOR_3: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([207; SecretKey::ED25519_LENGTH]).into());
 
-// These values were chosen to correspond to the values in accounts.csv
+// These values were chosen to correspond to the values in accounts.toml
 // at the time of their introduction.
 
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
-static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
-static VALIDATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_3));
 static FAUCET_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000_000_000u64));
 static VALIDATOR_1_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000_000_000u64));
 static VALIDATOR_2_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000_000_000u64));
@@ -67,27 +65,19 @@ static DELEGATOR_3_STAKE: Lazy<U512> = Lazy::new(|| U512::from(300_000_000_000_0
 #[test]
 fn validator_scores_should_reflect_delegates() {
     let accounts = {
-        let faucet = GenesisAccount::new(
-            *FAUCET,
-            *FAUCET_ADDR,
-            Motes::new(*FAUCET_BALANCE),
-            Motes::new(U512::zero()),
-        );
-        let validator_1 = GenesisAccount::new(
+        let faucet = GenesisAccount::account(*FAUCET, Motes::new(*FAUCET_BALANCE), Motes::zero());
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(*VALIDATOR_1_BALANCE),
             Motes::new(*VALIDATOR_1_STAKE),
         );
-        let validator_2 = GenesisAccount::new(
+        let validator_2 = GenesisAccount::account(
             *VALIDATOR_2,
-            *VALIDATOR_2_ADDR,
             Motes::new(*VALIDATOR_2_BALANCE),
             Motes::new(*VALIDATOR_2_STAKE),
         );
-        let validator_3 = GenesisAccount::new(
+        let validator_3 = GenesisAccount::account(
             *VALIDATOR_3,
-            *VALIDATOR_3_ADDR,
             Motes::new(*VALIDATOR_3_BALANCE),
             Motes::new(*VALIDATOR_3_STAKE),
         );

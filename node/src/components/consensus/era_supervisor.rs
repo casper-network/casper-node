@@ -5,6 +5,8 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+mod era;
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
@@ -20,6 +22,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
@@ -31,6 +34,7 @@ use crate::{
     components::consensus::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
+        config::ProtocolConfig,
         consensus_protocol::{
             BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
             ProtocolOutcome,
@@ -43,17 +47,18 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock,
-        ProtoBlock, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
+        FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
 };
 
 pub use self::era::{Era, EraId};
-use crate::{components::consensus::config::ProtocolConfig, types::Block};
 
-mod era;
+/// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
+/// fault tolerance threshold.
+const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -737,6 +742,7 @@ where
                     "attempted to create a new era with a non-switch block header: {}",
                     block
                 )
+                .ignore()
             }
         };
         let newly_slashed = era_end.equivocators.clone();
@@ -909,8 +915,15 @@ where
                 // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = terminal_block_data.map(|tbd| EraReport {
                     rewards: tbd.rewards,
-                    equivocators: era.accusations(),
-                    inactive_validators: tbd.inactive_validators,
+                    // TODO: In the first 90 days we don't slash, and we just report all
+                    // equivocators as "inactive" instead. Change this back 90 days after launch,
+                    // and put era.accusations() into equivocators instead of inactive_validators.
+                    equivocators: vec![],
+                    inactive_validators: tbd
+                        .inactive_validators
+                        .into_iter()
+                        .chain(era.accusations())
+                        .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.into(),
@@ -1012,6 +1025,12 @@ where
                 .collect(),
             ProtocolOutcome::WeAreFaulty => Default::default(),
             ProtocolOutcome::DoppelgangerDetected => Default::default(),
+            ProtocolOutcome::FttExceeded => {
+                let eb = self.effect_builder;
+                eb.set_timeout(Duration::from_millis(FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS))
+                    .then(move |_| fatal!(eb, "too many faulty validators"))
+                    .ignore()
+            }
         }
     }
 
@@ -1025,9 +1044,11 @@ where
         if should_emit_error {
             fatal!(
                 self.effect_builder,
-                "Consensus shutting down due to inability to participate in the network; inactive era = {}",
+                "Consensus shutting down due to inability to participate in the network; \
+                inactive era = {}",
                 self.era_supervisor.current_era
             )
+            .ignore()
         } else {
             Default::default()
         }
@@ -1061,6 +1082,19 @@ where
             .get(&era_id)
             .map_or(false, |cp| cp.is_bonded_validator(&vid));
         responder.respond(is_bonded).ignore()
+    }
+
+    pub(super) fn status(
+        &self,
+        responder: Responder<(PublicKey, Option<TimeDiff>)>,
+    ) -> Effects<Event<I>> {
+        let public_key = self.era_supervisor.public_signing_key;
+        let round_length = self
+            .era_supervisor
+            .active_eras
+            .get(&self.era_supervisor.current_era)
+            .and_then(|era| era.consensus.next_round_length());
+        responder.respond((public_key, round_length)).ignore()
     }
 
     fn disconnect(&self, sender: I) -> Effects<Event<I>> {

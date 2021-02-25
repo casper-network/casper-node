@@ -35,7 +35,7 @@ use casper_execution_engine::{
     },
     shared::stored_value::StoredValue,
 };
-use casper_types::{bytesrepr, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
@@ -400,6 +400,7 @@ impl ChainspecLoader {
                 debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
                 self.starting_state_root_hash = *highest_block.state_root_hash();
                 info!("valid run after an unplanned shutdown with no scheduled upgrade");
+                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
                 return Effects::new();
             }
         };
@@ -409,6 +410,7 @@ impl ChainspecLoader {
             debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
             self.starting_state_root_hash = *highest_block.state_root_hash();
             info!("valid run after an unplanned shutdown before upgrade due");
+            self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
             return Effects::new();
         }
 
@@ -440,24 +442,18 @@ impl ChainspecLoader {
             .global_state_update
             .as_ref()
             .map(|state_update| {
-                // TODO - confirm we're using base64 encoding for this.
                 state_update
                     .0
                     .iter()
-                    .map(|(key, encoded_bytes)| {
-                        let decoded_bytes = base64::decode(encoded_bytes).unwrap_or_else(|error| {
-                            panic!(
-                                "failed to base64 decode global state value for upgrade: {}",
-                                error
-                            )
-                        });
-                        let stored_value: StoredValue = bytesrepr::deserialize(decoded_bytes)
+                    .map(|(key, stored_value_bytes)| {
+                        let stored_value = StoredValue::from_bytes(stored_value_bytes)
                             .unwrap_or_else(|error| {
                                 panic!(
                                 "failed to parse global state value as StoredValue for upgrade: {}",
                                 error
                             )
-                            });
+                            })
+                            .0;
                         (*key, stored_value)
                     })
                     .collect()

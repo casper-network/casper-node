@@ -19,7 +19,7 @@ use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::consensus::EraId,
-    types::{BlockHash, BlockHeader, DeployHash, FinalitySignature, TimeDiff, Timestamp},
+    types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp},
 };
 
 /// The URL path.
@@ -38,7 +38,7 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block_header: Box<BlockHeader>,
+        block: Box<Block>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {

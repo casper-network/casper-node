@@ -3,8 +3,6 @@
 #######################################
 # Sets assets pertaining to a single node.
 # Globals:
-#   NCTL_CASPER_HOME - path to node software github repo.
-#   NCTL_VALIDATOR_BASE_WEIGHT - base weight applied to validator POS.
 #   NCTL_INITIAL_BALANCE_VALIDATOR - initial balance of a lucky validator.
 #   NCTL_ACCOUNT_TYPE_NODE - node account type enum.
 # Arguments:
@@ -50,9 +48,13 @@ function setup_node()
     fi
 
     # Set chainspec account.
-	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
-	$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"),$NCTL_INITIAL_BALANCE_VALIDATOR,$POS_WEIGHT
-	EOM
+	cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[[accounts]]
+public_key = "$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID")"
+balance = "$NCTL_INITIAL_BALANCE_VALIDATOR"
+bonded_amount = "$POS_WEIGHT"
+
+EOM
 }
 
 #######################################
@@ -72,15 +74,19 @@ function _setup_bin()
     PATH_TO_BIN=$(get_path_to_node_bin "$NODE_ID")
     PATH_TO_BIN_SEMVAR="$PATH_TO_BIN"/1_0_0
 
-    cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" "$PATH_TO_BIN"
-    cp "$NCTL_CASPER_HOME"/target/release/casper-node "$PATH_TO_BIN_SEMVAR"
+    if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+        cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" "$PATH_TO_BIN"
+        cp "$NCTL_CASPER_HOME"/target/debug/casper-node "$PATH_TO_BIN_SEMVAR"
+    else
+        cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" "$PATH_TO_BIN"
+        cp "$NCTL_CASPER_HOME"/target/release/casper-node "$PATH_TO_BIN_SEMVAR"
+    fi
 }
 
 #######################################
 # Sets entry in node's config.toml.
 # Arguments:
 #   Node ordinal identifier.
-#   Path node's config file.
 #######################################
 function _setup_config()
 {
@@ -99,7 +105,7 @@ function _setup_config()
         "cfg=toml.load('$PATH_TO_FILE');"
         "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
         "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
-        "cfg['logging']['format']='json';"
+        "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
         "cfg['network']['bind_address']='$(get_network_bind_address "$NODE_ID")';"
         "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
         "cfg['storage']['path']='../../storage';"

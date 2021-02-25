@@ -2,9 +2,10 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
+use casper_client::Error;
 use casper_types::{AsymmetricType, PublicKey};
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -12,7 +13,7 @@ enum DisplayOrder {
     Key,
 }
 
-/// Handles providing the arg for and retrieval of the key.
+/// Handles providing the arg for and retrieval of the public key.
 mod public_key {
     use casper_node::crypto::AsymmetricKeyExt;
     use casper_types::AsymmetricType;
@@ -22,9 +23,11 @@ mod public_key {
     const ARG_NAME: &str = "public-key";
     const ARG_SHORT: &str = "p";
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
-    const ARG_HELP: &str = "This must be a properly formatted public key. The public key may instead be read in from a file, in which case \
-        enter the path to the file as the --public-key argument. The file should be one of the two public \
-        key files generated via the `keygen` subcommand; \"public_key_hex\" or \"public_key.pem\"";
+    const ARG_HELP: &str =
+        "This must be a properly formatted public key. The public key may instead be read in from \
+        a file, in which case enter the path to the file as the --public-key argument. The file \
+        should be one of the two public key files generated via the `keygen` subcommand; \
+        \"public_key_hex\" or \"public_key.pem\"";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -36,28 +39,29 @@ mod public_key {
             .display_order(DisplayOrder::Key as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
+    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
         let value = matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
 
+        // Try to read as a PublicKey PEM file first.
         if let Ok(public_key) = PublicKey::from_file(value) {
-            return public_key.to_hex();
+            return Ok(public_key.to_hex());
         }
 
-        if let Ok(hex_public_key) = fs::read_to_string(value).map(|contents| {
-            PublicKey::from_hex(&contents).unwrap_or_else(|error| {
-                panic!(
-                    "failed to parse '{}' as a hex-encoded public key file: {}",
+        // Try to read as a hex-encoded PublicKey file next.
+        if let Ok(hex_public_key) = fs::read_to_string(value) {
+            let _ = PublicKey::from_hex(&hex_public_key).map_err(|error| {
+                eprintln!(
+                    "Can't parse the contents of {} as a public key: {}",
                     value, error
-                )
-            });
-            contents
-        }) {
-            return hex_public_key;
+                );
+                Error::FailedToParseKey
+            })?;
+            return Ok(hex_public_key);
         }
 
-        value.to_string()
+        Ok(value.to_string())
     }
 }
 
@@ -75,12 +79,13 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateAccountHash {
             .arg(public_key::arg())
     }
 
-    fn run(matches: &ArgMatches<'_>) {
-        let key_string = public_key::get(matches);
-        let public_key = PublicKey::from_hex(key_string)
-            .unwrap_or_else(|error| panic!("error in retrieving public key: {}", error));
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
+        let hex_public_key = public_key::get(matches)?;
+        let public_key = PublicKey::from_hex(&hex_public_key).map_err(|error| {
+            eprintln!("Can't parse {} as a public key: {}", hex_public_key, error);
+            Error::FailedToParseKey
+        })?;
         let account_hash = public_key.to_account_hash();
-
-        println!("Account hash is [{}]", account_hash);
+        Ok(Success::Output(account_hash.to_string()))
     }
 }

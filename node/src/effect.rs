@@ -84,6 +84,7 @@ use casper_execution_engine::{
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
+        put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
@@ -113,7 +114,7 @@ use crate::{
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, Timestamp,
+        FinalizedBlock, Item, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -122,7 +123,6 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
     RpcServerAnnouncement,
 };
-use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -1150,16 +1150,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block_header: BlockHeader)
+    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block: Box<Block>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                LinearChainAnnouncement::BlockAdded {
-                    block_hash,
-                    block_header: Box::new(block_header),
-                },
+                LinearChainAnnouncement::BlockAdded { block_hash, block },
                 QueueKind::Regular,
             )
             .await
@@ -1465,6 +1462,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Get our public key from consensus, and if we're a validator, the next round length.
+    pub(crate) async fn consensus_status(self) -> (PublicKey, Option<TimeDiff>)
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
+    }
+
     /// Check if validator is bonded in the future era (`era_id`).
     /// This information is known only by the Contract Runtime since consensus component
     /// knows only about currently active eras.
@@ -1518,6 +1524,6 @@ impl<REv> EffectBuilder<REv> {
 #[macro_export]
 macro_rules! fatal {
     ($effect_builder:expr, $($arg:tt)*) => {
-        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string()).ignore()
+        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string())
     };
 }

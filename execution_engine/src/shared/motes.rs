@@ -4,7 +4,10 @@ use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use casper_types::U512;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    U512,
+};
 
 use crate::shared::gas::Gas;
 
@@ -88,6 +91,23 @@ impl Zero for Motes {
 impl Sum for Motes {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Motes::zero(), std::ops::Add::add)
+    }
+}
+
+impl ToBytes for Motes {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for Motes {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (value, remainder) = FromBytes::from_bytes(bytes)?;
+        Ok((Motes::new(value), remainder))
     }
 }
 

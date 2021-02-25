@@ -6,19 +6,22 @@
 //! contains the accounts' details, rather than the chainspec file containing the accounts' details
 //! itself.
 
-use std::path::Path;
+use std::{convert::TryFrom, path::Path};
 
+use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::{
-    core::engine_state::genesis::GenesisAccount,
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
+use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 use super::{
-    Chainspec, CoreConfig, DeployConfig, Error, HighwayConfig, NetworkConfig, ProtocolConfig,
+    accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig,
+    protocol_config::ActivationPoint, Chainspec, CoreConfig, DeployConfig, Error,
+    GlobalStateUpdate, HighwayConfig, NetworkConfig, ProtocolConfig,
 };
-use crate::{types::Timestamp, utils};
+use crate::{
+    types::Timestamp,
+    utils::{self, Loadable},
+};
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -28,12 +31,21 @@ struct TomlNetwork {
     timestamp: Timestamp,
 }
 
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
+struct TomlProtocol {
+    version: Version,
+    hard_reset: bool,
+    activation_point: ActivationPoint,
+}
+
 /// A chainspec configuration as laid out in the TOML-encoded configuration file.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(super) struct TomlChainspec {
-    protocol: ProtocolConfig,
+    protocol: TomlProtocol,
     network: TomlNetwork,
     core: CoreConfig,
     deploys: DeployConfig,
@@ -44,7 +56,11 @@ pub(super) struct TomlChainspec {
 
 impl From<&Chainspec> for TomlChainspec {
     fn from(chainspec: &Chainspec) -> Self {
-        let protocol = chainspec.protocol_config.clone();
+        let protocol = TomlProtocol {
+            version: chainspec.protocol_config.version.clone(),
+            hard_reset: chainspec.protocol_config.hard_reset,
+            activation_point: chainspec.protocol_config.activation_point,
+        };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
             timestamp: chainspec.network_config.timestamp,
@@ -76,18 +92,28 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
         .parent()
         .unwrap_or_else(|| Path::new(""));
 
-    // accounts.csv must live in the same directory as chainspec.toml.
-    let accounts: Vec<GenesisAccount> =
-        super::parse_accounts_csv(root).map_err(Error::LoadChainspecAccounts)?;
+    // accounts.toml must live in the same directory as chainspec.toml.
+    let accounts_config = AccountsConfig::from_path(root)?;
 
     let network_config = NetworkConfig {
         name: toml_chainspec.network.name,
         timestamp: toml_chainspec.network.timestamp,
-        accounts,
+        accounts_config,
+    };
+
+    let global_state_update = Option::<GlobalStateUpdateConfig>::from_path(root)?
+        .map(GlobalStateUpdate::try_from)
+        .transpose()?;
+
+    let protocol_config = ProtocolConfig {
+        version: toml_chainspec.protocol.version,
+        hard_reset: toml_chainspec.protocol.hard_reset,
+        activation_point: toml_chainspec.protocol.activation_point,
+        global_state_update,
     };
 
     Ok(Chainspec {
-        protocol_config: toml_chainspec.protocol,
+        protocol_config,
         network_config,
         core_config: toml_chainspec.core,
         deploy_config: toml_chainspec.deploys,

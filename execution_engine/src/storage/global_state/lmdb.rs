@@ -18,7 +18,9 @@ use crate::storage::{
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         lmdb::LmdbTrieStore,
-        operations::{missing_trie_keys, put_trie, read, read_with_proof, ReadResult},
+        operations::{
+            keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+        },
     },
 };
 
@@ -122,6 +124,30 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
         };
+        txn.commit()?;
+        Ok(ret)
+    }
+
+    fn keys_with_prefix(
+        &self,
+        correlation_id: CorrelationId,
+        prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
+            correlation_id,
+            &txn,
+            self.store.deref(),
+            &self.root_hash,
+            prefix,
+        );
+        let mut ret = Vec::new();
+        for result in keys_iter {
+            match result {
+                Ok(key) => ret.push(key),
+                Err(error) => return Err(error),
+            }
+        }
         txn.commit()?;
         Ok(ret)
     }

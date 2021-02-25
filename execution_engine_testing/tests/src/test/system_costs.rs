@@ -57,7 +57,7 @@ const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
 const TRANSFER_AMOUNT: u64 = 123;
-const BID_DELEGATION_RATE: DelegationRate = 123;
+const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
@@ -295,9 +295,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 fn delegate_and_undelegate_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
@@ -420,9 +419,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );
@@ -539,9 +537,8 @@ fn mint_transfer_has_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
         );

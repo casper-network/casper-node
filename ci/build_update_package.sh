@@ -42,7 +42,7 @@ echo "Packaging config.tar.gz"
 mkdir -p "$CONFIG_DIR"
 cp "$GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
 cp "$GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
-cp "$GENESIS_FILES_DIR/accounts.csv" "$CONFIG_DIR"
+cp "$GENESIS_FILES_DIR/accounts.toml" "$CONFIG_DIR"
 # To get no path in tar, need to cd in.
 cd "$CONFIG_DIR"
 tar -czvf "../config.tar.gz" .

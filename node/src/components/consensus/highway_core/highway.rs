@@ -22,7 +22,7 @@ use crate::{
         },
         traits::Context,
     },
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -646,6 +646,12 @@ impl<C: Context> Highway<C> {
     /// Returns the instance ID of this Highway instance.
     pub(crate) fn instance_id(&self) -> &C::InstanceId {
         &self.instance_id
+    }
+
+    pub(crate) fn next_round_length(&self) -> Option<TimeDiff> {
+        self.active_validator
+            .as_ref()
+            .map(|av| av.next_round_length())
     }
 }
 

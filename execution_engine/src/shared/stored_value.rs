@@ -325,11 +325,16 @@ impl<'de> Deserialize<'de> for StoredValue {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::gens::cl_value_arb;
+    use casper_types::{
+        gens::{
+            cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
+            transfer_arb,
+        },
+        system::auction::gens::era_info_arb,
+    };
 
     use super::StoredValue;
     use crate::shared::account::gens::account_arb;
-    use casper_types::gens::{contract_arb, contract_package_arb, contract_wasm_arb};
 
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![
@@ -338,6 +343,9 @@ pub mod gens {
             contract_package_arb().prop_map(StoredValue::ContractPackage),
             contract_arb().prop_map(StoredValue::Contract),
             contract_wasm_arb().prop_map(StoredValue::ContractWasm),
+            era_info_arb(1..10).prop_map(StoredValue::EraInfo),
+            deploy_info_arb().prop_map(StoredValue::DeployInfo),
+            transfer_arb().prop_map(StoredValue::Transfer)
         ]
     }
 }

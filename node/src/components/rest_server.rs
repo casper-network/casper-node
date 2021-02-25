@@ -34,7 +34,10 @@ use tracing::{debug, error, warn};
 use super::Component;
 use crate::{
     effect::{
-        requests::{ChainspecLoaderRequest, MetricsRequest, NetworkInfoRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
@@ -54,6 +57,7 @@ pub trait ReactorEventT:
     + From<NetworkInfoRequest<NodeId>>
     + From<StorageRequest>
     + From<ChainspecLoaderRequest>
+    + From<ConsensusRequest>
     + From<MetricsRequest>
     + Send
 {
@@ -65,6 +69,7 @@ impl<REv> ReactorEventT for REv where
         + From<NetworkInfoRequest<NodeId>>
         + From<StorageRequest>
         + From<ChainspecLoaderRequest>
+        + From<ConsensusRequest>
         + From<MetricsRequest>
         + Send
         + 'static
@@ -121,12 +126,14 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::RestRequest(RestRequest::GetStatus { responder }) => async move {
-                let (last_added_block, peers, chainspec_info) = join!(
+                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                     effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info(),
+                    effect_builder.consensus_status()
                 );
-                let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
+                let status_feed =
+                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
                 responder.respond(status_feed).await;
             }
             .ignore(),

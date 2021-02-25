@@ -607,6 +607,10 @@ impl<C: Context> ActiveValidator<C> {
             Vertex::Evidence(_) => false,
         }
     }
+
+    pub(crate) fn next_round_length(&self) -> TimeDiff {
+        state::round_len(self.next_round_exp)
+    }
 }
 
 #[cfg(test)]

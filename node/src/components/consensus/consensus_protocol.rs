@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -110,6 +110,9 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     WeAreFaulty,
     /// We've received a unit from a doppelganger.
     DoppelgangerDetected,
+    /// Too many faulty validators. The protocol's fault tolerance threshold has been exceeded and
+    /// consensus cannot continue.
+    FttExceeded,
     /// We want to disconnect from a sender of invalid data.
     Disconnect(I),
 }
@@ -204,4 +207,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Returns the protocol outcomes for all the required timers.
     /// TODO: Remove this once the Joiner no longer has a consensus component.
     fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>>;
+
+    // TODO: Make this lees Highway-specific.
+    fn next_round_length(&self) -> Option<TimeDiff>;
 }

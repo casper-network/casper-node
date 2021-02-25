@@ -26,8 +26,8 @@ pub use providers::{
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use unbonding_purse::UnbondingPurse;
 
-/// Representation of delegation rate of tokens. Fraction of 1 in trillionths (12 decimal places).
-pub type DelegationRate = u64;
+/// Representation of delegation rate of tokens. Range from 0..=100.
+pub type DelegationRate = u8;
 
 /// Validators mapped to their bids.
 pub type Bids = BTreeMap<PublicKey, Bid>;
@@ -106,12 +106,19 @@ pub trait Auction:
             return Err(Error::BondTooSmall);
         }
 
+        if delegation_rate > DELEGATION_RATE_DENOMINATOR {
+            return Err(Error::DelegationRateTooLarge);
+        }
+
         let source = self.get_main_purse()?;
 
         // Update bids or stakes
         let mut validators = detail::get_bids(self)?;
         let new_amount = match validators.get_mut(&public_key) {
             Some(bid) => {
+                if bid.inactive() {
+                    bid.activate();
+                }
                 self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
                 bid.with_delegation_rate(delegation_rate)
@@ -121,7 +128,7 @@ pub trait Auction:
                 let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
-                let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
+                let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
                 validators.insert(public_key, bid);
                 amount
             }
@@ -154,7 +161,7 @@ pub trait Auction:
 
         // Fails if requested amount is greater than either the total stake or the amount of vested
         // stake.
-        let new_amount = bid.decrease_stake(amount, era_end_timestamp_millis)?;
+        let updated_stake = bid.decrease_stake(amount, era_end_timestamp_millis)?;
 
         detail::create_unbonding_purse(
             self,
@@ -164,7 +171,7 @@ pub trait Auction:
             amount,
         )?;
 
-        if new_amount.is_zero() {
+        if updated_stake.is_zero() {
             // Automatically unbond delegators
             for (delegator_public_key, delegator) in bid.delegators() {
                 detail::create_unbonding_purse(
@@ -176,13 +183,14 @@ pub trait Auction:
                 )?;
             }
 
-            // NOTE: Assumed safe as we're checking for existence above
-            bids.remove(&public_key).unwrap();
+            *bid.delegators_mut() = BTreeMap::new();
+
+            bid.deactivate();
         }
 
         detail::set_bids(self, bids)?;
 
-        Ok(new_amount)
+        Ok(updated_stake)
     }
 
     /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
@@ -228,7 +236,12 @@ pub trait Auction:
                 let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
-                let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
+                let delegator = Delegator::unlocked(
+                    delegator_public_key,
+                    amount,
+                    bonding_purse,
+                    validator_public_key,
+                );
                 delegators.insert(delegator_public_key, delegator);
                 amount
             }
@@ -275,7 +288,9 @@ pub trait Auction:
                     *delegator.bonding_purse(),
                     amount,
                 )?;
-                let updated_stake = delegator.decrease_stake(amount)?;
+
+                let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+                let updated_stake = delegator.decrease_stake(amount, era_end_timestamp_millis)?;
                 if updated_stake == U512::zero() {
                     delegators.remove(&delegator_public_key);
                 };
@@ -305,9 +320,11 @@ pub trait Auction:
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // Remove bid for given validator, saving its delegators
-            if let Some(bid) = bids.remove(&validator_public_key) {
+            // Burn stake, deactivate
+            if let Some(bid) = bids.get_mut(&validator_public_key) {
                 burned_amount += *bid.staked_amount();
+                *bid.staked_amount_mut() = U512::zero();
+                bid.deactivate();
                 bids_modified = true;
             };
 
@@ -360,7 +377,9 @@ pub trait Auction:
         // Process bids
         let mut bids_modified = false;
         for (validator_public_key, bid) in bids.iter_mut() {
-            bids_modified = bid.process(era_end_timestamp_millis);
+            if bid.process(era_end_timestamp_millis) {
+                bids_modified = true;
+            }
 
             if evicted_validators.contains(validator_public_key) {
                 bids_modified = bid.deactivate()

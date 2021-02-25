@@ -80,6 +80,7 @@ pub struct ContractRuntimeMetrics {
     apply_effect: Histogram,
     commit_upgrade: Histogram,
     run_query: Histogram,
+    commit_step: Histogram,
     get_balance: Histogram,
     get_validator_weights: Histogram,
     get_era_validators: Histogram,
@@ -91,10 +92,15 @@ pub struct ContractRuntimeMetrics {
 
 /// Value of upper bound of histogram.
 const EXPONENTIAL_BUCKET_START: f64 = 0.01;
+
 /// Multiplier of previous upper bound for next bound.
 const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
-/// Bucket count, with last going to +Inf.
-const EXPONENTIAL_BUCKET_COUNT: usize = 6;
+
+/// Bucket count, with the last bucket going to +Inf which will not be included in the results.
+/// - start = 0.01, factor = 2.0, count = 10
+/// - start * factor ^ count = 0.01 * 2.0 ^ 10 = 10.24
+/// - Values above 10.24 (f64 seconds here) will not fall in a bucket that is kept.
+const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
 const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
 const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
@@ -102,6 +108,8 @@ const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
 const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
 const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
+const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
+const COMMIT_STEP_HELP: &str = "tracking run of engine_state.commit_step in seconds.";
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
@@ -150,6 +158,7 @@ impl ContractRuntimeMetrics {
                 APPLY_EFFECT_HELP,
             )?,
             run_query: register_histogram_metric(registry, RUN_QUERY_NAME, RUN_QUERY_HELP)?,
+            commit_step: register_histogram_metric(registry, COMMIT_STEP_NAME, COMMIT_STEP_HELP)?,
             commit_upgrade: register_histogram_metric(
                 registry,
                 COMMIT_UPGRADE_NAME,
@@ -444,7 +453,7 @@ where
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let result = engine_state.commit_step(correlation_id, step_request);
-                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        metrics.commit_step.observe(start.elapsed().as_secs_f64());
                         result
                     })
                     .await

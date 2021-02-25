@@ -91,12 +91,9 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BlockAdded {
+            Event::BlockAdded { block_hash, block } => self.broadcast(SseData::BlockAdded {
                 block_hash,
-                block_header,
-            } => self.broadcast(SseData::BlockAdded {
-                block_hash,
-                block_header: Box::new(*block_header),
+                block: Box::new(*block),
             }),
             Event::DeployProcessed {
                 deploy_hash,
