@@ -174,9 +174,9 @@ where
     }
 }
 
-/// A BlockExecutor announcement.
+/// A ContractRuntime announcement.
 #[derive(Debug)]
-pub enum BlockExecutorAnnouncement {
+pub enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
     LinearChainBlock {
         /// The block.
@@ -186,10 +186,10 @@ pub enum BlockExecutorAnnouncement {
     },
 }
 
-impl Display for BlockExecutorAnnouncement {
+impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
+            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
                 write!(f, "created linear chain block {}", block.hash())
             }
         }

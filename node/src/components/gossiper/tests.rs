@@ -8,6 +8,7 @@ use std::{
 use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
+use semver::Version;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
@@ -24,10 +25,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            ContractRuntimeAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
-        requests::ContractRuntimeRequest,
+        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
         Responder,
     },
     protocol::Message as NodeMessage,
@@ -85,6 +86,24 @@ impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
     }
 }
 
+impl From<ConsensusRequest> for Event {
+    fn from(_request: ConsensusRequest) -> Self {
+        unimplemented!("not implemented for gossiper tests")
+    }
+}
+
+impl From<LinearChainRequest<NodeId>> for Event {
+    fn from(_request: LinearChainRequest<NodeId>) -> Self {
+        unimplemented!("not implemented for gossiper tests")
+    }
+}
+
+impl From<ContractRuntimeAnnouncement> for Event {
+    fn from(_request: ContractRuntimeAnnouncement) -> Self {
+        unimplemented!("not implemented for gossiper tests")
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -104,7 +123,7 @@ impl Display for Event {
                 write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
             Event::ContractRuntime(event) => {
-                write!(formatter, "contract-runtime event: {}", event)
+                write!(formatter, "contract-runtime event: {:?}", event)
             }
         }
     }
@@ -150,8 +169,14 @@ impl reactor::Reactor for Reactor {
         let storage = Storage::new(&storage_withdir, None).unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
-        let contract_runtime =
-            ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
+        let contract_runtime = ContractRuntime::new(
+            None,
+            Version::new(1, 0, 0),
+            storage_withdir,
+            &contract_runtime_config,
+            &registry,
+        )
+        .unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),

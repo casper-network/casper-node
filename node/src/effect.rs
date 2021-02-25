@@ -119,14 +119,14 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+    ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -655,11 +655,11 @@ impl<REv> EffectBuilder<REv> {
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
-        REv: From<BlockExecutorAnnouncement>,
+        REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::LinearChainBlock {
+                ContractRuntimeAnnouncement::LinearChainBlock {
                     block,
                     execution_results,
                 },
@@ -1055,11 +1055,11 @@ impl<REv> EffectBuilder<REv> {
     /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<BlockExecutorRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.0
             .schedule(
-                BlockExecutorRequest::ExecuteBlock(finalized_block),
+                ContractRuntimeRequest::ExecuteBlock(finalized_block),
                 QueueKind::Regular,
             )
             .await

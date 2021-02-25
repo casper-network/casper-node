@@ -1,7 +1,11 @@
 pub mod in_memory;
 pub mod lmdb;
 
-use std::{fmt, hash::BuildHasher};
+use std::{
+    fmt,
+    hash::BuildHasher,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use crate::shared::{
     additive_map::AdditiveMap,
@@ -21,6 +25,8 @@ use crate::storage::{
         TrieStore,
     },
 };
+
+pub static LMDB_CONCURRENT_RW_TXNS: AtomicUsize = AtomicUsize::new(0);
 
 /// A reader of state
 pub trait StateReader<K, V> {
@@ -139,6 +145,8 @@ where
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     H: BuildHasher,
 {
+    LMDB_CONCURRENT_RW_TXNS.fetch_add(1, Ordering::SeqCst);
+
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
 
@@ -176,6 +184,7 @@ where
     }
 
     txn.commit()?;
+    LMDB_CONCURRENT_RW_TXNS.fetch_sub(1, Ordering::SeqCst);
 
     Ok(CommitResult::Success { state_root })
 }
