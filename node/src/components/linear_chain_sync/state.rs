@@ -44,7 +44,12 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             State::None => write!(f, "None"),
-            State::Done(_) => write!(f, "Done"),
+            State::Done(latest_block) => write!(f, "Done(latest_block={})",
+                if let Some(block) = latest_block {
+                    format!("{{ hash={}, height={} }}", block.hash(), block.height())
+                } else {
+                    "None".to_string()
+                }),
             State::SyncingTrustedHash { trusted_hash, highest_block_seen, .. } => {
                 write!(f, "SyncingTrustedHash(trusted_hash={}, highest_block_seen={})", trusted_hash, highest_block_seen)
             },

@@ -118,8 +118,8 @@ pub struct EraSupervisor<I> {
     /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
     /// component.
     is_initialized: bool,
-    /// TODO: Remove.
-    pub(crate) enqueued_events: VecDeque<Event<I>>,
+    /// TODO: Remove once the era supervisor is removed from the Joiner reactor.
+    pub(crate) enqueued_requests: VecDeque<ConsensusRequest>,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -182,7 +182,7 @@ where
             stop_for_upgrade: false,
             next_executed_height: 0,
             is_initialized: false,
-            enqueued_events: Default::default(),
+            enqueued_requests: Default::default(),
         };
 
         let era_ids: Vec<EraId> = era_supervisor
@@ -192,9 +192,9 @@ where
         info!(?era_ids, "collecting switch blocks");
 
         let effects = effect_builder
-            .collect_switch_blocks(era_ids)
-            .event(move |switch_blocks| Event::InitializeEras {
-                switch_blocks: switch_blocks.expect("should have all the switch blocks in storage"),
+            .collect_key_blocks(era_ids)
+            .event(move |key_blocks| Event::InitializeEras {
+                key_blocks: key_blocks.expect("should have all the switch blocks in storage"),
                 validators,
                 state_root_hash,
                 timestamp,
@@ -220,8 +220,8 @@ where
 
     /// The booking block for era N is the last block of era N - AUCTION_DELAY - 1
     /// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
-    /// We make sure not to go below the last upgrade activation point, because we will not have
-    /// any eras from before that.
+    /// We make sure not to use an era ID below the last upgrade activation point, because we will
+    /// not have instances of eras from before that.
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         let after_booking_era_id = era_id
             .saturating_sub(self.protocol_config.auction_delay)
@@ -583,9 +583,10 @@ where
         if !self.era_supervisor.is_initialized() {
             // enqueue
             self.era_supervisor
-                .enqueued_events
-                .push_back(Event::ConsensusRequest(
-                    ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
+                .enqueued_requests
+                .push_back(ConsensusRequest::HandleLinearBlock(
+                    Box::new(block),
+                    responder,
                 ));
             return Effects::new();
         }
@@ -665,7 +666,7 @@ where
 
     pub(super) fn handle_initialize_eras(
         &mut self,
-        switch_blocks: HashMap<EraId, BlockHeader>,
+        key_blocks: HashMap<EraId, BlockHeader>,
         genesis_validators: BTreeMap<PublicKey, U512>,
         genesis_state_root_hash: Digest,
         timestamp: Timestamp,
@@ -679,13 +680,13 @@ where
             .iter_past(current_era, self.era_supervisor.bonded_eras * 2)
         {
             // This should only be None if era_id = 0, ie. there is no switch block at all
-            let maybe_switch_block = switch_blocks.get(&era_id);
+            let maybe_key_block = key_blocks.get(&era_id);
 
-            if maybe_switch_block.is_none() && era_id.0 != 0 {
+            if maybe_key_block.is_none() && era_id.0 != 0 {
                 // TODO: that's probably an error; do we exit?
             }
 
-            let newly_slashed = maybe_switch_block
+            let newly_slashed = maybe_key_block
                 .and_then(|bhdr| bhdr.era_end())
                 .map(|era_end| era_end.equivocators.clone())
                 .unwrap_or_default();
@@ -693,7 +694,7 @@ where
             let slashed = self
                 .era_supervisor
                 .iter_past(era_id, self.era_supervisor.bonded_eras)
-                .filter_map(|old_id| switch_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
+                .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
 
@@ -703,23 +704,23 @@ where
                     .saturating_sub(self.era_supervisor.protocol_config.auction_delay),
             );
 
-            let seed = if let Some(booking_block) = switch_blocks.get(&booking_era_id) {
+            let seed = if let Some(booking_block) = key_blocks.get(&booking_era_id) {
                 EraSupervisor::<I>::era_seed(booking_block.hash(), booking_block.accumulated_seed())
             } else {
                 0
             };
 
             let (validators, start_height, state_root_hash, era_start_time) =
-                if let Some(switch_block) = maybe_switch_block {
+                if let Some(key_block) = maybe_key_block {
                     (
-                        switch_block
+                        key_block
                             .next_era_validator_weights()
                             .cloned()
                             .expect("switch block should have era validator weights"),
-                        switch_block.height() + 1,
-                        *switch_block.state_root_hash(), /* TODO: wrong if we want to cater to
-                                                          * upgrades modifying global state */
-                        switch_block.timestamp(),
+                        key_block.height() + 1,
+                        *key_block.state_root_hash(), /* TODO: wrong if we want to cater to
+                                                       * upgrades modifying global state */
+                        key_block.timestamp(),
                     )
                 } else {
                     // If we don't have a switch block, we're dealing with era 0 and genesis data

@@ -434,7 +434,7 @@ impl reactor::Reactor for Reactor {
         let init_hash = config
             .node
             .trusted_hash
-            .or_else(|| chainspec_loader.highest_block_hash());
+            .or_else(|| chainspec_loader.initial_block_hash());
 
         match init_hash {
             None => {
@@ -475,8 +475,8 @@ impl reactor::Reactor for Reactor {
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
         let block_executor = BlockExecutor::new(
-            chainspec_loader.starting_state_root_hash(),
-            chainspec_loader.highest_block_header(),
+            chainspec_loader.initial_state_root_hash(),
+            chainspec_loader.initial_block_header(),
             protocol_version.clone(),
             registry.clone(),
         );
@@ -499,7 +499,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
-            chainspec_loader.highest_block_header().cloned(),
+            chainspec_loader.initial_block_header().cloned(),
             validator_weights.clone(),
             maybe_next_activation_point,
         )?;
@@ -509,12 +509,12 @@ impl reactor::Reactor for Reactor {
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             timestamp,
-            chainspec_loader.starting_era(),
+            chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
-            chainspec_loader.starting_state_root_hash(),
+            chainspec_loader.initial_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),

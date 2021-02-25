@@ -397,6 +397,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             Some(activation_point) => activation_point.should_upgrade(&era_id),
         }
     }
+
+    fn set_last_block_if_syncing_trusted_hash(&mut self, block: &Block) {
+        if let State::SyncingTrustedHash {
+            ref mut latest_block,
+            ..
+        } = &mut self.state
+        {
+            *latest_block = Box::new(Some(block.clone()));
+        }
+        self.state.block_downloaded(block);
+    }
 }
 
 impl<I, REv> Component<REv> for LinearChainSync<I>
@@ -467,8 +478,7 @@ where
                         assert_eq!(block.height(), block_height, "Block height mismatch.");
                         trace!(%block_height, "Linear block found in the local storage.");
                         // When syncing descendants of a trusted hash, we might have some of
-                        // them in our local storage. If
-                        // that's the case, just continue.
+                        // them in our local storage. If that's the case, just continue.
                         self.block_downloaded(rng, effect_builder, &block)
                     }
                     BlockByHeightResult::FromPeer(block, peer) => {
@@ -528,14 +538,7 @@ where
                         // chain forwards and downloading the deploys.
                         // We don't want to download and execute a block we already have, so
                         // instead of calling self.block_downloaded(), we take a shortcut:
-                        if let State::SyncingTrustedHash {
-                            ref mut latest_block,
-                            ..
-                        } = &mut self.state
-                        {
-                            *latest_block = Box::new(Some((&*block).clone()));
-                        }
-                        self.state.block_downloaded(&block);
+                        self.set_last_block_if_syncing_trusted_hash(&block);
                         self.block_handled(rng, effect_builder, *block)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {

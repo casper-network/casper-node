@@ -451,8 +451,8 @@ impl reactor::Reactor for Reactor {
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         let block_executor = BlockExecutor::new(
-            chainspec_loader.starting_state_root_hash(),
-            chainspec_loader.highest_block_header(),
+            chainspec_loader.initial_state_root_hash(),
+            chainspec_loader.initial_block_header(),
             protocol_version.clone(),
             registry.clone(),
         )

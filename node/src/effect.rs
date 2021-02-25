@@ -798,12 +798,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the switch block _for_ the given era ID, ie. the switch block at the era before
+    /// Requests the key block for the given era ID, ie. the switch block at the era before
     /// (if one exists).
-    pub(crate) async fn get_switch_block_for_era_id_from_storage(
-        self,
-        era_id: EraId,
-    ) -> Option<Block>
+    pub(crate) async fn get_key_block_for_era_id_from_storage(self, era_id: EraId) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
@@ -1511,11 +1508,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Collects the switch blocks for the eras identified by provided era IDs. Returns
+    /// Collects the key blocks for the eras identified by provided era IDs. Returns
     /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
-    /// `None` if at least one was missing. The header at EraId `n` is from the switch block of
-    /// era `n-1`, ie. it contains the data necessary for initialization of era `n`.
-    pub(crate) async fn collect_switch_blocks<I: IntoIterator<Item = EraId>>(
+    /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
+    /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
+    /// initialization of era `n`.
+    pub(crate) async fn collect_key_blocks<I: IntoIterator<Item = EraId>>(
         self,
         era_ids: I,
     ) -> Option<HashMap<EraId, BlockHeader>>
@@ -1529,7 +1527,7 @@ impl<REv> EffectBuilder<REv> {
                 // function failed
                 .filter(|era_id| *era_id != EraId(0))
                 .map(|era_id| {
-                    self.get_switch_block_for_era_id_from_storage(era_id)
+                    self.get_key_block_for_era_id_from_storage(era_id)
                         .map(move |maybe_block| {
                             maybe_block.map(|block| (era_id, block.take_header()))
                         })

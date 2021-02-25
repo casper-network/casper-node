@@ -118,7 +118,7 @@ pub enum Event<I> {
     },
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
-        switch_blocks: HashMap<EraId, BlockHeader>,
+        key_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
         state_root_hash: Digest,
         timestamp: Timestamp,
@@ -324,14 +324,14 @@ where
                 handling_es.handle_create_new_era(*block, booking_block_hash)
             }
             Event::InitializeEras {
-                switch_blocks,
+                key_blocks,
                 validators,
                 state_root_hash,
                 timestamp,
                 genesis_start_time,
             } => {
                 let mut effects = handling_es.handle_initialize_eras(
-                    switch_blocks,
+                    key_blocks,
                     validators,
                     state_root_hash,
                     timestamp,
@@ -343,11 +343,11 @@ where
                 // chain blocks once the eras are initialized. It's possible that we will get
                 // events with linear chain blocks before that - in such a case we cache the
                 // requests and only handle them here.
-                for queued_event in mem::take(&mut handling_es.era_supervisor.enqueued_events) {
+                for queued_request in mem::take(&mut handling_es.era_supervisor.enqueued_requests) {
                     effects.extend(handling_es.era_supervisor.handle_event(
                         effect_builder,
                         handling_es.rng,
-                        queued_event,
+                        queued_request.into(),
                     ));
                 }
 
