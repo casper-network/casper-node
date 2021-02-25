@@ -12,6 +12,7 @@ use derive_more::{AsRef, From};
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
+use crate::utils::ds;
 
 /// The index of a validator, in a list of all validators, ordered by ID.
 #[derive(
@@ -138,8 +139,21 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
+
+impl<T> DataSize for ValidatorMap<T>
+where
+    T: DataSize,
+{
+    const IS_DYNAMIC: bool = Vec::<T>::IS_DYNAMIC;
+
+    const STATIC_HEAP_SIZE: usize = Vec::<T>::STATIC_HEAP_SIZE;
+
+    fn estimate_heap_size(&self) -> usize {
+        ds::vec_sample(&self.0)
+    }
+}
 
 impl<T> ValidatorMap<T> {
     /// Returns the value for the given validator. Panics if the index is out of range.

@@ -462,6 +462,14 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         self.reader.read_with_proof(correlation_id, key)
     }
+
+    fn keys_with_prefix(
+        &self,
+        correlation_id: CorrelationId,
+        prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        self.reader.keys_with_prefix(correlation_id, prefix)
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]

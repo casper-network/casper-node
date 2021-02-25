@@ -71,6 +71,14 @@ impl StateReader<Key, StoredValue> for CountingDb {
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         Ok(None)
     }
+
+    fn keys_with_prefix(
+        &self,
+        _correlation_id: CorrelationId,
+        _prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        Ok(Vec::new())
+    }
 }
 
 #[test]

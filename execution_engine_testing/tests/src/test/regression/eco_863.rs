@@ -1,4 +1,5 @@
 use assert_matches::assert_matches;
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -35,11 +36,10 @@ static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 #[test]
 fn faucet_should_create_account() {
     let accounts = {
-        let faucet_account = GenesisAccount::new(
+        let faucet_account = GenesisAccount::account(
             *FAUCET,
-            *FAUCET_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()),
+            Motes::zero(),
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet_account);
@@ -127,17 +127,15 @@ fn faucet_should_create_account() {
 #[test]
 fn faucet_should_transfer_to_existing_account() {
     let accounts = {
-        let faucet_account = GenesisAccount::new(
+        let faucet_account = GenesisAccount::account(
             *FAUCET,
-            *FAUCET_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()),
+            Motes::zero(),
         );
-        let alice_account = GenesisAccount::new(
+        let alice_account = GenesisAccount::account(
             *ALICE,
-            *ALICE_ADDR,
             Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE.into()),
-            Motes::new(U512::zero()),
+            Motes::zero(),
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet_account);
