@@ -189,7 +189,6 @@ pub struct ContractRuntimeMetrics {
     missing_trie_keys: Histogram,
     put_trie: Histogram,
     read_trie: Histogram,
-    lmdb_concurrent_rw_txns: IntGauge,
     /// The current chain height.
     pub chain_height: IntGauge,
 }
@@ -304,11 +303,6 @@ impl ContractRuntimeMetrics {
                 registry,
                 MISSING_TRIE_KEYS_NAME,
                 MISSING_TRIE_KEYS_HELP,
-            )?,
-            lmdb_concurrent_rw_txns: register_gauge_metric(
-                registry,
-                "lmdb_concurrent_rw_txns",
-                "lmdb concurrent read-write txns",
             )?,
         })
     }

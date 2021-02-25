@@ -26,8 +26,6 @@ use crate::storage::{
     },
 };
 
-pub static LMDB_CONCURRENT_RW_TXNS: AtomicUsize = AtomicUsize::new(0);
-
 /// A reader of state
 pub trait StateReader<K, V> {
     /// An error which occurs when reading state
@@ -152,8 +150,6 @@ where
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     H: BuildHasher,
 {
-    LMDB_CONCURRENT_RW_TXNS.fetch_add(1, Ordering::SeqCst);
-
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
 
@@ -191,7 +187,6 @@ where
     }
 
     txn.commit()?;
-    LMDB_CONCURRENT_RW_TXNS.fetch_sub(1, Ordering::SeqCst);
 
     Ok(CommitResult::Success { state_root })
 }
