@@ -9,7 +9,7 @@ set -e
 
 #######################################
 # Runs an integration test that tries to simulate
-# a single doppleganger situation.
+# a single doppelganger situation.
 #
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing.
@@ -25,11 +25,11 @@ function main() {
     do_await_era_change
     # 2. Verify all nodes are in sync
     check_network_sync
-    # 3. Create the doppleganger
-    create_doppleganger '5' '6'
+    # 3. Create the doppelganger
+    create_doppelganger '5' '6'
     # 4. Get LFB Hash
     do_read_lfb_hash '5'
-    # 5. Start doppleganger
+    # 5. Start doppelganger
     do_start_node "6" "$LFB_HASH"
     # 6. Look for one of the two nodes to report as faulty
     assert_equivication "5" "6"
@@ -100,11 +100,11 @@ function do_await_era_change() {
     await_n_eras "$ERA_COUNT"
 }
 
-function create_doppleganger() {
+function create_doppelganger() {
     local NODE_ID=${1}
-    local DOPPLE_ID=${2}
-    log_step "Copying keys from $NODE_ID into $DOPPLE_ID"
-    cp -r "$(get_path_to_node $NODE_ID)/keys" "$(get_path_to_node $DOPPLE_ID)/"
+    local DOPPEL_ID=${2}
+    log_step "Copying keys from $NODE_ID into $DOPPEL_ID"
+    cp -r "$(get_path_to_node $NODE_ID)/keys" "$(get_path_to_node $DOPPEL_ID)/"
 }
 
 function check_faulty() {
@@ -114,16 +114,29 @@ function check_faulty() {
     return $?
 }
 
+function check_doppel() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    grep -q 'received vertex from a doppelganger' "$NODE_PATH/logs/stdout.log"
+    return $?
+}
+
 function assert_equivication() {
     local NODE_ID=${1}
-    local DOPPLE_ID=${2}
+    local DOPPEL_ID=${2}
     log_step "Checking for a faulty node..."
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
         if ( check_faulty "$NODE_ID" ); then
             log "validator node-$NODE_ID found as faulty! [expected]"
             break
-        elif ( check_faulty "$DOPPLE_ID" ); then
-            log "doppleganger node-$DOPPLE_ID found as faulty! [expected]"
+        elif ( check_faulty "$DOPPEL_ID" ); then
+            log "doppelganger node-$DOPPEL_ID found as faulty! [expected]"
+            break
+        elif ( check_doppel "$NODE_ID" ); then
+            log "node-$NODE_ID received vertex from a doppelganger! [expected]"
+            break
+        elif ( check_doppel "$DOPPEL_ID" ); then
+            log "node-$DOPPEL_ID received vertex from a doppelganger! [expected]"
             break
         fi
 
