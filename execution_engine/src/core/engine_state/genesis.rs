@@ -808,8 +808,12 @@ where
                 let release_timestamp_millis =
                     genesis_timestamp_millis + locked_funds_period_millis;
                 let founding_validator = {
-                    let mut bid =
-                        Bid::locked(purse_uref, staked_amount.value(), release_timestamp_millis);
+                    let mut bid = Bid::locked(
+                        public_key,
+                        purse_uref,
+                        staked_amount.value(),
+                        release_timestamp_millis,
+                    );
 
                     // Set up delegator entries attached to genesis validators
                     for (
@@ -826,6 +830,7 @@ where
                             )?;
 
                             let delegator = Delegator::locked(
+                                delegator_public_key,
                                 delegator_delegated_amount.value(),
                                 purse_uref,
                                 validator_public_key,

@@ -12,9 +12,11 @@ use crate::{
 
 pub use vesting::VestingSchedule;
 
-/// An entry in a founding validator map.
+/// An entry in the validator map.
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Bid {
+    /// Validator public key
+    validator_public_key: PublicKey,
     /// The purse that was used for bonding.
     bonding_purse: URef,
     /// The amount of tokens staked by a validator (not including delegators).
@@ -31,12 +33,18 @@ pub struct Bid {
 
 impl Bid {
     /// Creates new instance of a bid with locked funds.
-    pub fn locked(bonding_purse: URef, staked_amount: U512, release_timestamp_millis: u64) -> Self {
+    pub fn locked(
+        validator_public_key: PublicKey,
+        bonding_purse: URef,
+        staked_amount: U512,
+        release_timestamp_millis: u64,
+    ) -> Self {
         let delegation_rate = 0;
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let delegators = BTreeMap::new();
         let inactive = false;
         Self {
+            validator_public_key,
             bonding_purse,
             staked_amount,
             delegation_rate,
@@ -48,6 +56,7 @@ impl Bid {
 
     /// Creates new instance of a bid with unlocked funds.
     pub fn unlocked(
+        validator_public_key: PublicKey,
         bonding_purse: URef,
         staked_amount: U512,
         delegation_rate: DelegationRate,
@@ -56,6 +65,7 @@ impl Bid {
         let delegators = BTreeMap::new();
         let inactive = false;
         Self {
+            validator_public_key,
             bonding_purse,
             staked_amount,
             delegation_rate,
@@ -234,6 +244,7 @@ impl CLTyped for Bid {
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
+        result.extend(self.validator_public_key.to_bytes()?);
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
@@ -244,7 +255,8 @@ impl ToBytes for Bid {
     }
 
     fn serialized_length(&self) -> usize {
-        self.bonding_purse.serialized_length()
+        self.validator_public_key.serialized_length()
+            + self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
             + self.vesting_schedule.serialized_length()
@@ -255,6 +267,7 @@ impl ToBytes for Bid {
 
 impl FromBytes for Bid {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (validator_public_key, bytes) = FromBytes::from_bytes(bytes)?;
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
@@ -263,6 +276,7 @@ impl FromBytes for Bid {
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
+                validator_public_key,
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
@@ -282,12 +296,15 @@ mod tests {
     use crate::{
         bytesrepr,
         system::auction::{bid::VestingSchedule, Bid, DelegationRate, Delegator},
-        AccessRights, SecretKey, URef, U512,
+        AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
     #[test]
     fn serialization_roundtrip() {
         let founding_validator = Bid {
+            validator_public_key: PublicKey::from(SecretKey::ed25519(
+                [0u8; SecretKey::ED25519_LENGTH],
+            )),
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
@@ -322,6 +339,7 @@ mod tests {
         let delegator_2_staked_amount = U512::from(3000);
 
         let delegator_1 = Delegator::locked(
+            delegator_1_pk,
             delegator_1_staked_amount,
             delegator_1_bonding_purse,
             validator_pk,
@@ -329,6 +347,7 @@ mod tests {
         );
 
         let delegator_2 = Delegator::locked(
+            delegator_2_pk,
             delegator_2_staked_amount,
             delegator_2_bonding_purse,
             validator_pk,
@@ -336,6 +355,7 @@ mod tests {
         );
 
         let mut bid = Bid::locked(
+            validator_pk,
             validator_bonding_purse,
             validator_staked_amount,
             validator_release_timestamp,
