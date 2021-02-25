@@ -894,14 +894,11 @@ impl<C: Context> State<C> {
     pub(crate) fn retain_evidence_only(&mut self) {
         self.units.clear();
         self.blocks.clear();
-        self.panorama = self
-            .panorama
-            .iter()
-            .map(|obs| match obs {
-                Observation::Faulty => Observation::Faulty,
-                Observation::None | Observation::Correct(_) => Observation::None,
-            })
-            .collect();
+        for obs in self.panorama.iter_mut() {
+            if obs.is_correct() {
+                *obs = Observation::None;
+            }
+        }
         self.endorsements.clear();
         self.incomplete_endorsements.clear();
     }

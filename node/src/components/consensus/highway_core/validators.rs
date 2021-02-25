@@ -157,6 +157,11 @@ impl<T> ValidatorMap<T> {
         self.0.iter()
     }
 
+    /// Returns an iterator over mutable references to all values.
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.0.iter_mut()
+    }
+
     /// Returns an iterator over all values, by validator index.
     pub(crate) fn enumerate(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> {
         self.iter()
