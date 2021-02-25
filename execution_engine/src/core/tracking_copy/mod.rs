@@ -5,7 +5,7 @@ pub(self) mod meter;
 mod tests;
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     convert::{From, TryInto},
     iter,
 };
@@ -13,7 +13,7 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, CLType, CLValue, CLValueError, Key, U512};
+use casper_types::{bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, Tagged, U512};
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -105,6 +105,8 @@ pub struct TrackingCopyCache<M> {
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
     muts_cached: HashMap<Key, StoredValue>,
+    key_tag_reads_cached: LinkedHashMap<KeyTag, BTreeSet<Key>>,
+    key_tag_muts_cached: HashMap<KeyTag, BTreeSet<Key>>,
     meter: M,
 }
 
@@ -119,6 +121,8 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             current_cache_size: 0,
             reads_cached: LinkedHashMap::new(),
             muts_cached: HashMap::new(),
+            key_tag_reads_cached: LinkedHashMap::new(),
+            key_tag_muts_cached: HashMap::new(),
             meter,
         }
     }
@@ -139,9 +143,32 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
         }
     }
 
+    /// Inserts a `KeyTag` value and the keys under this prefix into the key reads cache.
+    pub fn insert_key_tag_read(&mut self, key_tag: KeyTag, keys: BTreeSet<Key>) {
+        let element_size = Meter::measure_keys(&self.meter, &keys);
+        self.key_tag_reads_cached.insert(key_tag, keys);
+        self.current_cache_size += element_size;
+        while self.current_cache_size > self.max_cache_size {
+            match self.reads_cached.pop_front() {
+                Some((k, v)) => {
+                    let element_size = Meter::measure(&self.meter, &k, &v);
+                    self.current_cache_size -= element_size;
+                }
+                None => break,
+            }
+        }
+    }
+
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_write(&mut self, key: Key, value: StoredValue) {
         self.muts_cached.insert(key, value);
+
+        let key_set = self
+            .key_tag_muts_cached
+            .entry(key.tag())
+            .or_insert_with(BTreeSet::new);
+
+        key_set.insert(key);
     }
 
     /// Gets value from `key` in the cache.
@@ -151,6 +178,14 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
         };
 
         self.reads_cached.get_refresh(key).map(|v| &*v)
+    }
+
+    pub fn get_key_tag_muts_cached(&mut self, key_tag: &KeyTag) -> Option<&BTreeSet<Key>> {
+        self.key_tag_muts_cached.get(key_tag)
+    }
+
+    pub fn get_key_tag_reads_cached(&mut self, key_tag: &KeyTag) -> Option<&BTreeSet<Key>> {
+        self.key_tag_reads_cached.get_refresh(key_tag).map(|v| &*v)
     }
 }
 
@@ -229,6 +264,29 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn get_keys(
+        &mut self,
+        correlation_id: CorrelationId,
+        key_tag: &KeyTag,
+    ) -> Result<BTreeSet<Key>, R::Error> {
+        let mut ret: BTreeSet<Key> = BTreeSet::new();
+        match self.cache.get_key_tag_reads_cached(&key_tag) {
+            Some(keys) => ret.extend(keys),
+            None => {
+                let key_tag = key_tag.to_owned();
+                let keys = self
+                    .reader
+                    .keys_with_prefix(correlation_id, &[key_tag as u8])?;
+                ret.extend(keys);
+                self.cache.insert_key_tag_read(key_tag, ret.to_owned())
+            }
+        }
+        if let Some(keys) = self.cache.get_key_tag_muts_cached(&key_tag) {
+            ret.extend(keys)
+        }
+        Ok(ret)
     }
 
     pub fn read(
