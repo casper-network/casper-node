@@ -11,7 +11,7 @@ use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
     system::auction::{
-        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
+        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS,
         METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -148,7 +148,7 @@ fn should_run_ee_1120_slash_delegators() {
         .commit();
 
     // Ensure that initial bid entries exist for validator 1 and validator 2
-    let initial_bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let initial_bids: Bids = builder.get_bids();
     assert_eq!(
         initial_bids.keys().copied().collect::<BTreeSet<_>>(),
         BTreeSet::from_iter(vec![*VALIDATOR_2, *VALIDATOR_1])
@@ -257,7 +257,7 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check bids before slashing
 
-    let bids_before: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids_before: Bids = builder.get_bids();
     assert_eq!(
         bids_before.keys().collect::<Vec<_>>(),
         initial_bids.keys().collect::<Vec<_>>()
@@ -276,7 +276,7 @@ fn should_run_ee_1120_slash_delegators() {
     builder.exec(slash_request_1).expect_success().commit();
 
     // Compare bids after slashing validator 2
-    let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids_after: Bids = builder.get_bids();
     assert_ne!(bids_before, bids_after);
     assert_eq!(bids_after.len(), 2);
     let validator_2_bid = bids_after.get(&VALIDATOR_2).unwrap();
@@ -332,7 +332,7 @@ fn should_run_ee_1120_slash_delegators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids_after: Bids = builder.get_bids();
     assert_eq!(bids_after.len(), 2);
     let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());

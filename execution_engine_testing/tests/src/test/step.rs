@@ -13,8 +13,7 @@ use casper_execution_engine::{
 use casper_types::{
     system::{
         auction::{
-            Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            Bids, SeigniorageRecipientsSnapshot, BLOCK_REWARD, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -88,14 +87,14 @@ fn should_step() {
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
-    let bids_before_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids_before_slashing: Bids = builder.get_bids();
     assert!(
         bids_before_slashing.contains_key(&ACCOUNT_1_PK),
         "should have entry in the genesis bids table {:?}",
         bids_before_slashing
     );
 
-    let bids_before_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids_before_slashing: Bids = builder.get_bids();
     assert!(
         bids_before_slashing.contains_key(&ACCOUNT_1_PK),
         "should have entry in bids table before slashing {:?}",
@@ -104,12 +103,12 @@ fn should_step() {
 
     builder.step(step_request);
 
-    let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids_after_slashing: Bids = builder.get_bids();
     let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
     assert!(account_1_bid.inactive());
     assert!(account_1_bid.staked_amount().is_zero());
 
-    let bids_after_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids_after_slashing: Bids = builder.get_bids();
     assert_ne!(
         bids_before_slashing, bids_after_slashing,
         "bids table should be different before and after slashing"

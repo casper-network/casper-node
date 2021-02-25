@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::convert::TryInto;
 
 use num_rational::Ratio;
@@ -10,7 +10,7 @@ use crate::{
         constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
     },
-    CLTyped, PublicKey, URef, U512,
+    CLTyped, Key, KeyTag, PublicKey, URef, U512,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
@@ -39,14 +39,34 @@ pub fn get_bids<P>(provider: &mut P) -> Result<Bids, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    Ok(read_from(provider, BIDS_KEY)?)
+    let bids_keys = provider.get_keys(&KeyTag::Bid)?;
+
+    let mut ret = BTreeMap::new();
+
+    for key in bids_keys {
+        let account_hash = match key {
+            Key::Bid(account_ash) => account_ash,
+            _ => return Err(Error::InvalidKeyVariant),
+        };
+        let bid = match provider.read_bid(&account_hash)? {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
+        };
+        ret.insert(*bid.validator_public_key(), bid);
+    }
+
+    Ok(ret)
 }
 
 pub fn set_bids<P>(provider: &mut P, validators: Bids) -> Result<(), Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    write_to(provider, BIDS_KEY, validators)
+    for (_, bid) in validators.into_iter() {
+        let account_hash = AccountHash::from(bid.validator_public_key());
+        provider.write_bid(account_hash, bid)?;
+    }
+    Ok(())
 }
 
 pub fn get_unbonding_purses<P>(provider: &mut P) -> Result<UnbondingPurses, Error>
@@ -231,20 +251,22 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
 }
 
 /// Reinvests delegator reward by increasing its stake.
-pub fn reinvest_delegator_rewards(
-    bids: &mut Bids,
+pub fn reinvest_delegator_rewards<P>(
+    provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
-) -> Result<Vec<(U512, URef)>, Error> {
+) -> Result<Vec<(U512, URef)>, Error>
+where
+    P: StorageProvider,
+{
     let mut delegator_payouts = Vec::new();
 
-    let bid = match bids.get_mut(&validator_public_key) {
+    let validator_account_hash = AccountHash::from(&validator_public_key);
+
+    let mut bid = match provider.read_bid(&validator_account_hash)? {
         Some(bid) => bid,
-        None => {
-            // Validator has been slashed
-            return Ok(delegator_payouts);
-        }
+        None => return Err(Error::ValidatorNotFound),
     };
 
     let delegators = bid.delegators_mut();
@@ -270,21 +292,27 @@ pub fn reinvest_delegator_rewards(
         seigniorage_allocations.push(allocation);
     }
 
+    provider.write_bid(validator_account_hash, bid)?;
+
     Ok(delegator_payouts)
 }
 
 /// Reinvests validator reward by increasing its stake and returns its bonding purse.
-pub fn reinvest_validator_reward(
-    bids: &mut Bids,
+pub fn reinvest_validator_reward<P>(
+    provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<Option<URef>, Error> {
-    let bid = match bids.get_mut(&validator_public_key) {
+) -> Result<Option<URef>, Error>
+where
+    P: StorageProvider,
+{
+    let validator_account_hash = AccountHash::from(&validator_public_key);
+
+    let mut bid = match provider.read_bid(&validator_account_hash)? {
         Some(bid) => bid,
         None => {
-            // Validator has been slashed
-            return Ok(None);
+            return Err(Error::ValidatorNotFound);
         }
     };
 
@@ -294,5 +322,9 @@ pub fn reinvest_validator_reward(
 
     seigniorage_allocations.push(allocation);
 
-    Ok(Some(*bid.bonding_purse()))
+    let bonding_purse = *bid.bonding_purse();
+
+    provider.write_bid(validator_account_hash, bid)?;
+
+    Ok(Some(bonding_purse))
 }

@@ -1,4 +1,6 @@
 use std::{
+    borrow::BorrowMut,
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -52,13 +54,14 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
+            Bids, EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
             ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, Key, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
+    U512,
 };
 
 use crate::internal::{
@@ -847,6 +850,33 @@ where
     pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let mut result = self.get_era_validators();
         result.remove(&era_id)
+    }
+
+    pub fn get_bids(&mut self) -> Bids {
+        let correlation_id = CorrelationId::new();
+        let state_hash = self.get_post_state_hash();
+
+        let mut tracking_copy = match self.engine_state.tracking_copy(state_hash).unwrap() {
+            Some(tracking_copy) => tracking_copy,
+            None => panic!(),
+        };
+
+        let tracking_copy_mut = tracking_copy.borrow_mut();
+
+        let key_set = tracking_copy_mut
+            .get_keys(correlation_id, &KeyTag::Bid)
+            .unwrap_or_default();
+
+        let mut ret = BTreeMap::new();
+
+        for key in key_set.iter() {
+            if let Ok(Some(StoredValue::Bid(bid))) = tracking_copy_mut.get(correlation_id, key) {
+                let validator_public_key = bid.validator_public_key();
+                ret.insert(*validator_public_key, *bid);
+            }
+        }
+
+        ret
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T

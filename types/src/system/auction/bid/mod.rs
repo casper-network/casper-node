@@ -82,6 +82,11 @@ impl Bid {
         }
     }
 
+    /// Gets the validator public key of the provided bid
+    pub fn validator_public_key(&self) -> &PublicKey {
+        &self.validator_public_key
+    }
+
     /// Gets the bonding purse of the provided bid
     pub fn bonding_purse(&self) -> &URef {
         &self.bonding_purse
