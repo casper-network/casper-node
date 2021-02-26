@@ -174,44 +174,23 @@ where
     }
 }
 
-/// A ContractRuntime announcement.
+/// A BlockExecutor announcement.
 #[derive(Debug)]
-pub enum ContractRuntimeAnnouncement {
+pub enum BlockExecutorAnnouncement {
     /// A new block from the linear chain was produced.
-    LinearChainBlock(Box<LinearChainBlock>),
-}
-
-impl ContractRuntimeAnnouncement {
-    /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
-    pub fn linear_chain_block(
+    LinearChainBlock {
+        /// The block.
         block: Block,
+        /// The results of executing the deploys in this block.
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) -> Self {
-        Self::LinearChainBlock(Box::new(LinearChainBlock {
-            block,
-            execution_results,
-        }))
-    }
+    },
 }
 
-/// A ContractRuntimeAnnouncement's block.
-#[derive(Debug)]
-pub struct LinearChainBlock {
-    /// The block.
-    pub block: Block,
-    /// The results of executing the deploys in this block.
-    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-}
-
-impl Display for ContractRuntimeAnnouncement {
+impl Display for BlockExecutorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block) => {
-                write!(
-                    f,
-                    "created linear chain block {}",
-                    linear_chain_block.block.hash()
-                )
+            BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
+                write!(f, "created linear chain block {}", block.hash())
             }
         }
     }

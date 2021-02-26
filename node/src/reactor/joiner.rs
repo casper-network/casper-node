@@ -25,11 +25,11 @@ use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
 };
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
+        block_executor::{self, BlockExecutor},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
@@ -49,14 +49,15 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
             DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            LinearChainBlock, NetworkAnnouncement,
+            NetworkAnnouncement,
         },
         requests::{
-            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, RestRequest, StateStoreRequest, StorageRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
+            StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -138,6 +139,10 @@ pub enum Event {
     #[from]
     LinearChainSync(#[serde(skip_serializing)] linear_chain_sync::Event<NodeId>),
 
+    /// Block executor event.
+    #[from]
+    BlockExecutor(#[serde(skip_serializing)] block_executor::Event),
+
     /// Contract Runtime event.
     #[from]
     ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
@@ -171,6 +176,10 @@ pub enum Event {
     #[from]
     BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
 
+    /// Block executor request.
+    #[from]
+    BlockExecutorRequest(#[serde(skip_serializing)] BlockExecutorRequest),
+
     /// Block proposer request.
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
@@ -192,7 +201,7 @@ pub enum Event {
 
     /// Block executor announcement.
     #[from]
-    ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
+    BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
 
     /// Consensus announcement.
     #[from]
@@ -247,7 +256,7 @@ impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event 
 
 impl From<ContractRuntimeRequest> for Event {
     fn from(request: ContractRuntimeRequest) -> Event {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
+        Event::ContractRuntime(contract_runtime::Event::Request(request))
     }
 }
 
@@ -290,10 +299,14 @@ impl Display for Event {
             }
             Event::BlockValidator(event) => write!(f, "block validator event: {}", event),
             Event::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
+            Event::BlockExecutor(event) => write!(f, "block executor event: {}", event),
+            Event::BlockExecutorRequest(request) => {
+                write!(f, "block executor request: {}", request)
+            }
             Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
-            Event::ContractRuntime(event) => write!(f, "contract runtime event: {:?}", event),
+            Event::ContractRuntime(event) => write!(f, "contract runtime event: {}", event),
             Event::LinearChain(event) => write!(f, "linear chain event: {}", event),
-            Event::ContractRuntimeAnnouncement(announcement) => {
+            Event::BlockExecutorAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
             Event::Consensus(event) => write!(f, "consensus event: {}", event),
@@ -334,6 +347,7 @@ pub struct Reactor {
     pub(super) linear_chain_sync: LinearChainSync<NodeId>,
     pub(super) block_validator: BlockValidator<Block, NodeId>,
     pub(super) deploy_fetcher: Fetcher<Deploy>,
+    pub(super) block_executor: BlockExecutor,
     pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
     pub(super) consensus: EraSupervisor<NodeId>,
     // Handles request for linear chain block by height.
@@ -371,7 +385,7 @@ impl reactor::Reactor for Reactor {
             config,
             chainspec_loader,
             storage,
-            mut contract_runtime,
+            contract_runtime,
             small_network_identity,
             network_identity,
         } = initializer;
@@ -460,9 +474,11 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
-        contract_runtime.set_initial_state(
+        let block_executor = BlockExecutor::new(
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
+            protocol_version.clone(),
+            registry.clone(),
         );
 
         let linear_chain = linear_chain::LinearChain::new(&registry)?;
@@ -521,6 +537,7 @@ impl reactor::Reactor for Reactor {
                 linear_chain_fetcher,
                 block_validator,
                 deploy_fetcher,
+                block_executor,
                 linear_chain,
                 consensus,
                 block_by_height_fetcher,
@@ -710,18 +727,22 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::BlockByHeightFetcher(request.into()),
             ),
+            Event::BlockExecutor(event) => reactor::wrap_effects(
+                Event::BlockExecutor,
+                self.block_executor.handle_event(effect_builder, rng, event),
+            ),
+            Event::BlockExecutorRequest(request) => {
+                self.dispatch_event(effect_builder, rng, Event::BlockExecutor(request.into()))
+            }
             Event::ContractRuntime(event) => reactor::wrap_effects(
                 Event::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::LinearChainBlock(
-                linear_chain_block,
-            )) => {
-                let LinearChainBlock {
-                    block,
-                    execution_results,
-                } = *linear_chain_block;
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock {
+                block,
+                execution_results,
+            }) => {
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
 

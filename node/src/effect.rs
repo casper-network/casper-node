@@ -119,14 +119,14 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
-    BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -655,11 +655,14 @@ impl<REv> EffectBuilder<REv> {
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
-        REv: From<ContractRuntimeAnnouncement>,
+        REv: From<BlockExecutorAnnouncement>,
     {
         self.0
             .schedule(
-                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
+                BlockExecutorAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
                 QueueKind::Regular,
             )
             .await
@@ -1063,11 +1066,11 @@ impl<REv> EffectBuilder<REv> {
     /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<ContractRuntimeRequest>,
+        REv: From<BlockExecutorRequest>,
     {
         self.0
             .schedule(
-                ContractRuntimeRequest::ExecuteBlock(finalized_block),
+                BlockExecutorRequest::ExecuteBlock(finalized_block),
                 QueueKind::Regular,
             )
             .await
