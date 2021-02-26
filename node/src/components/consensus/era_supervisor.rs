@@ -147,7 +147,6 @@ where
         effect_builder: EffectBuilder<REv>,
         validators: BTreeMap<PublicKey, U512>,
         protocol_config: ProtocolConfig,
-        state_root_hash: Digest,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
@@ -201,7 +200,6 @@ where
             .event(move |key_blocks| Event::InitializeEras {
                 key_blocks: key_blocks.expect("should have all the switch blocks in storage"),
                 validators,
-                state_root_hash,
                 timestamp,
                 genesis_start_time,
             });
@@ -288,14 +286,13 @@ where
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
-        state_root_hash: Digest,
     ) -> Vec<ProtocolOutcome<I, ClContext>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
         self.current_era = era_id;
         self.metrics.current_era.set(self.current_era.0 as i64);
-        let instance_id = instance_id(&self.protocol_config, state_root_hash);
+        let instance_id = instance_id(&self.protocol_config, era_id);
 
         info!(
             ?validators,
@@ -681,7 +678,6 @@ where
         &mut self,
         key_blocks: HashMap<EraId, BlockHeader>,
         genesis_validators: BTreeMap<PublicKey, U512>,
-        genesis_state_root_hash: Digest,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     ) -> Effects<Event<I>> {
@@ -723,7 +719,7 @@ where
                 0
             };
 
-            let (validators, start_height, state_root_hash, era_start_time) =
+            let (validators, start_height, era_start_time) =
                 if let Some(key_block) = maybe_key_block {
                     (
                         key_block
@@ -731,18 +727,11 @@ where
                             .cloned()
                             .expect("switch block should have era validator weights"),
                         key_block.height() + 1,
-                        *key_block.state_root_hash(), /* TODO: wrong if we want to cater to
-                                                       * upgrades modifying global state */
                         key_block.timestamp(),
                     )
                 } else {
                     // If we don't have a switch block, we're dealing with era 0 and genesis data
-                    (
-                        genesis_validators.clone(),
-                        0,
-                        genesis_state_root_hash,
-                        genesis_start_time,
-                    )
+                    (genesis_validators.clone(), 0, genesis_start_time)
                 };
 
             let results = self.era_supervisor.new_era(
@@ -754,7 +743,6 @@ where
                 seed,
                 era_start_time,
                 start_height,
-                state_root_hash,
             );
 
             effects.extend(
@@ -817,7 +805,6 @@ where
             seed,
             block.header().timestamp(),
             block.height() + 1,
-            *block.state_root_hash(),
         );
         let mut effects = self.handle_consensus_outcomes(era_id, outcomes);
         effects.extend(self.effect_builder.announce_block_handled(block).ignore());
@@ -1161,15 +1148,13 @@ where
     }
 }
 
-/// Computes the instance ID for an era, given the state root hash, block height and chainspec.
-fn instance_id(protocol_config: &ProtocolConfig, state_root_hash: Digest) -> Digest {
+/// Computes the instance ID for an era, given the era ID and the chainspec hash.
+fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
     let mut result = [0; Digest::LENGTH];
     let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
-    hasher.update(&protocol_config.name);
-    hasher.update(protocol_config.timestamp.millis().to_le_bytes());
-    hasher.update(state_root_hash);
-    hasher.update(protocol_config.protocol_version.to_string().as_bytes());
+    hasher.update(protocol_config.chainspec_hash.as_ref());
+    hasher.update(era_id.0.to_le_bytes());
 
     hasher.finalize_variable(|slice| {
         result.copy_from_slice(slice);
