@@ -25,7 +25,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         put_trie::InsertedTrieKeyAndMissingDescendants,
-        query::{QueryRequest, QueryResult},
+        query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
@@ -540,6 +540,13 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
+    /// Get the bids at the given root hash.
+    GetBids {
+        /// The global state hash.
+        state_root_hash: Digest,
+        /// Responder to call with the result.
+        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+    },
     /// Query the contract runtime for protocol version data.
     QueryProtocolData {
         /// The protocol version.
@@ -612,6 +619,11 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::QueryEraValidators {
                 state_root_hash, ..
             } => write!(formatter, "auction {}", state_root_hash),
+            RpcRequest::GetBids {
+                state_root_hash, ..
+            } => {
+                write!(formatter, "bids {}", state_root_hash)
+            }
             RpcRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
@@ -733,6 +745,14 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
+    /// Return bids at a given state root hash
+    GetBids {
+        /// Get bids request.
+        #[serde(skip_serializing)]
+        get_bids_request: GetBidsRequest,
+        /// Responder to call with the result.
+        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+    },
     /// Performs a step consisting of calculating rewards, slashing and running the auction at the
     /// end of an era.
     Step {
@@ -824,6 +844,12 @@ impl Display for ContractRuntimeRequest {
 
             ContractRuntimeRequest::GetValidatorWeightsByEraId { request, .. } => {
                 write!(formatter, "get validator weights: {:?}", request)
+            }
+
+            ContractRuntimeRequest::GetBids {
+                get_bids_request, ..
+            } => {
+                write!(formatter, "get bids request: {:?}", get_bids_request)
             }
 
             ContractRuntimeRequest::Step { step_request, .. } => {

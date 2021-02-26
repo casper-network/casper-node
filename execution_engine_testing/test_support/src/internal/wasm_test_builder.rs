@@ -21,8 +21,8 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepResult},
-            BalanceResult, EngineConfig, EngineState, GenesisResult, QueryRequest, QueryResult,
-            UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
+            BalanceResult, EngineConfig, EngineState, GenesisResult, GetBidsRequest, QueryRequest,
+            QueryResult, UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -52,7 +52,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
+            Bids, EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
             ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -847,6 +847,17 @@ where
     pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let mut result = self.get_era_validators();
         result.remove(&era_id)
+    }
+
+    pub fn get_bids(&mut self) -> Bids {
+        let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
+
+        let get_bids_result = self
+            .engine_state
+            .get_bids(CorrelationId::new(), get_bids_request)
+            .unwrap();
+
+        get_bids_result.bids().cloned().unwrap()
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
