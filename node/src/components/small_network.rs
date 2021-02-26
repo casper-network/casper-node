@@ -88,6 +88,7 @@ use crate::{
     components::{
         network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
     },
+    crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -156,8 +157,11 @@ where
     pending: HashSet<SocketAddr>,
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
-    /// Name of the network we participate in. We only remain connected to peers with the same
-    /// network name as us.
+    /// The hash of the chainspec.  We only remain connected to peers with the same
+    /// `genesis_config_hash` or `network_name` as us.
+    genesis_config_hash: Digest,
+    /// Name of the network we participate in.  We only remain connected to peers with the same
+    /// `genesis_config_hash` or `network_name` as us.
     network_name: String,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -196,6 +200,7 @@ where
         cfg: Config,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
+        genesis_config_hash: Digest,
         network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
@@ -228,6 +233,7 @@ where
                 pending: HashSet::new(),
                 blocklist: HashMap::new(),
                 gossip_interval: cfg.gossip_interval,
+                genesis_config_hash,
                 network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
@@ -292,6 +298,7 @@ where
             pending: HashSet::new(),
             blocklist: HashMap::new(),
             gossip_interval: cfg.gossip_interval,
+            genesis_config_hash,
             network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
@@ -442,6 +449,7 @@ where
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
+                    genesis_config_hash: self.genesis_config_hash,
                     network_name: self.network_name.clone(),
                 };
                 let mut effects = async move {
@@ -541,6 +549,7 @@ where
         let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
         let handshake = Message::Handshake {
+            genesis_config_hash: self.genesis_config_hash,
             network_name: self.network_name.clone(),
         };
         let peer_id_cloned = peer_id.clone();
@@ -687,8 +696,15 @@ where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
         match msg {
-            Message::Handshake { network_name } => {
-                if network_name != self.network_name {
+            Message::Handshake {
+                genesis_config_hash,
+                network_name,
+            } => {
+                if network_name == self.network_name {
+                    // Skip the hash check if the network names match.
+                    return Effects::new();
+                } else if !network_name.is_empty() {
+                    // If the network name is not an empty string and doesn't match ours, reject.
                     info!(
                         our_id=%self.our_id,
                         %peer_id,
@@ -700,6 +716,20 @@ where
                     self.update_peers_metric();
                     return remove;
                 }
+
+                if genesis_config_hash != self.genesis_config_hash {
+                    info!(
+                        our_id=%self.our_id,
+                        %peer_id,
+                        our_network=?self.network_name,
+                        their_network=?network_name,
+                        "dropping connection due to network name mismatch"
+                    );
+                    let remove = self.remove(effect_builder, &peer_id, false);
+                    self.update_peers_metric();
+                    return remove;
+                }
+
                 self.update_peers_metric();
                 Effects::new()
             }
