@@ -514,7 +514,6 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
-            chainspec_loader.initial_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
