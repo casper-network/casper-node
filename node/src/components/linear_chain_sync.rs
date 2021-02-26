@@ -35,8 +35,8 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
-use casper_types::{PublicKey, U512};
 use self::event::{BlockByHashResult, DeploysResult};
+use casper_types::{PublicKey, U512};
 
 use super::{
     consensus::EraId,
