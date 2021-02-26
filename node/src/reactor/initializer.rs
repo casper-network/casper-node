@@ -283,6 +283,7 @@ pub mod test {
             Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
         }
     }
+
     impl NetworkedReactor for Reactor {
         type NodeId = NodeId;
         fn node_id(&self) -> Self::NodeId {
