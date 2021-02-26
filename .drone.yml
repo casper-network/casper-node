@@ -41,6 +41,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -74,6 +75,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -120,6 +122,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -148,7 +151,6 @@ steps:
   commands:
     - "apt update"
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
-    - "$(pwd)/ci/test_casper-node_deb.sh $(pwd)"
 
 - name: put-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
@@ -162,6 +164,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -178,6 +181,7 @@ steps:
   when:
     branch:
     - master
+    - dev
     - "release-*"
     event:
     - push
@@ -187,18 +191,22 @@ steps:
   commands:
     - "./ci/build_update_package.sh"
 
-- name: put-upgrade_package-s3
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - "./ci/upgrade_package_s3_storage.sh put $(pwd)/target/upgrade_package/"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+- name: upload-to-s3-genesis
+  image: plugins/s3
+  settings:
+    bucket: 'genesis.casperlabs.io'
+    region: 'us-east-2'
+    access_key:
+      from_secret: drone_genesis_key_id
+    secret_key:
+      from_secret: drone_genesis_secret
+    source: "target/upgrade_build/**/*"
+    strip_prefix: 'target/upgrade_build/'
+    target: "/drone/${DRONE_COMMIT}/"
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -211,6 +219,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -237,6 +246,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -257,6 +267,7 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
@@ -270,6 +281,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -297,26 +309,27 @@ steps:
   when:
     branch:
       - master
+      - dev
       - "release-*"
     event:
       - push
 
 # Build failed so remove the update_package candidate
-- name: del-upgrade_package-s3
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - ./ci/upgrade_package_s3_storage.sh del
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - "release-*"
-    event:
-      - push
+#- name: del-upgrade_package-s3
+#  image: casperlabs/s3cmd-build:latest
+#  commands:
+#    - ./ci/upgrade_package_s3_storage.sh del
+#  environment:
+#    CL_VAULT_TOKEN:
+#      from_secret: vault_token
+#    CL_VAULT_HOST:
+#      from_secret: vault_host
+#  when:
+#    branch:
+#      - master
+#      - "release-*"
+#    event:
+#      - push
 
 - name: notify
   image: plugins/slack
@@ -337,6 +350,7 @@ trigger:
     - master
     - trying
     - staging
+    - dev
     - "release-*"
   event:
     exclude:
@@ -364,7 +378,6 @@ steps:
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
-  # Removed casper-node from tag publish as we not longer ship this way.
   commands:
   - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
   environment:
@@ -402,6 +415,22 @@ steps:
   environment:
     CARGO_TOKEN:
       from_secret: crates_io_token
+
+- name: as-contract-publish
+  image: plugins/npm
+  settings:
+    username:
+      from_secret: npm_user
+    token:
+      from_secret: npm_token
+    email:
+      from_secret: npm_email
+    folder:
+    - "smart_contracts/contract-as"
+    fail_on_version_conflict:
+    - true
+    access:
+    - "public"
 
 trigger:
   ref:
