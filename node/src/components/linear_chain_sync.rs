@@ -29,12 +29,13 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{convert::Infallible, fmt::Display, mem};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
+use casper_types::{PublicKey, U512};
 use self::event::{BlockByHashResult, DeploysResult};
 
 use super::{
@@ -73,12 +74,15 @@ pub(crate) struct LinearChainSync<I> {
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
+    // TODO: fix this
+    #[allow(clippy::too_many_arguments)]
     pub fn new<Err>(
         registry: &Registry,
         chainspec: &Chainspec,
         storage: &Storage,
         init_hash: Option<BlockHash>,
         highest_block_header: Option<BlockHeader>,
+        _genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, Err>
     where
