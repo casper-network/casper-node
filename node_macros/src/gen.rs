@@ -132,7 +132,6 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
     quote!(
         #[doc = #event_docs]
-        #[allow(clippy::large_enum_variant)]
         #[derive(Debug, serde::Serialize)]
         pub enum #event_ident {
            #(#event_variants,)*

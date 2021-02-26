@@ -137,9 +137,6 @@ resources/local/chainspec.toml
 .idea/
 cmake-build-debug/
 
-# vscode
-.vscode/
-
 # NCTL transient assets
 /utils/nctl/assets
 /utils/nctl/dumps
