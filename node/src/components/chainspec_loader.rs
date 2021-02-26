@@ -364,8 +364,8 @@ impl ChainspecLoader {
         };
         let highest_block_era_id = highest_block.header().era_id();
 
-        let cached_protocol_version = maybe_cached_protocol_version
-            .expect("cached protocol version must exist if we have a stored block");
+        let cached_protocol_version =
+            maybe_cached_protocol_version.unwrap_or_else(|| Version::new(1, 0, 0));
         let current_chainspec_activation_point =
             self.chainspec.protocol_config.activation_point.era_id;
 

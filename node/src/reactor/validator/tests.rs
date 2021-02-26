@@ -6,12 +6,13 @@ use std::{
 
 use anyhow::bail;
 use log::info;
+use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 
 use crate::{
     components::{consensus::EraId, gossiper, small_network, storage},
@@ -19,7 +20,7 @@ use crate::{
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
     types::{
-        chainspec::{AccountConfig, AccountsConfig},
+        chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
         Chainspec, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
@@ -63,10 +64,14 @@ impl TestChain {
         let accounts = stakes
             .iter()
             .map(|(public_key, bounded_amounts_u64)| {
+                let validator_config = ValidatorConfig::new(
+                    Motes::new(U512::from(*bounded_amounts_u64)),
+                    DelegationRate::zero(),
+                );
                 AccountConfig::new(
                     *public_key,
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
-                    Motes::new(U512::from(*bounded_amounts_u64)),
+                    Some(validator_config),
                 )
             })
             .collect();

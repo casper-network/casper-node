@@ -31,7 +31,6 @@ use casper_types::{PublicKey, U512};
 
 use crate::{
     components::Component,
-    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -120,7 +119,6 @@ pub enum Event<I> {
     InitializeEras {
         key_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
-        state_root_hash: Digest,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     },
@@ -326,14 +324,12 @@ where
             Event::InitializeEras {
                 key_blocks,
                 validators,
-                state_root_hash,
                 timestamp,
                 genesis_start_time,
             } => {
                 let mut effects = handling_es.handle_initialize_eras(
                     key_blocks,
                     validators,
-                    state_root_hash,
                     timestamp,
                     genesis_start_time,
                 );

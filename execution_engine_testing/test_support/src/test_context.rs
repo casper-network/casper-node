@@ -1,5 +1,3 @@
-use num_traits::identities::Zero;
-
 use casper_execution_engine::{
     core::engine_state::{
         genesis::{GenesisAccount, GenesisConfig},
@@ -169,8 +167,7 @@ impl TestContextBuilder {
     ///
     /// Note: `initial_balance` represents the number of motes.
     pub fn with_public_key(mut self, public_key: PublicKey, initial_balance: U512) -> Self {
-        let new_account =
-            GenesisAccount::account(public_key, Motes::new(initial_balance), Motes::zero());
+        let new_account = GenesisAccount::account(public_key, Motes::new(initial_balance), None);
         self.genesis_config
             .ee_config_mut()
             .push_account(new_account);

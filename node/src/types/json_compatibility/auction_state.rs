@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,7 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
         validator_public_key,
         bonding_purse,
         staked_amount,
+        DelegationRate::zero(),
         release_era,
     );
     let mut bids = BTreeMap::new();

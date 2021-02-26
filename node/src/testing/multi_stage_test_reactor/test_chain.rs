@@ -1,12 +1,13 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use log::info;
+use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 
 use crate::{
     components::{consensus::EraId, gossiper, small_network, storage, storage::Storage},
@@ -19,7 +20,7 @@ use crate::{
         ConditionCheckReactor, MultiStageTestReactor,
     },
     types::{
-        chainspec::{AccountConfig, AccountsConfig},
+        chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
         BlockHash, Chainspec, NodeId, Timestamp,
     },
     utils::{External, Loadable, WithDir},
@@ -99,10 +100,14 @@ impl TestChain {
             .chain(other_secret_keys_with_stakes.iter())
             .map(|staked_secret_key| {
                 let public_key = PublicKey::from(&staked_secret_key.secret_key);
+                let validator_config = ValidatorConfig::new(
+                    Motes::new(U512::from(staked_secret_key.stake)),
+                    DelegationRate::zero(),
+                );
                 AccountConfig::new(
                     public_key,
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
-                    Motes::new(U512::from(staked_secret_key.stake)),
+                    Some(validator_config),
                 )
             })
             .collect();
