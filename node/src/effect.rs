@@ -87,7 +87,8 @@ use casper_execution_engine::{
         put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
+        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        MAX_PAYMENT,
     },
     shared::{
         additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
@@ -1426,6 +1427,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_bids(
+        self,
+        get_bids_request: GetBidsRequest,
+    ) -> Result<GetBidsResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

@@ -27,7 +27,8 @@ use semver::Version;
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, BalanceRequest, BalanceResult, GetEraValidatorsError, QueryRequest, QueryResult,
+        self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
+        QueryResult,
     },
     storage::protocol_data::ProtocolData,
 };
@@ -253,6 +254,18 @@ where
                 protocol_version,
                 responder,
             ),
+            Event::RpcRequest(RpcRequest::GetBids {
+                state_root_hash,
+                responder,
+            }) => {
+                let get_bids_request = GetBidsRequest::new(state_root_hash.into());
+                effect_builder
+                    .get_bids(get_bids_request)
+                    .event(move |result| Event::GetBidsResult {
+                        result,
+                        main_responder: responder,
+                    })
+            }
             Event::RpcRequest(RpcRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
@@ -308,6 +321,10 @@ where
                 main_responder,
             } => main_responder.respond(result).ignore(),
             Event::QueryEraValidatorsResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::GetBidsResult {
                 result,
                 main_responder,
             } => main_responder.respond(result).ignore(),

@@ -540,6 +540,13 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
+    /// Get the bids at the given root hash.
+    GetBids {
+        /// The global state hash.
+        state_root_hash: Digest,
+        /// Responder to call with the result.
+        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+    },
     /// Query the contract runtime for protocol version data.
     QueryProtocolData {
         /// The protocol version.
@@ -612,6 +619,11 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::QueryEraValidators {
                 state_root_hash, ..
             } => write!(formatter, "auction {}", state_root_hash),
+            RpcRequest::GetBids {
+                state_root_hash, ..
+            } => {
+                write!(formatter, "bids {}", state_root_hash)
+            }
             RpcRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
