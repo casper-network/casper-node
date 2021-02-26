@@ -41,7 +41,9 @@ function main() {
     do_read_lfb_hash "$COMPARE_NODE_ID"
     # 7. Restart node from LFB
     do_start_node
-    # 8. Check sync of restarted node
+    # 8. Ensure pending deploys drain.
+    do_verify_deploys_drain
+    # 9. Check sync of restarted node
     do_await_full_synchronization
 
     log "------------------------------------------------------------"
@@ -143,6 +145,31 @@ function do_background_wasmless_transfers() {
 
     sleep 1
     log_step "initiated background wasmless transfers"
+}
+
+function num_pending() {
+    ENDPOINT="$(get_node_address_rest "$NODE_ID")"/metrics
+    NUM_PENDING=$(curl -s --location --request GET "$ENDPOINT" \
+        | grep "pending_deploy" \
+        | tail -n 1 \
+        | sed -r 's/.*pending_deploy ([0-9]+)/\1/g')
+}
+
+function do_verify_deploys_drain() {
+    log_step "waiting for pendings deploys to drain"
+    num_pending
+
+    while [[ "$NUM_PENDING" > "0" ]]
+    do
+        PREV_NUM_PENDING=$NUM_PENDING
+        num_pending
+        if [[ $PREV_NUM_PENDING < $NUM_PENDING ]]
+        then
+            exit 1
+        fi
+
+        sleep 3
+    done
 }
 
 # ----------------------------------------------------------------
