@@ -1,19 +1,23 @@
 use std::convert::TryFrom;
 
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisAccount, RewardItem, SlashItem},
+    core::engine_state::{
+        genesis::{GenesisAccount, GenesisValidator},
+        RewardItem, SlashItem,
+    },
     shared::motes::Motes,
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     system::{
         auction::{
-            Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
+            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -52,12 +56,18 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account_1);
         tmp.push(account_2);

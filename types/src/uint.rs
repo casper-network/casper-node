@@ -11,6 +11,10 @@ use core::{
 
 use num_integer::Integer;
 use num_traits::{AsPrimitive, Bounded, Num, One, Unsigned, WrappingAdd, WrappingSub, Zero};
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{
     de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
@@ -410,6 +414,14 @@ macro_rules! impl_traits_for_uint {
         impl Sum for $type {
             fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
                 iter.fold($type::zero(), Add::add)
+            }
+        }
+
+        impl Distribution<$type> for Standard {
+            fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> $type {
+                let mut raw_bytes = [0u8; $total_bytes];
+                rng.fill_bytes(raw_bytes.as_mut());
+                $type::from(raw_bytes)
             }
         }
 

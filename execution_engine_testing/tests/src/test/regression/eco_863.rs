@@ -1,5 +1,4 @@
 use assert_matches::assert_matches;
-use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -39,7 +38,7 @@ fn faucet_should_create_account() {
         let faucet_account = GenesisAccount::account(
             *FAUCET,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::zero(),
+            None,
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet_account);
@@ -130,12 +129,12 @@ fn faucet_should_transfer_to_existing_account() {
         let faucet_account = GenesisAccount::account(
             *FAUCET,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::zero(),
+            None,
         );
         let alice_account = GenesisAccount::account(
             *ALICE,
             Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE.into()),
-            Motes::zero(),
+            None,
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet_account);

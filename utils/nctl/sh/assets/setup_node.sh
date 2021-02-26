@@ -44,7 +44,11 @@ function setup_node()
     if [ "$NODE_ID" -le "$COUNT_GENESIS_NODES" ]; then
         POS_WEIGHT=$(get_node_staking_weight "$NODE_ID")
     else
-        POS_WEIGHT=0
+        POS_WEIGHT="0"
+    fi
+
+    if [ "x$POS_WEIGHT" = 'x' ]; then
+        POS_WEIGHT="0"
     fi
 
     # Set chainspec account.
@@ -52,9 +56,14 @@ function setup_node()
 [[accounts]]
 public_key = "$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID")"
 balance = "$NCTL_INITIAL_BALANCE_VALIDATOR"
+EOM
+    if [ "$POS_WEIGHT" != '0' ]; then
+        cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[accounts.validator]
 bonded_amount = "$POS_WEIGHT"
 
 EOM
+    fi
 }
 
 #######################################

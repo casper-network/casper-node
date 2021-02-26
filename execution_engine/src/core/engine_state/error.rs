@@ -20,7 +20,7 @@ pub enum Error {
     InvalidAccountHashLength { expected: usize, actual: usize },
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    #[error("Genesis error.")]
+    #[error("{0:?}")]
     Genesis(Box<GenesisError>),
     #[error("Wasm preprocessing error: {0}")]
     WasmPreprocessing(#[from] wasm_prep::PreprocessingError),

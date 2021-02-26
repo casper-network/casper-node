@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -6,10 +7,15 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
-    account::AccountHash, runtime_args, system::auction, ApiError, PublicKey, RuntimeArgs,
-    SecretKey, U512,
+    account::AccountHash,
+    runtime_args,
+    system::auction::{self, DelegationRate},
+    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -38,7 +44,10 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         let account = GenesisAccount::account(
             public_key,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account);
         tmp

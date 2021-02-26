@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -10,13 +11,13 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount},
+        genesis::{ExecConfig, GenesisAccount, GenesisValidator},
         run_genesis_request::RunGenesisRequest,
         SYSTEM_ACCOUNT_ADDR,
     },
     shared::{motes::Motes, stored_value::StoredValue},
 };
-use casper_types::{ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, U512};
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
@@ -38,7 +39,10 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         GenesisAccount::account(
             *ACCOUNT_1_PUBLIC_KEY,
             account_1_balance,
-            account_1_bonded_amount,
+            Some(GenesisValidator::new(
+                account_1_bonded_amount,
+                DelegationRate::zero(),
+            )),
         )
     };
     let account_2 = {
@@ -47,7 +51,10 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         GenesisAccount::account(
             *ACCOUNT_2_PUBLIC_KEY,
             account_2_balance,
-            account_2_bonded_amount,
+            Some(GenesisValidator::new(
+                account_2_bonded_amount,
+                DelegationRate::zero(),
+            )),
         )
     };
     vec![account_1, account_2]

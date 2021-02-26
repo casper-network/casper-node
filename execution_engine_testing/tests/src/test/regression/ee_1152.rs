@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -10,12 +11,14 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{GenesisAccount, RewardItem, SYSTEM_ACCOUNT_ADDR},
+    core::engine_state::{
+        genesis::GenesisValidator, GenesisAccount, RewardItem, SYSTEM_ACCOUNT_ADDR,
+    },
     shared::motes::Motes,
 };
 use casper_types::{
     runtime_args,
-    system::auction::{self, BLOCK_REWARD, INITIAL_ERA_ID},
+    system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -42,12 +45,18 @@ fn should_run_ee_1152_regression_test() {
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         let validator_2 = GenesisAccount::account(
             *DELEGATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -8,14 +9,17 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{
         auction::{
-            Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS,
-            BIDS_KEY, METHOD_SLASH, UNBONDING_PURSES_KEY,
+            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, METHOD_SLASH, UNBONDING_PURSES_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -50,7 +54,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

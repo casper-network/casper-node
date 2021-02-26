@@ -9,11 +9,14 @@ use casper_engine_test_support::{
     },
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::{genesis::GenesisValidator, GenesisAccount},
+    shared::motes::Motes,
+};
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::auction::{ARG_DELEGATOR, ARG_VALIDATOR},
+    system::auction::{DelegationRate, ARG_DELEGATOR, ARG_VALIDATOR},
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -65,21 +68,30 @@ static DELEGATOR_3_STAKE: Lazy<U512> = Lazy::new(|| U512::from(300_000_000_000_0
 #[test]
 fn validator_scores_should_reflect_delegates() {
     let accounts = {
-        let faucet = GenesisAccount::account(*FAUCET, Motes::new(*FAUCET_BALANCE), Motes::zero());
+        let faucet = GenesisAccount::account(*FAUCET, Motes::new(*FAUCET_BALANCE), None);
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(*VALIDATOR_1_BALANCE),
-            Motes::new(*VALIDATOR_1_STAKE),
+            Some(GenesisValidator::new(
+                Motes::new(*VALIDATOR_1_STAKE),
+                DelegationRate::zero(),
+            )),
         );
         let validator_2 = GenesisAccount::account(
             *VALIDATOR_2,
             Motes::new(*VALIDATOR_2_BALANCE),
-            Motes::new(*VALIDATOR_2_STAKE),
+            Some(GenesisValidator::new(
+                Motes::new(*VALIDATOR_2_STAKE),
+                DelegationRate::zero(),
+            )),
         );
         let validator_3 = GenesisAccount::account(
             *VALIDATOR_3,
             Motes::new(*VALIDATOR_3_BALANCE),
-            Motes::new(*VALIDATOR_3_STAKE),
+            Some(GenesisValidator::new(
+                Motes::new(*VALIDATOR_3_STAKE),
+                DelegationRate::zero(),
+            )),
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet);

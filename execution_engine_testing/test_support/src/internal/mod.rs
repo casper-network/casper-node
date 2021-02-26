@@ -8,7 +8,6 @@ pub mod utils;
 mod wasm_test_builder;
 
 use num_rational::Ratio;
-use num_traits::identities::Zero;
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
@@ -78,13 +77,13 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let genesis_account = GenesisAccount::account(
         *DEFAULT_ACCOUNT_PUBLIC_KEY,
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-        Motes::zero(),
+        None,
     );
     ret.push(genesis_account);
     let proposer_account = GenesisAccount::account(
         *DEFAULT_PROPOSER_PUBLIC_KEY,
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-        Motes::zero(),
+        None,
     );
     ret.push(proposer_account);
     ret

@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
 use assert_matches::assert_matches;
-use num_traits::One;
+use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -15,7 +15,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{self, genesis::GenesisAccount},
+        engine_state::{
+            self,
+            genesis::{GenesisAccount, GenesisValidator},
+        },
         execution,
     },
     shared::motes::Motes,
@@ -93,13 +96,11 @@ static BID_ACCOUNT_1_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([204; SecretKey::ED25519_LENGTH]).into());
 static BID_ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_1_PK));
 const BID_ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-const BID_ACCOUNT_1_BOND: u64 = 0;
 
 static BID_ACCOUNT_2_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
 static BID_ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_2_PK));
 const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-const BID_ACCOUNT_2_BOND: u64 = 0;
 
 static VALIDATOR_1: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
@@ -146,7 +147,7 @@ fn should_run_add_bid() {
         let account_1 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
-            Motes::new(BID_ACCOUNT_1_BOND.into()),
+            None,
         );
         tmp.push(account_1);
         tmp
@@ -252,7 +253,7 @@ fn should_run_delegate_and_undelegate() {
         let account_1 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
-            Motes::new(BID_ACCOUNT_1_BOND.into()),
+            None,
         );
         tmp.push(account_1);
         tmp
@@ -414,17 +415,23 @@ fn should_calculate_era_validators() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_3 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
-            Motes::new(BID_ACCOUNT_1_BOND.into()),
+            None,
         );
         tmp.push(account_1);
         tmp.push(account_2);
@@ -567,12 +574,18 @@ fn should_get_first_seigniorage_recipients() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account_1);
         tmp.push(account_2);
@@ -746,7 +759,10 @@ fn should_release_founder_stake() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account_1);
         tmp
@@ -875,7 +891,10 @@ fn should_fail_to_get_era_validators() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account_1);
         tmp
@@ -900,7 +919,10 @@ fn should_use_era_validators_endpoint_for_first_era() {
     let extra_accounts = vec![GenesisAccount::account(
         *ACCOUNT_1_PK,
         Motes::new(ACCOUNT_1_BALANCE.into()),
-        Motes::new(ACCOUNT_1_BOND.into()),
+        Some(GenesisValidator::new(
+            Motes::new(ACCOUNT_1_BOND.into()),
+            DelegationRate::zero(),
+        )),
     )];
 
     let accounts = {
@@ -937,22 +959,28 @@ fn should_calculate_era_validators_multiple_new_bids() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_3 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
-            Motes::new(BID_ACCOUNT_1_BOND.into()),
+            None,
         );
         let account_4 = GenesisAccount::account(
             *BID_ACCOUNT_2_PK,
             Motes::new(BID_ACCOUNT_2_BALANCE.into()),
-            Motes::new(BID_ACCOUNT_2_BOND.into()),
+            None,
         );
         tmp.push(account_1);
         tmp.push(account_2);
@@ -1794,22 +1822,34 @@ fn should_handle_evictions() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_3 = GenesisAccount::account(
             *BID_ACCOUNT_1_PK,
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
-            Motes::new(300_000.into()),
+            Some(GenesisValidator::new(
+                Motes::new(300_000.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_4 = GenesisAccount::account(
             *BID_ACCOUNT_2_PK,
             Motes::new(BID_ACCOUNT_2_BALANCE.into()),
-            Motes::new(400_000.into()),
+            Some(GenesisValidator::new(
+                Motes::new(400_000.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account_1);
         tmp.push(account_2);
@@ -1933,12 +1973,18 @@ fn should_validate_orphaned_genesis_delegators() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *ACCOUNT_1_PK,
@@ -1975,12 +2021,18 @@ fn should_validate_duplicated_genesis_delegators() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *ACCOUNT_1_PK,
@@ -2015,6 +2067,53 @@ fn should_validate_duplicated_genesis_delegators() {
     builder.run_genesis(&run_genesis_request);
 }
 
+#[should_panic(expected = "InvalidDelegationRate")]
+#[ignore]
+#[test]
+fn should_validate_delegation_rate_of_genesis_validator() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::max_value(),
+            )),
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+}
+
+#[should_panic(expected = "InvalidBondAmount")]
+#[ignore]
+#[test]
+fn should_validate_bond_amount_of_genesis_validator() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Some(GenesisValidator::new(Motes::zero(), DelegationRate::zero())),
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+}
+
 #[ignore]
 #[test]
 fn should_setup_genesis_delegators() {
@@ -2023,12 +2122,15 @@ fn should_setup_genesis_delegators() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(Motes::new(ACCOUNT_1_BOND.into()), 80)),
         );
         let account_2 = GenesisAccount::account(
             *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *ACCOUNT_1_PK,
@@ -2072,7 +2174,9 @@ fn should_setup_genesis_delegators() {
     );
 
     let account_1_bid_entry = bids.get(&*ACCOUNT_1_PK).expect("should have account 1 bid");
+    assert_eq!(*account_1_bid_entry.delegation_rate(), 80);
     assert_eq!(account_1_bid_entry.delegators().len(), 1);
+
     let account_1_delegator_1_entry = account_1_bid_entry
         .delegators()
         .get(&*DELEGATOR_1)
@@ -2091,7 +2195,10 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(VALIDATOR_1_STAKE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *VALIDATOR_1,
@@ -2160,7 +2267,10 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(VALIDATOR_1_STAKE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *VALIDATOR_1,
@@ -2229,7 +2339,10 @@ fn should_not_undelegate_vfta_holder_stake() {
         let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
             Motes::new(VALIDATOR_1_STAKE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *VALIDATOR_1,
@@ -2408,7 +2521,10 @@ fn should_release_vfta_holder_stake() {
         let account_1 = GenesisAccount::account(
             *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND.into()),
+                DelegationRate::zero(),
+            )),
         );
         let delegator_1 = GenesisAccount::delegator(
             *ACCOUNT_1_PK,

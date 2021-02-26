@@ -84,7 +84,7 @@ function _set_net_chainspec()
 function _set_chainspec_account()
 {
     local PATH_TO_ACCOUNT_KEY=${1}
-    local INITIAL_BALANCE=${2}
+    local INITIAL_BALANCE=${2:-0}
     local INITIAL_WEIGHT=${3:-0}
     local ACCOUNT_KEY
     local PATH_TO_NET
@@ -96,9 +96,15 @@ function _set_chainspec_account()
 [[accounts]]
 public_key = "${ACCOUNT_KEY}"
 balance = "$INITIAL_BALANCE"
+EOM
+    
+    if [ "$INITIAL_WEIGHT" != '0' ]; then
+        cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
+[accounts.validator]
 bonded_amount = "$INITIAL_WEIGHT"
 
 EOM
+    fi
 }
 
 #######################################
@@ -154,7 +160,6 @@ function _set_chainspec_account_for_user()
     cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
 [[accounts]]
 balance = "$BALANCE_OF_USER"
-bonded_amount = "0"
 public_key = "${ACCOUNT_KEY_OF_USER}"
 
 EOM
