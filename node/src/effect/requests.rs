@@ -661,6 +661,9 @@ impl<I> Display for RestRequest<I> {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
+    /// A request to execute a block.
+    ExecuteBlock(FinalizedBlock),
+
     /// Get `ProtocolData` by `ProtocolVersion`.
     GetProtocolData {
         /// The protocol version.
@@ -781,6 +784,9 @@ pub enum ContractRuntimeRequest {
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
+                write!(formatter, "finalized_block {}", finalized_block)
+            }
             ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
                 write!(
                     formatter,
@@ -875,24 +881,6 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
-        }
-    }
-}
-
-/// A contract runtime request.
-#[derive(Debug)]
-#[must_use]
-pub enum BlockExecutorRequest {
-    /// A request to execute finalized block.
-    ExecuteBlock(FinalizedBlock),
-}
-
-impl Display for BlockExecutorRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockExecutorRequest::ExecuteBlock(finalized_block) => {
-                write!(f, "execute block {}", finalized_block)
-            }
         }
     }
 }
