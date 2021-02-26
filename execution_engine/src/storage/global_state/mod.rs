@@ -128,7 +128,7 @@ pub trait StateProvider {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Vec<Blake2bHash>,
+        trie_keys: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 
