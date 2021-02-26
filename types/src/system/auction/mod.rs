@@ -524,22 +524,21 @@ pub trait Auction:
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
             let validator_reward = validators_part.to_integer();
-            if let Some(validator_bonding_purse) = detail::reinvest_validator_reward(
+            let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
                 &mut seigniorage_allocations,
                 public_key,
                 validator_reward,
-            )? {
-                // TODO: add "mint into existing purse" facility
-                let tmp_validator_reward_purse =
-                    self.mint(validator_reward).map_err(|_| Error::MintReward)?;
-                self.transfer_purse_to_purse(
-                    tmp_validator_reward_purse,
-                    validator_bonding_purse,
-                    validator_reward,
-                )
-                .map_err(|_| Error::ValidatorRewardTransfer)?;
-            }
+            )?;
+            // TODO: add "mint into existing purse" facility
+            let tmp_validator_reward_purse =
+                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
+            self.transfer_purse_to_purse(
+                tmp_validator_reward_purse,
+                validator_bonding_purse,
+                validator_reward,
+            )
+            .map_err(|_| Error::ValidatorRewardTransfer)?;
 
             // TODO: add "mint into existing purse" facility
             let tmp_delegator_reward_purse = self

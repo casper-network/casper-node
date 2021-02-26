@@ -8,8 +8,8 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use alloc::{
+    boxed::Box,
     format,
-    prelude::v1::Box,
     string::{String, ToString},
     vec,
     vec::Vec,

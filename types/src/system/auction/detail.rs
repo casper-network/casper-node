@@ -303,7 +303,7 @@ pub fn reinvest_validator_reward<P>(
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<Option<URef>, Error>
+) -> Result<URef, Error>
 where
     P: StorageProvider,
 {
@@ -326,5 +326,5 @@ where
 
     provider.write_bid(validator_account_hash, bid)?;
 
-    Ok(Some(bonding_purse))
+    Ok(bonding_purse)
 }
