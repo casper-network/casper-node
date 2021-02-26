@@ -17,7 +17,13 @@ pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
-use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, iter::FromIterator, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+    iter::FromIterator,
+    rc::Rc,
+};
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -36,8 +42,8 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         proof_of_stake,
     },
-    AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, KeyTag,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -51,7 +57,7 @@ pub use self::{
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
-    query::{QueryRequest, QueryResult},
+    query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepRequest, StepResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -1778,6 +1784,35 @@ where
             None => Err(GetEraValidatorsError::EraValidatorsMissing),
             Some(era_validators) => Ok(era_validators),
         }
+    }
+
+    pub fn get_bids(
+        &self,
+        correlation_id: CorrelationId,
+        get_bids_request: GetBidsRequest,
+    ) -> Result<GetBidsResult, Error> {
+        let tracking_copy = match self.tracking_copy(get_bids_request.state_hash())? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Ok(GetBidsResult::RootNotFound),
+        };
+
+        let mut tracking_copy = tracking_copy.borrow_mut();
+
+        let bid_keys = tracking_copy
+            .get_keys(correlation_id, &KeyTag::Bid)
+            .map_err(|err| Error::Exec(err.into()))?;
+
+        let mut bids = BTreeMap::new();
+
+        for key in bid_keys.iter() {
+            if let Some(StoredValue::Bid(bid)) =
+                tracking_copy.get(correlation_id, key).map_err(Into::into)?
+            {
+                bids.insert(*bid.validator_public_key(), *bid);
+            };
+        }
+
+        Ok(GetBidsResult::Success { bids })
     }
 
     pub fn commit_step(

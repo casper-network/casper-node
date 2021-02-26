@@ -1,4 +1,4 @@
-use casper_types::Key;
+use casper_types::{system::auction::Bids, Key};
 
 use crate::{
     core::tracking_copy::TrackingCopyQueryResult,
@@ -57,6 +57,40 @@ impl From<TrackingCopyQueryResult> for QueryResult {
                 let value = Box::new(value);
                 QueryResult::Success { value, proofs }
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GetBidsRequest {
+    state_hash: Blake2bHash,
+}
+
+impl GetBidsRequest {
+    pub fn new(state_hash: Blake2bHash) -> Self {
+        GetBidsRequest { state_hash }
+    }
+
+    pub fn state_hash(&self) -> Blake2bHash {
+        self.state_hash
+    }
+}
+
+#[derive(Debug)]
+pub enum GetBidsResult {
+    RootNotFound,
+    Success { bids: Bids },
+}
+
+impl GetBidsResult {
+    pub fn success(bids: Bids) -> Self {
+        GetBidsResult::Success { bids }
+    }
+
+    pub fn bids(&self) -> Option<&Bids> {
+        match self {
+            GetBidsResult::RootNotFound => None,
+            GetBidsResult::Success { bids } => Some(bids),
         }
     }
 }

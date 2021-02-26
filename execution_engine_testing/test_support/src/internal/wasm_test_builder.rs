@@ -1,6 +1,4 @@
 use std::{
-    borrow::BorrowMut,
-    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -23,8 +21,8 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepResult},
-            BalanceResult, EngineConfig, EngineState, GenesisResult, QueryRequest, QueryResult,
-            UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
+            BalanceResult, EngineConfig, EngineState, GenesisResult, GetBidsRequest, QueryRequest,
+            QueryResult, UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -60,8 +58,7 @@ use casper_types::{
         mint::TOTAL_SUPPLY_KEY,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
-    U512,
+    DeployHash, DeployInfo, Key, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::internal::{
@@ -853,30 +850,14 @@ where
     }
 
     pub fn get_bids(&mut self) -> Bids {
-        let correlation_id = CorrelationId::new();
-        let state_hash = self.get_post_state_hash();
+        let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
-        let mut tracking_copy = match self.engine_state.tracking_copy(state_hash).unwrap() {
-            Some(tracking_copy) => tracking_copy,
-            None => panic!(),
-        };
+        let get_bids_result = self
+            .engine_state
+            .get_bids(CorrelationId::new(), get_bids_request)
+            .unwrap();
 
-        let tracking_copy_mut = tracking_copy.borrow_mut();
-
-        let key_set = tracking_copy_mut
-            .get_keys(correlation_id, &KeyTag::Bid)
-            .unwrap_or_default();
-
-        let mut ret = BTreeMap::new();
-
-        for key in key_set.iter() {
-            if let Ok(Some(StoredValue::Bid(bid))) = tracking_copy_mut.get(correlation_id, key) {
-                let validator_public_key = bid.validator_public_key();
-                ret.insert(*validator_public_key, *bid);
-            }
-        }
-
-        ret
+        get_bids_result.bids().cloned().unwrap()
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
