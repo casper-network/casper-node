@@ -8,7 +8,7 @@ use thiserror::Error;
 use super::validators::ValidatorIndex;
 use crate::components::consensus::{
     highway_core::{
-        endorsement::SignedEndorsement, highway::SignedWireUnit, state::State,
+        endorsement::SignedEndorsement, highway::SignedWireUnit, state::Params,
         validators::Validators,
     },
     traits::Context,
@@ -86,7 +86,7 @@ impl<C: Context> Evidence<C> {
         &self,
         validators: &Validators<C::ValidatorId>,
         instance_id: &C::InstanceId,
-        state: &State<C>,
+        params: &Params,
     ) -> Result<(), EvidenceError> {
         match self {
             Evidence::Equivocation(unit1, unit2) => {
@@ -99,7 +99,7 @@ impl<C: Context> Evidence<C> {
                 unit2,
                 swimlane2,
             } => {
-                if swimlane2.len() as u64 > state.params().endorsement_evidence_limit() {
+                if swimlane2.len() as u64 > params.endorsement_evidence_limit() {
                     return Err(EvidenceError::EndorsementTooManyUnits);
                 }
                 let v_id = validators

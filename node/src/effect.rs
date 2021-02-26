@@ -119,14 +119,14 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+    ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -655,14 +655,11 @@ impl<REv> EffectBuilder<REv> {
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
-        REv: From<BlockExecutorAnnouncement>,
+        REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::LinearChainBlock {
-                    block,
-                    execution_results,
-                },
+                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
                 QueueKind::Regular,
             )
             .await
@@ -796,6 +793,17 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Requests the key block for the given era ID, ie. the switch block at the era before
+    /// (if one exists).
+    pub(crate) async fn get_key_block_for_era_id_from_storage(self, era_id: EraId) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        let era_before = era_id.checked_sub(1)?;
+        self.get_switch_block_at_era_id_from_storage(era_before)
+            .await
     }
 
     /// Requests the highest switch block.
@@ -1055,11 +1063,11 @@ impl<REv> EffectBuilder<REv> {
     /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<BlockExecutorRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.0
             .schedule(
-                BlockExecutorRequest::ExecuteBlock(finalized_block),
+                ContractRuntimeRequest::ExecuteBlock(finalized_block),
                 QueueKind::Regular,
             )
             .await
@@ -1497,20 +1505,31 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Collects the switch blocks from the eras identified by provided era IDs. Returns
+    /// Collects the key blocks for the eras identified by provided era IDs. Returns
     /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
-    /// `None` if at least one was missing.
-    pub(crate) async fn collect_switch_blocks<I: IntoIterator<Item = EraId>>(
+    /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
+    /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
+    /// initialization of era `n`.
+    pub(crate) async fn collect_key_blocks<I: IntoIterator<Item = EraId>>(
         self,
         era_ids: I,
     ) -> Option<HashMap<EraId, BlockHeader>>
     where
         REv: From<StorageRequest>,
     {
-        futures::future::join_all(era_ids.into_iter().map(|era_id| {
-            self.get_switch_block_at_era_id_from_storage(era_id)
-                .map(move |maybe_block| maybe_block.map(|block| (era_id, block.take_header())))
-        }))
+        futures::future::join_all(
+            era_ids
+                .into_iter()
+                // we would get None for era 0 and that would make it seem like the entire
+                // function failed
+                .filter(|era_id| *era_id != EraId(0))
+                .map(|era_id| {
+                    self.get_key_block_for_era_id_from_storage(era_id)
+                        .map(move |maybe_block| {
+                            maybe_block.map(|block| (era_id, block.take_header()))
+                        })
+                }),
+        )
         .await
         .into_iter()
         .collect()

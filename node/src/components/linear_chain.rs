@@ -222,11 +222,6 @@ impl<I> LinearChain<I> {
         })
     }
 
-    // TODO: Remove once we can return all linear chain blocks from persistent storage.
-    pub fn latest_block(&self) -> &Option<Block> {
-        &self.latest_block
-    }
-
     // Checks if we have already enqueued that finality signature.
     fn has_finality_signature(&self, fs: &FinalitySignature) -> bool {
         let creator = fs.public_key;

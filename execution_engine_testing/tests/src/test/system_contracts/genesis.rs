@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -10,13 +11,13 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount},
+        genesis::{ExecConfig, GenesisAccount, GenesisValidator},
         run_genesis_request::RunGenesisRequest,
         SYSTEM_ACCOUNT_ADDR,
     },
     shared::{motes::Motes, stored_value::StoredValue},
 };
-use casper_types::{ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, U512};
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
@@ -35,21 +36,25 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
         let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
         let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
-        GenesisAccount::new(
+        GenesisAccount::account(
             *ACCOUNT_1_PUBLIC_KEY,
-            *ACCOUNT_1_ADDR,
             account_1_balance,
-            account_1_bonded_amount,
+            Some(GenesisValidator::new(
+                account_1_bonded_amount,
+                DelegationRate::zero(),
+            )),
         )
     };
     let account_2 = {
         let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
         let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
-        GenesisAccount::new(
+        GenesisAccount::account(
             *ACCOUNT_2_PUBLIC_KEY,
-            *ACCOUNT_2_ADDR,
             account_2_balance,
-            account_2_bonded_amount,
+            Some(GenesisValidator::new(
+                account_2_bonded_amount,
+                DelegationRate::zero(),
+            )),
         )
     };
     vec![account_1, account_2]
@@ -157,15 +162,15 @@ fn should_track_total_token_supply_in_mint() {
     let total_supply = builder.total_supply(None);
 
     let expected_balance: U512 = accounts.iter().map(|item| item.balance().value()).sum();
-    let expected_bonded_amount: U512 = accounts
+    let expected_staked_amount: U512 = accounts
         .iter()
-        .map(|item| item.bonded_amount().value())
+        .map(|item| item.staked_amount().value())
         .sum();
 
     // check total supply against expected
     assert_eq!(
         total_supply,
-        expected_balance + expected_bonded_amount,
+        expected_balance + expected_staked_amount,
         "unexpected total supply"
     )
 }

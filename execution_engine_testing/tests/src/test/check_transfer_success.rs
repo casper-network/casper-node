@@ -25,7 +25,6 @@ fn test_check_transfer_success_with_source_only() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            *DEFAULT_ACCOUNT_ADDR,
             U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         )
         .build();
@@ -61,7 +60,6 @@ fn test_check_transfer_success_with_source_only_errors() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            *DEFAULT_ACCOUNT_ADDR,
             U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         )
         .build();
@@ -98,7 +96,6 @@ fn test_check_transfer_success_with_source_and_target() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            *DEFAULT_ACCOUNT_ADDR,
             U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         )
         .build();
@@ -139,7 +136,6 @@ fn test_check_transfer_success_with_target_error() {
     let mut test_context = TestContextBuilder::new()
         .with_public_key(
             *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            *DEFAULT_ACCOUNT_ADDR,
             U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         )
         .build();
