@@ -858,11 +858,6 @@ where
             } => {
                 warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
 
-                let was_removed = self.pending.remove(&peer_address);
-                assert!(
-                    was_removed,
-                    "Bootstrap failed for node, but it was not in the set of pending connections"
-                );
                 self.terminate_if_isolated(effect_builder)
             }
             Event::IncomingNew {
