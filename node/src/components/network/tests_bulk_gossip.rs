@@ -1,3 +1,5 @@
+#![allow(unreachable_code)] // TODO: Figure out why this warning triggers.
+
 use std::{
     collections::HashMap,
     convert::TryFrom,
