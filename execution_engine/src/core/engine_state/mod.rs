@@ -39,8 +39,8 @@ use casper_types::{
             ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
             LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
+        handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
-        proof_of_stake,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, KeyTag,
     Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
@@ -56,7 +56,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
+    genesis::{ExecConfig, GenesisAccount, GenesisResult},
     query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepRequest, StepResult},
     system_contract_cache::SystemContractCache,
@@ -177,8 +177,8 @@ where
         // Create accounts
         genesis_installer.create_accounts()?;
 
-        // Create proof of stake
-        let proof_of_stake_hash = genesis_installer.create_proof_of_stake()?;
+        // Create handle payment
+        let handle_payment_hash = genesis_installer.create_handle_payment()?;
 
         // Create auction
         let auction_hash = genesis_installer.create_auction()?;
@@ -192,7 +192,7 @@ where
                 *wasm_config,
                 *system_config,
                 mint_hash,
-                proof_of_stake_hash,
+                handle_payment_hash,
                 standard_payment_hash,
                 auction_hash,
             );
@@ -288,7 +288,7 @@ where
             *new_wasm_config,
             *new_system_config,
             current_protocol_data.mint(),
-            current_protocol_data.proof_of_stake(),
+            current_protocol_data.handle_payment(),
             current_protocol_data.standard_payment(),
             current_protocol_data.auction(),
         );
@@ -606,9 +606,9 @@ where
         let mut mint_extra_keys: Vec<Key> = vec![];
         let mint_base_key = Key::from(protocol_data.mint());
 
-        let pos_contract = match tracking_copy
+        let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, protocol_data.proof_of_stake())
+            .get_contract(correlation_id, protocol_data.handle_payment())
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -616,9 +616,9 @@ where
             }
         };
 
-        let mut pos_named_keys = pos_contract.named_keys().to_owned();
-        let pos_extra_keys: Vec<Key> = vec![];
-        let pos_base_key = Key::from(protocol_data.proof_of_stake());
+        let mut handle_payment_named_keys = handle_payment_contract.named_keys().to_owned();
+        let handle_payment_extra_keys: Vec<Key> = vec![];
+        let handle_payment_base_key = Key::from(protocol_data.handle_payment());
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -799,9 +799,9 @@ where
                     DirectSystemContractCall::GetPaymentPurse,
                     system_module.clone(),
                     RuntimeArgs::default(),
-                    &mut pos_named_keys,
-                    pos_extra_keys.as_slice(),
-                    pos_base_key,
+                    &mut handle_payment_named_keys,
+                    handle_payment_extra_keys.as_slice(),
+                    handle_payment_base_key,
                     &account,
                     authorization_keys.clone(),
                     blocktime,
@@ -952,7 +952,7 @@ where
         session_result = session_result.with_cost(Gas::default());
 
         let finalize_result = {
-            let proof_of_stake_args = {
+            let handle_payment_args = {
                 // Gas spent during payment code execution
                 let finalize_cost_motes = {
                     // A case where payment_result.cost() is different than wasmless transfer cost
@@ -963,9 +963,9 @@ where
 
                 let account = deploy_item.address;
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
-                    args.insert(proof_of_stake::ARG_AMOUNT, finalize_cost_motes.value())?;
-                    args.insert(proof_of_stake::ARG_ACCOUNT, account)?;
-                    args.insert(proof_of_stake::ARG_TARGET, proposer_purse)?;
+                    args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
+                    args.insert(handle_payment::ARG_ACCOUNT, account)?;
+                    args.insert(handle_payment::ARG_TARGET, proposer_purse)?;
                     Ok(())
                 });
 
@@ -993,10 +993,10 @@ where
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
                     system_module,
-                    proof_of_stake_args,
-                    &mut pos_named_keys,
+                    handle_payment_args,
+                    &mut handle_payment_named_keys,
                     Default::default(),
-                    Key::from(protocol_data.proof_of_stake()),
+                    Key::from(protocol_data.handle_payment()),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1328,11 +1328,11 @@ where
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
         let payment_purse_balance: Motes = {
-            // Get proof of stake system contract details
+            // Get handle payment system contract details
             // payment_code_spec_6: system contract validity
-            let proof_of_stake_contract = match tracking_copy
+            let handle_payment_contract = match tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, protocol_data.proof_of_stake())
+                .get_contract(correlation_id, protocol_data.handle_payment())
             {
                 Ok(contract) => contract,
                 Err(error) => {
@@ -1340,13 +1340,15 @@ where
                 }
             };
 
-            // Get payment purse Key from proof of stake contract
+            // Get payment purse Key from handle payment contract
             // payment_code_spec_6: system contract validity
-            let payment_purse_key: Key =
-                match proof_of_stake_contract.named_keys().get(POS_PAYMENT_PURSE) {
-                    Some(key) => *key,
-                    None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-                };
+            let payment_purse_key: Key = match handle_payment_contract
+                .named_keys()
+                .get(handle_payment::PAYMENT_PURSE_KEY)
+            {
+                Some(key) => *key,
+                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+            };
 
             let purse_balance_key = match tracking_copy
                 .borrow_mut()
@@ -1389,7 +1391,7 @@ where
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
             let proposer_main_purse_balance_key = {
-                // Get reward purse Key from proof of stake contract
+                // Get reward purse Key from handle payment contract
                 // payment_code_spec_6: system contract validity
                 match tracking_copy
                     .borrow_mut()
@@ -1492,9 +1494,10 @@ where
 
         let session_args = session.args().clone();
         let mut session_result = {
-            // payment_code_spec_3_b_i: if (balance of PoS pay purse) >= (gas spent during
-            // payment code execution) * gas_price, yes session
-            // session_code_spec_1: gas limit = ((balance of PoS payment purse) / gas_price)
+            // payment_code_spec_3_b_i: if (balance of handle payment pay purse) >= (gas spent
+            // during payment code execution) * gas_price, yes session
+            // session_code_spec_1: gas limit = ((balance of handle payment payment purse) /
+            // gas_price)
             // - (gas spent during payment execution)
             let session_gas_limit: Gas =
                 match Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
@@ -1566,7 +1569,7 @@ where
             let post_session_tc = post_session_rc.borrow();
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
-            let proof_of_stake_args = {
+            let handle_payment_args = {
                 //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
                 let finalize_cost_motes = match Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price) {
                     Some(motes) => motes,
@@ -1574,9 +1577,9 @@ where
                 };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
-                    args.insert(proof_of_stake::ARG_AMOUNT, finalize_cost_motes.value())?;
-                    args.insert(proof_of_stake::ARG_ACCOUNT, account_hash)?;
-                    args.insert(proof_of_stake::ARG_TARGET, proposer_purse)?;
+                    args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
+                    args.insert(handle_payment::ARG_ACCOUNT, account_hash)?;
+                    args.insert(handle_payment::ARG_TARGET, proposer_purse)?;
                     Ok(())
                 });
                 match maybe_runtime_args {
@@ -1588,17 +1591,17 @@ where
                 }
             };
 
-            // The PoS keys may have changed because of effects during payment and/or
+            // The Handle Payment keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let proof_of_stake_contract = match finalization_tc
+            let handle_payment_contract = match finalization_tc
                 .borrow_mut()
-                .get_contract(correlation_id, protocol_data.proof_of_stake())
+                .get_contract(correlation_id, protocol_data.handle_payment())
             {
                 Ok(info) => info,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            let mut proof_of_stake_keys = proof_of_stake_contract.named_keys().to_owned();
+            let mut handle_payment_keys = handle_payment_contract.named_keys().to_owned();
 
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
@@ -1607,10 +1610,10 @@ where
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
                     system_module,
-                    proof_of_stake_args,
-                    &mut proof_of_stake_keys,
+                    handle_payment_args,
+                    &mut handle_payment_keys,
                     Default::default(),
-                    Key::from(protocol_data.proof_of_stake()),
+                    Key::from(protocol_data.handle_payment()),
                     &system_account,
                     authorization_keys,
                     blocktime,

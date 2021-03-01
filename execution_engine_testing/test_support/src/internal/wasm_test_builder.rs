@@ -99,8 +99,8 @@ pub struct WasmTestBuilder<S> {
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Mint contract key
     mint_contract_hash: Option<ContractHash>,
-    /// PoS contract key
-    pos_contract_hash: Option<ContractHash>,
+    /// Handle payment contract key
+    handle_payment_contract_hash: Option<ContractHash>,
     /// Standard payment contract key
     standard_payment_hash: Option<ContractHash>,
     /// Auction contract key
@@ -132,7 +132,7 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
-            pos_contract_hash: None,
+            handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
@@ -153,7 +153,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
             mint_contract_hash: self.mint_contract_hash,
-            pos_contract_hash: self.pos_contract_hash,
+            handle_payment_contract_hash: self.handle_payment_contract_hash,
             standard_payment_hash: self.standard_payment_hash,
             auction_contract_hash: self.auction_contract_hash,
         }
@@ -225,7 +225,7 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
-            pos_contract_hash: None,
+            handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
@@ -248,7 +248,7 @@ impl LmdbWasmTestBuilder {
         builder.genesis_hash = result.0.genesis_hash;
         builder.post_state_hash = result.0.post_state_hash;
         builder.mint_contract_hash = result.0.mint_contract_hash;
-        builder.pos_contract_hash = result.0.pos_contract_hash;
+        builder.handle_payment_contract_hash = result.0.handle_payment_contract_hash;
         builder
     }
 
@@ -289,7 +289,7 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
-            pos_contract_hash: None,
+            handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
@@ -324,7 +324,7 @@ where
             transforms: Vec::new(),
             genesis_account: result.0.genesis_account,
             mint_contract_hash: result.0.mint_contract_hash,
-            pos_contract_hash: result.0.pos_contract_hash,
+            handle_payment_contract_hash: result.0.handle_payment_contract_hash,
             standard_payment_hash: result.0.standard_payment_hash,
             auction_contract_hash: result.0.auction_contract_hash,
             genesis_transforms: result.0.genesis_transforms,
@@ -365,7 +365,7 @@ where
             self.genesis_hash = Some(state_root_hash);
             self.post_state_hash = Some(state_root_hash);
             self.mint_contract_hash = Some(protocol_data.mint());
-            self.pos_contract_hash = Some(protocol_data.proof_of_stake());
+            self.handle_payment_contract_hash = Some(protocol_data.handle_payment());
             self.standard_payment_hash = Some(protocol_data.standard_payment());
             self.auction_contract_hash = Some(protocol_data.auction());
             self.genesis_account = Some(genesis_account);
@@ -626,9 +626,9 @@ where
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    pub fn get_pos_contract_hash(&self) -> ContractHash {
-        self.pos_contract_hash
-            .expect("Unable to obtain pos contract. Please run genesis first.")
+    pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
+        self.handle_payment_contract_hash
+            .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
@@ -700,14 +700,14 @@ where
         WasmTestResult(self.clone())
     }
 
-    pub fn get_pos_contract(&self) -> Contract {
-        let pos_contract: Key = self
-            .pos_contract_hash
-            .expect("should have pos contract uref")
+    pub fn get_handle_payment_contract(&self) -> Contract {
+        let handle_payment_contract: Key = self
+            .handle_payment_contract_hash
+            .expect("should have handle payment contract uref")
             .into();
-        self.query(None, pos_contract, &[])
+        self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
-            .expect("should find PoS URef")
+            .expect("should find handle payment URef")
     }
 
     pub fn get_purse_balance(&self, purse: URef) -> U512 {

@@ -1,6 +1,6 @@
 use casper_types::{
     account::AccountHash,
-    system::proof_of_stake::{Error, MintProvider, ProofOfStake, RuntimeProvider},
+    system::handle_payment::{Error, HandlePayment, MintProvider, RuntimeProvider},
     BlockTime, Key, Phase, TransferredTo, URef, U512,
 };
 
@@ -14,7 +14,7 @@ impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
         match exec_error {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure
-            // [`ProofOfStake`] contract running natively supports propagating gas limit
+            // [`HandlePayment`] contract running natively supports propagating gas limit
             // errors without a panic.
             execution::Error::GasLimit => Some(Error::GasLimit),
             // There are possibly other exec errors happening but such translation would be lossy.
@@ -97,7 +97,7 @@ where
     }
 }
 
-impl<'a, R> ProofOfStake for Runtime<'a, R>
+impl<'a, R> HandlePayment for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,

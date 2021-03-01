@@ -13,14 +13,14 @@ const ARG_PAYMENT_AMOUNT: &str = "payment_amount";
 
 #[ignore]
 #[test]
-fn should_run_pos_refund_purse_contract_default_account() {
+fn should_run_refund_purse_contract_default_account() {
     let mut builder = initialize();
     refund_tests(&mut builder, *DEFAULT_ACCOUNT_ADDR);
 }
 
 #[ignore]
 #[test]
-fn should_run_pos_refund_purse_contract_account_1() {
+fn should_run_refund_purse_contract_account_1() {
     let mut builder = initialize();
     transfer(
         &mut builder,
@@ -61,7 +61,7 @@ fn refund_tests(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash
             .with_deploy_hash([2; 32])
             .with_session_code("do_nothing.wasm", RuntimeArgs::default())
             .with_payment_code(
-                "pos_refund_purse.wasm",
+                "refund_purse.wasm",
                 runtime_args! { ARG_PAYMENT_AMOUNT => *DEFAULT_PAYMENT },
             )
             .with_authorization_keys(&[account_hash])

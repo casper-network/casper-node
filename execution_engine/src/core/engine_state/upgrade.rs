@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_types::{
     bytesrepr,
-    system::{AUCTION, MINT, PROOF_OF_STAKE, STANDARD_PAYMENT},
+    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     ContractHash, Key, ProtocolVersion,
 };
 
@@ -221,8 +221,8 @@ where
         self.store_contract(correlation_id, self.protocol_data.auction(), AUCTION)?;
         self.store_contract(
             correlation_id,
-            self.protocol_data.proof_of_stake(),
-            PROOF_OF_STAKE,
+            self.protocol_data.handle_payment(),
+            HANDLE_PAYMENT,
         )?;
         self.store_contract(
             correlation_id,

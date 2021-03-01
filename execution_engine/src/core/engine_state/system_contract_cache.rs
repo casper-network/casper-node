@@ -48,9 +48,9 @@ impl SystemContractCache {
         if !self.has(auction_hash) {
             self.insert(auction_hash, module.clone());
         }
-        let proof_of_stake_hash = protocol_data.proof_of_stake();
-        if !self.has(proof_of_stake_hash) {
-            self.insert(proof_of_stake_hash, module.clone());
+        let handle_payment_hash = protocol_data.handle_payment();
+        if !self.has(handle_payment_hash) {
+            self.insert(handle_payment_hash, module.clone());
         }
     }
 }
