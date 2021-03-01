@@ -34,6 +34,9 @@ pub enum State {
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
+        /// Switch block of the current era.
+        /// Updated whenever we see a new switch block.
+        maybe_switch_block: Option<Box<Block>>,
     },
     /// Synchronizing done. The single field contains the highest block seen during the
     /// synchronization process.
@@ -88,6 +91,7 @@ impl State {
             trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
+            maybe_switch_block: None,
         }
     }
 
@@ -116,5 +120,15 @@ impl State {
     /// Returns whether in `None` state.
     pub(crate) fn is_none(&self) -> bool {
         matches!(self, State::None)
+    }
+
+    /// Updates the state with a new switch block.
+    pub(crate) fn new_switch_block(&mut self, block: &Block) {
+        match self {
+            State::SyncingDescendants {
+                maybe_switch_block, ..
+            } => *maybe_switch_block = Some(Box::new(block.clone())),
+            _ => {}
+        }
     }
 }

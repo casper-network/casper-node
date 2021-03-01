@@ -76,6 +76,8 @@ pub(crate) struct LinearChainSync<I> {
     /// Acceptable drift between the block creation and now.
     /// If less than than this has passed we will consider syncing as finished.
     acceptable_drift: TimeDiff,
+    /// Shortest era that is allowed with the given protocol configuration.
+    shortest_era: TimeDiff,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
@@ -102,6 +104,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             )?)
         } else {
             let acceptable_drift = chainspec.highway_config.max_round_length();
+            // Shortest era is the maximum of the two.
+            let shortest_era: TimeDiff = std::cmp::max(
+                chainspec.highway_config.min_round_length()
+                    * chainspec.core_config.minimum_era_height,
+                chainspec.core_config.era_duration,
+            );
             let state = init_hash.map_or(State::None, |init_hash| {
                 State::sync_trusted_hash(init_hash, highest_block_header)
             });
@@ -114,6 +122,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 stop_for_upgrade: false,
                 state_key,
                 acceptable_drift,
+                shortest_era,
             })
         }
     }
@@ -128,6 +137,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
         let acceptable_drift = chainspec.highway_config.max_round_length();
+        // Shortest era is the maximum of the two.
+        let shortest_era: TimeDiff = std::cmp::max(
+            chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
+            chainspec.core_config.era_duration,
+        );
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
@@ -136,6 +150,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             stop_for_upgrade: false,
             state_key,
             acceptable_drift,
+            shortest_era,
         })
     }
 
@@ -223,6 +238,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let height = block.height();
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
+        if block.header().is_switch_block() {
+            self.state.new_switch_block(&block);
+        }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(era = block.header().era_id().0, "shutting down for upgrade");
             return effect_builder
@@ -275,7 +293,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
-                ref latest_block, ..
+                ref latest_block,
+                ref maybe_switch_block,
+                ..
             } => {
                 assert_eq!(
                     **latest_block, block,
@@ -286,6 +306,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     self.mark_done();
                     return Effects::new();
                 }
+                if self.is_currently_active_era(&maybe_switch_block) {
+                    info!("downloaded block from a new era. finished synchronization");
                     self.mark_done();
                     return Effects::new();
                 }
@@ -295,10 +317,18 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    // Returns whether `block` can be considered tip of the chain.
+    // Returns whether `block` can be considered the tip of the chain.
     fn is_recent_block(&self, block: &Block) -> bool {
         // Check if block was created "recently".
         block.header().timestamp().elapsed() <= self.acceptable_drift
+    }
+
+    // Returns whether we've just downloaded a switch block of a currently active era.
+    fn is_currently_active_era(&self, maybe_switch_block: &Option<Box<Block>>) -> bool {
+        match maybe_switch_block {
+            Some(switch_block) => switch_block.header().timestamp().elapsed() < self.shortest_era,
+            None => false,
+        }
     }
 
     /// Returns effects for fetching next block's deploys.
