@@ -724,8 +724,14 @@ impl reactor::Reactor for Reactor {
                                 responder: None,
                             })
                         }
-                        Tag::Block => todo!("Handle GET block response"),
-                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
+                        Tag::Block => {
+                            warn!("received get block response from {}", sender);
+                            return Effects::new();
+                        }
+                        Tag::BlockByHeight => {
+                            warn!("received get block by height response from {}", sender);
+                            return Effects::new();
+                        }
                         Tag::GossipedAddress => {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();
