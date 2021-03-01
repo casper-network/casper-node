@@ -373,8 +373,25 @@ impl ChainspecLoader {
             if highest_block.header().is_switch_block() {
                 // This is a valid run immediately after upgrading the node version.
                 trace!("valid run immediately after upgrade");
+
+                // TODO - remove this once we have protocol versions in block headers.
+                //
+                // It is required if we restart after the network has had a hard reset upgrade from
+                // delta currently running at v1.0.0.  In that case, the cached version could well
+                // be the same as that in the current chainspec.  However, we need to pass the
+                // previous version when calling `ContractRuntime::upgrade`.
+                //
+                // If we end up running the release-0.8.0, we'll need to update this workaround to
+                // allow for upgrading from 0.8.0.
+                let v1 = Version::new(1, 0, 0);
+                let previous_protocol_version = if cached_protocol_version > v1 {
+                    v1
+                } else {
+                    cached_protocol_version
+                };
+
                 let upgrade_config =
-                    self.new_upgrade_config(&highest_block, cached_protocol_version);
+                    self.new_upgrade_config(&highest_block, previous_protocol_version);
                 effects.extend(
                     effect_builder
                         .upgrade_contract_runtime(upgrade_config)
