@@ -309,20 +309,10 @@ impl Storage {
         drop(block_txn);
 
         // Check the integrity of the block body database.
-        check_block_body_db(&env, &block_body_db).unwrap_or_else(|error| {
-            panic!(
-                "Error in the integrity check of the block_body database: {:?}",
-                error
-            )
-        });
+        check_block_body_db(&env, &block_body_db)?;
 
         // Check the integrity of the block metadata database.
-        check_block_metadata_db(&env, &block_metadata_db).unwrap_or_else(|error| {
-            panic!(
-                "Error in the integrity check of the block_metadata database: {:?}",
-                error
-            )
-        });
+        check_block_metadata_db(&env, &block_metadata_db)?;
 
         Ok(Storage {
             root,
@@ -1033,8 +1023,8 @@ impl Storage {
 /// Utility function to check the integrity of the block_body database at bringup.
 fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<(), LmdbExtError> {
     info!("Checking block body db");
-    let body_txn = env.begin_ro_txn()?;
-    let mut cursor = body_txn.open_ro_cursor(*block_body_db)?;
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*block_body_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
         let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
@@ -1045,8 +1035,6 @@ fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<()
         );
     }
     info!("block body db check complete");
-    drop(cursor);
-    drop(body_txn);
     Ok(())
 }
 
@@ -1056,8 +1044,8 @@ fn check_block_metadata_db(
     block_metadata_db: &Database,
 ) -> Result<(), LmdbExtError> {
     info!("Checking block_metadata_db");
-    let signature_txn = env.begin_ro_txn()?;
-    let mut cursor = signature_txn.open_ro_cursor(*block_metadata_db)?;
+    let tnx = env.begin_ro_txn()?;
+    let mut cursor = tnx.open_ro_cursor(*block_metadata_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
         let signature: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
@@ -1074,7 +1062,5 @@ fn check_block_metadata_db(
         );
     }
     info!("Check for block_metadata_db complete");
-    drop(cursor);
-    drop(signature_txn);
     Ok(())
 }
