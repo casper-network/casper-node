@@ -25,6 +25,36 @@ use crate::{
     utils::Source,
 };
 
+/// Control announcements are special announcements handled directly by the runtime/runner.
+///
+/// Reactors are never passed control announcements back in and every reactor event must be able
+/// to be constructed from a `ControlAnnouncement` to be run.
+///
+/// Control announcements also skip the message queued and are given priority over any other effect,
+/// this is to ensure that a component that reports a fatal error is not given any more events to
+/// handle afterwards.
+#[derive(Debug, Serialize)]
+#[must_use]
+pub enum ControlAnnouncement {
+    /// The component has encountered a fatal error and cannot continue.
+    ///
+    /// This usually triggers a shutdown of the component, reactor or whole application.
+    FatalError {
+        /// Error message to display.
+        message: String,
+    },
+}
+
+impl Display for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ControlAnnouncement::FatalError { message } => {
+                write!(f, "fatal error: {}", message)
+            }
+        }
+    }
+}
+
 /// A networking layer announcement.
 #[derive(Debug, Serialize)]
 #[must_use]
