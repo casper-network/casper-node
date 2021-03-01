@@ -196,6 +196,7 @@ pub enum Event {
     StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
+
     /// A control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
