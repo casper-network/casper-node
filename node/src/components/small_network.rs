@@ -498,10 +498,17 @@ where
         transport: Transport,
     ) -> Effects<Event<P>> {
         // This connection is send-only, we only use the sink.
-        let peer_address = transport
-            .get_ref()
-            .peer_addr()
-            .expect("should have peer address");
+        let peer_address = match transport.get_ref().peer_addr() {
+            Ok(peer_addr) => peer_addr,
+            Err(err) => {
+                // The peer address disappeared, likely because the connection was closed while
+                // we are setting up.
+                warn!(%peer_id, %err, "peer connection terminated while setting up outgoing connection, dropping");
+
+                // We still need to clean up any trace of the connection.
+                return self.remove(effect_builder, &peer_id, false);
+            }
+        };
 
         if !self.pending.remove(&peer_address) {
             info!(
