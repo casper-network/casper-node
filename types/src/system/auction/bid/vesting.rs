@@ -1,6 +1,11 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -17,6 +22,8 @@ const WEEK_MILLIS: usize = DAYS_IN_WEEK * 24 * 60 * 60 * 1000;
 const LOCKED_AMOUNTS_LENGTH: usize = (VESTING_SCHEDULE_LENGTH_DAYS / DAYS_IN_WEEK) + 1;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct VestingSchedule {
     initial_release_timestamp_millis: u64,
     locked_amounts: Option<[U512; LOCKED_AMOUNTS_LENGTH]>,

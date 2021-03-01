@@ -43,6 +43,7 @@ impl ByteSize for StoredValue {
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
+                StoredValue::Bid(bid) => bid.serialized_length(),
             }
     }
 }

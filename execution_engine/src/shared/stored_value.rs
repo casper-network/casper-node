@@ -6,7 +6,7 @@ use serde_bytes::ByteBuf;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    system::auction::EraInfo,
+    system::auction::{Bid, EraInfo},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
@@ -22,6 +22,7 @@ enum Tag {
     Transfer = 5,
     DeployInfo = 6,
     EraInfo = 7,
+    Bid = 8,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -34,6 +35,7 @@ pub enum StoredValue {
     Transfer(Transfer),
     DeployInfo(DeployInfo),
     EraInfo(EraInfo),
+    Bid(Box<Bid>),
 }
 
 impl StoredValue {
@@ -86,6 +88,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_bid(&self) -> Option<&Bid> {
+        match self {
+            StoredValue::Bid(bid) => Some(bid),
+            _ => None,
+        }
+    }
+
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -96,6 +105,7 @@ impl StoredValue {
             StoredValue::Transfer(_) => "Transfer".to_string(),
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
+            StoredValue::Bid(_) => "Bid".to_string(),
         }
     }
 }
@@ -123,6 +133,11 @@ impl From<Contract> for StoredValue {
 impl From<ContractPackage> for StoredValue {
     fn from(value: ContractPackage) -> StoredValue {
         StoredValue::ContractPackage(value)
+    }
+}
+impl From<Bid> for StoredValue {
+    fn from(bid: Bid) -> StoredValue {
+        StoredValue::Bid(Box::new(bid))
     }
 }
 
@@ -248,6 +263,7 @@ impl ToBytes for StoredValue {
             StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
             StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
             StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
+            StoredValue::Bid(bid) => (Tag::Bid, bid.to_bytes()?),
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -267,6 +283,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
+                StoredValue::Bid(bid) => bid.serialized_length(),
             }
     }
 }
@@ -297,6 +314,8 @@ impl FromBytes for StoredValue {
                 .map(|(deploy_info, remainder)| (StoredValue::DeployInfo(deploy_info), remainder)),
             tag if tag == Tag::EraInfo as u8 => EraInfo::from_bytes(remainder)
                 .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
+            tag if tag == Tag::Bid as u8 => Bid::from_bytes(remainder)
+                .map(|(bid, remainder)| (StoredValue::Bid(Box::new(bid)), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

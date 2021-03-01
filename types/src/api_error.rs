@@ -11,7 +11,7 @@ use crate::{
         TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
     bytesrepr, contracts,
-    system::{auction, mint, proof_of_stake},
+    system::{auction, handle_payment, mint},
     CLValueError,
 };
 
@@ -19,7 +19,7 @@ use crate::{
 /// value less than or equal to `RESERVED_ERROR_MAX`.
 const RESERVED_ERROR_MAX: u32 = u16::MAX as u32; // 0..=65535
 
-/// Proof of Stake errors will have this value added to them when being converted to a `u32`.
+/// Handle Payment errors will have this value added to them when being converted to a `u32`.
 const POS_ERROR_OFFSET: u32 = RESERVED_ERROR_MAX - u8::MAX as u32; // 65280..=65535
 
 /// Mint errors will have this value added to them when being converted to a `u32`.
@@ -43,11 +43,11 @@ const MINT_ERROR_MIN: u32 = MINT_ERROR_OFFSET;
 /// Maximum value of Mint error's inclusive range.
 const MINT_ERROR_MAX: u32 = POS_ERROR_OFFSET - 1;
 
-/// Minimum value of Proof of Stake error's inclusive range.
-const POS_ERROR_MIN: u32 = POS_ERROR_OFFSET;
+/// Minimum value of Handle Payment error's inclusive range.
+const HP_ERROR_MIN: u32 = POS_ERROR_OFFSET;
 
-/// Maximum value of Proof of Stake error's inclusive range.
-const POS_ERROR_MAX: u32 = RESERVED_ERROR_MAX;
+/// Maximum value of Handle Payment error's inclusive range.
+const HP_ERROR_MAX: u32 = RESERVED_ERROR_MAX;
 
 /// Minimum value of contract header error's inclusive range.
 const HEADER_ERROR_MIN: u32 = HEADER_ERROR_OFFSET;
@@ -75,7 +75,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// | [64512, 64767]  | `Auction`                                                       |
 /// | [64768, 65023]  | `ContractHeader`                                                |
 /// | [65024, 65279]  | `Mint`                                                          |
-/// | [65280, 65535]  | `ProofOfStake`                                                  |
+/// | [65280, 65535]  | `HandlePayment`                                                  |
 /// | [65536, 131071] | `User`                                                          |
 ///
 /// ## Mappings
@@ -336,8 +336,8 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// 65_031 => MintError::PurseNotFound
 /// # );
 ///
-/// // Proof of stake errors:
-/// use casper_types::system::proof_of_stake::Error as PosError;
+/// // Handle Payment errors:
+/// use casper_types::system::handle_payment::Error as PosError;
 /// # show_and_check!(
 /// 65_280 => PosError::NotBonded
 /// # );
@@ -542,8 +542,8 @@ pub enum ApiError {
     ContractHeader(u8),
     /// Error specific to Mint contract.
     Mint(u8),
-    /// Error specific to Proof of Stake contract.
-    ProofOfStake(u8),
+    /// Error specific to Handle Payment contract.
+    HandlePayment(u8),
     /// User-specified error code.  The internal `u16` value is added to `u16::MAX as u32 + 1` when
     /// an `Error::User` is converted to a `u32`.
     User(u16),
@@ -642,9 +642,9 @@ impl From<mint::Error> for ApiError {
     }
 }
 
-impl From<proof_of_stake::Error> for ApiError {
-    fn from(error: proof_of_stake::Error) -> Self {
-        ApiError::ProofOfStake(error as u8)
+impl From<handle_payment::Error> for ApiError {
+    fn from(error: handle_payment::Error) -> Self {
+        ApiError::HandlePayment(error as u8)
     }
 }
 
@@ -689,7 +689,7 @@ impl From<ApiError> for u32 {
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
-            ApiError::ProofOfStake(value) => POS_ERROR_OFFSET + u32::from(value),
+            ApiError::HandlePayment(value) => POS_ERROR_OFFSET + u32::from(value),
             ApiError::User(value) => RESERVED_ERROR_MAX + 1 + u32::from(value),
         }
     }
@@ -734,7 +734,7 @@ impl From<u32> for ApiError {
             34 => ApiError::HostBufferFull,
             35 => ApiError::AllocLayout,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
-            POS_ERROR_MIN..=POS_ERROR_MAX => ApiError::ProofOfStake(value as u8),
+            HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
             HEADER_ERROR_MIN..=HEADER_ERROR_MAX => ApiError::ContractHeader(value as u8),
             AUCTION_ERROR_MIN..=AUCTION_ERROR_MAX => ApiError::AuctionError(value as u8),
@@ -786,7 +786,7 @@ impl Debug for ApiError {
             ApiError::AuctionError(value) => write!(f, "ApiError::AuctionError({})", value)?,
             ApiError::ContractHeader(value) => write!(f, "ApiError::ContractHeader({})", value)?,
             ApiError::Mint(value) => write!(f, "ApiError::Mint({})", value)?,
-            ApiError::ProofOfStake(value) => write!(f, "ApiError::ProofOfStake({})", value)?,
+            ApiError::HandlePayment(value) => write!(f, "ApiError::HandlePayment({})", value)?,
             ApiError::User(value) => write!(f, "ApiError::User({})", value)?,
         }
         write!(f, " [{}]", u32::from(*self))
@@ -799,7 +799,7 @@ impl fmt::Display for ApiError {
             ApiError::User(value) => write!(f, "User error: {}", value),
             ApiError::ContractHeader(value) => write!(f, "Contract header error: {}", value),
             ApiError::Mint(value) => write!(f, "Mint error: {}", value),
-            ApiError::ProofOfStake(value) => write!(f, "PoS error: {}", value),
+            ApiError::HandlePayment(value) => write!(f, "Handle Payment error: {}", value),
             _ => <Self as Debug>::fmt(&self, f),
         }
     }
@@ -845,8 +845,8 @@ mod tests {
     fn error_values() {
         assert_eq!(65_024_u32, u32::from(ApiError::Mint(0))); // MINT_ERROR_OFFSET == 65,024
         assert_eq!(65_279_u32, u32::from(ApiError::Mint(u8::MAX)));
-        assert_eq!(65_280_u32, u32::from(ApiError::ProofOfStake(0))); // POS_ERROR_OFFSET == 65,280
-        assert_eq!(65_535_u32, u32::from(ApiError::ProofOfStake(u8::MAX)));
+        assert_eq!(65_280_u32, u32::from(ApiError::HandlePayment(0))); // POS_ERROR_OFFSET == 65,280
+        assert_eq!(65_535_u32, u32::from(ApiError::HandlePayment(u8::MAX)));
         assert_eq!(65_536_u32, u32::from(ApiError::User(0))); // u16::MAX + 1
         assert_eq!(131_071_u32, u32::from(ApiError::User(u16::MAX))); // 2 * u16::MAX + 1
     }
@@ -876,13 +876,16 @@ mod tests {
         assert_eq!("Mint error: 0", &format!("{}", ApiError::Mint(0)));
         assert_eq!("Mint error: 255", &format!("{}", ApiError::Mint(u8::MAX)));
         assert_eq!(
-            "ApiError::ProofOfStake(0) [65280]",
-            &format!("{:?}", ApiError::ProofOfStake(0))
+            "ApiError::HandlePayment(0) [65280]",
+            &format!("{:?}", ApiError::HandlePayment(0))
         );
-        assert_eq!("PoS error: 0", &format!("{}", ApiError::ProofOfStake(0)));
         assert_eq!(
-            "ApiError::ProofOfStake(255) [65535]",
-            &format!("{:?}", ApiError::ProofOfStake(u8::MAX))
+            "Handle Payment error: 0",
+            &format!("{}", ApiError::HandlePayment(0))
+        );
+        assert_eq!(
+            "ApiError::HandlePayment(255) [65535]",
+            &format!("{:?}", ApiError::HandlePayment(u8::MAX))
         );
         assert_eq!(
             "ApiError::User(0) [65536]",
@@ -952,8 +955,8 @@ mod tests {
         round_trip(Err(ApiError::ContractHeader(u8::MAX)));
         round_trip(Err(ApiError::Mint(0)));
         round_trip(Err(ApiError::Mint(u8::MAX)));
-        round_trip(Err(ApiError::ProofOfStake(0)));
-        round_trip(Err(ApiError::ProofOfStake(u8::MAX)));
+        round_trip(Err(ApiError::HandlePayment(0)));
+        round_trip(Err(ApiError::HandlePayment(u8::MAX)));
         round_trip(Err(ApiError::User(0)));
         round_trip(Err(ApiError::User(u16::MAX)));
         round_trip(Err(ApiError::AuctionError(0)));

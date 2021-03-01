@@ -1,7 +1,12 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 mod vesting;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +18,9 @@ use crate::{
 pub use vesting::VestingSchedule;
 
 /// An entry in the validator map.
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Bid {
     /// Validator public key
     validator_public_key: PublicKey,
@@ -73,6 +80,11 @@ impl Bid {
             delegators,
             inactive,
         }
+    }
+
+    /// Gets the validator public key of the provided bid
+    pub fn validator_public_key(&self) -> &PublicKey {
+        &self.validator_public_key
     }
 
     /// Gets the bonding purse of the provided bid
