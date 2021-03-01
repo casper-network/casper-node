@@ -425,8 +425,14 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 should_gossip.exclude_peers,
             )),
             GossipAction::Noop => (),
-            GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
-                error!("can't have gossiped if we don't hold the complete item");
+            GossipAction::GetRemainder { .. } => {
+                error!("shouldn't try to get remainder as result of receiving a gossip response");
+            }
+            GossipAction::AwaitingRemainder => {
+                warn!(
+                    "shouldn't have gossiped if we don't hold the complete item - possible \
+                    significant latency, or malicious peer"
+                );
             }
         }
 
