@@ -665,7 +665,9 @@ impl reactor::Reactor for Reactor {
             }
 
             // Announcements:
-            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

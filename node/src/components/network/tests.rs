@@ -122,7 +122,9 @@ impl Reactor for TestReactor {
                 rng,
                 Event::Network(NetworkEvent::from(request)),
             ),
-            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

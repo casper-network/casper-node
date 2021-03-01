@@ -218,7 +218,9 @@ impl reactor::Reactor for Reactor {
                 self.network
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

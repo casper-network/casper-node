@@ -196,7 +196,6 @@ pub enum Event {
     StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
-
     /// A control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
@@ -583,7 +582,9 @@ impl reactor::Reactor for Reactor {
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
             ),
-            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => reactor::wrap_effects(
                 Event::LinearChainSync,
                 self.linear_chain_sync.handle_event(
