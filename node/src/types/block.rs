@@ -1008,7 +1008,6 @@ impl BlockSignatures {
                 public_key: *public_key,
             };
             signature.verify()?;
-            continue;
         }
         Ok(())
     }

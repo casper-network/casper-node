@@ -1048,18 +1048,20 @@ fn check_block_metadata_db(
     let mut cursor = txn.open_ro_cursor(*block_metadata_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
-        let signature: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+        let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
         // Signature verification could be very slow process
         // It iterates over every signature and verifies them.
-        match signature.verify() {
-            Ok(_) => continue,
-            Err(error) => error!("Error: {} in signature verification. This could indicate a corruption error in the database", error)
+        match signatures.verify() {
+            Ok(_) => assert_eq!(
+                raw_key,
+                signatures.block_hash.as_ref(),
+                "Corruption in block_metadata_db"
+            ),
+            Err(error) => panic!(
+                "Error: {} in signature verification. Corruption in database",
+                error
+            ),
         }
-        assert_eq!(
-            raw_key,
-            signature.block_hash.as_ref(),
-            "Corruption in block_metadata_db"
-        );
     }
     info!("Check for block_metadata_db complete");
     Ok(())
