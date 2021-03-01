@@ -13,6 +13,7 @@ use datasize::DataSize;
 use derive_more::From;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
@@ -227,6 +228,8 @@ pub enum Event {
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
 }
+
+impl ReactorEvent for Event {}
 
 impl From<LinearChainRequest<NodeId>> for Event {
     fn from(req: LinearChainRequest<NodeId>) -> Self {

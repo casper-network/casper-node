@@ -8,6 +8,7 @@ use std::{
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, info};
 
@@ -45,6 +46,8 @@ enum Event {
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
 }
+
+impl ReactorEvent for Event {}
 
 impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
     fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {

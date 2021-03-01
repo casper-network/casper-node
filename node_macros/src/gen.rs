@@ -137,6 +137,8 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
            #(#event_variants,)*
         }
 
+        impl crate::reactor::ReactorEvent for #event_ident {}
+
         #[doc = #error_docs]
         #[derive(Debug)]
         pub enum #error_ident {

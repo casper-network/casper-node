@@ -22,7 +22,7 @@ use crate::{
         initializer::Reactor as InitializerReactor,
         joiner::Reactor as JoinerReactor,
         validator::{Reactor as ValidatorReactor, ValidatorInitConfig},
-        wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorExit, Scheduler,
+        wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorEvent, ReactorExit, Scheduler,
     },
     testing::network::NetworkedReactor,
     types::{Chainspec, NodeId},
@@ -62,6 +62,8 @@ pub enum MultiStageTestEvent {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
 }
+
+impl ReactorEvent for MultiStageTestEvent {}
 
 impl Display for MultiStageTestEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

@@ -8,6 +8,7 @@ use std::{
 use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
@@ -68,6 +69,8 @@ enum Event {
     #[from]
     ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
 }
+
+impl ReactorEvent for Event {}
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {

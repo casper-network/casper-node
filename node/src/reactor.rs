@@ -171,7 +171,7 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + Debug + Display + From<ControlAnnouncement> + 'static;
+    type Event: ReactorEvent;
 
     /// A configuration for the reactor
     type Config;
@@ -211,6 +211,9 @@ pub trait Reactor: Sized {
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
+
+/// A reactor event type.
+pub trait ReactorEvent: Send + Debug + Display + From<ControlAnnouncement> + 'static {}
 
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///

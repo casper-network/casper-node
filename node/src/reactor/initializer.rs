@@ -9,6 +9,7 @@ use std::sync::Arc;
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -62,6 +63,8 @@ pub enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
 }
+
+impl ReactorEvent for Event {}
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
