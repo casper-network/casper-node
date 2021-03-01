@@ -1,7 +1,5 @@
 use std::cmp::Reverse;
 
-use itertools::Itertools;
-
 use crate::{
     components::consensus::{
         highway_core::{
@@ -57,8 +55,8 @@ where
     instance_id: C::InstanceId,
     faulty_stake_percent: u8,
     inactive_stake_percent: u8,
-    /// The faulty and inactive validators, by ID and index.
-    validators: Vec<(ValidatorIndex, C::ValidatorId, Status)>,
+    inactive_validators: Vec<(ValidatorIndex, C::ValidatorId, Status)>,
+    faulty_validators: Vec<(ValidatorIndex, C::ValidatorId, Status)>,
 }
 
 impl<C: Context> Participation<C> {
@@ -70,28 +68,30 @@ impl<C: Context> Participation<C> {
         let mut inactive_w = 0;
         let mut faulty_w = 0;
         let total_w = u128::from(state.total_weight().0);
-        let validators = highway
-            .validators()
-            .enumerate_ids()
-            .filter_map(|(idx, v_id)| {
-                let status = Status::for_index(idx, state, now)?;
+        let mut inactive_validators = Vec::new();
+        let mut faulty_validators = Vec::new();
+        for (idx, v_id) in highway.validators().enumerate_ids() {
+            if let Some(status) = Status::for_index(idx, state, now) {
                 match status {
                     Status::Equivocated | Status::EquivocatedInOtherEra => {
-                        faulty_w += u128::from(state.weight(idx).0)
+                        faulty_w += u128::from(state.weight(idx).0);
+                        faulty_validators.push((idx, v_id.clone(), status));
                     }
                     Status::Inactive | Status::LastSeenSecondsAgo(_) => {
-                        inactive_w += u128::from(state.weight(idx).0)
+                        inactive_w += u128::from(state.weight(idx).0);
+                        inactive_validators.push((idx, v_id.clone(), status));
                     }
                 }
-                Some((idx, v_id.clone(), status))
-            })
-            .sorted_by_key(|(idx, _, status)| (Reverse(*status), *idx))
-            .collect();
+            }
+        }
+        inactive_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
+        faulty_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
         Participation {
             instance_id: *highway.instance_id(),
             inactive_stake_percent: div_round(inactive_w * 100, total_w) as u8,
             faulty_stake_percent: div_round(faulty_w * 100, total_w) as u8,
-            validators,
+            inactive_validators,
+            faulty_validators,
         }
     }
 }
