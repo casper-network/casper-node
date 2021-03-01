@@ -224,12 +224,14 @@ pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
 
 // Special implementation for the unit type, used in unit tests.
 // TODO: Refactor unit-testing and get rid of this implementation.
+#[cfg(test)]
 impl ReactorEvent for () {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
         None
     }
 }
 
+#[cfg(test)]
 impl From<ControlAnnouncement> for () {
     fn from(_: ControlAnnouncement) -> Self {
         panic!("not supported: `ControlAnnouncement` into `()`")
