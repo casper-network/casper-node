@@ -49,6 +49,7 @@ use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     types::{
         ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
+        TimeDiff,
     },
     NodeRng,
 };
@@ -72,6 +73,9 @@ pub(crate) struct LinearChainSync<I> {
     stop_for_upgrade: bool,
     /// Key for storing the linear chain sync state.
     state_key: Vec<u8>,
+    /// Acceptable drift between the block creation and now.
+    /// If less than than this has passed we will consider syncing as finished.
+    acceptable_drift: TimeDiff,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
@@ -97,6 +101,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 next_upgrade_activation_point,
             )?)
         } else {
+            let acceptable_drift = chainspec.highway_config.max_round_length();
             let state = init_hash.map_or(State::None, |init_hash| {
                 State::sync_trusted_hash(init_hash, highest_block_header)
             });
@@ -108,6 +113,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 next_upgrade_activation_point,
                 stop_for_upgrade: false,
                 state_key,
+                acceptable_drift,
             })
         }
     }
@@ -121,6 +127,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     ) -> Result<Self, prometheus::Error> {
         let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
+        let acceptable_drift = chainspec.highway_config.max_round_length();
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
@@ -128,6 +135,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             state_key,
+            acceptable_drift,
         })
     }
 
@@ -273,7 +281,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     **latest_block, block,
                     "Block execution result doesn't match received block."
                 );
-                if self.is_chain_end(&block) {
+                if self.is_recent_block(&block) {
+                    info!("downloaded recent block. finished synchronization");
+                    self.mark_done();
+                    return Effects::new();
+                }
                     self.mark_done();
                     return Effects::new();
                 }
@@ -283,11 +295,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    /// Returns whether `block` can be considered tip of the chain.
-    fn is_chain_end(&self, block: &Block) -> bool {
-        // 1 minute.
-        let acceptable_drift_millis = 60 * 1000;
-        block.header().timestamp().elapsed().millis() <= acceptable_drift_millis
+    // Returns whether `block` can be considered tip of the chain.
+    fn is_recent_block(&self, block: &Block) -> bool {
+        // Check if block was created "recently".
+        block.header().timestamp().elapsed() <= self.acceptable_drift
     }
 
     /// Returns effects for fetching next block's deploys.

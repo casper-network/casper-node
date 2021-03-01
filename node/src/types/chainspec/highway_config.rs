@@ -8,6 +8,8 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
 use crate::testing::TestRng;
+#[cfg(not(feature = "fast-sync"))]
+use crate::types::TimeDiff;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -51,6 +53,12 @@ impl HighwayConfig {
                 rrm = self.reduced_reward_multiplier
             );
         }
+    }
+
+    /// Returns the length of the longest allowed round.
+    #[cfg(not(feature = "fast-sync"))]
+    pub fn max_round_length(&self) -> TimeDiff {
+        TimeDiff::from(1 << self.maximum_round_exponent)
     }
 }
 
