@@ -30,7 +30,7 @@ use crate::{
 /// Reactors are never passed control announcements back in and every reactor event must be able
 /// to be constructed from a `ControlAnnouncement` to be run.
 ///
-/// Control announcements also skip the message queued and are given priority over any other effect,
+/// Control announcements also skip the message queue and are given priority over any other effect,
 /// this is to ensure that a component that reports a fatal error is not given any more events to
 /// handle afterwards.
 #[derive(Debug, Serialize)]
