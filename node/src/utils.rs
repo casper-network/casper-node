@@ -6,6 +6,7 @@ pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
+pub(crate) mod rlimit;
 mod round_robin;
 
 use std::{

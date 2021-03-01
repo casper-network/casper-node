@@ -22,7 +22,7 @@ use casper_types::{
             Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient, SeigniorageRecipients,
             SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
             ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-            ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
+            ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY,
             DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
@@ -1020,18 +1020,13 @@ where
             initial_seigniorage_recipients_uref.into(),
         );
 
-        let bids_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
-            bids_uref.into(),
-            StoredValue::CLValue(
-                CLValue::from_t(validators)
-                    .map_err(|_| GenesisError::CLValue(BIDS_KEY.to_string()))?,
-            ),
-        );
-        named_keys.insert(BIDS_KEY.into(), bids_uref.into());
+        for (validator_public_key, bid) in validators.into_iter() {
+            let validator_account_hash = AccountHash::from(&validator_public_key);
+            self.tracking_copy.borrow_mut().write(
+                Key::Bid(validator_account_hash),
+                StoredValue::Bid(Box::new(bid)),
+            )
+        }
 
         let unbonding_purses_uref = self
             .uref_address_generator

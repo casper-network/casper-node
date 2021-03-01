@@ -87,7 +87,8 @@ use casper_execution_engine::{
         put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
+        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        MAX_PAYMENT,
     },
     shared::{
         additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
@@ -119,14 +120,14 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
-    BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -655,11 +656,14 @@ impl<REv> EffectBuilder<REv> {
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
-        REv: From<ContractRuntimeAnnouncement>,
+        REv: From<BlockExecutorAnnouncement>,
     {
         self.0
             .schedule(
-                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
+                BlockExecutorAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
                 QueueKind::Regular,
             )
             .await
@@ -1063,11 +1067,11 @@ impl<REv> EffectBuilder<REv> {
     /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<ContractRuntimeRequest>,
+        REv: From<BlockExecutorRequest>,
     {
         self.0
             .schedule(
-                ContractRuntimeRequest::ExecuteBlock(finalized_block),
+                BlockExecutorRequest::ExecuteBlock(finalized_block),
                 QueueKind::Regular,
             )
             .await
@@ -1423,6 +1427,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_bids(
+        self,
+        get_bids_request: GetBidsRequest,
+    ) -> Result<GetBidsResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

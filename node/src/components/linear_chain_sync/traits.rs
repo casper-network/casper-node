@@ -1,6 +1,6 @@
 use crate::{
     effect::requests::{
-        BlockValidationRequest, ContractRuntimeRequest, FetcherRequest, StateStoreRequest,
+        BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StateStoreRequest,
         StorageRequest,
     },
     types::{Block, BlockByHeight},
@@ -10,7 +10,7 @@ pub trait ReactorEventT<I>:
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockByHeight>>
     + From<BlockValidationRequest<Block, I>>
-    + From<ContractRuntimeRequest>
+    + From<BlockExecutorRequest>
     + From<StateStoreRequest>
     + Send
 {
@@ -21,7 +21,7 @@ impl<I, REv> ReactorEventT<I> for REv where
         + From<FetcherRequest<I, Block>>
         + From<FetcherRequest<I, BlockByHeight>>
         + From<BlockValidationRequest<Block, I>>
-        + From<ContractRuntimeRequest>
+        + From<BlockExecutorRequest>
         + From<StateStoreRequest>
         + Send
 {
