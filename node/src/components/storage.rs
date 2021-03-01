@@ -61,24 +61,27 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tracing::{error, info};
 
+use casper_types::{ExecutionResult, Transfer, Transform};
+
 use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
     components::consensus::EraId,
+    crypto,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata,
+        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderAndFinalitySignatures,
+        BlockSignatures, Deploy, DeployHash, DeployMetadata, FinalitySignature,
     },
     utils::WithDir,
     NodeRng,
 };
-use casper_types::{ExecutionResult, Transfer, Transform};
+
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -162,6 +165,9 @@ pub enum Error {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
+    /// A cryptographic signature verification error.
+    #[error(transparent)]
+    CryptographicSignatureVerificationError(crypto::Error),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -608,6 +614,15 @@ impl Storage {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(block_hash, block.header().era_id()),
                 };
+                for (public_key, signature) in signatures.proofs.iter() {
+                    assert!(FinalitySignature::verify_bare_finality_signature(
+                        &block_hash,
+                        &block.header().era_id(),
+                        signature,
+                        public_key,
+                    )
+                    .is_ok(),)
+                }
                 responder.respond(Some((block, signatures))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
@@ -688,6 +703,50 @@ impl Storage {
         })
     }
 
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_and_finality_signatures_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeaderAndFinalitySignatures>, Error> {
+        let block_hash = match self.block_height_index.get(&height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+        let block_header = match self.get_single_block_header(tx, block_hash)? {
+            None => return Ok(None),
+            Some(block_header) => block_header,
+        };
+        let finality_signatures = self
+            .get_finality_signatures(tx, block_hash)?
+            .map_or_else(BTreeMap::new, |block_signatures| block_signatures.proofs);
+        for (public_key, signature) in finality_signatures.iter() {
+            FinalitySignature::verify_bare_finality_signature(
+                &block_hash,
+                &block_header.era_id(),
+                signature,
+                public_key,
+            )
+            .map_err(Error::CryptographicSignatureVerificationError)?
+        }
+        Ok(Some(BlockHeaderAndFinalitySignatures {
+            block_header,
+            finality_signatures,
+        }))
+    }
+
+    // Retrieves a block header to handle a network request.
+    pub fn read_block_header_and_finality_signatures_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeaderAndFinalitySignatures>, Error> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_header_and_finality_signatures =
+            self.get_block_header_and_finality_signatures_by_height(&mut txn, height)?;
+        drop(txn);
+        Ok(maybe_block_header_and_finality_signatures)
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
@@ -712,12 +771,12 @@ impl Storage {
             .transpose()
     }
 
-    /// Retrieves a single block in a separate transaction from storage.
-    fn get_single_block<Tx: Transaction>(
+    /// Retrieves a single block header in a separate transaction from storage.
+    fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
         let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -728,7 +787,31 @@ impl Storage {
                 queried_block_hash: *block_hash,
                 found_block_header_hash,
             });
-        }
+        };
+        Ok(Some(block_header))
+    }
+
+    // Retrieves a block header to handle a network request.
+    pub fn read_block_header_by_hash(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_header = self.get_single_block_header(&mut txn, block_hash)?;
+        drop(txn);
+        Ok(maybe_block_header)
+    }
+
+    /// Retrieves a single block in a separate transaction from storage.
+    fn get_single_block<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Block>, LmdbExtError> {
+        let block_header: BlockHeader = match self.get_single_block_header(tx, block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
         let block_body: BlockBody =
             match tx.get_value(self.block_body_db, block_header.body_hash())? {
                 Some(block_header) => block_header,

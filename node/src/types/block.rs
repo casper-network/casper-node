@@ -854,6 +854,18 @@ impl FromBytes for BlockHeader {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlockHeaderAndFinalitySignatures {
+    pub block_header: BlockHeader,
+    pub finality_signatures: BTreeMap<PublicKey, Signature>,
+}
+
+impl Display for BlockHeaderAndFinalitySignatures {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 /// The body portion of a block.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
@@ -1600,12 +1612,26 @@ impl FinalitySignature {
         }
     }
 
+    /// Cryptographically verify a [Signature] is a finality signature for a given [BlockHash].
+    pub fn verify_bare_finality_signature(
+        block_hash: &BlockHash,
+        era_id: &EraId,
+        signature: &Signature,
+        public_key: &PublicKey,
+    ) -> crypto::Result<()> {
+        let mut bytes = block_hash.inner().to_vec();
+        bytes.extend_from_slice(&era_id.0.to_le_bytes());
+        crypto::verify(bytes, &signature, &public_key)
+    }
+
     /// Verifies whether the signature is correct.
     pub fn verify(&self) -> crypto::Result<()> {
-        // NOTE: This needs to be in sync with the `new` constructor.
-        let mut bytes = self.block_hash.inner().to_vec();
-        bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
-        crypto::verify(bytes, &self.signature, &self.public_key)
+        Self::verify_bare_finality_signature(
+            &self.block_hash,
+            &self.era_id,
+            &self.signature,
+            &self.public_key,
+        )
     }
 }
 

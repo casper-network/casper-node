@@ -60,7 +60,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
+    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
     utils::Source,
     NodeRng,
 };
@@ -736,6 +736,86 @@ impl reactor::Reactor for Reactor {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();
                         }
+                        Tag::BlockHeaderByHash => {
+                            let block_hash: BlockHash = match bincode::deserialize(&serialized_id) {
+                                Ok(block_hash) => block_hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+
+                            match self.storage.read_block_header_by_hash(&block_hash) {
+                                Ok(Some(block_header)) => {
+                                    match Message::new_get_response(&block_header) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                Ok(None) => {
+                                    debug!("failed to get {} for {}", block_hash, sender);
+                                    return Effects::new();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to get {} for {}: {}",
+                                        block_hash, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            }
+                        }
+                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                            let block_height = match bincode::deserialize(&serialized_id) {
+                                Ok(block_height) => block_height,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            match self
+                                .storage
+                                .read_block_header_and_finality_signatures_by_height(block_height)
+                            {
+                                Ok(Some(block_header)) => {
+                                    match Message::new_get_response(&block_header) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                Ok(None) => {
+                                    debug!("failed to get {} for {}", block_height, sender);
+                                    return Effects::new();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to get {} for {}: {}",
+                                        block_height, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            }
+                        }
                     },
                     Message::GetResponse {
                         tag,
@@ -760,6 +840,10 @@ impl reactor::Reactor for Reactor {
                         Tag::GossipedAddress => {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();
+                        }
+                        Tag::BlockHeaderByHash => todo!("Handle GET BlockHeaderByHash response"),
+                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                            todo!("Handle GET BlockHeaderByHeight response")
                         }
                     },
                     Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
