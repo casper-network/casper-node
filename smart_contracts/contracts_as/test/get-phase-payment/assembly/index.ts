@@ -9,14 +9,14 @@ import {transferFromPurseToPurse} from "../../../../contract_as/assembly/purse";
 
 const ARG_PHASE = "phase";
 const ARG_AMOUNT = "amount";
-const POS_ACTION = "get_payment_purse";
+const HANDLE_PAYMENT_ACTION = "get_payment_purse";
 
 function standardPayment(amount: U512): void {
-  let proofOfStake = CL.getSystemContract(CL.SystemContract.ProofOfStake);
+  let handlePayment = CL.getSystemContract(CL.SystemContract.HandlePayment);
 
   let mainPurse = getMainPurse();
 
-  let output = CL.callContract(proofOfStake, POS_ACTION, new RuntimeArgs());
+  let output = CL.callContract(handlePayment, HANDLE_PAYMENT_ACTION, new RuntimeArgs());
 
   let paymentPurseResult = URef.fromBytes(output);
   if (paymentPurseResult.hasError()) {

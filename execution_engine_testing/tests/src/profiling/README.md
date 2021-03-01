@@ -4,7 +4,7 @@ This directory contains executable targets to allow for profiling code used to e
 
 # `state-initializer`
 
-This is used to initialize global state in preparation for running one of the other executables.  It allows them to avoid taking into account the cost of installing the Proof of Stake and Mint contracts.
+This is used to initialize global state in preparation for running one of the other executables.  It allows them to avoid taking into account the cost of installing the Handle Payment and Mint contracts.
 
 It takes a single optional command line argument to specify the directory in which to store the persistent data and outputs the post-state hash from the commit response.  This hash will be used as an input to other profiling executables.
 
