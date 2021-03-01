@@ -27,7 +27,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::ChainspecLoaderAnnouncement,
+        announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
         requests::{ContractRuntimeRequest, NetworkRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, Effects,
     },
@@ -57,6 +57,10 @@ pub enum Event {
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
+
+    /// Control announcement
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
 }
 
 impl From<StorageRequest> for Event {
@@ -92,6 +96,7 @@ impl Display for Event {
             Event::StateStoreRequest(request) => {
                 write!(formatter, "state store request: {}", request)
             }
+            Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
         }
     }
 }
@@ -233,6 +238,7 @@ impl reactor::Reactor for Reactor {
             Event::StateStoreRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::Storage(request.into()))
             }
+            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
         }
     }
 

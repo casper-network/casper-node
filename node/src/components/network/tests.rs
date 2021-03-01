@@ -18,7 +18,9 @@ use super::{
 use crate::{
     components::{network::NetworkIdentity, Component},
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
+        announcements::{ControlAnnouncement, NetworkAnnouncement},
+        requests::NetworkRequest,
+        EffectBuilder, Effects,
     },
     protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
@@ -38,6 +40,8 @@ enum Event {
     Network(#[serde(skip_serializing)] NetworkEvent<String>),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, String>),
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
 }
@@ -107,6 +111,7 @@ impl Reactor for TestReactor {
                 rng,
                 Event::Network(NetworkEvent::from(request)),
             ),
+            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

@@ -24,8 +24,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::ContractRuntimeRequest,
         Responder,
@@ -55,6 +55,8 @@ enum Event {
     DeployGossiper(super::Event<Deploy>),
     #[from]
     NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
     #[from]
@@ -93,6 +95,7 @@ impl Display for Event {
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
+            Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
@@ -204,6 +207,7 @@ impl reactor::Reactor for Reactor {
                 self.network
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

@@ -57,7 +57,7 @@ use tracing_futures::Instrument;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    effect::{Effect, EffectBuilder, Effects},
+    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     utils::{self, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
@@ -171,7 +171,7 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + Debug + Display + 'static;
+    type Event: Send + Debug + Display + From<ControlAnnouncement> + 'static;
 
     /// A configuration for the reactor
     type Config;

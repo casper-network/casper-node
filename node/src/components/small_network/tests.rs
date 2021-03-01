@@ -25,7 +25,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{GossiperAnnouncement, NetworkAnnouncement},
+        announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
@@ -50,6 +50,8 @@ enum Event {
     AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
@@ -163,6 +165,7 @@ impl Reactor for TestReactor {
                 rng,
                 Event::SmallNet(SmallNetworkEvent::from(req)),
             ),
+            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

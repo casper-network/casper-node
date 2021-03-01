@@ -50,8 +50,8 @@ use crate::{
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            NetworkAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -195,6 +195,10 @@ pub enum Event {
     StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
+    /// A control announcement.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+
     /// Network announcement.
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
@@ -323,6 +327,7 @@ impl Display for Event {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            Event::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
@@ -566,6 +571,7 @@ impl reactor::Reactor for Reactor {
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
             ),
+            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => reactor::wrap_effects(
                 Event::LinearChainSync,
                 self.linear_chain_sync.handle_event(

@@ -17,7 +17,7 @@ use tracing::warn;
 
 use crate::{
     components::{consensus::EraSupervisor, storage::Storage},
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::{
         initializer::Reactor as InitializerReactor,
         joiner::Reactor as JoinerReactor,
@@ -54,6 +54,13 @@ pub enum MultiStageTestEvent {
 
     // Events related to stage transitions.
     JoinerFinalized(#[serde(skip_serializing)] Box<ValidatorInitConfig>),
+
+    // Control announcement.
+    // These would only be used for fatal errors emitted by the multi-stage reactor itself, all
+    // "real" control announcements will be inside `InitializerEvent`, `JoinerEvent` or
+    // `ValidatorEvent`.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
 }
 
 impl Display for MultiStageTestEvent {
@@ -70,6 +77,9 @@ impl Display for MultiStageTestEvent {
             }
             MultiStageTestEvent::JoinerFinalized(_) => {
                 write!(f, "joiner finalization complete")
+            }
+            MultiStageTestEvent::ControlAnnouncement(ctrl_ann) => {
+                write!(f, "control: {}", ctrl_ann)
             }
         }
     }
