@@ -24,6 +24,9 @@ pub enum State {
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<Option<Block>>,
+        /// Switch block of the current era.
+        /// Updated whenever we see a new switch block.
+        maybe_switch_block: Option<Box<Block>>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
@@ -83,15 +86,20 @@ impl State {
             highest_block_seen: 0,
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
+            maybe_switch_block: None,
         }
     }
 
-    pub fn sync_descendants(trusted_hash: BlockHash, latest_block: Block) -> Self {
+    pub fn sync_descendants(
+        trusted_hash: BlockHash,
+        latest_block: Block,
+        maybe_switch_block: Option<Box<Block>>,
+    ) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
-            maybe_switch_block: None,
+            maybe_switch_block,
         }
     }
 
@@ -126,6 +134,9 @@ impl State {
     pub(crate) fn new_switch_block(&mut self, block: &Block) {
         match self {
             State::SyncingDescendants {
+                maybe_switch_block, ..
+            }
+            | State::SyncingTrustedHash {
                 maybe_switch_block, ..
             } => *maybe_switch_block = Some(Box::new(block.clone())),
             _ => {}
