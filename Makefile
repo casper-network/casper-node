@@ -131,7 +131,7 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) audit --ignore RUSTSEC-2020-0123
+	$(CARGO) audit --ignore RUSTSEC-2020-0123 --ignore RUSTSEC-2020-0146
 
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)

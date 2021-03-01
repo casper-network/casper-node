@@ -1044,8 +1044,8 @@ fn check_block_metadata_db(
     block_metadata_db: &Database,
 ) -> Result<(), LmdbExtError> {
     info!("Checking block_metadata_db");
-    let tnx = env.begin_ro_txn()?;
-    let mut cursor = tnx.open_ro_cursor(*block_metadata_db)?;
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*block_metadata_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
         let signature: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
