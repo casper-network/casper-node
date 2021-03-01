@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, system::proof_of_stake::Error, TransferredTo, URef, U512};
+use crate::{account::AccountHash, system::handle_payment::Error, TransferredTo, URef, U512};
 
 /// Provides an access to mint.
 pub trait MintProvider {

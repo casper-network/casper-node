@@ -1,4 +1,4 @@
-//! Contains implementation of a Proof Of Stake contract functionality.
+//! Contains implementation of a Handle Payment contract functionality.
 mod constants;
 mod error;
 mod mint_provider;
@@ -8,15 +8,15 @@ use core::marker::Sized;
 
 use crate::{account::AccountHash, AccessRights, URef, U512};
 
-pub use crate::system::proof_of_stake::{
+pub use crate::system::handle_payment::{
     constants::*, error::Error, mint_provider::MintProvider, runtime_provider::RuntimeProvider,
 };
 
 // A simplified representation of a refund percentage which is currently hardcoded to 0%.
 const REFUND_PERCENTAGE: U512 = U512::zero();
 
-/// Proof of stake functionality implementation.
-pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
+/// Handle payment functionality implementation.
+pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&self) -> Result<URef, Error> {
         let purse = internal::get_payment_purse(self)?;
@@ -52,7 +52,7 @@ pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
 mod internal {
     use crate::{
         account::AccountHash,
-        system::proof_of_stake::{Error, MintProvider, RuntimeProvider},
+        system::handle_payment::{Error, MintProvider, RuntimeProvider},
         Key, Phase, URef, U512,
     };
 

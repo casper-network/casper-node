@@ -23,7 +23,7 @@ pub extern "C" fn call() {
     // amount passed to payment contract
     let payment_fund: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-    let contract_hash = system::get_proof_of_stake();
+    let contract_hash = system::get_handle_payment();
     let source_purse = account::get_main_purse();
     let payment_amount: U512 = 100.into();
     let payment_purse: URef = runtime::call_contract(

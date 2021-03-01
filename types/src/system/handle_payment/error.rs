@@ -1,4 +1,4 @@
-//! Home of the Proof of Stake contract's [`Error`] type.
+//! Home of the Handle Payment contract's [`Error`] type.
 use failure::Fail;
 
 use alloc::vec::Vec;
@@ -9,7 +9,7 @@ use crate::{
     CLType, CLTyped,
 };
 
-/// Errors which can occur while executing the Proof of Stake contract.
+/// Errors which can occur while executing the Handle Payment contract.
 // TODO: Split this up into user errors vs. system errors.
 #[derive(Fail, Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -40,10 +40,10 @@ pub enum Error {
     /// Attempted to unbond an amount which was too large.
     #[fail(display = "Unbond is too large")]
     UnbondTooLarge,
-    /// While bonding, the transfer from source purse to the Proof of Stake internal purse failed.
+    /// While bonding, the transfer from source purse to the Handle Payment internal purse failed.
     #[fail(display = "Bond transfer failed")]
     BondTransferFailed,
-    /// While unbonding, the transfer from the Proof of Stake internal purse to the destination
+    /// While unbonding, the transfer from the Handle Payment internal purse to the destination
     /// purse failed.
     #[fail(display = "Unbond transfer failed")]
     UnbondTransferFailed,
@@ -54,28 +54,29 @@ pub enum Error {
     /// Internal error: stakes were unexpectedly empty.
     #[fail(display = "Stakes not found")]
     StakesNotFound,
-    /// Internal error: the PoS contract's payment purse wasn't found.
+    /// Internal error: the Handle Payment contract's payment purse wasn't found.
     #[fail(display = "Payment purse not found")]
     PaymentPurseNotFound,
-    /// Internal error: the PoS contract's payment purse key was the wrong type.
+    /// Internal error: the Handle Payment contract's payment purse key was the wrong type.
     #[fail(display = "Payment purse has unexpected type")]
     PaymentPurseKeyUnexpectedType,
-    /// Internal error: couldn't retrieve the balance for the PoS contract's payment purse.
+    /// Internal error: couldn't retrieve the balance for the Handle Payment contract's payment
+    /// purse.
     #[fail(display = "Payment purse balance not found")]
     PaymentPurseBalanceNotFound,
-    /// Internal error: the PoS contract's bonding purse wasn't found.
+    /// Internal error: the Handle Payment contract's bonding purse wasn't found.
     #[fail(display = "Bonding purse not found")]
     BondingPurseNotFound,
-    /// Internal error: the PoS contract's bonding purse key was the wrong type.
+    /// Internal error: the Handle Payment contract's bonding purse key was the wrong type.
     #[fail(display = "Bonding purse key has unexpected type")]
     BondingPurseKeyUnexpectedType,
-    /// Internal error: the PoS contract's refund purse key was the wrong type.
+    /// Internal error: the Handle Payment contract's refund purse key was the wrong type.
     #[fail(display = "Refund purse key has unexpected type")]
     RefundPurseKeyUnexpectedType,
-    /// Internal error: the PoS contract's rewards purse wasn't found.
+    /// Internal error: the Handle Payment contract's rewards purse wasn't found.
     #[fail(display = "Rewards purse not found")]
     RewardsPurseNotFound,
-    /// Internal error: the PoS contract's rewards purse key was the wrong type.
+    /// Internal error: the Handle Payment contract's rewards purse key was the wrong type.
     #[fail(display = "Rewards purse has unexpected type")]
     RewardsPurseKeyUnexpectedType,
     // TODO: Put these in their own enum, and wrap them separately in `BondingError` and
@@ -86,23 +87,24 @@ pub enum Error {
     /// Internal error: failed to deserialize the stake's balance.
     #[fail(display = "Failed to deserialize stake's balance")]
     StakesDeserializationFailed,
-    /// The invoked PoS function can only be called by system contracts, but was called by a user
-    /// contract.
+    /// The invoked Handle Payment function can only be called by system contracts, but was called
+    /// by a user contract.
     #[fail(display = "System function was called by user account")]
     SystemFunctionCalledByUserAccount,
     /// Internal error: while finalizing payment, the amount spent exceeded the amount available.
     #[fail(display = "Insufficient payment for amount spent")]
     InsufficientPaymentForAmountSpent,
     /// Internal error: while finalizing payment, failed to pay the validators (the transfer from
-    /// the PoS contract's payment purse to rewards purse failed).
+    /// the Handle Payment contract's payment purse to rewards purse failed).
     #[fail(display = "Transfer to rewards purse has failed")]
     FailedTransferToRewardsPurse,
     /// Internal error: while finalizing payment, failed to refund the caller's purse (the transfer
-    /// from the PoS contract's payment purse to refund purse or account's main purse failed).
+    /// from the Handle Payment contract's payment purse to refund purse or account's main purse
+    /// failed).
     #[fail(display = "Transfer to account's purse failed")]
     FailedTransferToAccountPurse,
-    /// PoS contract's "set_refund_purse" method can only be called by the payment code of a
-    /// deploy, but was called by the session code.
+    /// Handle Payment contract's "set_refund_purse" method can only be called by the payment code
+    /// of a deploy, but was called by the session code.
     #[fail(display = "Set refund purse was called outside payment")]
     SetRefundPurseCalledOutsidePayment,
     /// Raised when the system is unable to determine purse balance.
