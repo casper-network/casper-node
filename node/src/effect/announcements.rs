@@ -27,12 +27,12 @@ use crate::{
 
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
-/// Reactors are never passed control announcements back in and every reactor event must be able
-/// to be constructed from a `ControlAnnouncement` to be run.
+/// Reactors are never passed control announcements back in and every reactor event must be able to
+/// be constructed from a `ControlAnnouncement` to be run.
 ///
-/// Control announcements also skip the message queue and are given priority over any other effect,
-/// this is to ensure that a component that reports a fatal error is not given any more events to
-/// handle afterwards.
+/// Control announcements also use a priority queue to ensure that a component that reports a fatal
+/// error is given as few follow up events as possible. However, there currently is no guarantee
+/// that this happens.
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ControlAnnouncement {
