@@ -1000,13 +1000,15 @@ impl BlockSignatures {
 
     /// Verify the signatures contained within.
     pub(crate) fn verify(&self) -> crypto::Result<()> {
-        let mut bytes = self.block_hash.inner().to_vec();
-        bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
-        for (key, signature) in self.proofs.iter() {
-            match crypto::verify(bytes.clone(), signature, key) {
-                Ok(_) => continue,
-                Err(error) => return Err(error),
-            }
+        for (public_key, signature) in self.proofs.iter() {
+            let signature = FinalitySignature {
+                block_hash: self.block_hash,
+                era_id: self.era_id,
+                signature: *signature,
+                public_key: *public_key,
+            };
+            signature.verify()?;
+            continue;
         }
         Ok(())
     }
