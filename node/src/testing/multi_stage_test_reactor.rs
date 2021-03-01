@@ -63,7 +63,15 @@ pub enum MultiStageTestEvent {
     ControlAnnouncement(ControlAnnouncement),
 }
 
-impl ReactorEvent for MultiStageTestEvent {}
+impl ReactorEvent for MultiStageTestEvent {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+}
 
 impl Display for MultiStageTestEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

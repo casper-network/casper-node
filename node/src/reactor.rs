@@ -213,7 +213,14 @@ pub trait Reactor: Sized {
 }
 
 /// A reactor event type.
-pub trait ReactorEvent: Send + Debug + Display + From<ControlAnnouncement> + 'static {}
+pub trait ReactorEvent: Send + Debug + Display + From<ControlAnnouncement> + 'static {
+    /// Returns the event as a control announcement, if possible.
+    ///
+    /// Returns a reference to a wrapped
+    /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
+    /// is indeed a control announcement variant.
+    fn as_control(&self) -> Option<&ControlAnnouncement>;
+}
 
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///

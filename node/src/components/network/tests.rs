@@ -47,7 +47,15 @@ enum Event {
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
 }
 
-impl ReactorEvent for Event {}
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+}
 
 impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
     fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {

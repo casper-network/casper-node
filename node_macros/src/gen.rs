@@ -137,7 +137,15 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
            #(#event_variants,)*
         }
 
-        impl crate::reactor::ReactorEvent for #event_ident {}
+        impl crate::reactor::ReactorEvent for #event_ident {
+            fn as_control(&self) -> Option<&crate::effect::announcements::ControlAnnouncement> {
+                if let #event_ident::ControlAnnouncement(ref ctrl_ann) = self {
+                    Some(ctrl_ann)
+                } else {
+                    None
+                }
+            }
+        }
 
         #[doc = #error_docs]
         #[derive(Debug)]

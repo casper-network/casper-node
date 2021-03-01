@@ -70,7 +70,15 @@ enum Event {
     ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
 }
 
-impl ReactorEvent for Event {}
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+}
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {

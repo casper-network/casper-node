@@ -59,7 +59,15 @@ enum Event {
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
 }
 
-impl ReactorEvent for Event {}
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+}
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
