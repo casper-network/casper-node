@@ -41,7 +41,7 @@
 //! Some effects can be further classified into either announcements or requests, although these
 //! properties are not reflected in the type system.
 //!
-//! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
+//! **Announcements** are effects emitted by components that are essentially "fire-and-forget"; the
 //! component will never expect an answer for these and does not rely on them being handled. It is
 //! also conceivable that they are being cloned and dispatched to multiple components by the
 //! reactor.
