@@ -581,8 +581,8 @@ where
         let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
             // We've received a control event, which will _not_ be handled by the reactor.
             match ctrl_ann {
-                ControlAnnouncement::FatalError { message } => {
-                    error!(%message, "fatal error via control announcement");
+                ControlAnnouncement::FatalError { file, line, msg } => {
+                    error!(%file, %line, %msg, "fatal error via control announcement");
                     (Default::default(), false)
                 }
             }

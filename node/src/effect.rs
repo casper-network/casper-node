@@ -430,15 +430,13 @@ impl<REv> EffectBuilder<REv> {
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
     // inference seems to not work in all cases otherwise.
-    pub async fn fatal(self, file: &str, line: u32, msg: String)
+    pub async fn fatal(self, file: &'static str, line: u32, msg: String)
     where
         REv: From<ControlAnnouncement>,
     {
         self.0
             .schedule(
-                ControlAnnouncement::FatalError {
-                    message: format!("fatal error [{}:{}]: {}", file, line, msg),
-                },
+                ControlAnnouncement::FatalError { file, line, msg },
                 QueueKind::Control,
             )
             .await

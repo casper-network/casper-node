@@ -40,16 +40,20 @@ pub enum ControlAnnouncement {
     ///
     /// This usually triggers a shutdown of the component, reactor or whole application.
     FatalError {
-        /// Error message to display.
-        message: String,
+        /// File the fatal error occurred in.
+        file: &'static str,
+        /// Line number where the fatal error occurred.
+        line: u32,
+        /// Error message.
+        msg: String,
     },
 }
 
 impl Display for ControlAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ControlAnnouncement::FatalError { message } => {
-                write!(f, "fatal error: {}", message)
+            ControlAnnouncement::FatalError { file, line, msg } => {
+                write!(f, "fatal error [{}:{}]: {}", file, line, msg)
             }
         }
     }
