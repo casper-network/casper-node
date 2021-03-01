@@ -94,7 +94,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     fatal,
-    reactor::{EventQueueHandle, Finalize, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::{NodeId, TimeDiff, Timestamp},
     utils, NodeRng,
@@ -184,7 +184,7 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
-    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
     ///
@@ -850,7 +850,7 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;

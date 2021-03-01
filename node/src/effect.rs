@@ -121,8 +121,8 @@ use crate::{
 };
 use announcements::{
     BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
-    RpcServerAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+    NetworkAnnouncement, RpcServerAnnouncement,
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -430,10 +430,18 @@ impl<REv> EffectBuilder<REv> {
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
     // inference seems to not work in all cases otherwise.
-    pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
-        panic!("fatal error [{}:{}]: {}", file, line, msg);
-        #[allow(unreachable_code)]
-        async {} // The compiler will complain about an incorrect return value otherwise.
+    pub async fn fatal(self, file: &str, line: u32, msg: String)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ControlAnnouncement::FatalError {
+                    message: format!("fatal error [{}:{}]: {}", file, line, msg),
+                },
+                QueueKind::Control,
+            )
+            .await
     }
 
     /// Sets a timeout.
