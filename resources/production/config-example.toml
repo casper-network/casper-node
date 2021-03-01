@@ -65,7 +65,7 @@ bind_address = '0.0.0.0:35000'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['18.144.176.168:35000', '13.57.200.251:35000']
+known_addresses = ['54.215.92.118:35000', '52.53.239.81:35000', '18.144.25.45:35000', '13.57.247.23:35000']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
