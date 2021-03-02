@@ -725,15 +725,15 @@ impl reactor::Reactor for Reactor {
                             })
                         }
                         Tag::Block => {
-                            warn!("received get block response from {}", sender);
+                            warn!(%sender, "received get block response");
                             return Effects::new();
                         }
                         Tag::BlockByHeight => {
-                            warn!("received get block by height response from {}", sender);
+                            warn!(%sender, "received get block by height response");
                             return Effects::new();
                         }
                         Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
+                            warn!(%sender, "received get request for gossiped-address");
                             return Effects::new();
                         }
                     },
