@@ -9,7 +9,6 @@ pub mod execution_effect;
 pub mod execution_result;
 pub mod genesis;
 pub mod op;
-pub mod put_trie;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -67,8 +66,7 @@ use crate::{
     core::{
         engine_state::{
             executable_deploy_item::DeployMetadata, execution_result::ExecutionResultBuilder,
-            genesis::GenesisInstaller, put_trie::InsertedTrieKeyAndMissingDescendants,
-            upgrade::SystemUpgrader,
+            genesis::GenesisInstaller, upgrade::SystemUpgrader,
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -1674,7 +1672,7 @@ where
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<InsertedTrieKeyAndMissingDescendants, Error>
+    ) -> Result<Vec<Blake2bHash>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1682,10 +1680,7 @@ where
         let missing_descendant_trie_keys = self
             .state
             .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
-        Ok(InsertedTrieKeyAndMissingDescendants::new(
-            inserted_trie_key,
-            missing_descendant_trie_keys,
-        ))
+        Ok(missing_descendant_trie_keys)
     }
 
     pub fn missing_trie_keys(
