@@ -1,11 +1,11 @@
 [package]
-name = "pos-finalize-payment"
+name = "finalize-payment"
 version = "0.1.0"
 authors = ["Michael Birch <birchmd@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "pos_finalize_payment"
+name = "finalize_payment"
 path = "src/main.rs"
 bench = false
 doctest = false

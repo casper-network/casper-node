@@ -411,7 +411,7 @@ where
         // to for cross-era slashing.
         if let Some(evidence_only_era_id) = era_id.checked_sub(self.bonded_eras + 1) {
             trace!(era = evidence_only_era_id.0, "clearing unbonded era");
-            if let Some(era) = self.active_eras.get_mut(&era_id) {
+            if let Some(era) = self.active_eras.get_mut(&evidence_only_era_id) {
                 era.consensus.set_evidence_only();
             }
         }

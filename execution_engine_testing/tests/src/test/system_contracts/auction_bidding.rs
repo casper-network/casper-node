@@ -293,7 +293,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let error_message = utils::get_error_message(response);
 
-    // pos::Error::NotBonded => 0
+    // handle_payment::Error::NotBonded => 0
     assert!(
         error_message.contains(&format!(
             "{:?}",

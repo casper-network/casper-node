@@ -7,16 +7,15 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::engine_state::genesis::POS_PAYMENT_PURSE, shared::account::Account,
+use casper_execution_engine::shared::account::Account;
+use casper_types::{
+    account::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
 };
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
-const CONTRACT_FINALIZE_PAYMENT: &str = "pos_finalize_payment.wasm";
+const CONTRACT_FINALIZE_PAYMENT: &str = "finalize_payment.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
-const FINALIZE_PAYMENT: &str = "pos_finalize_payment.wasm";
+const FINALIZE_PAYMENT: &str = "finalize_payment.wasm";
 const LOCAL_REFUND_PURSE: &str = "local_refund_purse";
-const POS_REFUND_PURSE_NAME: &str = "pos_refund_purse";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const ACCOUNT_ADDR: AccountHash = AccountHash::new([1u8; 32]);
@@ -98,13 +97,13 @@ fn finalize_payment_should_refund_to_specified_purse() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let rewards_pre_balance = builder.get_proposer_purse_balance();
-    let payment_pre_balance = get_pos_payment_purse_balance(&builder);
+    let payment_pre_balance = get_handle_payment_payment_purse_balance(&builder);
     let refund_pre_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .unwrap_or_else(U512::zero);
 
     assert!(
-        get_pos_refund_purse(&builder).is_none(),
+        get_handle_payment_refund_purse(&builder).is_none(),
         "refund_purse should start unset"
     );
     assert!(
@@ -132,7 +131,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let payment_post_balance = get_pos_payment_purse_balance(&builder);
+    let payment_post_balance = get_handle_payment_payment_purse_balance(&builder);
     let rewards_post_balance = builder.get_proposer_purse_balance();
     let refund_post_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
@@ -152,7 +151,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
     );
 
     assert!(
-        get_pos_refund_purse(&builder).is_none(),
+        get_handle_payment_refund_purse(&builder).is_none(),
         "refund_purse always ends unset"
     );
     assert!(
@@ -163,23 +162,23 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
 // ------------- utility functions -------------------- //
 
-fn get_pos_payment_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
-    let purse =
-        get_pos_purse_by_name(builder, POS_PAYMENT_PURSE).expect("should find PoS payment purse");
+fn get_handle_payment_payment_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
+    let purse = get_payment_purse_by_name(builder, handle_payment::PAYMENT_PURSE_KEY)
+        .expect("should find handle payment payment purse");
     builder.get_purse_balance(purse)
 }
 
-fn get_pos_refund_purse(builder: &InMemoryWasmTestBuilder) -> Option<Key> {
-    let pos_contract = builder.get_pos_contract();
-    pos_contract
+fn get_handle_payment_refund_purse(builder: &InMemoryWasmTestBuilder) -> Option<Key> {
+    let handle_payment_contract = builder.get_handle_payment_contract();
+    handle_payment_contract
         .named_keys()
-        .get(POS_REFUND_PURSE_NAME)
+        .get(handle_payment::REFUND_PURSE_KEY)
         .cloned()
 }
 
-fn get_pos_purse_by_name(builder: &InMemoryWasmTestBuilder, purse_name: &str) -> Option<URef> {
-    let pos_contract = builder.get_pos_contract();
-    pos_contract
+fn get_payment_purse_by_name(builder: &InMemoryWasmTestBuilder, purse_name: &str) -> Option<URef> {
+    let handle_payment_contract = builder.get_handle_payment_contract();
+    handle_payment_contract
         .named_keys()
         .get(purse_name)
         .and_then(Key::as_uref)

@@ -96,9 +96,9 @@ export const enum ErrorCode {
  *
  * | Inclusive range | Variant(s)                                   |
  * | ----------------| ---------------------------------------------|
- * | [1, 65023]      | all except `Mint`, `ProofOfStake` and `User`. Can be created with [[Error.fromErrorCode]] |
+ * | [1, 65023]      | all except `Mint`, `HandlePayment` and `User`. Can be created with [[Error.fromErrorCode]] |
  * | [65024, 65279]  | `Mint` - instantiation currently unsupported |
- * | [65280, 65535]  | `ProofOfStake` errors |
+ * | [65280, 65535]  | `HandlePayment` errors |
  * | [65536, 131071] | User error codes created with [[Error.fromUserError]] |
  *
  * ## Example usage
