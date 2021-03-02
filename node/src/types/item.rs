@@ -82,11 +82,11 @@ impl Item for BlockHeader {
 }
 
 impl Item for BlockHeaderAndFinalitySignatures {
-    type Id = BlockHash;
+    type Id = u64;
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
-        self.block_header.hash()
+        self.block_header.height()
     }
 }
