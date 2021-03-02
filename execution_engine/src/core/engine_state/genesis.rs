@@ -26,10 +26,9 @@ use casper_types::{
             DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-            METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-            METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-            VALIDATOR_SLOTS_KEY,
+            METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
+            METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
@@ -1409,15 +1408,6 @@ where
             METHOD_GET_ERA_VALIDATORS,
             vec![],
             Option::<ValidatorWeights>::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-            vec![],
-            SeigniorageRecipients::cl_type(),
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );
