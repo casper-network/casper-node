@@ -94,6 +94,7 @@ impl BlockProposer {
     where
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
     {
+        debug!(%next_finalized_block, "creating block proposer");
         // load the state from storage or use a fresh instance if loading fails.
         let state_key = deploy_sets::create_storage_key(chainspec);
         let cloned_state_key = state_key.clone();
@@ -239,6 +240,7 @@ impl BlockProposerReady {
                         .push(request);
                     Effects::new()
                 } else {
+                    info!(%request.next_finalized, "proposing a proto block");
                     request
                         .responder
                         .respond(self.propose_proto_block(
@@ -295,6 +297,7 @@ impl BlockProposerReady {
                     self.sets.finalization_queue.insert(height - 1, deploys);
                     Effects::new()
                 } else {
+                    debug!(%height, "handling finalized block");
                     let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
                     while let Some(deploys) = self.sets.finalization_queue.remove(&height) {
                         info!(%height, "removed finalization queue entry");

@@ -194,6 +194,11 @@ impl Transform {
                     let found = "EraInfo".to_string();
                     Err(TypeMismatch::new(expected, found).into())
                 }
+                StoredValue::Bid(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "Bid".to_string();
+                    Err(TypeMismatch::new(expected, found).into())
+                }
             },
             Transform::Failure(error) => Err(error),
         }
@@ -328,6 +333,9 @@ impl From<&Transform> for casper_types::Transform {
             }
             Transform::Write(StoredValue::EraInfo(era_info)) => {
                 casper_types::Transform::WriteEraInfo(era_info.clone())
+            }
+            Transform::Write(StoredValue::Bid(bid)) => {
+                casper_types::Transform::WriteBid(bid.clone())
             }
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),

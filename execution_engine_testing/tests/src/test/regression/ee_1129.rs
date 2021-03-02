@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
@@ -10,7 +11,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{genesis::GenesisAccount, Error},
+        engine_state::{
+            genesis::{GenesisAccount, GenesisValidator},
+            Error,
+        },
         execution,
     },
     shared::{motes::Motes, wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
@@ -41,11 +45,13 @@ static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_00
 #[test]
 fn should_run_ee_1129_underfunded_delegate_call() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -104,11 +110,10 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()),
+            None,
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

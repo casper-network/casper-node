@@ -1,7 +1,7 @@
 use casper_types::{
     system::{
-        mint, proof_of_stake,
-        standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
+        handle_payment, mint,
+        standard_payment::{AccountProvider, HandlePaymentProvider, MintProvider, StandardPayment},
     },
     ApiError, Key, RuntimeArgs, URef, U512,
 };
@@ -62,24 +62,24 @@ where
     }
 }
 
-impl<'a, R> ProofOfStakeProvider for Runtime<'a, R>
+impl<'a, R> HandlePaymentProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
-        let pos_contract_hash = self.get_pos_contract();
+        let handle_payment_contract_hash = self.get_handle_payment_contract();
 
         let cl_value = self
             .call_contract(
-                pos_contract_hash,
+                handle_payment_contract_hash,
                 METHOD_GET_PAYMENT_PURSE,
                 RuntimeArgs::new(),
             )
             .map_err(|exec_error| {
                 let maybe_api_error: Option<ApiError> = exec_error.into();
                 maybe_api_error
-                    .unwrap_or_else(|| proof_of_stake::Error::PaymentPurseNotFound.into())
+                    .unwrap_or_else(|| handle_payment::Error::PaymentPurseNotFound.into())
             })?;
 
         let payment_purse_ref: URef = cl_value.into_t()?;

@@ -87,7 +87,8 @@ use casper_execution_engine::{
         put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
+        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        MAX_PAYMENT,
     },
     shared::{
         additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
@@ -798,6 +799,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests the key block for the given era ID, ie. the switch block at the era before
+    /// (if one exists).
+    pub(crate) async fn get_key_block_for_era_id_from_storage(self, era_id: EraId) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        let era_before = era_id.checked_sub(1)?;
+        self.get_switch_block_at_era_id_from_storage(era_before)
+            .await
+    }
+
     /// Requests the highest switch block.
     // TODO - remove once used.
     #[allow(unused)]
@@ -1420,6 +1432,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_bids(
+        self,
+        get_bids_request: GetBidsRequest,
+    ) -> Result<GetBidsResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Runs the end of era step using the system smart contract.
     pub(crate) async fn run_step(
         self,
@@ -1497,20 +1527,31 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Collects the switch blocks from the eras identified by provided era IDs. Returns
+    /// Collects the key blocks for the eras identified by provided era IDs. Returns
     /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
-    /// `None` if at least one was missing.
-    pub(crate) async fn collect_switch_blocks<I: IntoIterator<Item = EraId>>(
+    /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
+    /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
+    /// initialization of era `n`.
+    pub(crate) async fn collect_key_blocks<I: IntoIterator<Item = EraId>>(
         self,
         era_ids: I,
     ) -> Option<HashMap<EraId, BlockHeader>>
     where
         REv: From<StorageRequest>,
     {
-        futures::future::join_all(era_ids.into_iter().map(|era_id| {
-            self.get_switch_block_at_era_id_from_storage(era_id)
-                .map(move |maybe_block| maybe_block.map(|block| (era_id, block.take_header())))
-        }))
+        futures::future::join_all(
+            era_ids
+                .into_iter()
+                // we would get None for era 0 and that would make it seem like the entire
+                // function failed
+                .filter(|era_id| *era_id != EraId(0))
+                .map(|era_id| {
+                    self.get_key_block_for_era_id_from_storage(era_id)
+                        .map(move |maybe_block| {
+                            maybe_block.map(|block| (era_id, block.take_header()))
+                        })
+                }),
+        )
         .await
         .into_iter()
         .collect()

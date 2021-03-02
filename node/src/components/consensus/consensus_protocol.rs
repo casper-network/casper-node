@@ -129,7 +129,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         &mut self,
         sender: I,
         msg: Vec<u8>,
-        evidence_only: bool,
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
 
@@ -179,6 +178,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
+
+    /// Clears this instance and keeps only the information necessary to validate evidence.
+    fn set_evidence_only(&mut self);
 
     /// Returns whether the validator `vid` is known to be faulty.
     fn has_evidence(&self, vid: &C::ValidatorId) -> bool;

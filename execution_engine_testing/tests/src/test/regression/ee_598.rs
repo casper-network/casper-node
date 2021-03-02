@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -6,10 +7,15 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
-    account::AccountHash, runtime_args, system::auction, ApiError, PublicKey, RuntimeArgs,
-    SecretKey, U512,
+    account::AccountHash,
+    runtime_args,
+    system::auction::{self, DelegationRate},
+    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -33,14 +39,15 @@ static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let public_key: PublicKey = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
-    let account_hash = AccountHash::from(&public_key);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
+        let account = GenesisAccount::account(
             public_key,
-            account_hash,
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account);
         tmp

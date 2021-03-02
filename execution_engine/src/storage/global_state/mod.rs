@@ -36,6 +36,13 @@ pub trait StateReader<K, V> {
         correlation_id: CorrelationId,
         key: &K,
     ) -> Result<Option<TrieMerkleProof<K, V>>, Self::Error>;
+
+    /// Returns the keys in the trie matching `prefix`.
+    fn keys_with_prefix(
+        &self,
+        correlation_id: CorrelationId,
+        prefix: &[u8],
+    ) -> Result<Vec<K>, Self::Error>;
 }
 
 #[derive(Debug)]
@@ -121,7 +128,7 @@ pub trait StateProvider {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_keys: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 

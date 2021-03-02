@@ -801,7 +801,7 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
         .clone();
     assert_eq!(
         Ok(()),
-        evidence.validate(&validators, &TEST_INSTANCE_ID, &state)
+        evidence.validate(&validators, &TEST_INSTANCE_ID, state.params())
     );
 
     let limit = TEST_ENDORSEMENT_EVIDENCE_LIMIT as usize;
@@ -829,17 +829,31 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
         .clone();
     assert_eq!(
         Ok(()),
-        evidence.validate(&validators, &TEST_INSTANCE_ID, &state)
+        evidence.validate(&validators, &TEST_INSTANCE_ID, state.params())
     );
 
     // If the limit were less, that evidence would be considered invalid.
     let params2 = test_params(0).with_endorsement_evidence_limit(limit as u64 - 1);
-    let state2 = State::new(WEIGHTS, params2, vec![]);
     assert_eq!(
         Err(EvidenceError::EndorsementTooManyUnits),
-        evidence.validate(&validators, &TEST_INSTANCE_ID, &state2)
+        evidence.validate(&validators, &TEST_INSTANCE_ID, &params2)
     );
 
+    Ok(())
+}
+
+#[test]
+fn retain_evidence_only() -> Result<(), AddUnitError<TestContext>> {
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N)?;
+    let _a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N)?;
+    assert_eq!(&panorama!(F, b0, N), state.panorama());
+    state.retain_evidence_only();
+    assert_eq!(&panorama!(F, N, N), state.panorama());
+    assert!(!state.has_unit(&a0));
+    assert!(state.has_evidence(ALICE));
     Ok(())
 }
 

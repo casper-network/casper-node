@@ -1,8 +1,10 @@
+use alloc::collections::BTreeSet;
+
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::{EraId, EraInfo, Error},
-    CLTyped, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    system::auction::{Bid, EraId, EraInfo, Error},
+    CLTyped, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -11,7 +13,10 @@ pub trait RuntimeProvider {
     fn get_caller(&self) -> AccountHash;
 
     /// Gets named key under a `name`.
-    fn get_key(&self, name: &str) -> Option<Key>;
+    fn named_keys_get(&self, name: &str) -> Option<Key>;
+
+    /// Gets keys in a given keyspace
+    fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error>;
 
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
@@ -24,6 +29,12 @@ pub trait StorageProvider {
 
     /// Writes data to [`URef].
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
+
+    /// Reads [`Bid`] at account hash derived from given public key
+    fn read_bid(&mut self, account_hash: &AccountHash) -> Result<Option<Bid>, Error>;
+
+    /// Writes given [`Bid`] at account hash derived from given public key
+    fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error>;
 }
 
 /// Provides functionality of a system module.

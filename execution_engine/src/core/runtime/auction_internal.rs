@@ -1,12 +1,14 @@
+use std::collections::BTreeSet;
+
 use casper_types::{
     account,
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        AccountProvider, Auction, EraInfo, Error, MintProvider, RuntimeProvider, StorageProvider,
-        SystemProvider,
+        AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
+        StorageProvider, SystemProvider,
     },
-    CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;
@@ -50,6 +52,25 @@ where
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .metered_write_gs(uref.into(), StoredValue::CLValue(cl_value))
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn read_bid(&mut self, account_hash: &AccountHash) -> Result<Option<Bid>, Error> {
+        match self.context.read_gs(&Key::Bid(*account_hash)) {
+            Ok(Some(StoredValue::Bid(bid))) => Ok(Some(*bid)),
+            Ok(Some(_)) => Err(Error::Storage),
+            Ok(None) => Ok(None),
+            Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
+            // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
+            // also [`Runtime::reverter`] and [`to_auction_error`]
+            Err(execution::Error::GasLimit) => Err(Error::GasLimit),
+            Err(_) => Err(Error::Storage),
+        }
+    }
+
+    fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error> {
+        self.context
+            .metered_write_gs_unsafe(Key::Bid(account_hash), StoredValue::Bid(Box::new(bid)))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 }
@@ -101,8 +122,12 @@ where
         self.context.get_caller()
     }
 
-    fn get_key(&self, name: &str) -> Option<Key> {
+    fn named_keys_get(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
+    }
+
+    fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
+        self.context.get_keys(key_tag).map_err(|_| Error::Storage)
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {

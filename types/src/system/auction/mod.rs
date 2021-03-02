@@ -56,8 +56,8 @@ pub trait Auction:
 {
     /// Returns era_validators.
     ///
-    /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
-    /// internal data structures recording current and past winners.
+    /// Publicly accessible, but intended for periodic use by the Handle Payment contract to update
+    /// its own internal data structures recording current and past winners.
     fn get_era_validators(&mut self) -> Result<EraValidators, Error> {
         let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let era_validators = snapshot
@@ -75,8 +75,8 @@ pub trait Auction:
 
     /// Returns validators in era_validators, mapped to their bids or founding stakes, delegation
     /// rates and lists of delegators together with their delegated quantities from delegators.
-    /// This function is publicly accessible, but intended for system use by the PoS contract,
-    /// because this data is necessary for distributing seigniorage.
+    /// This function is publicly accessible, but intended for system use by the Handle Payment
+    /// contract, because this data is necessary for distributing seigniorage.
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
@@ -112,27 +112,33 @@ pub trait Auction:
 
         let source = self.get_main_purse()?;
 
+        let account_hash = AccountHash::from(&public_key);
+
         // Update bids or stakes
-        let mut validators = detail::get_bids(self)?;
-        let new_amount = match validators.get_mut(&public_key) {
-            Some(bid) => {
+        let updated_amount = match self.read_bid(&account_hash)? {
+            Some(mut bid) => {
+                if bid.inactive() {
+                    bid.activate();
+                }
                 self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
-                bid.with_delegation_rate(delegation_rate)
-                    .increase_stake(amount)?
+                let updated_amount = bid
+                    .with_delegation_rate(delegation_rate)
+                    .increase_stake(amount)?;
+                self.write_bid(account_hash, bid)?;
+                updated_amount
             }
             None => {
                 let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
-                let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
-                validators.insert(public_key, bid);
+                let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
+                self.write_bid(account_hash, bid)?;
                 amount
             }
         };
-        detail::set_bids(self, validators)?;
 
-        Ok(new_amount)
+        Ok(updated_amount)
     }
 
     /// For a non-founder validator, implements essentially the same logic as add_bid, but reducing
@@ -149,16 +155,15 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        // Update bids or stakes
-        let mut bids = detail::get_bids(self)?;
-
-        let bid = bids.get_mut(&public_key).ok_or(Error::ValidatorNotFound)?;
+        let mut bid = self
+            .read_bid(&account_hash)?
+            .ok_or(Error::ValidatorNotFound)?;
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
 
         // Fails if requested amount is greater than either the total stake or the amount of vested
         // stake.
-        let new_amount = bid.decrease_stake(amount, era_end_timestamp_millis)?;
+        let updated_stake = bid.decrease_stake(amount, era_end_timestamp_millis)?;
 
         detail::create_unbonding_purse(
             self,
@@ -168,7 +173,7 @@ pub trait Auction:
             amount,
         )?;
 
-        if new_amount.is_zero() {
+        if updated_stake.is_zero() {
             // Automatically unbond delegators
             for (delegator_public_key, delegator) in bid.delegators() {
                 detail::create_unbonding_purse(
@@ -180,13 +185,14 @@ pub trait Auction:
                 )?;
             }
 
-            // NOTE: Assumed safe as we're checking for existence above
-            bids.remove(&public_key).unwrap();
+            *bid.delegators_mut() = BTreeMap::new();
+
+            bid.deactivate();
         }
 
-        detail::set_bids(self, bids)?;
+        self.write_bid(account_hash, bid)?;
 
-        Ok(new_amount)
+        Ok(updated_stake)
     }
 
     /// Adds a new delegator to delegators, or tops off a current one. If the target validator is
@@ -211,15 +217,17 @@ pub trait Auction:
 
         let source = self.get_main_purse()?;
 
-        let mut bids = detail::get_bids(self)?;
+        let validator_account_hash = AccountHash::from(&validator_public_key);
 
-        let delegators = match bids.get_mut(&validator_public_key) {
-            Some(bid) => bid.delegators_mut(),
+        let mut bid = match self.read_bid(&validator_account_hash)? {
+            Some(bid) => bid,
             None => {
                 // Return early if target validator is not in `bids`
                 return Err(Error::ValidatorNotFound);
             }
         };
+
+        let delegators = bid.delegators_mut();
 
         let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
@@ -232,13 +240,18 @@ pub trait Auction:
                 let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
-                let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
+                let delegator = Delegator::unlocked(
+                    delegator_public_key,
+                    amount,
+                    bonding_purse,
+                    validator_public_key,
+                );
                 delegators.insert(delegator_public_key, delegator);
                 amount
             }
         };
 
-        detail::set_bids(self, bids)?;
+        self.write_bid(validator_account_hash, bid)?;
 
         Ok(new_delegation_amount)
     }
@@ -260,15 +273,13 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let mut bids = detail::get_bids(self)?;
-
-        let delegators = match bids.get_mut(&validator_public_key) {
-            Some(bid) => bid.delegators_mut(),
-            None => {
-                // Return early if target validator is not in `bids`
-                return Err(Error::ValidatorNotFound);
-            }
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+        let mut bid = match self.read_bid(&validator_account_hash)? {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
         };
+
+        let delegators = bid.delegators_mut();
 
         let new_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
@@ -279,7 +290,9 @@ pub trait Auction:
                     *delegator.bonding_purse(),
                     amount,
                 )?;
-                let updated_stake = delegator.decrease_stake(amount)?;
+
+                let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+                let updated_stake = delegator.decrease_stake(amount, era_end_timestamp_millis)?;
                 if updated_stake == U512::zero() {
                     delegators.remove(&delegator_public_key);
                 };
@@ -288,7 +301,7 @@ pub trait Auction:
             None => return Err(Error::DelegatorNotFound),
         };
 
-        detail::set_bids(self, bids)?;
+        self.write_bid(validator_account_hash, bid)?;
 
         Ok(new_amount)
     }
@@ -303,16 +316,17 @@ pub trait Auction:
 
         let mut burned_amount: U512 = U512::zero();
 
-        let mut bids = detail::get_bids(self)?;
-        let mut bids_modified = false;
-
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
         let mut unbonding_purses_modified = false;
+
         for validator_public_key in validator_public_keys {
-            // Remove bid for given validator, saving its delegators
-            if let Some(bid) = bids.remove(&validator_public_key) {
+            // Burn stake, deactivate
+            let validator_account_hash = AccountHash::from(&validator_public_key);
+            if let Some(mut bid) = self.read_bid(&validator_account_hash)? {
                 burned_amount += *bid.staked_amount();
-                bids_modified = true;
+                *bid.staked_amount_mut() = U512::zero();
+                bid.deactivate();
+                self.write_bid(validator_account_hash, bid)?;
             };
 
             // Update unbonding entries for given validator
@@ -327,10 +341,6 @@ pub trait Auction:
 
         if unbonding_purses_modified {
             detail::set_unbonding_purses(self, unbonding_purses)?;
-        }
-
-        if bids_modified {
-            detail::set_bids(self, bids)?;
         }
 
         self.reduce_total_supply(burned_amount)?;
@@ -364,7 +374,9 @@ pub trait Auction:
         // Process bids
         let mut bids_modified = false;
         for (validator_public_key, bid) in bids.iter_mut() {
-            bids_modified = bid.process(era_end_timestamp_millis);
+            if bid.process(era_end_timestamp_millis) {
+                bids_modified = true;
+            }
 
             if evicted_validators.contains(validator_public_key) {
                 bids_modified = bid.deactivate()
@@ -460,8 +472,6 @@ pub trait Auction:
         let mut era_info = EraInfo::new();
         let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
-        let mut bids = detail::get_bids(self)?;
-
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
                 .get(&public_key)
@@ -502,7 +512,7 @@ pub trait Auction:
                         (*delegator_key, reward)
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
-                &mut bids,
+                self,
                 &mut seigniorage_allocations,
                 public_key,
                 delegator_rewards,
@@ -514,22 +524,21 @@ pub trait Auction:
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
             let validator_reward = validators_part.to_integer();
-            if let Some(validator_bonding_purse) = detail::reinvest_validator_reward(
-                &mut bids,
+            let validator_bonding_purse = detail::reinvest_validator_reward(
+                self,
                 &mut seigniorage_allocations,
                 public_key,
                 validator_reward,
-            )? {
-                // TODO: add "mint into existing purse" facility
-                let tmp_validator_reward_purse =
-                    self.mint(validator_reward).map_err(|_| Error::MintReward)?;
-                self.transfer_purse_to_purse(
-                    tmp_validator_reward_purse,
-                    validator_bonding_purse,
-                    validator_reward,
-                )
-                .map_err(|_| Error::ValidatorRewardTransfer)?;
-            }
+            )?;
+            // TODO: add "mint into existing purse" facility
+            let tmp_validator_reward_purse =
+                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
+            self.transfer_purse_to_purse(
+                tmp_validator_reward_purse,
+                validator_bonding_purse,
+                validator_reward,
+            )
+            .map_err(|_| Error::ValidatorRewardTransfer)?;
 
             // TODO: add "mint into existing purse" facility
             let tmp_delegator_reward_purse = self
@@ -546,7 +555,6 @@ pub trait Auction:
         }
 
         self.record_era_info(era_id, era_info)?;
-        detail::set_bids(self, bids)?;
 
         Ok(())
     }
@@ -564,16 +572,14 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let mut bids = detail::get_bids(self)?;
-
-        let bid = match bids.get_mut(&validator_public_key) {
+        let mut bid = match self.read_bid(&account_hash)? {
             Some(bid) => bid,
             None => return Err(Error::ValidatorNotFound),
         };
 
         bid.activate();
 
-        detail::set_bids(self, bids)?;
+        self.write_bid(account_hash, bid)?;
 
         Ok(())
     }

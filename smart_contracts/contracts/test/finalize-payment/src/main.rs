@@ -46,7 +46,7 @@ fn finalize_payment(contract_hash: ContractHash, amount_spent: U512, account: Ac
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_hash = system::get_proof_of_stake();
+    let contract_hash = system::get_handle_payment();
 
     let payment_amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let refund_purse_flag: u8 = runtime::get_named_arg(ARG_REFUND_FLAG);

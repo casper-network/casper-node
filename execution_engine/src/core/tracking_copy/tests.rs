@@ -7,7 +7,7 @@ use casper_types::{
     account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, Key, ProtocolVersion, URef, U512,
+    AccessRights, CLValue, Contract, EntryPoints, Key, KeyTag, ProtocolVersion, URef, U512,
 };
 
 use super::{
@@ -70,6 +70,14 @@ impl StateReader<Key, StoredValue> for CountingDb {
         _key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         Ok(None)
+    }
+
+    fn keys_with_prefix(
+        &self,
+        _correlation_id: CorrelationId,
+        _prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        Ok(Vec::new())
     }
 }
 
@@ -789,4 +797,206 @@ fn validate_query_proof_should_work() {
         ),
         Err(ValidationError::InvalidProofHash)
     );
+}
+
+#[test]
+fn get_keys_should_return_keys_in_the_account_keyspace() {
+    // account 1
+    let account_1_hash = AccountHash::new([1; 32]);
+    let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+    let account_1_value = StoredValue::Account(Account::create(
+        account_1_hash,
+        NamedKeys::default(),
+        fake_purse,
+    ));
+    let account_1_key = Key::Account(account_1_hash);
+
+    // account 2
+    let account_2_hash = AccountHash::new([2; 32]);
+    let fake_purse = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
+    let account_2_value = StoredValue::Account(Account::create(
+        account_2_hash,
+        NamedKeys::default(),
+        fake_purse,
+    ));
+    let account_2_key = Key::Account(account_2_hash);
+
+    // random value
+    let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
+    let uref_value = StoredValue::CLValue(cl_value);
+    let uref_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
+
+    // persist them
+    let correlation_id = CorrelationId::new();
+    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
+        correlation_id,
+        &[
+            (account_1_key, account_1_value),
+            (account_2_key, account_2_value),
+            (uref_key, uref_value),
+        ],
+    )
+    .unwrap();
+
+    let view = global_state
+        .checkout(root_hash)
+        .expect("should checkout")
+        .expect("should have view");
+
+    let mut tracking_copy = TrackingCopy::new(view);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::Account)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 2);
+    assert!(key_set.contains(&account_1_key));
+    assert!(key_set.contains(&account_2_key));
+    assert!(!key_set.contains(&uref_key));
+}
+
+#[test]
+fn get_keys_should_return_keys_in_the_uref_keyspace() {
+    // account
+    let account_hash = AccountHash::new([1; 32]);
+    let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+    let account_value = StoredValue::Account(Account::create(
+        account_hash,
+        NamedKeys::default(),
+        fake_purse,
+    ));
+    let account_key = Key::Account(account_hash);
+
+    // random value 1
+    let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
+    let uref_1_value = StoredValue::CLValue(cl_value);
+    let uref_1_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
+
+    // random value 2
+    let cl_value = CLValue::from_t(U512::one()).expect("should convert");
+    let uref_2_value = StoredValue::CLValue(cl_value);
+    let uref_2_key = Key::URef(URef::new([9; 32], AccessRights::READ_ADD_WRITE));
+
+    // persist them
+    let correlation_id = CorrelationId::new();
+    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
+        correlation_id,
+        &[
+            (account_key, account_value),
+            (uref_1_key, uref_1_value),
+            (uref_2_key, uref_2_value),
+        ],
+    )
+    .unwrap();
+
+    let view = global_state
+        .checkout(root_hash)
+        .expect("should checkout")
+        .expect("should have view");
+
+    let mut tracking_copy = TrackingCopy::new(view);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::URef)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 2);
+    assert!(key_set.contains(&uref_1_key.normalize()));
+    assert!(key_set.contains(&uref_2_key.normalize()));
+    assert!(!key_set.contains(&account_key));
+
+    // random value 3
+    let cl_value = CLValue::from_t(U512::from(2)).expect("should convert");
+    let uref_3_value = StoredValue::CLValue(cl_value);
+    let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
+    tracking_copy.write(uref_3_key, uref_3_value);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::URef)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 3);
+    assert!(key_set.contains(&uref_1_key.normalize()));
+    assert!(key_set.contains(&uref_2_key.normalize()));
+    assert!(key_set.contains(&uref_3_key.normalize()));
+    assert!(!key_set.contains(&account_key));
+}
+
+#[test]
+fn get_keys_should_handle_reads_from_empty_trie() {
+    let correlation_id = CorrelationId::new();
+    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[]).unwrap();
+
+    let view = global_state
+        .checkout(root_hash)
+        .expect("should checkout")
+        .expect("should have view");
+
+    let mut tracking_copy = TrackingCopy::new(view);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::URef)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 0);
+    assert!(key_set.is_empty());
+
+    // persist random value 1
+    let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
+    let uref_1_value = StoredValue::CLValue(cl_value);
+    let uref_1_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
+    tracking_copy.write(uref_1_key, uref_1_value);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::URef)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 1);
+    assert!(key_set.contains(&uref_1_key.normalize()));
+
+    // persist random value 2
+    let cl_value = CLValue::from_t(U512::one()).expect("should convert");
+    let uref_2_value = StoredValue::CLValue(cl_value);
+    let uref_2_key = Key::URef(URef::new([9; 32], AccessRights::READ_ADD_WRITE));
+    tracking_copy.write(uref_2_key, uref_2_value);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::URef)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 2);
+    assert!(key_set.contains(&uref_1_key.normalize()));
+    assert!(key_set.contains(&uref_2_key.normalize()));
+
+    // persist account
+    let account_hash = AccountHash::new([1; 32]);
+    let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+    let account_value = StoredValue::Account(Account::create(
+        account_hash,
+        NamedKeys::default(),
+        fake_purse,
+    ));
+    let account_key = Key::Account(account_hash);
+    tracking_copy.write(account_key, account_value);
+
+    assert_eq!(key_set.len(), 2);
+    assert!(key_set.contains(&uref_1_key.normalize()));
+    assert!(key_set.contains(&uref_2_key.normalize()));
+    assert!(!key_set.contains(&account_key));
+
+    // persist random value 3
+    let cl_value = CLValue::from_t(U512::from(2)).expect("should convert");
+    let uref_3_value = StoredValue::CLValue(cl_value);
+    let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
+    tracking_copy.write(uref_3_key, uref_3_value);
+
+    let key_set = tracking_copy
+        .get_keys(correlation_id, &KeyTag::URef)
+        .unwrap();
+
+    assert_eq!(key_set.len(), 3);
+    assert!(key_set.contains(&uref_1_key.normalize()));
+    assert!(key_set.contains(&uref_2_key.normalize()));
+    assert!(key_set.contains(&uref_3_key.normalize()));
+    assert!(!key_set.contains(&account_key));
 }

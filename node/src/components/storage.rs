@@ -61,6 +61,7 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tracing::{error, info};
 
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{ExecutionResult, Transfer, Transform};
 
 use super::Component;
@@ -81,7 +82,6 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
-
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -312,6 +312,12 @@ impl Storage {
         info!("block store reindexing complete");
         drop(cursor);
         drop(block_txn);
+
+        // Check the integrity of the block body database.
+        check_block_body_db(&env, &block_body_db)?;
+
+        // Check the integrity of the block metadata database.
+        check_block_metadata_db(&env, &block_metadata_db)?;
 
         Ok(Storage {
             root,
@@ -771,6 +777,29 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves the state root hashes from storage to check the integrity of the trie store.
+    pub fn get_state_root_hashes_for_trie_check(&self) -> Option<Vec<Blake2bHash>> {
+        let mut blake_hashes: Vec<Blake2bHash> = Vec::new();
+        let txn =
+            self.env.begin_ro_txn().ok().unwrap_or_else(|| {
+                panic!("could not open storage transaction for trie store check")
+            });
+        let mut cursor = txn
+            .open_ro_cursor(self.block_header_db)
+            .ok()
+            .unwrap_or_else(|| panic!("could not create cursor for trie store check"));
+        for (_, raw_val) in cursor.iter() {
+            let header: BlockHeader = lmdb_ext::deserialize(raw_val).ok()?;
+            let blake_hash = Blake2bHash::from(*header.state_root_hash());
+            blake_hashes.push(blake_hash);
+        }
+
+        blake_hashes.sort();
+        blake_hashes.dedup();
+
+        Some(blake_hashes)
+    }
+
     /// Retrieves a single block header in a separate transaction from storage.
     fn get_single_block_header<Tx: Transaction>(
         &self,
@@ -1071,4 +1100,51 @@ impl Storage {
             .expect("Could not commit transaction");
         switch_block
     }
+}
+
+/// Utility function to check the integrity of the block_body database at bringup.
+fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<(), LmdbExtError> {
+    info!("Checking block body db");
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*block_body_db)?;
+
+    for (raw_key, raw_val) in cursor.iter() {
+        let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+        assert_eq!(
+            raw_key,
+            body.hash().as_ref(),
+            "found corrupt block body in database"
+        );
+    }
+    info!("block body db check complete");
+    Ok(())
+}
+
+/// Utility function to check the integrity of the block_metadata database at bringup.
+fn check_block_metadata_db(
+    env: &Environment,
+    block_metadata_db: &Database,
+) -> Result<(), LmdbExtError> {
+    info!("Checking block_metadata_db");
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*block_metadata_db)?;
+
+    for (raw_key, raw_val) in cursor.iter() {
+        let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+        // Signature verification could be very slow process
+        // It iterates over every signature and verifies them.
+        match signatures.verify() {
+            Ok(_) => assert_eq!(
+                raw_key,
+                signatures.block_hash.as_ref(),
+                "Corruption in block_metadata_db"
+            ),
+            Err(error) => panic!(
+                "Error: {} in signature verification. Corruption in database",
+                error
+            ),
+        }
+    }
+    info!("Check for block_metadata_db complete");
+    Ok(())
 }

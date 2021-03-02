@@ -450,9 +450,9 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec().as_ref(),
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
-        let genesis_state_root_hash = chainspec_loader.genesis_state_root_hash();
         let block_executor = BlockExecutor::new(
-            genesis_state_root_hash,
+            chainspec_loader.initial_state_root_hash(),
+            chainspec_loader.initial_block_header(),
             protocol_version.clone(),
             registry.clone(),
         )

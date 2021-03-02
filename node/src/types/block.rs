@@ -416,12 +416,6 @@ impl FinalizedBlock {
         self.height
     }
 
-    /// Returns true if block is Genesis' child.
-    /// Genesis child block is from era 0 and height 0.
-    pub(crate) fn is_genesis_child(&self) -> bool {
-        self.era_id() == EraId(0) && self.height() == 0
-    }
-
     pub(crate) fn proposer(&self) -> PublicKey {
         self.proposer
     }
@@ -1014,6 +1008,20 @@ impl BlockSignatures {
 
     pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
         self.proofs.contains_key(public_key)
+    }
+
+    /// Verify the signatures contained within.
+    pub(crate) fn verify(&self) -> crypto::Result<()> {
+        for (public_key, signature) in self.proofs.iter() {
+            let signature = FinalitySignature {
+                block_hash: self.block_hash,
+                era_id: self.era_id,
+                signature: *signature,
+                public_key: *public_key,
+            };
+            signature.verify()?;
+        }
+        Ok(())
     }
 }
 

@@ -22,7 +22,8 @@ use crate::storage::{
     trie_store::{
         in_memory::InMemoryTrieStore,
         operations::{
-            self, missing_trie_keys, put_trie, read, read_with_proof, ReadResult, WriteResult,
+            self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+            WriteResult,
         },
     },
 };
@@ -166,6 +167,30 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         txn.commit()?;
         Ok(ret)
     }
+
+    fn keys_with_prefix(
+        &self,
+        correlation_id: CorrelationId,
+        prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
+            correlation_id,
+            &txn,
+            self.store.deref(),
+            &self.root_hash,
+            prefix,
+        );
+        let mut ret: Vec<Key> = Vec::new();
+        for result in keys_iter {
+            match result {
+                Ok(key) => ret.push(key),
+                Err(error) => return Err(error.into()),
+            }
+        }
+        txn.commit()?;
+        Ok(ret)
+    }
 }
 
 impl StateProvider for InMemoryGlobalState {
@@ -259,7 +284,7 @@ impl StateProvider for InMemoryGlobalState {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_keys: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -269,7 +294,7 @@ impl StateProvider for InMemoryGlobalState {
                 InMemoryReadTransaction,
                 InMemoryTrieStore,
                 Self::Error,
-            >(correlation_id, &txn, self.trie_store.deref(), trie_key)?;
+            >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
         txn.commit()?;
         Ok(missing_descendants)
     }

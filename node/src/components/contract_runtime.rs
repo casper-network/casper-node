@@ -25,7 +25,7 @@ use casper_execution_engine::{
         genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
         GetEraValidatorsRequest,
     },
-    shared::newtypes::CorrelationId,
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
@@ -83,6 +83,7 @@ pub struct ContractRuntimeMetrics {
     get_validator_weights: Histogram,
     get_era_validators: Histogram,
     get_era_validator_weights_by_era_id: Histogram,
+    get_bids: Histogram,
     missing_trie_keys: Histogram,
     put_trie: Histogram,
     read_trie: Histogram,
@@ -121,6 +122,8 @@ const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME: &str =
     "contract_runtime_get_era_validator_weights_by_era_id";
 const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP: &str =
     "tracking run of engine_state.get_era_validator_weights_by_era_id in seconds.";
+const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
+const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
 const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
 const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
@@ -178,6 +181,7 @@ impl ContractRuntimeMetrics {
                 GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME,
                 GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP,
             )?,
+            get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
             read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
             put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
             missing_trie_keys: register_histogram_metric(
@@ -439,6 +443,28 @@ where
                 }
                 .ignore()
             }
+            Event::Request(ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            }) => {
+                trace!(?get_bids_request, "get bids request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.get_bids(correlation_id, get_bids_request);
+                        metrics.get_bids.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "get bids result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             Event::Request(ContractRuntimeRequest::Step {
                 step_request,
                 responder,
@@ -601,5 +627,17 @@ impl ContractRuntime {
             protocol_version,
             &ee_config,
         )
+    }
+
+    /// Retrieve trie keys for the integrity check.
+    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+        let correlation_id = CorrelationId::new();
+        match self
+            .engine_state
+            .trie_integrity_check(correlation_id, trie_keys)
+        {
+            Ok(keys) => keys,
+            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
+        }
     }
 }

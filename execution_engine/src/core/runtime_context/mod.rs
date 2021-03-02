@@ -16,7 +16,7 @@ use casper_types::{
     contracts::NamedKeys,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion,
+    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
     RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
@@ -252,6 +252,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Bid(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -422,6 +426,13 @@ where
         })
     }
 
+    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_keys(self.correlation_id, key_tag)
+            .map_err(Into::into)
+    }
+
     pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         if let Key::Account(_) = key {
             self.validate_key(key)?;
@@ -567,6 +578,7 @@ where
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
+            StoredValue::Bid(_) => Ok(()),
         }
     }
 
@@ -654,6 +666,7 @@ where
             Key::DeployInfo(_) => true,
             Key::EraInfo(_) => true,
             Key::Balance(_) => false,
+            Key::Bid(_) => true,
         }
     }
 
@@ -666,6 +679,7 @@ where
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
             Key::Balance(_) => false,
+            Key::Bid(_) => false,
         }
     }
 
@@ -678,6 +692,7 @@ where
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
             Key::Balance(_) => false,
+            Key::Bid(_) => false,
         }
     }
 
