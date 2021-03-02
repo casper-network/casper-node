@@ -629,7 +629,7 @@ where
                     }
                 }
                 ContractRuntimeResult::ExecutedAndCommitted(state) => {
-                    self.execute_next_deploy_or_create_block(effect_builder, state)
+                    self.execute_all_deploys_or_finalize_block_or_step(effect_builder, state)
                 }
             },
         }
@@ -842,23 +842,19 @@ impl ContractRuntime {
         effects
     }
 
-    /// Executes the first deploy in `state.remaining_deploys`, or creates the executed block if
-    /// there are no remaining deploys left.
-    fn execute_next_deploy_or_create_block<REv: ReactorEventT>(
+    fn execute_all_deploys_or_finalize_block_or_step<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         state: Box<RequestState>,
     ) -> Effects<Event> {
         if state.remaining_deploys.is_empty() {
-            self.or_create_block(effect_builder, state)
+            self.finalize_block_or_step(effect_builder, state)
         } else {
-            self.execute_deploys_in_block(state)
+            self.execute_all_deploys_in_block(state)
         }
     }
 
-    /// Executes the first deploy in `state.remaining_deploys`, or creates the executed block if
-    /// there are no remaining deploys left.
-    fn or_create_block<REv: ReactorEventT>(
+    fn finalize_block_or_step<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         state: Box<RequestState>,
@@ -903,7 +899,7 @@ impl ContractRuntime {
         });
     }
 
-    fn execute_deploys_in_block(&mut self, mut state: Box<RequestState>) -> Effects<Event> {
+    fn execute_all_deploys_in_block(&mut self, mut state: Box<RequestState>) -> Effects<Event> {
         let engine_state = Arc::clone(&self.engine_state);
         let metrics = Arc::clone(&self.metrics);
         let protocol_version = self.protocol_version;
@@ -927,13 +923,12 @@ impl ContractRuntime {
                 // TODO: this is currently working coincidentally because we are passing only one
                 // deploy_item per exec. The execution results coming back from the ee lacks the
                 // mapping between deploy_hash and execution result, and this outer logic is
-                // enriching it with the deploy hash. If we were passing multiple
-                // deploys per exec the relation between the deploy and the
-                // execution results would be lost.
-
+                // enriching it with the deploy hash. If we were passing multiple deploys per exec
+                // the relation between the deploy and the execution results would be lost.
                 let result =
                     operations::execute(engine_state.clone(), metrics.clone(), execute_request)
                         .await;
+
                 trace!(%deploy_hash, ?result, "deploy execution result");
                 // As for now a given state is expected to exist.
                 let execution_results = result.unwrap();
@@ -973,7 +968,7 @@ impl ContractRuntime {
                 execution_results: HashMap::new(),
                 state_root_hash,
             });
-            self.execute_next_deploy_or_create_block(effect_builder, state)
+            self.execute_all_deploys_or_finalize_block_or_step(effect_builder, state)
         } else {
             // Didn't find parent in the `parent_map` cache.
             // Read it from the storage.
@@ -1015,7 +1010,7 @@ impl ContractRuntime {
                         execution_results: HashMap::new(),
                         state_root_hash,
                     });
-                    self.execute_next_deploy_or_create_block(effect_builder, state)
+                    self.execute_all_deploys_or_finalize_block_or_step(effect_builder, state)
                 } else {
                     // The parent block has not been executed yet; delay handling.
                     self.exec_queue.insert(height, (finalized_block, deploys));
