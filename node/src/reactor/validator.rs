@@ -755,10 +755,16 @@ impl reactor::Reactor for Reactor {
                                 responder: None,
                             })
                         }
-                        Tag::Block => todo!("Handle GET block response"),
-                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
+                        Tag::Block => {
+                            warn!(%sender, "received get block response");
+                            return Effects::new();
+                        }
+                        Tag::BlockByHeight => {
+                            warn!(%sender, "received get block by height response");
+                            return Effects::new();
+                        }
                         Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
+                            warn!(%sender, "received get request for gossiped-address");
                             return Effects::new();
                         }
                     },
