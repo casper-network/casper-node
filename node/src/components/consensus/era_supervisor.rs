@@ -227,10 +227,14 @@ where
                         .expect("missing block in genesis era")
                         .state_root_hash()
                 } else {
-                    // The parent of the first key block contains the activation era validator set.
-                    let next_key_block = &key_blocks[&(activation_era_id + 1)];
+                    // The first block in the activation era contains the validator set.
+                    let block_height = if activation_era_id.is_genesis() {
+                        0
+                    } else {
+                        &key_blocks[&activation_era_id].height() + 1
+                    };
                     *effect_builder
-                        .get_block_at_height_local(next_key_block.height() - 1)
+                        .get_block_at_height_local(block_height)
                         .await
                         .expect("missing block in activation era")
                         .state_root_hash()
