@@ -389,10 +389,10 @@ where
         self.active_eras.get(&era_id).map_or(false, has_validator)
     }
 
-    /// Inspect the active eras.
+    /// Returns the most recent active era.
     #[cfg(test)]
-    pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I>> {
-        &self.active_eras
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
     }
 
     /// To be called when we transition from the joiner to the validator reactor.
