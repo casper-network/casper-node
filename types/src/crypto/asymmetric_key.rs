@@ -14,10 +14,18 @@ use core::{
 };
 
 use datasize::DataSize;
-use ed25519_dalek::ed25519::signature::Signature as _Signature;
+use ed25519_dalek::{
+    ed25519::signature::Signature as _Signature, PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH,
+    SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
+};
 use hex_fmt::HexFmt;
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use secp256k1::util::{
+    COMPRESSED_PUBLIC_KEY_SIZE as SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH,
+    FULL_PUBLIC_KEY_SIZE as SECP256K1_FULL_PUBLIC_KEY_LENGTH,
+    SECRET_KEY_SIZE as SECP256K1_SECRET_KEY_LENGTH, SIGNATURE_SIZE as SECP256K1_SIGNATURE_LENGTH,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -46,10 +54,6 @@ const ED25519: &str = "Ed25519";
 /// Tag for secp256k1 variant
 pub const SECP256K1_TAG: u8 = 2;
 const SECP256K1: &str = "Secp256k1";
-
-const SECP256K1_SECRET_KEY_LENGTH: usize = secp256k1::util::SECRET_KEY_SIZE;
-const SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH: usize = secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE;
-const SECP256K1_SIGNATURE_LENGTH: usize = secp256k1::util::SIGNATURE_SIZE;
 
 /// Public key for system account
 pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
@@ -119,7 +123,7 @@ impl SecretKey {
     pub const SYSTEM_LENGTH: usize = 0;
 
     /// The length in bytes of an Ed25519 secret key.
-    pub const ED25519_LENGTH: usize = ed25519_dalek::SECRET_KEY_LENGTH;
+    pub const ED25519_LENGTH: usize = ED25519_SECRET_KEY_LENGTH;
 
     /// The length in bytes of a secp256k1 secret key.
     pub const SECP256K1_LENGTH: usize = SECP256K1_SECRET_KEY_LENGTH;
@@ -318,7 +322,7 @@ impl PublicKey {
     pub const SYSTEM_LENGTH: usize = 0;
 
     /// The length in bytes of an Ed25519 public key.
-    pub const ED25519_LENGTH: usize = ed25519_dalek::PUBLIC_KEY_LENGTH;
+    pub const ED25519_LENGTH: usize = ED25519_PUBLIC_KEY_LENGTH;
 
     /// The length in bytes of a secp256k1 public key.
     pub const SECP256K1_LENGTH: usize = SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH;
@@ -373,28 +377,29 @@ impl AsymmetricType for PublicKey {
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
         match bytes.as_ref().len() {
-            Self::SECP256K1_LENGTH => {
+            SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH => {
                 let bytes =
-                    <[u8; Self::SECP256K1_LENGTH]>::try_from(bytes.as_ref()).map_err(|err| {
-                        Error::AsymmetricKey(format!(
-                            "failed to construct compressed secp256k1 public key. \
-                             Expected {} bytes, got {} bytes. \
-                             Error: {}",
-                            Self::SECP256K1_LENGTH,
-                            bytes.as_ref().len(),
-                            err
-                        ))
-                    })?;
+                    <[u8; SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH]>::try_from(bytes.as_ref())
+                        .map_err(|err| {
+                            Error::AsymmetricKey(format!(
+                                "failed to construct compressed secp256k1 public key. \
+                                 Expected {} bytes, got {} bytes. \
+                                 Error: {}",
+                                SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH,
+                                bytes.as_ref().len(),
+                                err
+                            ))
+                        })?;
                 Ok(PublicKey::Secp256k1(bytes))
             }
-            secp256k1::util::FULL_PUBLIC_KEY_SIZE => {
-                let bytes = <[u8; secp256k1::util::FULL_PUBLIC_KEY_SIZE]>::try_from(bytes.as_ref())
+            SECP256K1_FULL_PUBLIC_KEY_LENGTH => {
+                let bytes = <[u8; SECP256K1_FULL_PUBLIC_KEY_LENGTH]>::try_from(bytes.as_ref())
                     .map_err(|err| {
                         Error::AsymmetricKey(format!(
                             "failed to construct full secp256k1 public key. \
                              Expected {} bytes, got {} bytes. \
                              Error: {}",
-                            secp256k1::util::FULL_PUBLIC_KEY_SIZE,
+                            SECP256K1_FULL_PUBLIC_KEY_LENGTH,
                             bytes.as_ref().len(),
                             err
                         ))
@@ -603,7 +608,7 @@ pub enum Signature {
     // This is held as a byte array rather than an `ed25519_dalek::Signature` as that type doesn't
     // implement `AsRef` amongst other common traits.  In order to implement these common traits,
     // it is convenient and cheap to use `signature.as_ref()`.
-    Ed25519([u8; ed25519_dalek::SIGNATURE_LENGTH]),
+    Ed25519([u8; ED25519_SIGNATURE_LENGTH]),
     /// secp256k1 signature.
     Secp256k1([u8; SECP256K1_SIGNATURE_LENGTH]),
 }
@@ -613,7 +618,7 @@ impl Signature {
     pub const SYSTEM_LENGTH: usize = 0;
 
     /// The length in bytes of an Ed25519 signature,
-    pub const ED25519_LENGTH: usize = ed25519_dalek::SIGNATURE_LENGTH;
+    pub const ED25519_LENGTH: usize = ED25519_SIGNATURE_LENGTH;
 
     /// The length in bytes of a secp256k1 signature
     pub const SECP256K1_LENGTH: usize = SECP256K1_SIGNATURE_LENGTH;
