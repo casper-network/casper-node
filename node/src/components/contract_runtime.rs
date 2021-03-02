@@ -25,17 +25,15 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisResult, step::EvictItem,
-        DeployItem, EngineConfig, EngineState, ExecuteRequest, GetEraValidatorsError,
-        GetEraValidatorsRequest, RewardItem, SlashItem, StepRequest, StepResult,
+        self, genesis::GenesisResult, step::EvictItem, DeployItem, EngineConfig, EngineState,
+        ExecuteRequest, GetEraValidatorsError, GetEraValidatorsRequest, RewardItem, SlashItem,
+        StepRequest, StepResult,
     },
     shared::newtypes::CorrelationId,
     storage::{
-        error::lmdb::Error as StorageLmdbError,
-        global_state::{lmdb::LmdbGlobalState},
+        error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
+        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
@@ -840,9 +838,9 @@ impl ContractRuntime {
         state: Box<RequestState>,
     ) -> Effects<Event> {
         if state.remaining_deploys.is_empty() {
-            return self.or_create_block(effect_builder, state);
+            self.or_create_block(effect_builder, state)
         } else {
-            return self.execute_deploys_in_block(state);
+            self.execute_deploys_in_block(state)
         }
     }
 
