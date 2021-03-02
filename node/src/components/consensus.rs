@@ -35,7 +35,7 @@ use crate::{
         announcements::ConsensusAnnouncement,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -117,6 +117,8 @@ pub enum Event<I> {
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
         key_blocks: HashMap<EraId, BlockHeader>,
+        /// This is empty except if the activation era still needs to be instantiated: Its
+        /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
@@ -244,6 +246,7 @@ pub trait ReactorEventT<I>:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
+    + From<LinearChainRequest<I>>
 {
 }
 
@@ -257,6 +260,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
+        + From<LinearChainRequest<I>>
 {
 }
 
