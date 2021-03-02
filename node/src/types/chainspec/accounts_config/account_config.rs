@@ -17,7 +17,7 @@ use crate::testing::TestRng;
 
 use super::ValidatorConfig;
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
+#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
 pub struct AccountConfig {
     pub(super) public_key: PublicKey,
     balance: Motes,
