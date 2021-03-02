@@ -23,12 +23,12 @@ use casper_execution_engine::{
                 DEFAULT_RUN_AUCTION_COST, DEFAULT_SLASH_COST, DEFAULT_UNDELEGATE_COST,
                 DEFAULT_WITHDRAW_BID_COST,
             },
+            handle_payment_costs::{
+                HandlePaymentCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
+            },
             mint_costs::{
                 MintCosts, DEFAULT_BALANCE_COST, DEFAULT_MINT_COST,
                 DEFAULT_REDUCE_TOTAL_SUPPLY_COST, DEFAULT_TRANSFER_COST,
-            },
-            proof_of_stake_costs::{
-                ProofOfStakeCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
             },
             standard_payment_costs::StandardPaymentCosts,
             SystemConfig,
@@ -42,7 +42,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate},
-        mint, proof_of_stake, AUCTION,
+        handle_payment, mint, AUCTION,
     },
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -180,13 +180,13 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     };
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 
@@ -411,13 +411,13 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     };
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 
@@ -619,7 +619,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
-    let pos_hash = builder.get_pos_contract_hash();
+    let handle_payment_hash = builder.get_handle_payment_contract_hash();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -663,13 +663,13 @@ fn should_charge_for_erroneous_system_contract_calls() {
         (mint_hash, mint::METHOD_BALANCE, DEFAULT_BALANCE_COST),
         (mint_hash, mint::METHOD_TRANSFER, DEFAULT_TRANSFER_COST),
         (
-            pos_hash,
-            proof_of_stake::METHOD_SET_REFUND_PURSE,
+            handle_payment_hash,
+            handle_payment::METHOD_SET_REFUND_PURSE,
             DEFAULT_SET_REFUND_PURSE_COST,
         ),
         (
-            pos_hash,
-            proof_of_stake::METHOD_FINALIZE_PAYMENT,
+            handle_payment_hash,
+            handle_payment::METHOD_FINALIZE_PAYMENT,
             DEFAULT_FINALIZE_PAYMENT_COST,
         ),
     ];
@@ -843,13 +843,13 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 

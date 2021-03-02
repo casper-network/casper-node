@@ -995,6 +995,20 @@ impl BlockSignatures {
     pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
         self.proofs.contains_key(public_key)
     }
+
+    /// Verify the signatures contained within.
+    pub(crate) fn verify(&self) -> crypto::Result<()> {
+        for (public_key, signature) in self.proofs.iter() {
+            let signature = FinalitySignature {
+                block_hash: self.block_hash,
+                era_id: self.era_id,
+                signature: *signature,
+                public_key: *public_key,
+            };
+            signature.verify()?;
+        }
+        Ok(())
+    }
 }
 
 impl Display for BlockSignatures {

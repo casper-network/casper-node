@@ -14,10 +14,13 @@ const ARG_AMOUNT: &str = "amount";
 fn standard_payment(amount: U512) {
     let main_purse = account::get_main_purse();
 
-    let pos_pointer = system::get_proof_of_stake();
+    let handle_payment_pointer = system::get_handle_payment();
 
-    let payment_purse: URef =
-        runtime::call_contract(pos_pointer, GET_PAYMENT_PURSE, RuntimeArgs::default());
+    let payment_purse: URef = runtime::call_contract(
+        handle_payment_pointer,
+        GET_PAYMENT_PURSE,
+        RuntimeArgs::default(),
+    );
 
     system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
 }

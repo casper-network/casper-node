@@ -31,35 +31,35 @@ fn set_refund_purse(contract_hash: ContractHash, p: &URef) {
     )
 }
 
-fn get_refund_purse(pos: ContractHash) -> Option<URef> {
-    runtime::call_contract(pos, GET_REFUND_PURSE, runtime_args! {})
+fn get_refund_purse(handle_payment: ContractHash) -> Option<URef> {
+    runtime::call_contract(handle_payment, GET_REFUND_PURSE, runtime_args! {})
 }
 
-fn get_payment_purse(pos: ContractHash) -> URef {
-    runtime::call_contract(pos, GET_PAYMENT_PURSE, runtime_args! {})
+fn get_payment_purse(handle_payment: ContractHash) -> URef {
+    runtime::call_contract(handle_payment, GET_PAYMENT_PURSE, runtime_args! {})
 }
 
-fn submit_payment(pos: ContractHash, amount: U512) {
-    let payment_purse = get_payment_purse(pos);
+fn submit_payment(handle_payment: ContractHash, amount: U512) {
+    let payment_purse = get_payment_purse(handle_payment);
     let main_purse = account::get_main_purse();
     system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
 }
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let pos = system::get_proof_of_stake();
+    let handle_payment = system::get_handle_payment();
 
     let refund_purse = system::create_purse();
     {
         // get_refund_purse should return None before setting it
-        let refund_result = get_refund_purse(pos);
+        let refund_result = get_refund_purse(handle_payment);
         if refund_result.is_some() {
             runtime::revert(ApiError::User(Error::ShouldNotExist as u16));
         }
 
         // it should return Some(x) after calling set_refund_purse(x)
-        set_refund_purse(pos, &refund_purse);
-        let refund_purse = match get_refund_purse(pos) {
+        set_refund_purse(handle_payment, &refund_purse);
+        let refund_purse = match get_refund_purse(handle_payment) {
             None => runtime::revert(ApiError::User(Error::NotFound as u16)),
             Some(x) if x.addr() == refund_purse.addr() => x,
             Some(_) => runtime::revert(ApiError::User(Error::Invalid as u16)),
@@ -73,14 +73,14 @@ pub extern "C" fn call() {
     {
         let refund_purse = system::create_purse();
         // get_refund_purse should return correct value after setting a second time
-        set_refund_purse(pos, &refund_purse);
-        match get_refund_purse(pos) {
+        set_refund_purse(handle_payment, &refund_purse);
+        match get_refund_purse(handle_payment) {
             None => runtime::revert(ApiError::User(Error::NotFound as u16)),
             Some(uref) if uref.addr() == refund_purse.addr() => (),
             Some(_) => runtime::revert(ApiError::User(Error::Invalid as u16)),
         }
 
         let payment_amount: U512 = runtime::get_named_arg(ARG_PAYMENT_AMOUNT);
-        submit_payment(pos, payment_amount);
+        submit_payment(handle_payment, payment_amount);
     }
 }

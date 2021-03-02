@@ -16,14 +16,14 @@ pub struct ProtocolData {
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     mint: ContractHash,
-    proof_of_stake: ContractHash,
+    handle_payment: ContractHash,
     standard_payment: ContractHash,
     auction: ContractHash,
 }
 
 /// Provides a default instance with non existing urefs and empty costs table.
 ///
-/// Used in contexts where PoS or Mint contract is not ready yet, and pos, and
+/// Used in contexts where Handle Payment or Mint contract is not ready yet, and handle payment, and
 /// mint installers are ran. For use with caution.
 impl Default for ProtocolData {
     fn default() -> ProtocolData {
@@ -31,7 +31,7 @@ impl Default for ProtocolData {
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
             mint: DEFAULT_ADDRESS.into(),
-            proof_of_stake: DEFAULT_ADDRESS.into(),
+            handle_payment: DEFAULT_ADDRESS.into(),
             standard_payment: DEFAULT_ADDRESS.into(),
             auction: DEFAULT_ADDRESS.into(),
         }
@@ -44,7 +44,7 @@ impl ProtocolData {
         wasm_config: WasmConfig,
         system_costs: SystemConfig,
         mint: ContractHash,
-        proof_of_stake: ContractHash,
+        handle_payment: ContractHash,
         standard_payment: ContractHash,
         auction: ContractHash,
     ) -> Self {
@@ -52,7 +52,7 @@ impl ProtocolData {
             wasm_config,
             system_config: system_costs,
             mint,
-            proof_of_stake,
+            handle_payment,
             standard_payment,
             auction,
         }
@@ -75,12 +75,12 @@ impl ProtocolData {
     pub fn partial_without_standard_payment(
         wasm_config: WasmConfig,
         mint: ContractHash,
-        proof_of_stake: ContractHash,
+        handle_payment: ContractHash,
     ) -> Self {
         ProtocolData {
             wasm_config,
             mint,
-            proof_of_stake,
+            handle_payment,
             ..Default::default()
         }
     }
@@ -99,8 +99,8 @@ impl ProtocolData {
         self.mint
     }
 
-    pub fn proof_of_stake(&self) -> ContractHash {
-        self.proof_of_stake
+    pub fn handle_payment(&self) -> ContractHash {
+        self.handle_payment
     }
 
     pub fn standard_payment(&self) -> ContractHash {
@@ -117,8 +117,8 @@ impl ProtocolData {
         if self.mint != DEFAULT_ADDRESS.into() {
             vec.push(self.mint)
         }
-        if self.proof_of_stake != DEFAULT_ADDRESS.into() {
-            vec.push(self.proof_of_stake)
+        if self.handle_payment != DEFAULT_ADDRESS.into() {
+            vec.push(self.handle_payment)
         }
         if self.standard_payment != DEFAULT_ADDRESS.into() {
             vec.push(self.standard_payment)
@@ -133,8 +133,8 @@ impl ProtocolData {
         for (old_hash, new_hash) in updates {
             if old_hash == self.mint {
                 self.mint = new_hash;
-            } else if old_hash == self.proof_of_stake {
-                self.proof_of_stake = new_hash;
+            } else if old_hash == self.handle_payment {
+                self.handle_payment = new_hash;
             } else if old_hash == self.standard_payment {
                 self.standard_payment = new_hash;
             } else if old_hash == self.auction {
@@ -154,7 +154,7 @@ impl ToBytes for ProtocolData {
         ret.append(&mut self.wasm_config.to_bytes()?);
         ret.append(&mut self.system_config.to_bytes()?);
         ret.append(&mut self.mint.to_bytes()?);
-        ret.append(&mut self.proof_of_stake.to_bytes()?);
+        ret.append(&mut self.handle_payment.to_bytes()?);
         ret.append(&mut self.standard_payment.to_bytes()?);
         ret.append(&mut self.auction.to_bytes()?);
 
@@ -165,7 +165,7 @@ impl ToBytes for ProtocolData {
         self.wasm_config.serialized_length()
             + self.system_config.serialized_length()
             + self.mint.serialized_length()
-            + self.proof_of_stake.serialized_length()
+            + self.handle_payment.serialized_length()
             + self.standard_payment.serialized_length()
             + self.auction.serialized_length()
     }
@@ -176,7 +176,7 @@ impl FromBytes for ProtocolData {
         let (wasm_config, rem) = WasmConfig::from_bytes(bytes)?;
         let (system_config, rem) = FromBytes::from_bytes(rem)?;
         let (mint, rem) = HashAddr::from_bytes(rem)?;
-        let (proof_of_stake, rem) = HashAddr::from_bytes(rem)?;
+        let (handle_payment, rem) = HashAddr::from_bytes(rem)?;
         let (standard_payment, rem) = HashAddr::from_bytes(rem)?;
         let (auction, rem) = HashAddr::from_bytes(rem)?;
 
@@ -184,7 +184,7 @@ impl FromBytes for ProtocolData {
             ProtocolData {
                 wasm_config,
                 mint: mint.into(),
-                proof_of_stake: proof_of_stake.into(),
+                handle_payment: handle_payment.into(),
                 standard_payment: standard_payment.into(),
                 auction: auction.into(),
                 system_config,
@@ -210,7 +210,7 @@ pub(crate) mod gens {
             wasm_config in wasm_config_arb(),
             system_config in system_config_arb(),
             mint in gens::u8_slice_32(),
-            proof_of_stake in gens::u8_slice_32(),
+            handle_payment in gens::u8_slice_32(),
             standard_payment in gens::u8_slice_32(),
             auction in gens::u8_slice_32(),
         ) -> ProtocolData {
@@ -218,7 +218,7 @@ pub(crate) mod gens {
                 wasm_config,
                 system_config,
                 mint: mint.into(),
-                proof_of_stake: proof_of_stake.into(),
+                handle_payment: handle_payment.into(),
                 standard_payment: standard_payment.into(),
                 auction: auction.into(),
             }
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn should_return_all_system_contracts() {
         let mint_reference = [1u8; 32].into();
-        let proof_of_stake_reference = [2u8; 32].into();
+        let handle_payment_reference = [2u8; 32].into();
         let standard_payment_reference = [3u8; 32].into();
         let auction_reference = [4u8; 32].into();
         let protocol_data = {
@@ -248,7 +248,7 @@ mod tests {
                 wasm_config,
                 system_config,
                 mint_reference,
-                proof_of_stake_reference,
+                handle_payment_reference,
                 standard_payment_reference,
                 auction_reference,
             )
@@ -262,7 +262,7 @@ mod tests {
 
         assert_eq!(actual.len(), 4);
         assert_eq!(actual[0], mint_reference);
-        assert_eq!(actual[1], proof_of_stake_reference);
+        assert_eq!(actual[1], handle_payment_reference);
         assert_eq!(actual[2], standard_payment_reference);
         assert_eq!(actual[3], auction_reference);
     }
@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(ProtocolData::default().system_contracts(), expected);
 
         let mint_reference = [0u8; 32].into(); // <-- invalid addr
-        let proof_of_stake_reference = [2u8; 32].into();
+        let handle_payment_reference = [2u8; 32].into();
         let standard_payment_reference = [3u8; 32].into();
         let auction_reference = [4u8; 32].into();
         let protocol_data = {
@@ -283,7 +283,7 @@ mod tests {
                 wasm_config,
                 system_config,
                 mint_reference,
-                proof_of_stake_reference,
+                handle_payment_reference,
                 standard_payment_reference,
                 auction_reference,
             )
@@ -296,7 +296,7 @@ mod tests {
         };
 
         assert_eq!(actual.len(), 3);
-        assert_eq!(actual[0], proof_of_stake_reference);
+        assert_eq!(actual[0], handle_payment_reference);
         assert_eq!(actual[1], standard_payment_reference);
         assert_eq!(actual[2], auction_reference);
     }
