@@ -15,7 +15,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     runtime_args,
-    system::{mint, proof_of_stake},
+    system::{handle_payment, mint},
     ApiError, RuntimeArgs, U512,
 };
 
@@ -63,13 +63,13 @@ fn should_charge_for_user_error(
         proposer_purse_balance_after
     );
 
-    // Verify PoS postconditions
+    // Verify handle payment postconditions
 
-    let pos = builder.get_pos_contract();
-    let payment_purse = pos
+    let handle_payment = builder.get_handle_payment_contract();
+    let payment_purse = handle_payment
         .named_keys()
-        .get(proof_of_stake::POS_PAYMENT_PURSE)
-        .expect("should have pos payment purse")
+        .get(handle_payment::PAYMENT_PURSE_KEY)
+        .expect("should have handle payment payment purse")
         .into_uref()
         .expect("should have uref");
     let payment_purse_balance = builder.get_purse_balance(payment_purse);

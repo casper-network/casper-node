@@ -22,7 +22,8 @@ use crate::storage::{
     trie_store::{
         in_memory::InMemoryTrieStore,
         operations::{
-            self, missing_trie_keys, put_trie, read, read_with_proof, ReadResult, WriteResult,
+            self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+            WriteResult,
         },
     },
 };
@@ -163,6 +164,30 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
         };
+        txn.commit()?;
+        Ok(ret)
+    }
+
+    fn keys_with_prefix(
+        &self,
+        correlation_id: CorrelationId,
+        prefix: &[u8],
+    ) -> Result<Vec<Key>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
+            correlation_id,
+            &txn,
+            self.store.deref(),
+            &self.root_hash,
+            prefix,
+        );
+        let mut ret: Vec<Key> = Vec::new();
+        for result in keys_iter {
+            match result {
+                Ok(key) => ret.push(key),
+                Err(error) => return Err(error.into()),
+            }
+        }
         txn.commit()?;
         Ok(ret)
     }

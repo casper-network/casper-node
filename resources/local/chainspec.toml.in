@@ -48,7 +48,7 @@ round_seigniorage_rate = [15_959, 6_204_824_582_392]
 # It is the fraction of validators that would need to equivocate to make two honest nodes see two conflicting blocks as
 # finalized: A higher value F makes it safer to rely on finalized blocks.  It also makes it more difficult to finalize
 # blocks, however, and requires strictly more than (F + 1)/2 validators to be working correctly.
-finality_threshold_fraction = [1, 10]
+finality_threshold_fraction = [1, 3]
 # Integer between 0 and 255.  The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child.  E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
 minimum_round_exponent = 12
@@ -199,7 +199,7 @@ balance = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000
 
-[system_costs.proof_of_stake_costs]
+[system_costs.handle_payment_costs]
 get_payment_purse = 10_000
 set_refund_purse = 10_000
 get_refund_purse = 10_000

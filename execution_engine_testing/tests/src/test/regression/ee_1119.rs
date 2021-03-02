@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -8,14 +9,17 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{
         auction::{
-            Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS,
-            BIDS_KEY, METHOD_SLASH, UNBONDING_PURSES_KEY,
+            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH, UNBONDING_PURSES_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -47,11 +51,13 @@ const VESTING_WEEKS: u64 = 14;
 #[test]
 fn should_run_ee_1119_dont_slash_delegated_validators() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -100,7 +106,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         .expect_success()
         .commit();
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     let validator_1_bid = bids.get(&VALIDATOR_1).expect("should have bid");
     let bid_purse = validator_1_bid.bonding_purse();
     assert_eq!(
@@ -206,7 +212,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         "slashing default validator should be noop because no unbonding was done"
     );
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());
     assert!(bids.contains_key(&VALIDATOR_1)); // still bid upon
 
@@ -241,8 +247,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         "should not be a part of unbond list because delegator was slashed"
     );
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(!bids.contains_key(&VALIDATOR_1)); // still bid upon
+    let bids: Bids = builder.get_bids();
+    let validator_1_bid = bids.get(&VALIDATOR_1).unwrap();
+    assert!(validator_1_bid.inactive());
+    assert!(validator_1_bid.staked_amount().is_zero());
 
     let total_supply_after_slashing: U512 =
         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);

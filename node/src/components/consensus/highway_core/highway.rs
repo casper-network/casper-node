@@ -453,6 +453,12 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Drops all state other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.deactivate_validator();
+        self.state.retain_evidence_only();
+    }
+
     fn on_new_unit(
         &mut self,
         uhash: &C::Hash,
@@ -536,7 +542,7 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_unit(unit)?)
             }
             Vertex::Evidence(evidence) => {
-                Ok(evidence.validate(&self.validators, &self.instance_id, &self.state)?)
+                Ok(evidence.validate(&self.validators, &self.instance_id, self.state.params())?)
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();

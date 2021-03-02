@@ -26,7 +26,7 @@ use crate::{
         consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             active_validator::Effect as AvEffect,
-            finality_detector::FinalityDetector,
+            finality_detector::{FinalityDetector, FttExceeded},
             highway::{Dependency, GetDepOutcome, Highway, Params, ValidVertex, Vertex},
             state::{Observation, Panorama},
             validators::{ValidatorIndex, Validators},
@@ -71,6 +71,7 @@ where
     /// A tracker for whether we are keeping up with the current round exponent or not.
     round_success_meter: RoundSuccessMeter<C>,
     synchronizer: Synchronizer<I, C>,
+    evidence_only: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -186,6 +187,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway: Highway::new(instance_id, validators, params),
             round_success_meter,
             synchronizer: Synchronizer::new(config.pending_vertex_timeout),
+            evidence_only: false,
         });
         (hw_proto, outcomes)
     }
@@ -246,11 +248,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         outcomes
     }
 
-    fn detect_finality(&mut self) -> impl Iterator<Item = ProtocolOutcome<I, C>> + '_ {
-        self.finality_detector
-            .run(&self.highway)
-            .expect("too many faulty validators")
-            .map(ProtocolOutcome::FinalizedBlock)
+    fn detect_finality(&mut self) -> ProtocolOutcomes<I, C> {
+        let faulty_weight = match self.finality_detector.run(&self.highway) {
+            Ok(iter) => return iter.map(ProtocolOutcome::FinalizedBlock).collect(),
+            Err(FttExceeded(weight)) => weight.0,
+        };
+        error!(
+            %faulty_weight,
+            total_weight = %self.highway.state().total_weight().0,
+            "too many faulty validators"
+        );
+        self.log_participation();
+        vec![ProtocolOutcome::FttExceeded]
     }
 
     /// Adds the given vertices to the protocol state, if possible, or requests missing
@@ -345,6 +354,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         rng: &mut NodeRng,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
+        if self.evidence_only && !vv.inner().is_evidence() {
+            error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
+            return vec![];
+        }
         // Check whether we should change the round exponent.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
@@ -427,7 +440,6 @@ where
         &mut self,
         sender: I,
         msg: Vec<u8>,
-        evidence_only: bool,
         _rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C> {
         match bincode::deserialize(msg.as_slice()) {
@@ -437,12 +449,12 @@ where
                 err.into(),
             )],
             Ok(HighwayMessage::NewVertex(v))
-                if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
+                if self.highway.has_vertex(&v) || (self.evidence_only && !v.is_evidence()) =>
             {
                 trace!(
                     has_vertex = self.highway.has_vertex(&v),
                     is_evidence = v.is_evidence(),
-                    %evidence_only,
+                    evidence_only = %self.evidence_only,
                     "received an irrelevant vertex"
                 );
                 vec![]
@@ -694,6 +706,15 @@ where
 
     fn deactivate_validator(&mut self) {
         self.highway.deactivate_validator()
+    }
+
+    fn set_evidence_only(&mut self) {
+        // TODO: We could also drop the finality detector and round success meter here. Maybe make
+        // HighwayProtocol an enum with an EvidenceOnly variant?
+        self.pending_values.clear();
+        self.synchronizer.retain_evidence_only();
+        self.highway.retain_evidence_only();
+        self.evidence_only = true;
     }
 
     fn has_evidence(&self, vid: &C::ValidatorId) -> bool {

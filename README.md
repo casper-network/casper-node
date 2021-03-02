@@ -76,6 +76,7 @@ For launching, the following configuration values must be properly set:
 | :-------------------------| :---------- |
 | `network.known_addresses` | Must refer to public listening addresses of one or more currently-running nodes.  If the node cannot connect to any of these addresses, it will panic.  The node _can_ be run with this referring to its own address, but it will be equivalent to specifying an empty list for `known_addresses` - i.e. the node will run and listen, but will be reliant on other nodes connecting to it in order to join the network.  This would be normal for the very first node of a network, but all subsequent nodes should normally specify that first  node's public listening address as their `known_addresses`. |
 
+__The node will not run properly without another node to connect to.  It is recommended that multiple nodes are run.__
 
 ### Running multiple nodes on one machine
 

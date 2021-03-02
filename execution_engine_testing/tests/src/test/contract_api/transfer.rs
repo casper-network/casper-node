@@ -12,7 +12,7 @@ use casper_execution_engine::core::{engine_state::Error as EngineError, executio
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{mint, proof_of_stake},
+    system::{handle_payment, mint},
     ApiError, RuntimeArgs, U512,
 };
 
@@ -74,10 +74,10 @@ fn should_transfer_to_account() {
         initial_account_balance - transaction_fee - transfer_amount
     );
 
-    let pos = builder.get_pos_contract();
-    let payment_purse = pos
+    let handle_payment = builder.get_handle_payment_contract();
+    let payment_purse = handle_payment
         .named_keys()
-        .get(proof_of_stake::PAYMENT_PURSE_KEY)
+        .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap()
         .clone()
         .into_uref()

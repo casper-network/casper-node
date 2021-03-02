@@ -35,11 +35,10 @@ static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 #[test]
 fn faucet_should_create_account() {
     let accounts = {
-        let faucet_account = GenesisAccount::new(
+        let faucet_account = GenesisAccount::account(
             *FAUCET,
-            *FAUCET_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()),
+            None,
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet_account);
@@ -127,17 +126,15 @@ fn faucet_should_create_account() {
 #[test]
 fn faucet_should_transfer_to_existing_account() {
     let accounts = {
-        let faucet_account = GenesisAccount::new(
+        let faucet_account = GenesisAccount::account(
             *FAUCET,
-            *FAUCET_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()),
+            None,
         );
-        let alice_account = GenesisAccount::new(
+        let alice_account = GenesisAccount::account(
             *ALICE,
-            *ALICE_ADDR,
             Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE.into()),
-            Motes::new(U512::zero()),
+            None,
         );
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(faucet_account);

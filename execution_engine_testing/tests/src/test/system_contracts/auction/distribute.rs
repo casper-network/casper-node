@@ -19,7 +19,7 @@ use casper_types::{
     system::auction::{
         self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation, ARG_AMOUNT,
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
-        BIDS_KEY, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
+        BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
     Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -61,8 +61,7 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
 });
 
 fn get_validator_bid(builder: &mut InMemoryWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
-    let auction = builder.get_auction_contract_hash();
-    let mut bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let mut bids: Bids = builder.get_bids();
     bids.remove(&validator)
 }
 
@@ -124,9 +123,7 @@ fn get_delegator_staked_amount(
     validator: PublicKey,
     delegator: PublicKey,
 ) -> U512 {
-    let auction = builder.get_auction_contract_hash();
-
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     let validator_bid = bids.get(&validator).expect("should have validator entry");
 
     let delegator_entry = validator_bid
@@ -322,10 +319,9 @@ fn should_distribute_delegation_rate_zero() {
             *VALIDATOR_1,
             validator_1_balance + U512::from(VALIDATOR_1_STAKE),
         );
-        assert!(
-            get_validator_bid(&mut builder, *VALIDATOR_1).is_none(),
-            "validator 1 should have zero stake after withdrawing full amount"
-        );
+        let validator_1_bid = get_validator_bid(&mut builder, *VALIDATOR_1).unwrap();
+        assert!(validator_1_bid.inactive());
+        assert!(validator_1_bid.staked_amount().is_zero());
         U512::zero()
     };
     assert_eq!(validator_1_balance, U512::zero());
@@ -613,10 +609,11 @@ fn should_withdraw_bids_after_distribute() {
             *VALIDATOR_1,
             withdraw_bid_amount,
         );
-        assert!(
-            get_validator_bid(&mut builder, *VALIDATOR_1).is_none(),
-            "validator 1 should have zero stake after withdrawing full amount"
-        );
+
+        let bid = get_validator_bid(&mut builder, *VALIDATOR_1).unwrap();
+        assert!(bid.inactive());
+        assert!(bid.staked_amount().is_zero());
+
         withdraw_bid_amount
     };
     assert!(!validator_1_balance.is_zero());

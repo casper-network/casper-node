@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -30,23 +31,27 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
-    let delegator = Delegator::new(
+    let validator_public_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+    let delegator_public_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
+
+    let delegator = Delegator::unlocked(
+        delegator_public_key,
         U512::from(10),
         bonding_purse,
-        SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into(),
+        validator_public_key,
     );
     let mut delegators = BTreeMap::new();
-    delegators.insert(
-        PublicKey::from(SecretKey::ed25519([44; SecretKey::ED25519_LENGTH])),
-        delegator,
+    delegators.insert(delegator_public_key, delegator);
+
+    let bid = Bid::locked(
+        validator_public_key,
+        bonding_purse,
+        staked_amount,
+        DelegationRate::zero(),
+        release_era,
     );
-
-    let bid = Bid::locked(bonding_purse, staked_amount, release_era);
-
-    let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
-
     let mut bids = BTreeMap::new();
-    bids.insert(public_key_1, bid);
+    bids.insert(validator_public_key, bid);
 
     bids
 });
@@ -79,7 +84,9 @@ pub struct JsonEraValidators {
 #[serde(deny_unknown_fields)]
 pub struct JsonDelegator {
     public_key: PublicKey,
-    delegator: Delegator,
+    staked_amount: U512,
+    bonding_purse: URef,
+    delegatee: PublicKey,
 }
 
 /// An entry in a founding validator map representing a bid.
@@ -100,11 +107,13 @@ pub struct JsonBid {
 
 impl From<Bid> for JsonBid {
     fn from(bid: Bid) -> Self {
-        let mut json_delegators: Vec<JsonDelegator> = Vec::new();
+        let mut json_delegators: Vec<JsonDelegator> = Vec::with_capacity(bid.delegators().len());
         for (public_key, delegator) in bid.delegators().iter() {
             json_delegators.push(JsonDelegator {
                 public_key: *public_key,
-                delegator: *delegator,
+                staked_amount: *delegator.staked_amount(),
+                bonding_purse: *delegator.bonding_purse(),
+                delegatee: *delegator.validator_public_key(),
             });
         }
         JsonBid {

@@ -8,6 +8,7 @@ use casper_types::SecretKey;
 
 use crate::{
     components::consensus::EraId,
+    crypto::hash::Digest,
     types::{chainspec::HighwayConfig, Chainspec, TimeDiff, Timestamp},
     utils::External,
 };
@@ -59,6 +60,8 @@ pub(crate) struct ProtocolConfig {
     pub(crate) name: String,
     /// Genesis timestamp.
     pub(crate) timestamp: Timestamp,
+    /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
+    pub(crate) chainspec_hash: Digest,
 }
 
 impl From<&Chainspec> for ProtocolConfig {
@@ -73,6 +76,7 @@ impl From<&Chainspec> for ProtocolConfig {
             last_activation_point: chainspec.protocol_config.activation_point.era_id,
             name: chainspec.network_config.name.clone(),
             timestamp: chainspec.network_config.timestamp,
+            chainspec_hash: chainspec.hash(),
         }
     }
 }

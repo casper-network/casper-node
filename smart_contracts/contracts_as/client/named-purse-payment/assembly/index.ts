@@ -58,10 +58,10 @@ export function call(): void {
   }
   let amount = amountResult.value;
 
-  let proofOfStake = CL.getSystemContract(CL.SystemContract.ProofOfStake);
+  let handlePayment = CL.getSystemContract(CL.SystemContract.HandlePayment);
 
   // Get Payment Purse
-  let paymentPurseOutput = CL.callContract(proofOfStake, GET_PAYMENT_PURSE, new RuntimeArgs());
+  let paymentPurseOutput = CL.callContract(handlePayment, GET_PAYMENT_PURSE, new RuntimeArgs());
 
   let paymentPurseResult = URef.fromBytes(paymentPurseOutput);
   if (paymentPurseResult.hasError()) {
@@ -74,7 +74,7 @@ export function call(): void {
   let runtimeArgs = RuntimeArgs.fromArray([
     new Pair(ARG_PURSE, CLValue.fromURef(purseURef)),
   ]);
-  CL.callContract(proofOfStake, SET_REFUND_PURSE, runtimeArgs);
+  CL.callContract(handlePayment, SET_REFUND_PURSE, runtimeArgs);
 
   let error = transferFromPurseToPurse(
     purseURef,

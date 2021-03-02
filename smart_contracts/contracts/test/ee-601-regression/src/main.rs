@@ -27,7 +27,7 @@ pub extern "C" fn call() {
         let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
         let payment_purse: URef = runtime::call_contract(
-            system::get_proof_of_stake(),
+            system::get_handle_payment(),
             GET_PAYMENT_PURSE,
             RuntimeArgs::default(),
         );

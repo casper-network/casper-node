@@ -1,4 +1,5 @@
 use assert_matches::assert_matches;
+use num_traits::Zero;
 
 use casper_engine_test_support::{
     internal::{
@@ -11,7 +12,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{genesis::GenesisAccount, Error as EngineError},
+        engine_state::{
+            genesis::{GenesisAccount, GenesisValidator},
+            Error as EngineError,
+        },
         execution::Error,
     },
     shared::motes::Motes,
@@ -20,8 +24,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{
-        self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
-        INITIAL_ERA_ID, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
+        METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -85,7 +89,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     let default_account_bid = bids
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
@@ -185,8 +189,10 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         "should remove slashed from unbonds"
     );
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(bids.is_empty());
+    let bids: Bids = builder.get_bids();
+    let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
+    assert!(default_account_bid.inactive());
+    assert!(default_account_bid.staked_amount().is_zero());
 
     let account_balance_after_slashing = builder.get_purse_balance(unbonding_purse);
     assert_eq!(account_balance_after_slashing, account_balance_before);
@@ -250,11 +256,13 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::new(
+        let account = GenesisAccount::account(
             account_1_public_key,
-            account_1_hash,
             Motes::new(account_1_balance),
-            Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
         tmp.push(account);
         tmp
@@ -285,7 +293,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let error_message = utils::get_error_message(response);
 
-    // pos::Error::NotBonded => 0
+    // handle_payment::Error::NotBonded => 0
     assert!(
         error_message.contains(&format!(
             "{:?}",
@@ -380,7 +388,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
@@ -478,7 +486,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         "Unbond entry should be removed"
     );
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());
 
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
@@ -558,7 +566,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
@@ -672,7 +680,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         "Unbond entry should be removed"
     );
 
-    let bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());
 
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
