@@ -796,9 +796,9 @@ dependencies = [
  "itertools 0.9.0",
  "jemalloc-ctl",
  "jemallocator",
- "k256",
  "libc",
  "libp2p",
+ "libsecp256k1",
  "linked-hash-map",
  "lmdb",
  "log 0.4.14",
@@ -885,7 +885,7 @@ dependencies = [
  "getrandom 0.2.2",
  "hex",
  "hex_fmt",
- "k256",
+ "libsecp256k1",
  "num-derive",
  "num-integer",
  "num-rational 0.3.2",
@@ -1034,12 +1034,6 @@ checksum = "30ed07550be01594c6026cff2a1d7fe9c8f683caa798e12b68694ac9e88286a3"
 dependencies = [
  "cache-padded",
 ]
-
-[[package]]
-name = "const-oid"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2d9162b7289a46e86208d6af2c686ca5bfde445878c41a458a9fac706252d0b"
 
 [[package]]
 name = "const_fn"
@@ -1604,16 +1598,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee2626afccd7561a06cf1367e2950c4718ea04565e20fb5029b6c7d8ad09abcf"
 
 [[package]]
-name = "ecdsa"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83c7b18ecf0bb8dae3a2e41e7ec2b8fdb1988a6537c88d3c341e50feb8ee355a"
-dependencies = [
- "elliptic-curve",
- "signature",
-]
-
-[[package]]
 name = "ed25519"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1806,19 +1790,6 @@ name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
-
-[[package]]
-name = "elliptic-curve"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9abe4578ed343c7a2c9d617cd2b1895ba0a87a6a4dee97bde156d65f608c7b2d"
-dependencies = [
- "const-oid",
- "generic-array 0.14.4",
- "rand_core 0.5.1",
- "subtle 2.4.0",
- "zeroize",
-]
 
 [[package]]
 name = "encoding_rs"
@@ -2680,18 +2651,6 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
-]
-
-[[package]]
-name = "k256"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb63e78a457abe6e0a36ffee8efffeb1c4887134e696be119854d8d03c0b7aab"
-dependencies = [
- "cfg-if 0.1.10",
- "ecdsa",
- "elliptic-curve",
- "sha2 0.9.3",
 ]
 
 [[package]]
@@ -5036,10 +4995,6 @@ name = "signature"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29f060a7d147e33490ec10da418795238fd7545bba241504d6b31a409f2e6210"
-dependencies = [
- "digest 0.9.0",
- "rand_core 0.5.1",
-]
 
 [[package]]
 name = "simple-transfer"

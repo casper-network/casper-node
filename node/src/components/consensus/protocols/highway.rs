@@ -35,7 +35,6 @@ use crate::{
         ActionId, TimerId,
     },
     types::{TimeDiff, Timestamp},
-    NodeRng,
 };
 
 use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
@@ -265,7 +264,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Adds the given vertices to the protocol state, if possible, or requests missing
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
-    fn add_vertex(&mut self, rng: &mut NodeRng) -> ProtocolOutcomes<I, C> {
+    fn add_vertex(&mut self) -> ProtocolOutcomes<I, C> {
         let (maybe_pending_vertex, mut outcomes) =
             self.synchronizer.pop_vertex_to_add(&self.highway);
         let pending_vertex = match maybe_pending_vertex {
@@ -316,7 +315,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // Either consensus value doesn't need validation or it's not a proposal.
         // We can add it to the state.
-        outcomes.extend(self.add_valid_vertex(vv, rng, Timestamp::now()));
+        outcomes.extend(self.add_valid_vertex(vv, Timestamp::now()));
         // If we added new vertices to the state, check whether any dependencies we were
         // waiting for are now satisfied, and try adding the pending vertices as well.
         outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
@@ -348,12 +347,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.highway.set_round_exp(new_round_exp);
     }
 
-    fn add_valid_vertex(
-        &mut self,
-        vv: ValidVertex<C>,
-        rng: &mut NodeRng,
-        now: Timestamp,
-    ) -> ProtocolOutcomes<I, C> {
+    fn add_valid_vertex(&mut self, vv: ValidVertex<C>, now: Timestamp) -> ProtocolOutcomes<I, C> {
         if self.evidence_only && !vv.inner().is_evidence() {
             error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
             return vec![];
@@ -363,7 +357,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
         self.calculate_round_exponent(&vv);
-        let av_effects = self.highway.add_valid_vertex(vv, rng, now);
+        let av_effects = self.highway.add_valid_vertex(vv, now);
         self.process_av_effects(av_effects)
     }
 
@@ -436,12 +430,7 @@ where
     I: NodeIdT,
     C: Context + 'static,
 {
-    fn handle_message(
-        &mut self,
-        sender: I,
-        msg: Vec<u8>,
-        _rng: &mut NodeRng,
-    ) -> ProtocolOutcomes<I, C> {
+    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> ProtocolOutcomes<I, C> {
         match bincode::deserialize(msg.as_slice()) {
             Err(err) => vec![ProtocolOutcome::InvalidIncomingMessage(
                 msg,
@@ -597,15 +586,10 @@ where
         )]
     }
 
-    fn handle_timer(
-        &mut self,
-        timestamp: Timestamp,
-        timer_id: TimerId,
-        rng: &mut NodeRng,
-    ) -> ProtocolOutcomes<I, C> {
+    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C> {
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
-                let effects = self.highway.handle_timer(timestamp, rng);
+                let effects = self.highway.handle_timer(timestamp);
                 self.process_av_effects(effects)
             }
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => {
@@ -629,9 +613,9 @@ where
         }
     }
 
-    fn handle_action(&mut self, action_id: ActionId, rng: &mut NodeRng) -> ProtocolOutcomes<I, C> {
+    fn handle_action(&mut self, action_id: ActionId) -> ProtocolOutcomes<I, C> {
         match action_id {
-            ACTION_ID_VERTEX => self.add_vertex(rng),
+            ACTION_ID_VERTEX => self.add_vertex(),
             _ => unreachable!("unexpected action ID"),
         }
     }
@@ -640,9 +624,8 @@ where
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C> {
-        let effects = self.highway.propose(value, block_context, rng);
+        let effects = self.highway.propose(value, block_context);
         self.process_av_effects(effects)
     }
 
@@ -650,7 +633,6 @@ where
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-        rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C> {
         if valid {
             let mut outcomes = self
@@ -660,7 +642,7 @@ where
                 .flatten()
                 .flat_map(|vv| {
                     let now = Timestamp::now();
-                    self.add_valid_vertex(vv, rng, now)
+                    self.add_valid_vertex(vv, now)
                 })
                 .collect_vec();
             outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));

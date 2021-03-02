@@ -139,7 +139,7 @@ impl AsymmetricKeyExt for SecretKey {
                 der = Der::new(&mut encoded);
                 der.sequence(|der| {
                     der.integer(&[1])?;
-                    der.octet_string(secret_key.as_bytes().as_slice())?;
+                    der.octet_string(secret_key)?;
                     der.element(Tag::ContextSpecificConstructed0, &oid_bytes)
                 })?;
                 Ok(encoded)
@@ -271,8 +271,7 @@ impl AsymmetricKeyExt for SecretKey {
                 Self::ed25519_from_bytes(secret_key.as_ref()).expect("could not copy secret key")
             }
             SecretKey::Secp256k1(secret_key) => {
-                Self::secp256k1_from_bytes(secret_key.as_bytes().as_slice())
-                    .expect("could not copy secret key")
+                Self::secp256k1_from_bytes(secret_key).expect("could not copy secret key")
             }
         }
     }
