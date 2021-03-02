@@ -106,13 +106,11 @@ pub trait AsymmetricType: Sized + AsRef<[u8]> + Tagged<u8> {
 #[derive(DataSize)]
 pub enum SecretKey {
     /// System secret key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
     System,
     /// Ed25519 secret key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::SecretKey),
     /// secp256k1 secret key.
-    #[data_size(skip)]
     Secp256k1([u8; SECP256K1_SECRET_KEY_LENGTH]),
 }
 
@@ -307,13 +305,11 @@ impl<'de> Deserialize<'de> for SecretKey {
 #[derive(Clone, Copy, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// System public key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
     System,
     /// Ed25519 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::PublicKey),
     /// secp256k1 public key.
-    #[data_size(skip)]
     Secp256k1([u8; SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH]),
 }
 
@@ -609,7 +605,6 @@ pub enum Signature {
     // it is convenient and cheap to use `signature.as_ref()`.
     Ed25519([u8; ed25519_dalek::SIGNATURE_LENGTH]),
     /// secp256k1 signature.
-    #[data_size(skip)]
     Secp256k1([u8; SECP256K1_SIGNATURE_LENGTH]),
 }
 
