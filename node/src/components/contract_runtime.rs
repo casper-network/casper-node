@@ -1,5 +1,6 @@
 //! Contract Runtime component.
 mod config;
+mod operations;
 mod types;
 
 use std::{
@@ -17,7 +18,6 @@ pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
 use datasize::DataSize;
 use derive_more::From;
-use itertools::Itertools;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use thiserror::Error;
@@ -25,17 +25,14 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self,
-        execution_result::{ExecutionResult as EngineExecutionResult, ExecutionResults},
-        genesis::GenesisResult,
-        step::EvictItem,
+        self, genesis::GenesisResult, step::EvictItem,
         DeployItem, EngineConfig, EngineState, ExecuteRequest, GetEraValidatorsError,
-        GetEraValidatorsRequest, RewardItem, RootNotFound, SlashItem, StepRequest, StepResult,
+        GetEraValidatorsRequest, RewardItem, SlashItem, StepRequest, StepResult,
     },
     shared::newtypes::CorrelationId,
     storage::{
         error::lmdb::Error as StorageLmdbError,
-        global_state::{lmdb::LmdbGlobalState, CommitResult},
+        global_state::{lmdb::LmdbGlobalState},
         protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
@@ -97,24 +94,6 @@ pub enum ContractRuntimeResult {
         /// If it's the first block after Genesis then `parent` is `None`.
         parent: Option<(BlockHash, Digest, Digest)>,
     },
-    /// The result of executing a single deploy.
-    DeployExecutionResult {
-        /// State of this request.
-        state: Box<RequestState>,
-        /// The ID of the deploy currently being executed.
-        deploy_hash: DeployHash,
-        /// The header of the deploy currently being executed.
-        deploy_header: DeployHeader,
-        /// Result of deploy execution.
-        result: Result<ExecutionResults, RootNotFound>,
-    },
-    /// The result of committing a single set of transforms after executing a single deploy.
-    CommitExecutionEffects {
-        /// State of this request.
-        state: Box<RequestState>,
-        /// Commit result for execution request.
-        commit_result: Result<CommitResult, engine_state::Error>,
-    },
     /// The result of running the step on a switch block.
     RunStepResult {
         /// State of this request.
@@ -122,6 +101,8 @@ pub enum ContractRuntimeResult {
         /// The result.
         result: Result<StepResult, engine_state::Error>,
     },
+    /// Once a block is executed and committed, re-enter evented flow.
+    ExecutedAndCommitted(Box<RequestState>),
 }
 
 /// Convenience trait for ContractRuntime's accepted event types.
@@ -343,45 +324,6 @@ where
                     } => {
                         let result = self.commit_genesis(chainspec);
                         responder.respond(result).ignore()
-                    }
-                    ContractRuntimeRequest::Execute {
-                        execute_request,
-                        responder,
-                    } => {
-                        trace!(?execute_request, "execute");
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
-                        async move {
-                            let correlation_id = CorrelationId::new();
-                            let start = Instant::now();
-                            let result = engine_state.run_execute(correlation_id, *execute_request);
-                            metrics.run_execute.observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "execute result");
-                            responder.respond(result).await
-                        }
-                        .ignore()
-                    }
-                    ContractRuntimeRequest::Commit {
-                        state_root_hash,
-                        effects,
-                        responder,
-                    } => {
-                        trace!(?state_root_hash, ?effects, "commit");
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
-                        async move {
-                            let correlation_id = CorrelationId::new();
-                            let start = Instant::now();
-                            let result = engine_state.apply_effect(
-                                correlation_id,
-                                state_root_hash.into(),
-                                effects,
-                            );
-                            metrics.apply_effect.observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "commit result");
-                            responder.respond(result).await
-                        }
-                        .ignore()
                     }
                     ContractRuntimeRequest::Upgrade {
                         upgrade_config,
@@ -666,46 +608,6 @@ where
                         parent_summary,
                     )
                 }
-                ContractRuntimeResult::DeployExecutionResult {
-                    state,
-                    deploy_hash,
-                    deploy_header,
-                    result,
-                } => {
-                    trace!(?state, %deploy_hash, ?result, "deploy execution result");
-                    // As for now a given state is expected to exist.
-                    let execution_results = result.unwrap();
-                    self.commit_execution_effects(
-                        effect_builder,
-                        state,
-                        deploy_hash,
-                        deploy_header,
-                        execution_results,
-                    )
-                }
-
-                ContractRuntimeResult::CommitExecutionEffects {
-                    mut state,
-                    commit_result,
-                } => {
-                    trace!(?state, ?commit_result, "commit result");
-                    match commit_result {
-                        Ok(CommitResult::Success { state_root }) => {
-                            debug!(?state_root, "commit succeeded");
-                            state.state_root_hash = state_root.into();
-                            self.execute_next_deploy_or_create_block(effect_builder, state)
-                        }
-                        _ => {
-                            // When commit fails we panic as we'll not be able to execute the next
-                            // block.
-                            error!(
-                                ?commit_result,
-                                "commit failed - internal contract runtime error"
-                            );
-                            panic!("unable to commit");
-                        }
-                    }
-                }
 
                 ContractRuntimeResult::RunStepResult { mut state, result } => {
                     trace!(?result, "run step result");
@@ -727,6 +629,9 @@ where
                             panic!("unable to run step");
                         }
                     }
+                }
+                ContractRuntimeResult::ExecutedAndCommitted(state) => {
+                    self.execute_next_deploy_or_create_block(effect_builder, state)
                 }
             },
         }
@@ -932,78 +837,117 @@ impl ContractRuntime {
     fn execute_next_deploy_or_create_block<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut state: Box<RequestState>,
+        state: Box<RequestState>,
     ) -> Effects<Event> {
-        let next_deploy = match state.remaining_deploys.pop_front() {
-            Some(deploy) => deploy,
-            None => {
-                let era_end = match state.finalized_block.era_report() {
-                    Some(era_end) => era_end,
-                    // Not at a switch block, so we don't need to have next_era_validators when
-                    // constructing the next block
-                    None => return self.finalize_block_execution(effect_builder, state, None),
-                };
-                let reward_items = era_end
-                    .rewards
-                    .iter()
-                    .map(|(&vid, &value)| RewardItem::new(vid, value))
-                    .collect();
-                let slash_items = era_end
-                    .equivocators
-                    .iter()
-                    .map(|&vid| SlashItem::new(vid))
-                    .collect();
-                let evict_items = era_end
-                    .inactive_validators
-                    .iter()
-                    .map(|&vid| EvictItem::new(vid))
-                    .collect();
-                let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
-                let request = StepRequest {
-                    pre_state_hash: state.state_root_hash.into(),
-                    protocol_version: self.protocol_version,
-                    reward_items,
-                    slash_items,
-                    evict_items,
-                    run_auction: true,
-                    next_era_id: state.finalized_block.era_id().successor().into(),
-                    era_end_timestamp_millis,
-                };
-                return effect_builder.run_step(request).event(|result| {
-                    Event::Result(Box::new(ContractRuntimeResult::RunStepResult {
-                        state,
-                        result,
-                    }))
-                });
-            }
+        if state.remaining_deploys.is_empty() {
+            return self.or_create_block(effect_builder, state);
+        } else {
+            return self.execute_deploys_in_block(state);
+        }
+    }
+
+    /// Executes the first deploy in `state.remaining_deploys`, or creates the executed block if
+    /// there are no remaining deploys left.
+    fn or_create_block<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        state: Box<RequestState>,
+    ) -> Effects<Event> {
+        let era_end = match state.finalized_block.era_report() {
+            Some(era_end) => era_end,
+            // Not at a switch block, so we don't need to have next_era_validators when
+            // constructing the next block
+            None => return self.finalize_block_execution(effect_builder, state, None),
         };
-        let deploy_hash = *next_deploy.id();
-        let deploy_header = next_deploy.header().clone();
-        let deploy_item = DeployItem::from(next_deploy);
+        let reward_items = era_end
+            .rewards
+            .iter()
+            .map(|(&vid, &value)| RewardItem::new(vid, value))
+            .collect();
+        let slash_items = era_end
+            .equivocators
+            .iter()
+            .map(|&vid| SlashItem::new(vid))
+            .collect();
+        let evict_items = era_end
+            .inactive_validators
+            .iter()
+            .map(|&vid| EvictItem::new(vid))
+            .collect();
+        let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
+        let request = StepRequest {
+            pre_state_hash: state.state_root_hash.into(),
+            protocol_version: self.protocol_version,
+            reward_items,
+            slash_items,
+            evict_items,
+            run_auction: true,
+            next_era_id: state.finalized_block.era_id().successor().into(),
+            era_end_timestamp_millis,
+        };
+        return effect_builder.run_step(request).event(|result| {
+            Event::Result(Box::new(ContractRuntimeResult::RunStepResult {
+                state,
+                result,
+            }))
+        });
+    }
 
-        let execute_request = ExecuteRequest::new(
-            state.state_root_hash.into(),
-            state.finalized_block.timestamp().millis(),
-            vec![Ok(deploy_item)],
-            self.protocol_version,
-            state.finalized_block.proposer(),
-        );
+    fn execute_deploys_in_block(&mut self, mut state: Box<RequestState>) -> Effects<Event> {
+        let engine_state = Arc::clone(&self.engine_state);
+        let metrics = Arc::clone(&self.metrics);
+        let protocol_version = self.protocol_version;
+        let block_time = state.finalized_block.timestamp().millis();
+        let mut parent_state_hash = state.state_root_hash.into();
+        let proposer = state.finalized_block.proposer();
+        async move {
+            for deploy in state.remaining_deploys.drain(..) {
+                let deploy_hash = *deploy.id();
+                let deploy_header = deploy.header().clone();
+                let deploy_item = DeployItem::from(deploy);
 
-        // TODO: this is currently working coincidentally because we are passing only one
-        // deploy_item per exec. The execution results coming back from the ee lacks the
-        // mapping between deploy_hash and execution result, and this outer logic is enriching it
-        // with the deploy hash. If we were passing multiple deploys per exec the relation between
-        // the deploy and the execution results would be lost.
-        effect_builder
-            .request_execute(execute_request)
-            .event(move |result| {
-                Event::Result(Box::new(ContractRuntimeResult::DeployExecutionResult {
-                    state,
+                let execute_request = ExecuteRequest::new(
+                    parent_state_hash,
+                    block_time,
+                    vec![Ok(deploy_item)],
+                    protocol_version,
+                    proposer,
+                );
+
+                // TODO: this is currently working coincidentally because we are passing only one
+                // deploy_item per exec. The execution results coming back from the ee lacks the
+                // mapping between deploy_hash and execution result, and this outer logic is
+                // enriching it with the deploy hash. If we were passing multiple
+                // deploys per exec the relation between the deploy and the
+                // execution results would be lost.
+
+                let result =
+                    operations::execute(engine_state.clone(), metrics.clone(), execute_request)
+                        .await;
+                trace!(%deploy_hash, ?result, "deploy execution result");
+                // As for now a given state is expected to exist.
+                let execution_results = result.unwrap();
+                match operations::commit_execution_effects(
+                    engine_state.clone(),
+                    metrics.clone(),
+                    state.state_root_hash,
                     deploy_hash,
-                    deploy_header,
-                    result,
-                }))
-            })
+                    execution_results,
+                )
+                .await
+                {
+                    Ok((state_hash, execution_result)) => {
+                        state
+                            .execution_results
+                            .insert(deploy_hash, (deploy_header, execution_result));
+                        parent_state_hash = state_hash.into();
+                    }
+                    Err(_) => todo!("break?"),
+                }
+            }
+            state
+        }
+        .event(|state| Event::Result(Box::new(ContractRuntimeResult::ExecutedAndCommitted(state))))
     }
 
     fn handle_get_deploys_result<REv: ReactorEventT>(
@@ -1079,54 +1023,6 @@ impl ContractRuntime {
         }
     }
 
-    /// Commits the execution effects.
-    fn commit_execution_effects<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        mut state: Box<RequestState>,
-        deploy_hash: DeployHash,
-        deploy_header: DeployHeader,
-        execution_results: ExecutionResults,
-    ) -> Effects<Event> {
-        let ee_execution_result = execution_results
-            .into_iter()
-            .exactly_one()
-            .expect("should only be one exec result");
-        let execution_result = ExecutionResult::from(&ee_execution_result);
-        let _ = state
-            .execution_results
-            .insert(deploy_hash, (deploy_header, execution_result));
-
-        let execution_effect = match ee_execution_result {
-            EngineExecutionResult::Success { effect, cost, .. } => {
-                // We do want to see the deploy hash and cost in the logs.
-                // We don't need to see the effects in the logs.
-                debug!(?deploy_hash, %cost, "execution succeeded");
-                effect
-            }
-            EngineExecutionResult::Failure {
-                error,
-                effect,
-                cost,
-                ..
-            } => {
-                // Failure to execute a contract is a user error, not a system error.
-                // We do want to see the deploy hash, error, and cost in the logs.
-                // We don't need to see the effects in the logs.
-                debug!(?deploy_hash, ?error, %cost, "execution failure");
-                effect
-            }
-        };
-        effect_builder
-            .request_commit(state.state_root_hash, execution_effect.transforms)
-            .event(|commit_result| {
-                Event::Result(Box::new(ContractRuntimeResult::CommitExecutionEffects {
-                    state,
-                    commit_result,
-                }))
-            })
-    }
-
     fn create_block(
         &mut self,
         finalized_block: FinalizedBlock,
@@ -1193,6 +1089,7 @@ impl ContractRuntime {
         finalized_block.height() == self.initial_state.child_height
     }
 }
+
 /// Holds the state of an ongoing execute-commit cycle spawned from a given `Event::Request`.
 #[derive(Debug)]
 pub struct RequestState {

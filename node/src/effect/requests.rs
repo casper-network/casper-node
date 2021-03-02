@@ -21,19 +21,14 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResults,
         genesis::GenesisResult,
         put_trie::InsertedTrieKeyAndMissingDescendants,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
-    shared::{
-        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
-        transform::Transform,
-    },
-    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     system::auction::{EraValidators, ValidatorWeights},
@@ -690,24 +685,6 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
     },
-    /// An `ExecuteRequest` that contains multiple deploys that will be executed.
-    Execute {
-        /// Execution request containing deploys.
-        #[serde(skip_serializing)]
-        execute_request: Box<ExecuteRequest>,
-        /// Responder to call with the execution result.
-        responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
-    },
-    /// A request to commit existing execution transforms.
-    Commit {
-        /// A valid state root hash.
-        state_root_hash: Digest,
-        /// Effects obtained through `ExecutionResult`
-        #[serde(skip_serializing)]
-        effects: AdditiveMap<Key, Transform>,
-        /// Responder to call with the commit result.
-        responder: Responder<Result<CommitResult, engine_state::Error>>,
-    },
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
@@ -814,23 +791,6 @@ impl Display for ContractRuntimeRequest {
                     chainspec.protocol_config.version
                 )
             }
-            ContractRuntimeRequest::Execute {
-                execute_request, ..
-            } => write!(
-                formatter,
-                "execute request: {}",
-                execute_request.parent_state_hash
-            ),
-
-            ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                ..
-            } => write!(
-                formatter,
-                "commit request: {} {:?}",
-                state_root_hash, effects
-            ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
                 write!(formatter, "upgrade request: {:?}", upgrade_config)

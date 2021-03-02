@@ -81,8 +81,6 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResults,
         genesis::GenesisResult,
         put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
@@ -90,11 +88,8 @@ use casper_execution_engine::{
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::{
-        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
-        transform::Transform,
-    },
-    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
@@ -1290,45 +1285,6 @@ impl<REv> EffectBuilder<REv> {
                 false
             }
         }
-    }
-
-    /// Requests an execution of deploys using Contract Runtime.
-    pub(crate) async fn request_execute(
-        self,
-        execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::RootNotFound>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        let execute_request = Box::new(execute_request);
-        self.make_request(
-            |responder| ContractRuntimeRequest::Execute {
-                execute_request,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a commit of effects on the Contract Runtime component.
-    pub(crate) async fn request_commit(
-        self,
-        state_root_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Requests a query be executed on the Contract Runtime component.
