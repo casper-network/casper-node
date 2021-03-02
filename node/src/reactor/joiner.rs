@@ -16,8 +16,6 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{PublicKey, U512};
-
 #[cfg(not(feature = "fast-sync"))]
 use crate::components::linear_chain_sync::{self, LinearChainSync};
 #[cfg(feature = "fast-sync")]
@@ -72,6 +70,7 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -474,7 +473,6 @@ impl reactor::Reactor for Reactor {
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
-
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
@@ -484,7 +482,7 @@ impl reactor::Reactor for Reactor {
             &storage,
             init_hash,
             chainspec_loader.initial_block_header().cloned(),
-            validator_weights.clone(),
+            validator_weights,
             maybe_next_activation_point,
         )?;
 
@@ -496,8 +494,8 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
-            validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
