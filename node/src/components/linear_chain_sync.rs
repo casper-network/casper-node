@@ -42,7 +42,7 @@ use self::event::{BlockByHashResult, DeploysResult};
 use super::{fetcher::FetchResult, Component};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    types::{BlockByHeight, BlockHash, BlockHeader, FinalizedBlock, TimeDiff},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -58,6 +58,11 @@ pub(crate) struct LinearChainSync<I> {
     state: State,
     #[data_size(skip)]
     metrics: LinearChainSyncMetrics,
+    /// Acceptable drift between the block creation and now.
+    /// If less than than this has passed we will consider syncing as finished.
+    acceptable_drift: TimeDiff,
+    /// Shortest era that is allowed with the given protocol configuration.
+    shortest_era: TimeDiff,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
@@ -69,10 +74,27 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let state = init_hash.map_or(State::None, |init_hash| {
             State::sync_trusted_hash(init_hash, genesis_validator_weights)
         });
+
+        // Shortest era is the maximum of the two.
+        // Values from the Delta's chainspec.
+        // Have to be hardcoded b/c `release-0.7.7` branch does not have code
+        // which passes in the chainspec to the `LinearChainSync` component.
+
+        let maximum_round_exp = 19;
+        let acceptable_drift = TimeDiff::from(1 << maximum_round_exp);
+        let minimum_round_exp = 10;
+        let minimum_round_length = TimeDiff::from(1 << minimum_round_exp);
+        let minimum_era_height = 10;
+        // 30 minutes in milliseconds.
+        let era_duration = TimeDiff::from(30 * 60 * 1000);
+        let shortest_era: TimeDiff =
+            std::cmp::max(minimum_round_length * minimum_era_height, era_duration);
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
+            acceptable_drift,
+            shortest_era,
         })
     }
 
@@ -146,6 +168,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         trace!(%hash, %height, "downloaded linear chain block.");
         // Reset peers before creating new requests.
         self.peers.reset(rng);
+        if block_header.switch_block() {
+            self.state.new_switch_block(&block_header);
+        }
         let block_height = block_header.height();
         let mut curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
@@ -178,6 +203,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 trusted_hash,
                 ref latest_block,
                 validator_weights,
+                maybe_switch_block,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
@@ -191,19 +217,31 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block_header, validator_weights);
+                self.state = State::sync_descendants(
+                    trusted_hash,
+                    block_header,
+                    validator_weights,
+                    maybe_switch_block,
+                );
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
                 ref latest_block,
                 ref mut validators_for_latest_block,
+                ref maybe_switch_block,
                 ..
             } => {
                 assert_eq!(
                     **latest_block, block_header,
                     "Block execution result doesn't match received block."
                 );
-                if self.is_chain_end(&block_header) {
+                if self.is_recent_block(&block_header) {
+                    info!("downloaded recent block. finished synchronization");
+                    self.mark_done();
+                    return Effects::new();
+                }
+                if self.is_currently_active_era(maybe_switch_block) {
+                    info!("downloaded block from a new era. finished synchronization");
                     self.mark_done();
                     return Effects::new();
                 }
@@ -219,11 +257,18 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    /// Returns whether `block` can be considered tip of the chain.
-    fn is_chain_end(&self, header: &BlockHeader) -> bool {
-        // 1 minute.
-        let acceptable_drift_millis = 60 * 1000;
-        header.timestamp().elapsed().millis() <= acceptable_drift_millis
+    // Returns whether `block` can be considered the tip of the chain.
+    fn is_recent_block(&self, header: &BlockHeader) -> bool {
+        // Check if block was created "recently".
+        header.timestamp().elapsed() <= self.acceptable_drift
+    }
+
+    // Returns whether we've just downloaded a switch block of a currently active era.
+    fn is_currently_active_era(&self, maybe_switch_block: &Option<Box<BlockHeader>>) -> bool {
+        match maybe_switch_block {
+            Some(switch_block) => switch_block.timestamp().elapsed() < self.shortest_era,
+            None => false,
+        }
     }
 
     /// Returns effects for fetching next block's deploys.
