@@ -22,7 +22,6 @@ use casper_execution_engine::{
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
         genesis::GenesisResult,
-        put_trie::InsertedTrieKeyAndMissingDescendants,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
@@ -767,7 +766,7 @@ pub enum ContractRuntimeRequest {
         /// The hash of the value to get from the `TrieStore`
         trie: Box<Trie<Key, StoredValue>>,
         /// Responder to call with the result.
-        responder: Responder<Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>>,
+        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
     },
     /// Get the missing keys under a given trie key in global storage
     MissingTrieKeys {

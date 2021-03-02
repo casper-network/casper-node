@@ -82,7 +82,6 @@ use casper_execution_engine::{
         self,
         era_validators::GetEraValidatorsError,
         genesis::GenesisResult,
-        put_trie::InsertedTrieKeyAndMissingDescendants,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
@@ -836,7 +835,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
         trie: Box<Trie<Key, StoredValue>>,
-    ) -> Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>
+    ) -> Result<Vec<Blake2bHash>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

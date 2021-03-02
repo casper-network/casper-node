@@ -29,7 +29,7 @@ use casper_execution_engine::{
         ExecuteRequest, GetEraValidatorsError, GetEraValidatorsRequest, RewardItem, SlashItem,
         StepRequest, StepResult,
     },
-    shared::newtypes::CorrelationId,
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
@@ -716,6 +716,18 @@ impl ContractRuntime {
             protocol_version,
             &ee_config,
         )
+    }
+
+    /// Retrieve trie keys for the integrity check.
+    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+        let correlation_id = CorrelationId::new();
+        match self
+            .engine_state
+            .trie_integrity_check(correlation_id, trie_keys)
+        {
+            Ok(keys) => keys,
+            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
+        }
     }
 
     pub(crate) fn set_initial_state(

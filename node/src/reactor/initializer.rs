@@ -184,6 +184,17 @@ impl Reactor {
             registry,
         )?;
 
+        if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
+            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
+            if !missing_trie_keys.is_empty() {
+                panic!(
+                    "Fatal error! Trie-Key store is not empty.\n {:?}\n \
+                    Wipe the DB to ensure operations.\n Present state_roots: {:?}",
+                    missing_trie_keys, state_roots
+                )
+            }
+        }
+
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
         let small_network_identity = SmallNetworkIdentity::new()?;
