@@ -1,19 +1,19 @@
 //! System modules, formerly known as "system contracts"
 
 pub mod auction;
+pub mod handle_payment;
 pub mod mint;
-pub mod proof_of_stake;
 pub mod standard_payment;
 
 pub use error::Error;
 pub use system_contract_type::{
-    SystemContractType, AUCTION, MINT, PROOF_OF_STAKE, STANDARD_PAYMENT,
+    SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
 };
 
 mod error {
     use failure::Fail;
 
-    use crate::system::{auction, mint, proof_of_stake};
+    use crate::system::{auction, handle_payment, mint};
 
     /// An aggregate enum error with variants for each system contract's error.
     #[derive(Fail, Debug, Copy, Clone)]
@@ -21,9 +21,9 @@ mod error {
         /// Contains a [`mint::Error`].
         #[fail(display = "Mint error: {}", _0)]
         Mint(mint::Error),
-        /// Contains a [`proof_of_stake::Error`].
-        #[fail(display = "Proof of Stake error: {}", _0)]
-        Pos(proof_of_stake::Error),
+        /// Contains a [`handle_payment::Error`].
+        #[fail(display = "HandlePayment error: {}", _0)]
+        HandlePayment(handle_payment::Error),
         /// Contains a [`auction::Error`].
         #[fail(display = "Auction error: {}", _0)]
         Auction(auction::Error),
@@ -35,9 +35,9 @@ mod error {
         }
     }
 
-    impl From<proof_of_stake::Error> for Error {
-        fn from(error: proof_of_stake::Error) -> Error {
-            Error::Pos(error)
+    impl From<handle_payment::Error> for Error {
+        fn from(error: handle_payment::Error) -> Error {
+            Error::HandlePayment(error)
         }
     }
 
@@ -66,8 +66,8 @@ mod system_contract_type {
     pub enum SystemContractType {
         /// Mint contract.
         Mint,
-        /// Proof of Stake contract.
-        ProofOfStake,
+        /// Handle Payment contract.
+        HandlePayment,
         /// Standard Payment contract.
         StandardPayment,
         /// Auction contract.
@@ -76,8 +76,8 @@ mod system_contract_type {
 
     /// Name of mint system contract
     pub const MINT: &str = "mint";
-    /// Name of proof of stake system contract
-    pub const PROOF_OF_STAKE: &str = "proof of stake";
+    /// Name of handle payment system contract
+    pub const HANDLE_PAYMENT: &str = "handle payment";
     /// Name of standard payment system contract
     pub const STANDARD_PAYMENT: &str = "standard payment";
     /// Name of auction system contract
@@ -87,7 +87,7 @@ mod system_contract_type {
         fn from(system_contract_type: SystemContractType) -> u32 {
             match system_contract_type {
                 SystemContractType::Mint => 0,
-                SystemContractType::ProofOfStake => 1,
+                SystemContractType::HandlePayment => 1,
                 SystemContractType::StandardPayment => 2,
                 SystemContractType::Auction => 3,
             }
@@ -101,7 +101,7 @@ mod system_contract_type {
         fn try_from(value: u32) -> Result<SystemContractType, Self::Error> {
             match value {
                 0 => Ok(SystemContractType::Mint),
-                1 => Ok(SystemContractType::ProofOfStake),
+                1 => Ok(SystemContractType::HandlePayment),
                 2 => Ok(SystemContractType::StandardPayment),
                 3 => Ok(SystemContractType::Auction),
                 _ => Err(ApiError::InvalidSystemContract),
@@ -113,7 +113,7 @@ mod system_contract_type {
         fn fmt(&self, f: &mut Formatter) -> fmt::Result {
             match *self {
                 SystemContractType::Mint => write!(f, "{}", MINT),
-                SystemContractType::ProofOfStake => write!(f, "{}", PROOF_OF_STAKE),
+                SystemContractType::HandlePayment => write!(f, "{}", HANDLE_PAYMENT),
                 SystemContractType::StandardPayment => write!(f, "{}", STANDARD_PAYMENT),
                 SystemContractType::Auction => write!(f, "{}", AUCTION),
             }
@@ -134,10 +134,13 @@ mod system_contract_type {
         }
 
         #[test]
-        fn get_index_of_pos_contract() {
-            let index: u32 = SystemContractType::ProofOfStake.into();
+        fn get_index_of_handle_payment_contract() {
+            let index: u32 = SystemContractType::HandlePayment.into();
             assert_eq!(index, 1u32);
-            assert_eq!(SystemContractType::ProofOfStake.to_string(), PROOF_OF_STAKE);
+            assert_eq!(
+                SystemContractType::HandlePayment.to_string(),
+                HANDLE_PAYMENT
+            );
         }
 
         #[test]
@@ -164,15 +167,15 @@ mod system_contract_type {
         }
 
         #[test]
-        fn create_pos_variant_from_int() {
-            let pos = SystemContractType::try_from(1).ok().unwrap();
-            assert_eq!(pos, SystemContractType::ProofOfStake);
+        fn create_handle_payment_variant_from_int() {
+            let handle_payment = SystemContractType::try_from(1).ok().unwrap();
+            assert_eq!(handle_payment, SystemContractType::HandlePayment);
         }
 
         #[test]
         fn create_standard_payment_variant_from_int() {
-            let pos = SystemContractType::try_from(2).ok().unwrap();
-            assert_eq!(pos, SystemContractType::StandardPayment);
+            let handle_payment = SystemContractType::try_from(2).ok().unwrap();
+            assert_eq!(handle_payment, SystemContractType::StandardPayment);
         }
 
         #[test]

@@ -33,8 +33,8 @@ use casper_types::{
         auction::{
             self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients,
             UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-            ARG_PUBLIC_KEY, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, BIDS_KEY, ERA_ID_KEY,
-            INITIAL_ERA_ID, METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
+            ARG_PUBLIC_KEY, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
+            METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
         },
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -173,7 +173,7 @@ fn should_run_add_bid() {
     builder.exec(exec_request_1).commit().expect_success();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
 
     assert_eq!(bids.len(), 1);
 
@@ -198,7 +198,7 @@ fn should_run_add_bid() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
 
     assert_eq!(bids.len(), 1);
 
@@ -221,7 +221,7 @@ fn should_run_add_bid() {
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
 
     assert_eq!(bids.len(), 1);
 
@@ -303,7 +303,7 @@ fn should_run_delegate_and_undelegate() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(bids.len(), 1);
     let active_bid = bids.get(&NON_FOUNDER_VALIDATOR_1_PK).unwrap();
     assert_eq!(
@@ -333,7 +333,7 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_1).commit().expect_success();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(bids.len(), 1);
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
@@ -354,7 +354,7 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(bids.len(), 1);
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
@@ -376,7 +376,7 @@ fn should_run_delegate_and_undelegate() {
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(bids.len(), 1);
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
@@ -465,7 +465,7 @@ fn should_calculate_era_validators() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(bids.len(), 2, "founding validators {:?}", bids);
 
     // Verify first era validators
@@ -608,8 +608,7 @@ fn should_get_first_seigniorage_recipients() {
     )
     .build();
 
-    let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(bids.len(), 2);
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
@@ -774,8 +773,6 @@ fn should_release_founder_stake() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let auction = builder.get_auction_contract_hash();
-
     let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -790,7 +787,7 @@ fn should_release_founder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        let bids: Bids = builder.get_bids();
         assert_eq!(bids.len(), 1);
 
         let entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -814,7 +811,7 @@ fn should_release_founder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        let bids: Bids = builder.get_bids();
         assert_eq!(bids.len(), 1);
 
         let entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -1457,8 +1454,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let bids_before: Bids =
-        builder.get_value(builder.get_auction_contract_hash(), auction::BIDS_KEY);
+    let bids_before: Bids = builder.get_bids();
     let validator_1_bid = bids_before
         .get(&*VALIDATOR_1)
         .expect("should have validator 1 bid");
@@ -1495,7 +1491,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .commit()
         .expect_success();
 
-    let bids_after: Bids = builder.get_value(auction, auction::BIDS_KEY);
+    let bids_after: Bids = builder.get_bids();
     let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
@@ -1709,7 +1705,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .commit()
         .expect_success();
 
-    let bids_after: Bids = builder.get_value(auction, auction::BIDS_KEY);
+    let bids_after: Bids = builder.get_bids();
     let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
@@ -2165,9 +2161,7 @@ fn should_setup_genesis_delegators() {
         U512::from(DELEGATOR_1_BALANCE)
     );
 
-    let auction = builder.get_auction_contract_hash();
-
-    let bids: Bids = builder.get_value(auction, auction::BIDS_KEY);
+    let bids: Bids = builder.get_bids();
     assert_eq!(
         bids.keys().cloned().collect::<BTreeSet<_>>(),
         BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK,])
@@ -2390,8 +2384,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     }
 
     {
-        let auction = builder.get_auction_contract_hash();
-        let bids: Bids = builder.get_value(auction, auction::BIDS_KEY);
+        let bids: Bids = builder.get_bids();
         let delegator = bids
             .get(&*VALIDATOR_1)
             .expect("should have validator")
@@ -2418,8 +2411,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     .build();
 
     {
-        let auction = builder.get_auction_contract_hash();
-        let bids: Bids = builder.get_value(auction, auction::BIDS_KEY);
+        let bids: Bids = builder.get_bids();
         let delegator = bids
             .get(&*VALIDATOR_1)
             .expect("should have validator")
@@ -2557,8 +2549,6 @@ fn should_release_vfta_holder_stake() {
         .commit()
         .expect_success();
 
-    let auction = builder.get_auction_contract_hash();
-
     let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -2573,7 +2563,7 @@ fn should_release_vfta_holder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        let bids: Bids = builder.get_bids();
         assert_eq!(bids.len(), 1);
 
         let bid_entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -2599,7 +2589,7 @@ fn should_release_vfta_holder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_value(auction, BIDS_KEY);
+        let bids: Bids = builder.get_bids();
         assert_eq!(bids.len(), 1);
 
         let bid_entry = bids.get(&ACCOUNT_1_PK).unwrap();

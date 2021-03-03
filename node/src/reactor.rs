@@ -26,6 +26,7 @@
 
 mod event_queue_metrics;
 pub mod initializer;
+pub mod initializer2;
 pub mod joiner;
 mod queue_kind;
 pub mod validator;
@@ -53,6 +54,7 @@ use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, trace, warn};
 use tracing_futures::Instrument;
+use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
@@ -79,6 +81,9 @@ static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
         })
         .ok()
 });
+
+/// The desired limit for open files.
+const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -389,6 +394,40 @@ where
         rng: &mut NodeRng,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
+        // Ensure we have reasonable ulimits.
+        match ResourceLimit::<OpenFiles>::get() {
+            Err(err) => {
+                warn!(%err, "could not retrieve open files limit");
+            }
+
+            Ok(current_limit) => {
+                if current_limit.current() < TARGET_OPEN_FILES_LIMIT {
+                    let best_possible = if current_limit.max() < TARGET_OPEN_FILES_LIMIT {
+                        warn!(
+                            wanted = TARGET_OPEN_FILES_LIMIT,
+                            hard_limit = current_limit.max(),
+                            "settling for lower open files limit due to hard limit"
+                        );
+                        current_limit.max()
+                    } else {
+                        TARGET_OPEN_FILES_LIMIT
+                    };
+
+                    let new_limit = ResourceLimit::<OpenFiles>::fixed(best_possible);
+                    if let Err(err) = new_limit.set() {
+                        warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
+                    } else {
+                        debug!(?new_limit, "successfully increased open files limit");
+                    }
+                } else {
+                    debug!(
+                        ?current_limit,
+                        "not changing open files limit, already sufficient"
+                    );
+                }
+            }
+        }
+
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup

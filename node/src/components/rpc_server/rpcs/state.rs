@@ -15,10 +15,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::{
-    core::engine_state::{BalanceResult, QueryResult},
-    storage::protocol_data::ProtocolData,
-};
+use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
 use casper_types::{bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, URef, U512};
 
 use super::{
@@ -349,49 +346,24 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                 api_version.minor as u32,
                 api_version.patch as u32,
             );
-            let protocol_version_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryProtocolData {
-                        protocol_version,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
 
-            let protocol_data = {
-                if let Ok(Some(protocol_data)) = protocol_version_result {
-                    protocol_data
-                } else {
-                    Box::new(ProtocolData::default())
-                }
-            };
-
-            // auction contract key
-            let base_key = protocol_data.auction().into();
-            // bids named key in auction contract
-            let path = vec![casper_types::system::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();
             // the block height of the last added block
             let block_height = block.header().height();
 
-            let query_result = effect_builder
+            let get_bids_result = effect_builder
                 .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
+                    |responder| RpcRequest::GetBids {
                         state_root_hash,
-                        base_key,
-                        path,
                         responder,
                     },
                     QueueKind::Api,
                 )
                 .await;
 
-            let bids = if let Ok(QueryResult::Success { value, .. }) = query_result {
-                value
-                    .as_cl_value()
-                    .and_then(|cl_value| cl_value.to_owned().into_t().ok())
+            let maybe_bids = if let Ok(GetBidsResult::Success { bids, .. }) = get_bids_result {
+                Some(bids)
             } else {
                 None
             };
@@ -410,7 +382,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             let era_validators = era_validators_result.ok();
 
             let auction_state =
-                AuctionState::new(state_root_hash, block_height, era_validators, bids);
+                AuctionState::new(state_root_hash, block_height, era_validators, maybe_bids);
 
             let result = Self::ResponseResult {
                 api_version,

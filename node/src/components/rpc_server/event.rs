@@ -6,7 +6,7 @@ use std::{
 use derive_more::From;
 
 use casper_execution_engine::{
-    core::engine_state::{self, BalanceResult, GetEraValidatorsError, QueryResult},
+    core::engine_state::{self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult},
     storage::protocol_data::ProtocolData,
 };
 use casper_types::{system::auction::EraValidators, Transfer};
@@ -42,6 +42,10 @@ pub enum Event {
     QueryEraValidatorsResult {
         result: Result<EraValidators, GetEraValidatorsError>,
         main_responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+    },
+    GetBidsResult {
+        result: Result<GetBidsResult, engine_state::Error>,
+        main_responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
     GetDeployResult {
         hash: DeployHash,
@@ -96,6 +100,9 @@ impl Display for Event {
             }
             Event::QueryEraValidatorsResult { result, .. } => {
                 write!(formatter, "query era validators result: {:?}", result)
+            }
+            Event::GetBidsResult { result, .. } => {
+                write!(formatter, "get bids result: {:?}", result)
             }
             Event::GetBalanceResult { result, .. } => {
                 write!(formatter, "balance result: {:?}", result)

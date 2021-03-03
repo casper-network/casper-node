@@ -16,9 +16,8 @@ use casper_execution_engine::{
         gas::Gas,
         motes::Motes,
         system_config::{
-            auction_costs::AuctionCosts, mint_costs::MintCosts,
-            proof_of_stake_costs::ProofOfStakeCosts, standard_payment_costs::StandardPaymentCosts,
-            SystemConfig,
+            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
+            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
         },
     },
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
@@ -26,7 +25,7 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{mint, proof_of_stake},
+    system::{handle_payment, mint},
     AccessRights, ApiError, Key, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
@@ -170,11 +169,13 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     );
 
     // Make sure postconditions are met: payment purse has to be empty after finalization
-    let pos = builder.get_pos_contract_hash();
-    let contract = builder.get_contract(pos).expect("should have contract");
+    let handle_payment = builder.get_handle_payment_contract_hash();
+    let contract = builder
+        .get_contract(handle_payment)
+        .expect("should have contract");
     let key = contract
         .named_keys()
-        .get(proof_of_stake::POS_PAYMENT_PURSE)
+        .get(handle_payment::PAYMENT_PURSE_KEY)
         .cloned()
         .expect("should have named key");
 
@@ -516,11 +517,13 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     assert_eq!(account_1_starting_balance, account_1_closing_balance);
 
     // Make sure postconditions are met: payment purse has to be empty after finalization
-    let pos = builder.get_pos_contract_hash();
-    let contract = builder.get_contract(pos).expect("should have contract");
+    let handle_payment = builder.get_handle_payment_contract_hash();
+    let contract = builder
+        .get_contract(handle_payment)
+        .expect("should have contract");
     let key = contract
         .named_keys()
-        .get(proof_of_stake::POS_PAYMENT_PURSE)
+        .get(handle_payment::PAYMENT_PURSE_KEY)
         .cloned()
         .expect("should have named key");
 
@@ -916,14 +919,14 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost_value,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 
