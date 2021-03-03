@@ -191,6 +191,8 @@ impl From<&Chainspec> for ExecConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use num_rational::Ratio;
     use once_cell::sync::Lazy;
     use semver::Version;
@@ -206,7 +208,7 @@ mod tests {
     use casper_types::U512;
 
     use super::*;
-    use crate::types::TimeDiff;
+    use crate::{types::TimeDiff, utils::RESOURCES_PATH};
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
@@ -289,13 +291,19 @@ mod tests {
         if is_first_version {
             assert_eq!(spec.protocol_config.version, Version::from((0, 9, 0)));
             assert_eq!(spec.network_config.accounts_config.accounts().len(), 4);
-            for index in 0..4 {
+
+            let accounts: Vec<_> = {
+                let mut accounts = spec.network_config.accounts_config.accounts().to_vec();
+                accounts.sort_by_key(|account_config| {
+                    (account_config.balance(), account_config.bonded_amount())
+                });
+                accounts
+            };
+
+            for (index, account_config) in accounts.into_iter().enumerate() {
+                assert_eq!(account_config.balance(), Motes::new(U512::from(index + 1)),);
                 assert_eq!(
-                    spec.network_config.accounts_config.accounts()[index].balance(),
-                    Motes::new(U512::from(index + 1))
-                );
-                assert_eq!(
-                    spec.network_config.accounts_config.accounts()[index].bonded_amount(),
+                    account_config.bonded_amount(),
                     Motes::new(U512::from((index as u64 + 1) * 10))
                 );
             }
@@ -350,5 +358,33 @@ mod tests {
         let mut rng = crate::new_rng();
         let chainspec = Chainspec::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&chainspec);
+    }
+
+    #[test]
+    fn should_have_deterministic_chainspec_hash() {
+        const PATH: &str = "test/valid/0_9_0";
+        const PATH_UNORDERED: &str = "test/valid/0_9_0_unordered";
+
+        let accounts: Vec<u8> = {
+            let path = RESOURCES_PATH.join(PATH).join("accounts.toml");
+            fs::read(path).expect("should read file")
+        };
+
+        let accounts_unordered: Vec<u8> = {
+            let path = RESOURCES_PATH.join(PATH_UNORDERED).join("accounts.toml");
+            fs::read(path).expect("should read file")
+        };
+
+        // Different accounts.toml file content
+        assert_ne!(accounts, accounts_unordered);
+
+        let chainspec = Chainspec::from_resources(PATH);
+        let chainspec_unordered = Chainspec::from_resources(PATH_UNORDERED);
+
+        // Deserializes into equal objects
+        assert_eq!(chainspec, chainspec_unordered);
+
+        // With equal hashes
+        assert_eq!(chainspec.hash(), chainspec_unordered.hash());
     }
 }
