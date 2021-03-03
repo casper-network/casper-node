@@ -90,4 +90,4 @@ done
 
 main "${NODE_ID:-6}" \
      "${AMOUNT:-$(get_node_staking_weight "${NODE_ID:-6}")}" \
-     "${DELEGATION_RATE:-100}"
+     "${DELEGATION_RATE:-2}"
