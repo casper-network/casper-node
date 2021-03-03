@@ -404,21 +404,22 @@ where
             validators,
         );
         let _ = self.active_eras.insert(era_id, era);
-
-        // Remove the era that has become obsolete now. We keep 2 * bonded_eras past eras because
-        // the oldest bonded era could still receive blocks that refer to bonded_eras before that.
-        if let Some(obsolete_era_id) = era_id.checked_sub(2 * self.bonded_eras() + 1) {
-            trace!(era = obsolete_era_id.0, "removing obsolete era");
-            self.active_eras.remove(&obsolete_era_id);
-        }
+        let oldest_bonded_era_id = oldest_bonded_era(&self.protocol_config, era_id);
         // Clear the obsolete data from the era whose validators are unbonded now. We only retain
         // the information necessary to validate evidence that units in still-bonded eras may refer
         // to for cross-era slashing.
-        if let Some(evidence_only_era_id) = era_id.checked_sub(self.bonded_eras() + 1) {
+        if let Some(evidence_only_era_id) = oldest_bonded_era_id.checked_sub(1) {
             trace!(era = evidence_only_era_id.0, "clearing unbonded era");
             if let Some(era) = self.active_eras.get_mut(&evidence_only_era_id) {
                 era.consensus.set_evidence_only();
             }
+        }
+        // Remove the era that has become obsolete now: The oldest bonded era could still receive
+        // units that refer to evidence from any era that was bonded when it was the current one.
+        let oldest_evidence_era_id = oldest_bonded_era(&self.protocol_config, oldest_bonded_era_id);
+        if let Some(obsolete_era_id) = oldest_evidence_era_id.checked_sub(1) {
+            trace!(era = obsolete_era_id.0, "removing obsolete era");
+            self.active_eras.remove(&obsolete_era_id);
         }
 
         outcomes
@@ -589,7 +590,7 @@ where
     /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
     /// receive blocks that refer to `bonded_eras` before that.
     fn bonded_eras(&self) -> u64 {
-        self.protocol_config.unbonding_delay - self.protocol_config.auction_delay
+        bonded_eras(&self.protocol_config)
     }
 }
 
@@ -1225,4 +1226,19 @@ fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
         result.copy_from_slice(slice);
     });
     result.into()
+}
+
+/// The number of past eras whose validators are still bonded. After this many eras, a former
+/// validator is allowed to withdraw their stake, so their signature can't be trusted anymore.
+///
+/// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
+/// receive blocks that refer to `bonded_eras` before that.
+fn bonded_eras(protocol_config: &ProtocolConfig) -> u64 {
+    protocol_config.unbonding_delay - protocol_config.auction_delay
+}
+
+/// The oldest era whose validators are still bonded.
+// This is public because it's used in reactor::validator::tests.
+pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: EraId) -> EraId {
+    current_era.saturating_sub(bonded_eras(protocol_config))
 }

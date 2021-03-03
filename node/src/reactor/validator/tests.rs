@@ -11,7 +11,10 @@ use casper_execution_engine::shared::motes::Motes;
 use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, gossiper, small_network, storage},
+    components::{
+        consensus::{self, EraId},
+        gossiper, small_network, storage,
+    },
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
     testing::{self, network::Network, TestRng},
@@ -208,35 +211,37 @@ async fn run_equivocator_network() {
     keys.push(alice_sk);
 
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes);
+    let protocol_config = (&*chain.chainspec).into();
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
 
-    // With an auction delay of 1 and an unbonding delay of 3, there are always 2 bonded past
-    // eras. The era supervisor keeps five active eras in memory — the oldest two without units,
-    // just for validating evidence if needed. So if we run this for five eras, the test can catch
-    // issues with unbonding and dropping obsolete eras: In era 5, the units from era 2 are
-    // dropped, and era 0 is dropped completely.
-
-    info!("Waiting for Era 1 to end");
+    info!("Waiting for Era 0 to end");
     net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(600))
         .await;
 
-    info!("Waiting for Era 2 to end");
+    info!("Waiting for Era 1 to end");
     net.settle_on(&mut rng, is_in_era(EraId(2)), Duration::from_secs(90))
         .await;
 
-    info!("Waiting for Era 3 to end");
+    info!("Waiting for Era 2 to end");
     net.settle_on(&mut rng, is_in_era(EraId(3)), Duration::from_secs(90))
         .await;
 
-    info!("Waiting for Era 4 to end");
+    info!("Waiting for Era 3 to end");
     net.settle_on(&mut rng, is_in_era(EraId(4)), Duration::from_secs(90))
         .await;
 
-    println!("Waiting for Era 5 to end");
-    net.settle_on(&mut rng, is_in_era(EraId(5)), Duration::from_secs(90))
+    let last_era_id = EraId(5);
+    println!("Waiting for Era {} to end", last_era_id.0 - 1);
+    net.settle_on(&mut rng, is_in_era(last_era_id), Duration::from_secs(90))
         .await;
+
+    // Make sure we waited long enough for this test to include unbonding and dropping eras.
+    let oldest_bonded_era_id = consensus::oldest_bonded_era(&protocol_config, last_era_id);
+    let oldest_evidence_era_id =
+        consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
+    assert!(!oldest_evidence_era_id.is_genesis());
 }
