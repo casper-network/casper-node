@@ -214,10 +214,11 @@ async fn run_equivocator_network() {
         .await
         .expect("network initialization failed");
 
-    // With an auction delay of 1 and an unbonding delay of 3, there are always 2 bonded active
-    // eras: the current one and the one before. The era supervisor keeps three active eras in
-    // memory — the oldest one without units, just for validating evidence if needed. So if we run
-    // this for five eras, the test can catch issues with unbonding and dropping obsolete eras.
+    // With an auction delay of 1 and an unbonding delay of 3, there are always 2 bonded past
+    // eras. The era supervisor keeps five active eras in memory — the oldest two without units,
+    // just for validating evidence if needed. So if we run this for five eras, the test can catch
+    // issues with unbonding and dropping obsolete eras: In era 5, the units from era 2 are
+    // dropped, and era 0 is dropped completely.
 
     info!("Waiting for Era 1 to end");
     net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(600))
