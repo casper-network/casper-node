@@ -24,6 +24,9 @@ pub enum State {
         latest_block: Box<Option<BlockHeader>>,
         /// The weights of the validators for latest block being added.
         validator_weights: BTreeMap<PublicKey, U512>,
+        /// Switch block of the current era.
+        /// Updated whenever we see a new switch block.
+        maybe_switch_block: Option<Box<BlockHeader>>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
@@ -36,6 +39,9 @@ pub enum State {
         highest_block_seen: u64,
         /// The validator set for the most recent block being synchronized.
         validators_for_latest_block: BTreeMap<PublicKey, U512>,
+        /// Switch block of the current era.
+        /// Updated whenever we see a new switch block.
+        maybe_switch_block: Option<Box<BlockHeader>>,
     },
     /// Synchronizing done.
     Done,
@@ -71,6 +77,7 @@ impl State {
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
             validator_weights,
+            maybe_switch_block: None,
         }
     }
 
@@ -78,12 +85,14 @@ impl State {
         trusted_hash: BlockHash,
         latest_block: BlockHeader,
         validators_for_latest_block: BTreeMap<PublicKey, U512>,
+        maybe_switch_block: Option<Box<BlockHeader>>,
     ) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
             validators_for_latest_block,
+            maybe_switch_block,
         }
     }
 
@@ -102,5 +111,18 @@ impl State {
                 }
             }
         };
+    }
+
+    /// Updates the state with a new switch block.
+    pub(crate) fn new_switch_block(&mut self, block: &BlockHeader) {
+        match self {
+            State::SyncingDescendants {
+                maybe_switch_block, ..
+            }
+            | State::SyncingTrustedHash {
+                maybe_switch_block, ..
+            } => *maybe_switch_block = Some(Box::new(block.clone())),
+            _ => {}
+        }
     }
 }
