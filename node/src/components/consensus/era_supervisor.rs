@@ -29,20 +29,23 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{AsymmetricType, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::consensus::{
-        candidate_block::CandidateBlock,
-        cl_context::{ClContext, Keypair},
-        config::ProtocolConfig,
-        consensus_protocol::{
-            BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
-            ProtocolOutcome,
+    components::{
+        consensus::{
+            candidate_block::CandidateBlock,
+            cl_context::{ClContext, Keypair},
+            config::ProtocolConfig,
+            consensus_protocol::{
+                BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
+                ProtocolOutcome, ProtocolOutcomes,
+            },
+            metrics::ConsensusMetrics,
+            traits::NodeIdT,
+            ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
         },
-        metrics::ConsensusMetrics,
-        traits::NodeIdT,
-        ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
+        contract_runtime::EraValidatorsRequest,
     },
     crypto::hash::Digest,
     effect::{requests::ConsensusRequest, EffectBuilder, EffectExt, Effects, Responder},
@@ -139,8 +142,8 @@ where
         current_era: EraId,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
-        validators: BTreeMap<PublicKey, U512>,
         protocol_config: ProtocolConfig,
+        initial_state_root_hash: Digest,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
@@ -160,6 +163,12 @@ where
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
         let genesis_start_time = protocol_config.timestamp;
+        let protocol_version = ProtocolVersion::from_parts(
+            protocol_config.protocol_version.major as u32,
+            protocol_config.protocol_version.minor as u32,
+            protocol_config.protocol_version.patch as u32,
+        );
+        let activation_era_id = protocol_config.last_activation_point;
 
         let era_supervisor = Self {
             active_eras: Default::default(),
@@ -181,20 +190,65 @@ where
             enqueued_requests: Default::default(),
         };
 
+        let bonded_eras = era_supervisor.bonded_eras();
         let era_ids: Vec<EraId> = era_supervisor
             .iter_past(current_era, era_supervisor.bonded_eras() * 3)
             .collect();
 
-        info!(?era_ids, "collecting switch blocks");
+        // Asynchronously collect the information needed to initialize all recent eras.
+        let effects = async move {
+            info!(?era_ids, "collecting key blocks");
+            let key_blocks = effect_builder
+                .collect_key_blocks(era_ids.iter().cloned())
+                .await
+                .expect("should have all the key blocks in storage");
 
-        let effects = effect_builder
-            .collect_key_blocks(era_ids)
-            .event(move |key_blocks| Event::InitializeEras {
-                key_blocks: key_blocks.expect("should have all the switch blocks in storage"),
-                validators,
-                timestamp,
-                genesis_start_time,
-            });
+            if current_era > activation_era_id + bonded_eras * 2 {
+                // All eras can be initialized using the key blocks only.
+                (key_blocks, Default::default())
+            } else {
+                // We need the validator set for the activation era from some protocol state.
+                let state_root_hash = if activation_era_id == current_era {
+                    // The activation era is the current one, so the initial state root hash
+                    // contains its validator set.
+                    initial_state_root_hash
+                } else if activation_era_id.is_genesis() {
+                    // To initialize the first era, we can use the global state of the first block.
+                    *effect_builder
+                        .get_block_at_height_local(0)
+                        .await
+                        .expect("missing block in genesis era")
+                        .state_root_hash()
+                } else {
+                    // The first block in the activation era contains the validator set.
+                    let block_height = if activation_era_id.is_genesis() {
+                        0
+                    } else {
+                        &key_blocks[&activation_era_id].height() + 1
+                    };
+                    *effect_builder
+                        .get_block_at_height_local(block_height)
+                        .await
+                        .expect("missing block in activation era")
+                        .state_root_hash()
+                };
+                let validators_request =
+                    EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                let validators = effect_builder
+                    .get_era_validators(validators_request)
+                    .await
+                    .expect("get validator map from global state")
+                    .remove(&activation_era_id.0)
+                    .expect("get validators for activation era");
+                (key_blocks, validators)
+            }
+        }
+        .event(move |(key_blocks, validators)| Event::InitializeEras {
+            key_blocks,
+            validators,
+            timestamp,
+            genesis_start_time,
+        });
 
         Ok((era_supervisor, effects))
     }
@@ -388,10 +442,7 @@ where
     }
 
     /// To be called when we transition from the joiner to the validator reactor.
-    pub(crate) fn finished_joining(
-        &mut self,
-        now: Timestamp,
-    ) -> Vec<ProtocolOutcome<I, ClContext>> {
+    pub(crate) fn finished_joining(&mut self, now: Timestamp) -> ProtocolOutcomes<I, ClContext> {
         self.finished_joining = true;
         let secret = Keypair::new(self.secret_signing_key.clone(), self.public_signing_key);
         let public_key = self.public_signing_key;
@@ -454,6 +505,82 @@ where
     /// Returns true if initialization of the first eras is finished.
     pub(crate) fn is_initialized(&self) -> bool {
         self.is_initialized
+    }
+
+    fn handle_initialize_eras(
+        &mut self,
+        key_blocks: HashMap<EraId, BlockHeader>,
+        activation_era_validators: BTreeMap<PublicKey, U512>,
+        timestamp: Timestamp,
+        genesis_start_time: Timestamp,
+    ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
+        let mut result_map = HashMap::new();
+
+        for era_id in self.iter_past(self.current_era, self.bonded_eras() * 2) {
+            let newly_slashed;
+            let validators;
+            let start_height;
+            let era_start_time;
+
+            if era_id.is_genesis() {
+                newly_slashed = vec![];
+                // The validator set was read from the global state: there's no key block for era 0.
+                validators = activation_era_validators.clone();
+                start_height = 0;
+                era_start_time = genesis_start_time;
+            } else {
+                // If this is not era 0, there must be a key block for it.
+                let key_block = key_blocks.get(&era_id).expect("missing key block");
+                start_height = key_block.height() + 1;
+                era_start_time = key_block.timestamp();
+                if era_id == self.protocol_config.last_activation_point {
+                    // After an upgrade or emergency restart, we don't do cross-era slashing.
+                    newly_slashed = vec![];
+                    // And we read the validator sets from the global state, because the key block
+                    // might have been overwritten by the upgrade/restart.
+                    validators = activation_era_validators.clone();
+                } else {
+                    // If it's neither genesis nor upgrade nor restart, we use the validators from
+                    // the key block and ban validators that were slashed in previous eras.
+                    newly_slashed = key_block
+                        .era_end()
+                        .expect("key block must be a switch block")
+                        .equivocators
+                        .clone();
+                    validators = key_block
+                        .next_era_validator_weights()
+                        .expect("missing validators from key block")
+                        .clone();
+                }
+            }
+
+            let slashed = self
+                .iter_past(era_id, self.bonded_eras())
+                .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
+                .flat_map(|era_end| era_end.equivocators.clone())
+                .collect();
+
+            let booking_era_id = era_id.saturating_sub(self.protocol_config.auction_delay);
+            let seed = key_blocks.get(&booking_era_id).map_or(0, |booking_block| {
+                Self::era_seed(booking_block.hash(), booking_block.accumulated_seed())
+            });
+
+            let results = self.new_era(
+                era_id,
+                timestamp,
+                validators,
+                newly_slashed,
+                slashed,
+                seed,
+                era_start_time,
+                start_height,
+            );
+            result_map.insert(era_id, results);
+        }
+
+        self.is_initialized = true;
+        self.next_block_height = self.active_eras[&self.current_era].start_height;
+        result_map
     }
 
     /// The number of past eras whose validators are still bonded. After this many eras, a former
@@ -678,87 +805,24 @@ where
     pub(super) fn handle_initialize_eras(
         &mut self,
         key_blocks: HashMap<EraId, BlockHeader>,
-        genesis_validators: BTreeMap<PublicKey, U512>,
+        validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
         genesis_start_time: Timestamp,
     ) -> Effects<Event<I>> {
-        let current_era = self.era_supervisor.current_era;
-        let mut effects: Effects<Event<I>> = Default::default();
+        let result_map = self.era_supervisor.handle_initialize_eras(
+            key_blocks,
+            validators,
+            timestamp,
+            genesis_start_time,
+        );
 
-        for era_id in self
-            .era_supervisor
-            .iter_past(current_era, self.era_supervisor.bonded_eras() * 2)
-        {
-            // This should only be None if era_id = 0, ie. there is no switch block at all
-            let maybe_key_block = key_blocks.get(&era_id);
-
-            if maybe_key_block.is_none() && era_id.0 != 0 {
-                // TODO: that's probably an error; do we exit?
-            }
-
-            let newly_slashed = maybe_key_block
-                .and_then(|bhdr| bhdr.era_end())
-                .map(|era_end| era_end.equivocators.clone())
-                .unwrap_or_default();
-
-            let slashed = self
-                .era_supervisor
-                .iter_past(era_id, self.era_supervisor.bonded_eras())
-                .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
-                .flat_map(|era_end| era_end.equivocators.clone())
-                .collect();
-
-            let booking_era_id = EraId(
-                era_id
-                    .0
-                    .saturating_sub(self.era_supervisor.protocol_config.auction_delay),
-            );
-
-            let seed = if let Some(booking_block) = key_blocks.get(&booking_era_id) {
-                EraSupervisor::<I>::era_seed(booking_block.hash(), booking_block.accumulated_seed())
-            } else {
-                0
-            };
-
-            let (validators, start_height, era_start_time) =
-                if let Some(key_block) = maybe_key_block {
-                    (
-                        key_block
-                            .next_era_validator_weights()
-                            .cloned()
-                            .expect("switch block should have era validator weights"),
-                        key_block.height() + 1,
-                        key_block.timestamp(),
-                    )
-                } else {
-                    // If we don't have a switch block, we're dealing with era 0 and genesis data
-                    (genesis_validators.clone(), 0, genesis_start_time)
-                };
-
-            let results = self.era_supervisor.new_era(
-                era_id,
-                timestamp,
-                validators,
-                newly_slashed,
-                slashed,
-                seed,
-                era_start_time,
-                start_height,
-            );
-
-            effects.extend(
-                self.era_supervisor
-                    .handling_wrapper(self.effect_builder, self.rng)
-                    .handle_consensus_outcomes(era_id, results),
-            );
-        }
+        let effects = result_map
+            .into_iter()
+            .flat_map(|(era_id, results)| self.handle_consensus_outcomes(era_id, results))
+            .collect();
 
         info!("finished initializing era supervisor");
         info!(?self.era_supervisor, "current eras");
-
-        self.era_supervisor.is_initialized = true;
-        self.era_supervisor.next_block_height =
-            self.era_supervisor.active_eras[&current_era].start_height;
 
         effects
     }
