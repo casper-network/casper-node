@@ -106,6 +106,11 @@ function check_current_era {
 function check_inactive() {
     local NODE_ID=${1}
     local HEX=$(get_node_public_key_hex "$NODE_ID")
+    # In order to pass bash variables into jq you must specify a jq arg.
+    # Below the jq arg 'node_hex' is set to $HEX. The query looks at the
+    # state of the auction and checks to see if a validator gets marked
+    # as inactive. The validator is found via his public key $HEX (node_hex).
+    # We return the exit code of the grep to check success.
     nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[] | select(.public_key == $node_hex).bid.inactive' | grep -q 'true'
     return $?
 }
@@ -120,13 +125,17 @@ function get_node_public_key_hex() {
 
 # Checks that the current era + 1 contains a nodes 
 # public key hex
-function check_removed_validator() {
+function is_trusted_validator() {
     local NODE_ID=${1}
     local HEX=$(get_node_public_key_hex "$NODE_ID")
     local ERA=$(check_current_era)
     # Plus 1 to avoid query issue if era switches mid run
     local ERA_PLUS_1=$(expr $ERA + 1)
-    # note: tonumber is a must here to prevent jq from being to smart
+    # note: tonumber is a must here to prevent jq from being too smart.
+    # The jq arg 'era' is set to $ERA_PLUS_1. The query looks to find that
+    # the validator is removed from era_validators list. We grep for
+    # the public_key_hex to see if the validator is still listed and return
+    # the exit code to check success.
     nctl-view-chain-auction-info | jq --arg era "$ERA_PLUS_1" '.auction_state.era_validators[] | select(.era_id == ($era | tonumber))' | grep -q "$HEX"
     return $?
 }
@@ -135,16 +144,17 @@ function assert_eviction() {
     local NODE_ID=${1}
     log_step "Checking for evicted node-$NODE_ID..."
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if ( ! check_removed_validator "$NODE_ID" ) && ( check_inactive "$NODE_ID" ); then
+        if ( ! is_trusted_validator "$NODE_ID" ) && ( check_inactive "$NODE_ID" ); then
             log "validator node-$NODE_ID was ejected! [expected]"
             break
         fi
 
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
+
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Failed to confirm a faulty validator"
+            log "ERROR: Time out. Failed to confirm a faulty validator in $SYNC_TIMEOUT_SEC seconds."
             exit 1
         fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1
     done
 }
