@@ -2324,6 +2324,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8be18de09a56b60ed0edf84bc9df007e30040691af7acd1c41874faac5895bfb"
 
 [[package]]
+name = "global-state-update-gen"
+version = "0.1.0"
+dependencies = [
+ "base16",
+ "base64 0.13.0",
+ "casper-engine-test-support",
+ "casper-execution-engine",
+ "casper-types",
+ "clap",
+]
+
+[[package]]
 name = "gloo-timers"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

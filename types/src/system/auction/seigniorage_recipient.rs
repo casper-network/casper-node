@@ -18,6 +18,19 @@ pub struct SeigniorageRecipient {
 }
 
 impl SeigniorageRecipient {
+    /// Creates a new SeigniorageRecipient
+    pub fn new(
+        stake: U512,
+        delegation_rate: DelegationRate,
+        delegator_stake: BTreeMap<PublicKey, U512>,
+    ) -> Self {
+        Self {
+            stake,
+            delegation_rate,
+            delegator_stake,
+        }
+    }
+
     /// Returns stake of the provided recipient
     pub fn stake(&self) -> &U512 {
         &self.stake
