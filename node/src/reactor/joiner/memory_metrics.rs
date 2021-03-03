@@ -1,12 +1,13 @@
 use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::Reactor;
+use crate::unregister_metric;
 
 ///Metrics for memory usage for the joiner
 #[derive(Debug)]
-pub struct MemoryMetrics {
+pub(super) struct MemoryMetrics {
     /// Total estimated heap memory usage.
     mem_total: IntGauge,
 
@@ -224,71 +225,22 @@ impl MemoryMetrics {
 
 impl Drop for MemoryMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.mem_total.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect mem_total to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_metrics.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_metrics to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_network.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_network to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_small_network.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_small_network to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_address_gossiper.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_address_gossiper to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_config.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_config to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_chainspec_loader.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_chainspec_loader to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_storage.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_storage to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_contract_runtime.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_contract_runtime to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_linear_chain_fetcher.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_linear_chain_fetcher to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_linear_chain_sync.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_linear_chain_sync to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_block_validator.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_block_validator to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_deploy_fetcher.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_deploy_fetcher to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_block_executor.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_block_executor to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_linear_chain.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_linear_chain to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_consensus.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering joiner_mem_consensus to fail"),
-            );
+        unregister_metric!(self.registry, self.mem_total);
+        unregister_metric!(self.registry, self.mem_metrics);
+        unregister_metric!(self.registry, self.mem_network);
+        unregister_metric!(self.registry, self.mem_small_network);
+        unregister_metric!(self.registry, self.mem_address_gossiper);
+        unregister_metric!(self.registry, self.mem_config);
+        unregister_metric!(self.registry, self.mem_chainspec_loader);
+        unregister_metric!(self.registry, self.mem_storage);
+        unregister_metric!(self.registry, self.mem_contract_runtime);
+        unregister_metric!(self.registry, self.mem_linear_chain_fetcher);
+        unregister_metric!(self.registry, self.mem_linear_chain_sync);
+        unregister_metric!(self.registry, self.mem_block_validator);
+        unregister_metric!(self.registry, self.mem_deploy_fetcher);
+        unregister_metric!(self.registry, self.mem_block_executor);
+        unregister_metric!(self.registry, self.mem_linear_chain);
+        unregister_metric!(self.registry, self.mem_consensus);
+        unregister_metric!(self.registry, self.mem_estimator_runtime_s);
     }
 }

@@ -334,34 +334,34 @@ impl Display for Event {
 /// Joining node reactor.
 #[derive(DataSize)]
 pub struct Reactor {
-    pub(super) metrics: Metrics,
-    pub(super) network: Network<Event, Message>,
-    pub(super) small_network: SmallNetwork<Event, Message>,
-    pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
-    pub(super) config: validator::Config,
-    pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Storage,
-    pub(super) contract_runtime: ContractRuntime,
-    pub(super) linear_chain_fetcher: Fetcher<Block>,
-    pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<Block, NodeId>,
-    pub(super) deploy_fetcher: Fetcher<Deploy>,
-    pub(super) block_executor: BlockExecutor,
-    pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
-    pub(super) consensus: EraSupervisor<NodeId>,
+    metrics: Metrics,
+    network: Network<Event, Message>,
+    small_network: SmallNetwork<Event, Message>,
+    address_gossiper: Gossiper<GossipedAddress, Event>,
+    config: validator::Config,
+    chainspec_loader: ChainspecLoader,
+    storage: Storage,
+    contract_runtime: ContractRuntime,
+    linear_chain_fetcher: Fetcher<Block>,
+    linear_chain_sync: LinearChainSync<NodeId>,
+    block_validator: BlockValidator<Block, NodeId>,
+    deploy_fetcher: Fetcher<Deploy>,
+    block_executor: BlockExecutor,
+    linear_chain: linear_chain::LinearChain<NodeId>,
+    consensus: EraSupervisor<NodeId>,
     // Handles request for linear chain block by height.
-    pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
+    block_by_height_fetcher: Fetcher<BlockByHeight>,
     #[data_size(skip)]
-    pub(super) deploy_acceptor: DeployAcceptor,
+    deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
     #[data_size(skip)]
-    pub(super) rest_server: RestServer,
+    rest_server: RestServer,
     #[data_size(skip)]
-    pub(super) event_stream_server: EventStreamServer,
+    event_stream_server: EventStreamServer,
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
-    pub(super) memory_metrics: MemoryMetrics,
+    memory_metrics: MemoryMetrics,
 }
 
 impl reactor::Reactor for Reactor {

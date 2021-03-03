@@ -1,5 +1,7 @@
 use prometheus::{IntCounter, IntGauge, Registry};
 
+use crate::unregister_metric;
+
 /// Metrics for the gossiper component.
 #[derive(Debug)]
 pub struct GossiperMetrics {
@@ -80,23 +82,11 @@ impl GossiperMetrics {
 
 impl Drop for GossiperMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.items_received.clone()))
-            .expect("did not expect deregistering items_received to fail");
-        self.registry
-            .unregister(Box::new(self.times_gossiped.clone()))
-            .expect("did not expect deregistering times_gossiped to fail");
-        self.registry
-            .unregister(Box::new(self.times_ran_out_of_peers.clone()))
-            .expect("did not expect deregistering times_ran_out_of_peers to fail");
-        self.registry
-            .unregister(Box::new(self.table_items_paused.clone()))
-            .expect("did not expect deregistering table_items_paused to fail");
-        self.registry
-            .unregister(Box::new(self.table_items_current.clone()))
-            .expect("did not expect deregistering table_items_current to fail");
-        self.registry
-            .unregister(Box::new(self.table_items_finished.clone()))
-            .expect("did not expect deregistering table_items_finished to fail");
+        unregister_metric!(self.registry, self.items_received);
+        unregister_metric!(self.registry, self.times_gossiped);
+        unregister_metric!(self.registry, self.times_ran_out_of_peers);
+        unregister_metric!(self.registry, self.table_items_paused);
+        unregister_metric!(self.registry, self.table_items_current);
+        unregister_metric!(self.registry, self.table_items_finished);
     }
 }
