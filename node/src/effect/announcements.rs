@@ -31,7 +31,7 @@ use crate::{
 /// be constructed from a `ControlAnnouncement` to be run.
 ///
 /// Control announcements also use a priority queue to ensure that a component that reports a fatal
-/// error is given as few follow up events as possible. However, there currently is no guarantee
+/// error is given as few follow-up events as possible. However, there currently is no guarantee
 /// that this happens.
 #[derive(Debug, Serialize)]
 #[must_use]

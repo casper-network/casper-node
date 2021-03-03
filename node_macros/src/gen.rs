@@ -234,7 +234,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 dispatches.push(quote!(
                     #event_ident::#request_variant_ident(request) => {
                         // Request is discarded.
-                        panic!("received event that was explicitly route to a panic: {:?}", request)
+                        panic!("received event that was explicitly routed to a panic: {:?}", request)
                     },
                 ));
             }
