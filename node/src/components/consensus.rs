@@ -40,11 +40,13 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
+    fatal,
     protocol::Message,
     types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
+use crate::effect::EffectExt;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -315,14 +317,21 @@ where
                 block,
                 booking_block_hash,
             } => {
-                let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
-                    error!(
-                        "could not find the booking block at height {} for era {}",
-                        height,
-                        block.header().era_id().successor()
-                    );
-                    panic!("couldn't get the booking block hash");
-                });
+                let booking_block_hash = match booking_block_hash {
+                    Ok(hash) => hash,
+                    Err(height) => {
+                        error!(
+                            "could not find the booking block at height {} for era {}",
+                            height,
+                            block.header().era_id().successor()
+                        );
+                        return fatal!(
+                            handling_es.effect_builder,
+                            "couldn't get the booking block hash"
+                        )
+                        .ignore();
+                    }
+                };
                 handling_es.handle_create_new_era(*block, booking_block_hash)
             }
             Event::InitializeEras {
