@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
-source "$NCTL"/sh/utils/main.sh
-source "$NCTL"/sh/views/utils.sh
-source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+source "$NCTL"/sh/scenarios/common/itst.sh
 
 # Exit if any of the commands fail.
 set -e
@@ -34,9 +32,9 @@ function main() {
     # 6. Ensure chain stalled
     assert_chain_stalled "60"
     # 7-9. Restart three nodes
-    do_start_node "5"
-    do_start_node "4"
-    do_start_node "3"
+    do_start_node "5" "$STALLED_LFB"
+    do_start_node "4" "$STALLED_LFB"
+    do_start_node "3" "$STALLED_LFB"
     # 10. Verify all nodes are in sync
     check_network_sync
     # 11. Ensure era proceeds after restart
@@ -51,13 +49,6 @@ function main() {
     log "------------------------------------------------------------"
     log "Scenario itst02 complete"
     log "------------------------------------------------------------"
-}
-
-function log_step() {
-    local COMMENT=${1}
-    log "------------------------------------------------------------"
-    log "STEP $STEP: $COMMENT"
-    STEP=$((STEP + 1))
 }
 
 function assert_chain_progressed() {
@@ -96,65 +87,6 @@ function assert_chain_stalled() {
     else
         STALLED_LFB=$LFB_1_POST
     fi
-}
-
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "1" ]; do
-        sleep 1.0
-    done
-}
-
-function do_read_lfb_hash() {
-    local NODE_ID=${1}
-    LFB_HASH=$(render_last_finalized_block_hash "$NODE_ID" | cut -f2 -d= | cut -f2 -d ' ')
-    echo "$LFB_HASH"
-}
-
-function do_stop_node() {
-    local NODE_ID=${1}
-    log_step "stopping node-$NODE_ID."
-    do_node_stop "$NODE_ID"
-    sleep 1
-}
-
-function do_start_node() {
-    local NODE_ID=${1}
-    log_step "starting node-$NODE_ID. Syncing from hash=${STALLED_LFB}"
-    do_node_start "$NODE_ID" "$STALLED_LFB"
-    sleep 1
-    if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then
-        log "ERROR: node-${NODE_ID} is not running"
-	exit 1
-    fi
-}
-
-function check_network_sync() {
-    local WAIT_TIME_SEC=0
-    log_step "check all nodes are in sync"
-    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if [ "$(do_read_lfb_hash '5')" = "$(do_read_lfb_hash '1')" ] && \
-		[ "$(do_read_lfb_hash '4')" = "$(do_read_lfb_hash '1')" ] && \
-		[ "$(do_read_lfb_hash '3')" = "$(do_read_lfb_hash '1')" ] && \
-		[ "$(do_read_lfb_hash '2')" = "$(do_read_lfb_hash '1')" ]; then
-	    log "all nodes in sync, proceeding..."
-	    break
-        fi
-
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Failed to confirm network sync"
-            exit 1
-        fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        sleep 1
-    done
-}
-
-function do_await_era_change() {
-    # allow chain height to grow
-    local ERA_COUNT=${1:-"1"}
-    log_step "awaiting $ERA_COUNT eras…"
-    await_n_eras "$ERA_COUNT"
 }
 
 # ----------------------------------------------------------------

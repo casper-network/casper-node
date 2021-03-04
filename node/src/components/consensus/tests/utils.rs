@@ -7,7 +7,7 @@ use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 use crate::{
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        Chainspec, Timestamp,
+        ActivationPoint, Chainspec, Timestamp,
     },
     utils::Loadable,
 };
@@ -38,7 +38,7 @@ where
         .collect();
     let delegators = vec![];
     chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
-    chainspec.network_config.timestamp = Timestamp::now();
+    chainspec.protocol_config.activation_point = ActivationPoint::Genesis(Timestamp::now());
 
     // Every era has exactly two blocks.
     chainspec.core_config.minimum_era_height = 2;
