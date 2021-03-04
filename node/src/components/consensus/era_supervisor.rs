@@ -278,15 +278,26 @@ where
     /// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
     /// We make sure not to use an era ID below the last upgrade activation point, because we will
     /// not have instances of eras from before that.
-    fn booking_block_height(&self, era_id: EraId) -> u64 {
+    /// Returns:
+    /// * `Some(block height)` if there's a booking block we can use,
+    /// * `None` in the case when there would be no valid booking block.
+    fn booking_block_height(&self, era_id: EraId) -> Option<u64> {
         let after_booking_era_id = era_id
             .saturating_sub(self.protocol_config.auction_delay)
             .max(self.protocol_config.last_activation_point);
+        // If we would have gone below the last activation point (which can be Genesis era or the
+        // first era after an upgrade), we return `None` as there are no booking blocks there that
+        // we can use.
+        if after_booking_era_id == self.protocol_config.last_activation_point {
+            return None;
+        }
+        // We subtract 1 from the `start_height` to get the switch block of the era. If it means we
+        // go below zero (Genesis era), return `None`.
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
             .start_height
-            .saturating_sub(1)
+            .checked_sub(1)
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
@@ -751,15 +762,29 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
-            let booking_block_height = self.era_supervisor.booking_block_height(new_era_id);
-            let effect = self
-                .effect_builder
-                .get_block_at_height_from_storage(booking_block_height)
-                .event(move |booking_block| Event::CreateNewEra {
-                    block: Box::new(block),
-                    booking_block_hash: booking_block
-                        .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
-                });
+            let effect = match self.era_supervisor.booking_block_height(new_era_id) {
+                Some(booking_block_height) => self
+                    .effect_builder
+                    .get_block_at_height_from_storage(booking_block_height)
+                    .event(move |booking_block| Event::CreateNewEra {
+                        block: Box::new(block),
+                        booking_block_hash: booking_block
+                            .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
+                    }),
+                None => {
+                    // If there's no booking block for the new era
+                    // (b/c it would have been from before Genesis, upgrade or emergency restart),
+                    // use a "zero" block hash. This should not hurt the security of the leader
+                    // selection algorithm.
+                    let zero_booking_block_hash = BlockHash::default();
+                    self.effect_builder
+                        .immediately()
+                        .event(move |_| Event::CreateNewEra {
+                            block: Box::new(block),
+                            booking_block_hash: Ok(zero_booking_block_hash),
+                        })
+                }
+            };
             effects.extend(effect);
         } else {
             // if it's not a switch block, we can already declare it handled
