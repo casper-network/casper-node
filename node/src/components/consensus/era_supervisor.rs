@@ -173,7 +173,6 @@ where
         );
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
-        let last_activation_point = protocol_config.last_activation_point;
 
         let era_supervisor = Self {
             active_eras: Default::default(),
@@ -213,7 +212,7 @@ where
                 effect_builder,
                 era_ids.clone(),
                 auction_delay,
-                last_activation_point,
+                activation_era_id,
             )
             .await;
 
