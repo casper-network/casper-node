@@ -636,9 +636,6 @@ fn valid_booking_block(
     let after_booking_era_id = era_id
         .saturating_sub(auction_delay)
         .max(last_activation_point);
-    if after_booking_era_id.is_genesis() {
-        return None;
-    }
     // If we would have gone below the last activation point (which can be Genesis era or the
     // first era after an upgrade), we return `None` as there are no booking blocks there that
     // we can use.
@@ -658,18 +655,19 @@ async fn collect_booking_block_hashes<REv>(
 where
     REv: From<StorageRequest>,
 {
-    let (no_booking_block_eras, other_eras): (Vec<EraId>, Vec<EraId>) =
+    let (no_booking_block_eras, eras_with_booking_blocks): (Vec<EraId>, Vec<EraId>) =
         era_ids.into_iter().partition(|era_id| {
             valid_booking_block(&era_id, auction_delay, last_activation_point).is_none()
         });
 
+    // For those eras we wouldn't have the booking block, so we use a "zero" one.
     let mut booking_block_hashes: HashMap<EraId, BlockHash> = no_booking_block_eras
         .iter()
         .map(|era_id| (*era_id, BlockHash::default()))
         .collect();
 
     let booking_blocks = effect_builder
-        .collect_booking_blocks(other_eras)
+        .collect_booking_blocks(eras_with_booking_blocks)
         .await
         .expect("should have all booking blocks in the storage");
 
