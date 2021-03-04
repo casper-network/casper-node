@@ -100,7 +100,7 @@ function assert_chain_stalled() {
 
 function do_await_genesis_era_to_complete() {
     log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -lt 1 ]; do
+    while [ "$(get_chain_era)" != "1" ]; do
         sleep 1.0
     done
 }
