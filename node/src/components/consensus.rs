@@ -120,6 +120,7 @@ pub enum Event<I> {
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
         key_blocks: HashMap<EraId, BlockHeader>,
+        booking_blocks: HashMap<EraId, BlockHash>,
         /// This is empty except if the activation era still needs to be instantiated: Its
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
@@ -336,12 +337,14 @@ where
             }
             Event::InitializeEras {
                 key_blocks,
+                booking_blocks,
                 validators,
                 timestamp,
                 genesis_start_time,
             } => {
                 let mut effects = handling_es.handle_initialize_eras(
                     key_blocks,
+                    booking_blocks,
                     validators,
                     timestamp,
                     genesis_start_time,
