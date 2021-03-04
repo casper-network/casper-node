@@ -44,6 +44,7 @@ static DELEGATOR_1: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
 
 static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]));
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
@@ -213,7 +214,7 @@ fn should_run_ee_1120_slash_delegators() {
     assert_eq!(unbond_purses_before.len(), 2);
 
     let validator_1_unbond_list_before = unbond_purses_before
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .cloned()
         .expect("should have unbond");
     assert_eq!(validator_1_unbond_list_before.len(), 2); // two entries in order: undelegate, and withdraw bid
@@ -247,7 +248,7 @@ fn should_run_ee_1120_slash_delegators() {
     );
 
     let validator_2_unbond_list = unbond_purses_before
-        .get(&*VALIDATOR_2)
+        .get(&*VALIDATOR_2_ADDR)
         .cloned()
         .expect("should have unbond");
 
@@ -308,7 +309,7 @@ fn should_run_ee_1120_slash_delegators() {
     assert_ne!(unbond_purses_before, unbond_purses_after);
 
     let validator_1_unbond_list_after = unbond_purses_after
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .expect("should have validator 1 entry");
     assert_eq!(validator_1_unbond_list_after.len(), 2);
     assert_eq!(

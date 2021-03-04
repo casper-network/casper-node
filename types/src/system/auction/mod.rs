@@ -48,7 +48,7 @@ pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
 pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 /// Validators and delegators mapped to their unbonding purses.
-pub type UnbondingPurses = BTreeMap<PublicKey, Vec<UnbondingPurse>>;
+pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -329,8 +329,9 @@ pub trait Auction:
                 self.write_bid(validator_account_hash, bid)?;
             };
 
+            let validator_account_hash = AccountHash::from(&validator_public_key);
             // Update unbonding entries for given validator
-            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
+            if let Some(unbonding_list) = unbonding_purses.remove(&validator_account_hash) {
                 burned_amount += unbonding_list
                     .into_iter()
                     .map(|unbonding_purse| *unbonding_purse.amount())

@@ -229,7 +229,7 @@ fn should_run_add_bid() {
     );
     let unbonding_purses: UnbondingPurses = builder.get_value(auction_hash, "unbonding_purses");
     let unbond_list = unbonding_purses
-        .get(&BID_ACCOUNT_1_PK)
+        .get(&BID_ACCOUNT_1_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(unbond_list[0].unbonder_public_key(), &*BID_ACCOUNT_1_PK);
@@ -386,7 +386,7 @@ fn should_run_delegate_and_undelegate() {
     assert_eq!(unbonding_purses.len(), 1);
 
     let unbond_list = unbonding_purses
-        .get(&NON_FOUNDER_VALIDATOR_1_PK)
+        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
         .expect("should have unbonding purse for non founder validator");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -1439,9 +1439,9 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     // Validator partially unbonds and only one entry is present
     let unbonding_purses_before: UnbondingPurses =
         builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
-    assert_eq!(unbonding_purses_before[&*VALIDATOR_1].len(), 1);
+    assert_eq!(unbonding_purses_before[&*VALIDATOR_1_ADDR].len(), 1);
     assert_eq!(
-        unbonding_purses_before[&*VALIDATOR_1][0].unbonder_public_key(),
+        unbonding_purses_before[&*VALIDATOR_1_ADDR][0].unbonder_public_key(),
         &*VALIDATOR_1
     );
 
@@ -1470,7 +1470,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
 
     let validator_1_unbonding_purse = unbonding_purses_after
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .expect("should have unbonding purse entry");
     assert_eq!(validator_1_unbonding_purse.len(), 4); // validator1, validator1, delegator1, delegator2
 
@@ -1683,7 +1683,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
 
     let validator_1_unbonding_purse = unbonding_purses_before
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .expect("should have unbonding purse entry");
     assert_eq!(validator_1_unbonding_purse.len(), 3); // validator1, delegator1, delegator2
 

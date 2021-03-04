@@ -130,7 +130,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -151,7 +151,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -185,7 +185,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
         "should remove slashed from unbonds"
     );
 
@@ -426,7 +426,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -447,7 +447,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&default_public_key_arg)
+        .get(&DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -482,7 +482,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
         "Unbond entry should be removed"
     );
 
@@ -607,7 +607,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -626,7 +626,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&default_public_key_arg)
+        .get(&DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -676,7 +676,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
         "Unbond entry should be removed"
     );
 

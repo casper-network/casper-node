@@ -166,7 +166,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .cloned()
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 2); // two entries in order: undelegate, and withdraw bid
@@ -190,7 +190,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     assert_eq!(unbond_list[1].amount(), &unbond_amount);
 
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
         "should not be part of unbonds"
     );
 
@@ -238,12 +238,12 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     assert_eq!(unbond_purses.len(), 0);
 
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
         "delegator should not be part of unbond list after slashing validator"
     );
 
     assert!(
-        !unbond_purses.contains_key(&VALIDATOR_1),
+        !unbond_purses.contains_key(&VALIDATOR_1_ADDR),
         "should not be a part of unbond list because delegator was slashed"
     );
 

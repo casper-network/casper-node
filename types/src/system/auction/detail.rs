@@ -241,8 +241,9 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         era_of_creation,
         amount,
     );
+    let validator_account_hash = AccountHash::from(&validator_public_key);
     unbonding_purses
-        .entry(validator_public_key)
+        .entry(validator_account_hash)
         .or_default()
         .push(new_unbonding_purse);
     set_unbonding_purses(provider, unbonding_purses)?;
