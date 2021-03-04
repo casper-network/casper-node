@@ -34,7 +34,6 @@ use casper_types::{
             self, Bids, DelegationRate, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
             ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
             ARG_VALIDATOR_PUBLIC_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_ACTIVATE_BID,
-            UNBONDING_PURSES_KEY,
         },
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -168,7 +167,6 @@ fn should_run_add_bid() {
 
     builder.exec(exec_request_1).commit().expect_success();
 
-    let auction_hash = builder.get_auction_contract_hash();
     let bids: Bids = builder.get_bids();
 
     assert_eq!(bids.len(), 1);
@@ -227,7 +225,7 @@ fn should_run_add_bid() {
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
-    let unbonding_purses: UnbondingPurses = builder.get_value(auction_hash, "unbonding_purses");
+    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
     let unbond_list = unbonding_purses
         .get(&BID_ACCOUNT_1_ADDR)
         .expect("should have unbond");
@@ -382,7 +380,7 @@ fn should_run_delegate_and_undelegate() {
         U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_1)
     );
 
-    let unbonding_purses: UnbondingPurses = builder.get_value(auction_hash, UNBONDING_PURSES_KEY);
+    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbonding_purses.len(), 1);
 
     let unbond_list = unbonding_purses
@@ -1412,7 +1410,6 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-    let auction = builder.get_auction_contract_hash();
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1437,8 +1434,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     );
 
     // Validator partially unbonds and only one entry is present
-    let unbonding_purses_before: UnbondingPurses =
-        builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
+    let unbonding_purses_before: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbonding_purses_before[&*VALIDATOR_1_ADDR].len(), 1);
     assert_eq!(
         unbonding_purses_before[&*VALIDATOR_1_ADDR][0].unbonder_public_key(),
@@ -1465,8 +1461,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbonding_purses_after: UnbondingPurses =
-        builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
+    let unbonding_purses_after: UnbondingPurses = builder.get_withdraws();
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
 
     let validator_1_unbonding_purse = unbonding_purses_after
@@ -1652,7 +1647,6 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-    let auction = builder.get_auction_contract_hash();
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1679,8 +1673,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbonding_purses_before: UnbondingPurses =
-        builder.get_value(auction, auction::UNBONDING_PURSES_KEY);
+    let unbonding_purses_before: UnbondingPurses = builder.get_withdraws();
 
     let validator_1_unbonding_purse = unbonding_purses_before
         .get(&VALIDATOR_1_ADDR)

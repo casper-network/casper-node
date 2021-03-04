@@ -316,9 +316,6 @@ pub trait Auction:
 
         let mut burned_amount: U512 = U512::zero();
 
-        let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
-        let mut unbonding_purses_modified = false;
-
         for validator_public_key in validator_public_keys {
             // Burn stake, deactivate
             let validator_account_hash = AccountHash::from(&validator_public_key);
@@ -331,17 +328,14 @@ pub trait Auction:
 
             let validator_account_hash = AccountHash::from(&validator_public_key);
             // Update unbonding entries for given validator
-            if let Some(unbonding_list) = unbonding_purses.remove(&validator_account_hash) {
-                burned_amount += unbonding_list
+            let unbonding_purses = self.read_withdraw(&validator_account_hash)?;
+            if !unbonding_purses.is_empty() {
+                burned_amount += unbonding_purses
                     .into_iter()
                     .map(|unbonding_purse| *unbonding_purse.amount())
                     .sum();
-                unbonding_purses_modified = true;
+                self.write_withdraw(validator_account_hash, Vec::new())?;
             }
-        }
-
-        if unbonding_purses_modified {
-            detail::set_unbonding_purses(self, unbonding_purses)?;
         }
 
         self.reduce_total_supply(burned_amount)?;

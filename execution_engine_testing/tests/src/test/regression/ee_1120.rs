@@ -16,7 +16,7 @@ use casper_types::{
     runtime_args,
     system::auction::{
         Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
-        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -165,7 +165,7 @@ fn should_run_ee_1120_slash_delegators() {
         BTreeSet::from_iter(vec![*VALIDATOR_2, *VALIDATOR_1])
     );
 
-    let initial_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let initial_unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(initial_unbond_purses.len(), 0);
 
     // DELEGATOR_1 partially unbonds from VALIDATOR_1
@@ -210,7 +210,7 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check unbonding purses before slashing
 
-    let unbond_purses_before: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_before: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses_before.len(), 2);
 
     let validator_1_unbond_list_before = unbond_purses_before
@@ -305,7 +305,7 @@ fn should_run_ee_1120_slash_delegators() {
         .delegators()
         .contains_key(&DELEGATOR_1));
 
-    let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
     assert_ne!(unbond_purses_before, unbond_purses_after);
 
     let validator_1_unbond_list_after = unbond_purses_after
@@ -349,6 +349,13 @@ fn should_run_ee_1120_slash_delegators() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert!(unbond_purses_after.is_empty());
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
+    assert!(unbond_purses_after
+        .get(&VALIDATOR_1_ADDR)
+        .unwrap()
+        .is_empty());
+    assert!(unbond_purses_after
+        .get(&VALIDATOR_2_ADDR)
+        .unwrap()
+        .is_empty());
 }
