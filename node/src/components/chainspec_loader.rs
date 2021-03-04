@@ -20,7 +20,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use futures::join;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -58,15 +57,12 @@ use crate::{
     NodeRng,
 };
 
-const STORAGE_KEY: &str = "chainspec loader cached protocol version";
-
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
 pub enum Event {
-    /// The result of getting the cached protocol version and highest block from storage.
+    /// The result of getting the highest block from storage.
     Initialize {
-        cached_protocol_version: Option<Version>,
-        highest_block: Option<Box<Block>>,
+        maybe_highest_block: Option<Box<Block>>,
     },
     /// The result of contract runtime running the genesis process.
     CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisResult, engine_state::Error>),
@@ -86,16 +82,12 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Initialize {
-                cached_protocol_version,
-                highest_block,
+                maybe_highest_block,
             } => {
                 write!(
                     formatter,
-                    "initialize(cached_protocol_version: {}, highest_block: {})",
-                    cached_protocol_version
-                        .as_ref()
-                        .map_or_else(|| "None".to_string(), |version| version.to_string()),
-                    highest_block
+                    "initialize(maybe_highest_block: {})",
+                    maybe_highest_block
                         .as_ref()
                         .map_or_else(|| "None".to_string(), |block| block.to_string())
                 )
@@ -237,19 +229,11 @@ impl ChainspecLoader {
         let effects = if should_stop {
             Effects::new()
         } else {
-            async move {
-                join!(
-                    // TODO - use protocol version from highest block instead of caching as state.
-                    effect_builder.load_state(STORAGE_KEY.as_bytes().into()),
-                    effect_builder.get_highest_block_from_storage()
-                )
-            }
-            .event(
-                |(cached_protocol_version, highest_block)| Event::Initialize {
-                    cached_protocol_version,
-                    highest_block: highest_block.map(Box::new),
-                },
-            )
+            effect_builder
+                .get_highest_block_from_storage()
+                .event(|highest_block| Event::Initialize {
+                    maybe_highest_block: highest_block.map(Box::new),
+                })
         };
 
         let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
@@ -319,21 +303,12 @@ impl ChainspecLoader {
     fn handle_initialize<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        maybe_cached_protocol_version: Option<Version>,
-        maybe_block: Option<Box<Block>>,
+        maybe_highest_block: Option<Box<Block>>,
     ) -> Effects<Event>
     where
         REv: From<Event> + From<StateStoreRequest> + From<ContractRuntimeRequest> + Send,
     {
-        // Cache the current protocol version.
-        let mut effects = effect_builder
-            .save_state(
-                STORAGE_KEY.as_bytes().into(),
-                self.chainspec.protocol_config.version.clone(),
-            )
-            .ignore();
-
-        let highest_block = match maybe_block {
+        let highest_block = match maybe_highest_block {
             Some(block) => {
                 self.initial_block_header = Some(block.header().clone());
                 block
@@ -343,12 +318,9 @@ impl ChainspecLoader {
                 if self.chainspec.is_genesis() {
                     // This is a valid initial run on a new network at genesis.
                     trace!("valid initial run at genesis");
-                    effects.extend(
-                        effect_builder
-                            .commit_genesis(Arc::clone(&self.chainspec))
-                            .event(Event::CommitGenesisResult),
-                    );
-                    return effects;
+                    return effect_builder
+                        .commit_genesis(Arc::clone(&self.chainspec))
+                        .event(Event::CommitGenesisResult);
                 } else {
                     // This is an invalid run of a node version issued after genesis.  Instruct the
                     // process to exit and downgrade the version.
@@ -364,8 +336,7 @@ impl ChainspecLoader {
         };
         let highest_block_era_id = highest_block.header().era_id();
 
-        let cached_protocol_version =
-            maybe_cached_protocol_version.unwrap_or_else(|| Version::new(1, 0, 0));
+        let previous_protocol_version = highest_block.header().protocol_version();
         let current_chainspec_activation_point =
             self.chainspec.protocol_config.activation_point.era_id;
 
@@ -374,13 +345,10 @@ impl ChainspecLoader {
                 // This is a valid run immediately after upgrading the node version.
                 trace!("valid run immediately after upgrade");
                 let upgrade_config =
-                    self.new_upgrade_config(&highest_block, cached_protocol_version);
-                effects.extend(
-                    effect_builder
-                        .upgrade_contract_runtime(upgrade_config)
-                        .event(Event::UpgradeResult),
-                );
-                return effects;
+                    self.new_upgrade_config(&highest_block, previous_protocol_version);
+                return effect_builder
+                    .upgrade_contract_runtime(upgrade_config)
+                    .event(Event::UpgradeResult);
             } else {
                 // This is an invalid run where blocks are missing from storage.  Try exiting the
                 // process and downgrading the version to recover the missing blocks.
@@ -403,11 +371,26 @@ impl ChainspecLoader {
             return Effects::new();
         }
 
+        let debug_assert_version_match = || {
+            debug_assert!(
+                previous_protocol_version.value().major as u64
+                    == self.chainspec.protocol_config.version.major
+            );
+            debug_assert!(
+                previous_protocol_version.value().minor as u64
+                    == self.chainspec.protocol_config.version.minor
+            );
+            debug_assert!(
+                previous_protocol_version.value().patch as u64
+                    == self.chainspec.protocol_config.version.patch
+            );
+        };
+
         let next_upgrade_activation_point = match self.next_upgrade {
             Some(ref next_upgrade) => next_upgrade.activation_point.era_id,
             None => {
                 // This is a valid run, restarted after an unplanned shutdown.
-                debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
+                debug_assert_version_match();
                 self.initial_state_root_hash = *highest_block.state_root_hash();
                 info!("valid run after an unplanned shutdown with no scheduled upgrade");
                 self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
@@ -417,7 +400,7 @@ impl ChainspecLoader {
 
         if highest_block_era_id < next_upgrade_activation_point {
             // This is a valid run, restarted after an unplanned shutdown.
-            debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
+            debug_assert_version_match();
             self.initial_state_root_hash = *highest_block.state_root_hash();
             info!("valid run after an unplanned shutdown before upgrade due");
             self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
@@ -435,12 +418,11 @@ impl ChainspecLoader {
         Effects::new()
     }
 
-    fn new_upgrade_config(&self, block: &Block, previous_version: Version) -> Box<UpgradeConfig> {
-        let old_version = ProtocolVersion::from_parts(
-            previous_version.major as u32,
-            previous_version.minor as u32,
-            previous_version.patch as u32,
-        );
+    fn new_upgrade_config(
+        &self,
+        block: &Block,
+        previous_version: ProtocolVersion,
+    ) -> Box<UpgradeConfig> {
         let new_version = ProtocolVersion::from_parts(
             self.chainspec.protocol_config.version.major as u32,
             self.chainspec.protocol_config.version.minor as u32,
@@ -471,7 +453,7 @@ impl ChainspecLoader {
             .unwrap_or_default();
         Box::new(UpgradeConfig::new(
             (*block.state_root_hash()).into(),
-            old_version,
+            previous_version,
             new_version,
             Some(self.chainspec.wasm_config),
             Some(self.chainspec.system_costs_config),
@@ -617,9 +599,8 @@ where
         trace!("{}", event);
         match event {
             Event::Initialize {
-                cached_protocol_version,
-                highest_block,
-            } => self.handle_initialize(effect_builder, cached_protocol_version, highest_block),
+                maybe_highest_block: highest_block,
+            } => self.handle_initialize(effect_builder, highest_block),
             Event::CommitGenesisResult(result) => self.handle_commit_genesis_result(result),
             Event::UpgradeResult(result) => self.handle_upgrade_result(result),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
