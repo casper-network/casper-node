@@ -162,7 +162,6 @@ where
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
-        let genesis_start_time = protocol_config.genesis_timestamp;
         let protocol_version = ProtocolVersion::from_parts(
             protocol_config.protocol_version.major as u32,
             protocol_config.protocol_version.minor as u32,
@@ -247,7 +246,6 @@ where
             key_blocks,
             validators,
             timestamp,
-            genesis_start_time,
         });
 
         Ok((era_supervisor, effects))
@@ -513,7 +511,6 @@ where
         key_blocks: HashMap<EraId, BlockHeader>,
         activation_era_validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Option<Timestamp>,
     ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
         let mut result_map = HashMap::new();
 
@@ -528,8 +525,10 @@ where
                 // The validator set was read from the global state: there's no key block for era 0.
                 validators = activation_era_validators.clone();
                 start_height = 0;
-                era_start_time =
-                    genesis_start_time.expect("must have genesis start time if era ID is 0");
+                era_start_time = self
+                    .protocol_config
+                    .genesis_timestamp
+                    .expect("must have genesis start time if era ID is 0");
             } else {
                 // If this is not era 0, there must be a key block for it.
                 let key_block = key_blocks.get(&era_id).expect("missing key block");
@@ -809,14 +808,10 @@ where
         key_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Option<Timestamp>,
     ) -> Effects<Event<I>> {
-        let result_map = self.era_supervisor.handle_initialize_eras(
-            key_blocks,
-            validators,
-            timestamp,
-            genesis_start_time,
-        );
+        let result_map = self
+            .era_supervisor
+            .handle_initialize_eras(key_blocks, validators, timestamp);
 
         let effects = result_map
             .into_iter()
