@@ -347,7 +347,7 @@ impl PublicKey {
     pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Result<Self, Error> {
         Secp256k1PublicKey::from_sec1_bytes(&bytes).map_err(|err| {
             Error::AsymmetricKey(format!(
-                "failed to construct Ed25519 public key from {:?}. Error: {:?}",
+                "failed to construct secp256k1 public key from {:?}. Error: {:?}",
                 bytes, err
             ))
         })?;

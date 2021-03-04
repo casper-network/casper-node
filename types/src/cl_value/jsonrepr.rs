@@ -109,7 +109,7 @@ fn simple_type_to_json<T: FromBytes + Serialize>(bytes: &[u8]) -> Option<(Value,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bytesrepr::ToBytes, AsymmetricType, CLTyped};
+    use crate::{bytesrepr::ToBytes, AsymmetricType, CLTyped, SecretKey};
     use alloc::collections::BTreeMap;
 
     fn test_value<T: ToBytes + Serialize + Clone + CLTyped>(value: T) {
@@ -149,9 +149,9 @@ mod tests {
 
     #[test]
     fn list_of_list_of_public_keys_to_json_value() {
-        let a = PublicKey::secp256k1([3; PublicKey::SECP256K1_LENGTH]).unwrap();
-        let b = PublicKey::ed25519([3; PublicKey::ED25519_LENGTH]).unwrap();
-        let c = PublicKey::ed25519([6; PublicKey::ED25519_LENGTH]).unwrap();
+        let a = PublicKey::from(SecretKey::secp256k1([3; SecretKey::SECP256K1_LENGTH]));
+        let b = PublicKey::from(SecretKey::ed25519([3; PublicKey::ED25519_LENGTH]));
+        let c = PublicKey::from(SecretKey::ed25519([6; PublicKey::ED25519_LENGTH]));
         let a_hex = a.to_hex();
         let b_hex = b.to_hex();
         let c_hex = c.to_hex();
