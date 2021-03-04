@@ -232,7 +232,7 @@ function get_node_staking_weight()
 {
     local NODE_ID=${1}    
 
-    echo $((NCTL_VALIDATOR_BASE_WEIGHT + NODE_ID))
+    echo $((NCTL_VALIDATOR_BASE_WEIGHT[NODE_ID-1]))
 }
 
 #######################################
