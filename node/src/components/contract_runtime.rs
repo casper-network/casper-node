@@ -891,12 +891,12 @@ impl ContractRuntime {
             next_era_id: state.finalized_block.era_id().successor().into(),
             era_end_timestamp_millis,
         };
-        return effect_builder.run_step(request).event(|result| {
+        effect_builder.run_step(request).event(|result| {
             Event::Result(Box::new(ContractRuntimeResult::RunStepResult {
                 state,
                 result,
             }))
-        });
+        })
     }
 
     fn execute_all_deploys_in_block(&mut self, mut state: Box<RequestState>) -> Effects<Event> {
