@@ -137,8 +137,8 @@ mod tests {
 
     #[test]
     fn list_of_public_keys_to_json_value() {
-        let a = PublicKey::secp256k1([3; PublicKey::SECP256K1_LENGTH]).unwrap();
-        let b = PublicKey::ed25519([3; PublicKey::ED25519_LENGTH]).unwrap();
+        let a = PublicKey::from(SecretKey::secp256k1([3; SecretKey::SECP256K1_LENGTH]));
+        let b = PublicKey::from(SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]));
         let a_hex = a.to_hex();
         let b_hex = b.to_hex();
         let cl_value = CLValue::from_t(vec![a, b]).unwrap();
