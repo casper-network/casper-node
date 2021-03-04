@@ -1240,5 +1240,7 @@ fn bonded_eras(protocol_config: &ProtocolConfig) -> u64 {
 /// The oldest era whose validators are still bonded.
 // This is public because it's used in reactor::validator::tests.
 pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: EraId) -> EraId {
-    current_era.saturating_sub(bonded_eras(protocol_config))
+    current_era
+        .saturating_sub(bonded_eras(protocol_config))
+        .max(protocol_config.last_activation_point)
 }
