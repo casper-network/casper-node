@@ -583,6 +583,7 @@ where
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
             StoredValue::Bid(_) => Ok(()),
+            StoredValue::Withdraw(_) => Ok(()),
         }
     }
 

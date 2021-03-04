@@ -203,7 +203,7 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
                     )
                     .map_err(|_| Error::TransferToUnbondingPurse)?;
             } else {
-                new_unbonding_list.push(*unbonding_purse);
+                new_unbonding_list.push(unbonding_purse.clone());
             }
         }
         *unbonding_list = new_unbonding_list;
