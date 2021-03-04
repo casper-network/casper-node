@@ -1,8 +1,9 @@
 use prometheus::{IntCounter, Registry};
-use tracing::warn;
+
+use crate::unregister_metric;
 
 #[derive(Debug)]
-pub struct FetcherMetrics {
+pub(super) struct FetcherMetrics {
     /// Number of fetch requests that found an item in the storage.
     pub(super) found_in_storage: IntCounter,
     /// Number of fetch requests that fetched an item from peer.
@@ -14,7 +15,7 @@ pub struct FetcherMetrics {
 }
 
 impl FetcherMetrics {
-    pub fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub(super) fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
         let found_in_storage = IntCounter::new(
             format!("{}_found_in_storage", name),
             format!(
@@ -45,18 +46,8 @@ impl FetcherMetrics {
 
 impl Drop for FetcherMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.found_in_storage.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering found_in_storage to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.found_on_peer.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering found_on_peer to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.timeouts.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering timeouts to fail"));
+        unregister_metric!(self.registry, self.found_in_storage);
+        unregister_metric!(self.registry, self.found_on_peer);
+        unregister_metric!(self.registry, self.timeouts);
     }
 }
