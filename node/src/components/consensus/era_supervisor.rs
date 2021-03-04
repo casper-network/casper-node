@@ -529,12 +529,13 @@ where
             let start_height;
             let era_start_time;
 
-            if let Some(start_time) = genesis_start_time {
+            if era_id.is_genesis() {
                 newly_slashed = vec![];
                 // The validator set was read from the global state: there's no key block for era 0.
                 validators = activation_era_validators.clone();
                 start_height = 0;
-                era_start_time = start_time;
+                era_start_time =
+                    genesis_start_time.expect("must have genesis start time if era ID is 0");
             } else {
                 // If this is not era 0, there must be a key block for it.
                 let key_block = key_blocks.get(&era_id).expect("missing key block");
