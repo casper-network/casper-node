@@ -31,20 +31,18 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients,
-            UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-            ARG_PUBLIC_KEY, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
-            METHOD_ACTIVATE_BID, UNBONDING_PURSES_KEY,
+            self, Bids, DelegationRate, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
+            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_ACTIVATE_BID,
+            UNBONDING_PURSES_KEY,
         },
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
-const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_TARGET: &str = "target";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
-const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
@@ -59,8 +57,6 @@ const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
 const BID_AMOUNT_2: u64 = 5_000;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 15;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
-
-const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 
 const DELEGATE_AMOUNT_1: u64 = 125_000;
 const DELEGATE_AMOUNT_2: u64 = 15_000;
@@ -634,33 +630,6 @@ fn should_get_first_seigniorage_recipients() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         Vec::new(),
     );
-
-    // read seigniorage recipients
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_READ_SEIGNIORAGE_RECIPIENTS,
-        },
-    )
-    .build();
-
-    builder.exec(exec_request_2).commit().expect_success();
-
-    let account = builder.get_account(SYSTEM_ADDR).unwrap();
-    let key = account
-        .named_keys()
-        .get("seigniorage_recipients_result")
-        .copied()
-        .unwrap();
-    let stored_value = builder.query(None, key, &[]).unwrap();
-    let seigniorage_recipients: SeigniorageRecipients = stored_value
-        .as_cl_value()
-        .cloned()
-        .unwrap()
-        .into_t()
-        .unwrap();
-    assert_eq!(seigniorage_recipients.len(), 2);
 
     let mut era_validators: EraValidators = builder.get_era_validators();
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;

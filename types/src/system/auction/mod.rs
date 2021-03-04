@@ -503,10 +503,9 @@ pub trait Auction:
 
             let delegator_rewards =
                 recipient
-                    .delegators()
+                    .delegator_stake()
                     .iter()
-                    .map(|(delegator_key, delegator)| {
-                        let delegator_stake = delegator.staked_amount();
+                    .map(|(delegator_key, delegator_stake)| {
                         let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)

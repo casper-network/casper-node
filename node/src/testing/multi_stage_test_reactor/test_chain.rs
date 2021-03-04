@@ -21,7 +21,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        BlockHash, Chainspec, NodeId, Timestamp,
+        ActivationPoint, BlockHash, Chainspec, NodeId, Timestamp,
     },
     utils::{External, Loadable, WithDir},
     NodeRng,
@@ -116,7 +116,8 @@ impl TestChain {
             AccountsConfig::new(genesis_accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.network_config.timestamp = Timestamp::now() + 45000.into();
+        chainspec.protocol_config.activation_point =
+            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
 
         chainspec.core_config.minimum_era_height = 4;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);

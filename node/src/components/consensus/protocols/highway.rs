@@ -23,7 +23,7 @@ use casper_types::{system::auction::BLOCK_REWARD, U512};
 use crate::{
     components::consensus::{
         config::{Config, ProtocolConfig},
-        consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
+        consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome, ProtocolOutcomes},
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
@@ -54,8 +54,6 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
-
-type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>

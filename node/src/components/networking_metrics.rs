@@ -1,27 +1,29 @@
 use prometheus::{IntCounter, IntGauge, Registry};
 
+use crate::unregister_metric;
+
 /// Network-type agnostic networking metrics.
-pub(crate) struct NetworkingMetrics {
+pub(super) struct NetworkingMetrics {
     /// How often a request was made by a component to broadcast.
-    pub(crate) broadcast_requests: IntCounter,
+    pub(super) broadcast_requests: IntCounter,
     /// How often a request to send a message directly to a peer was made.
-    pub(crate) direct_message_requests: IntCounter,
+    pub(super) direct_message_requests: IntCounter,
     /// Current number of open connections.
-    pub(crate) open_connections: IntGauge,
+    pub(super) open_connections: IntGauge,
     /// Number of messages still waiting to be sent out (broadcast and direct).
-    pub(crate) queued_messages: IntGauge,
+    pub(super) queued_messages: IntGauge,
     /// Number of connected peers.
-    pub(crate) peers: IntGauge,
+    pub(super) peers: IntGauge,
 
     // Potentially temporary metrics, not supported by all networking components:
     /// Number of do-nothing futures that have not finished executing for read requests.
-    pub(crate) read_futures_in_flight: prometheus::Gauge,
+    pub(super) read_futures_in_flight: prometheus::Gauge,
     /// Number of do-nothing futures created total (read).
-    pub(crate) read_futures_total: prometheus::Gauge,
-    /// Number of do-nothing futures that have not finished executing for write reponses.
-    pub(crate) write_futures_in_flight: prometheus::Gauge,
+    pub(super) read_futures_total: prometheus::Gauge,
+    /// Number of do-nothing futures that have not finished executing for write responses.
+    pub(super) write_futures_in_flight: prometheus::Gauge,
     /// Number of do-nothing futures created total (write).
-    pub(crate) write_futures_total: prometheus::Gauge,
+    pub(super) write_futures_total: prometheus::Gauge,
 
     /// Registry instance.
     registry: Registry,
@@ -29,7 +31,7 @@ pub(crate) struct NetworkingMetrics {
 
 impl NetworkingMetrics {
     /// Creates a new instance of networking metrics.
-    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let broadcast_requests =
             IntCounter::new("net_broadcast_requests", "number of broadcasting requests")?;
         let direct_message_requests = IntCounter::new(
@@ -89,33 +91,14 @@ impl NetworkingMetrics {
 
 impl Drop for NetworkingMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.broadcast_requests.clone()))
-            .expect("did not expect deregistering broadcast_requests to fail");
-        self.registry
-            .unregister(Box::new(self.direct_message_requests.clone()))
-            .expect("did not expect deregistering direct_message_requests to fail");
-        self.registry
-            .unregister(Box::new(self.open_connections.clone()))
-            .expect("did not expect deregistering open_connnections to fail");
-        self.registry
-            .unregister(Box::new(self.queued_messages.clone()))
-            .expect("did not expect deregistering queued_direct_messages to fail");
-        self.registry
-            .unregister(Box::new(self.peers.clone()))
-            .expect("did not expect deregistering peers to fail");
-
-        self.registry
-            .unregister(Box::new(self.read_futures_in_flight.clone()))
-            .expect("did not expect deregistering in_flight_read_futures to fail");
-        self.registry
-            .unregister(Box::new(self.read_futures_total.clone()))
-            .expect("did not expect deregistering total_read_futures to fail");
-        self.registry
-            .unregister(Box::new(self.write_futures_in_flight.clone()))
-            .expect("did not expect deregistering in_flight_write_futures to fail");
-        self.registry
-            .unregister(Box::new(self.write_futures_total.clone()))
-            .expect("did not expect deregistering total_write_futures to fail");
+        unregister_metric!(self.registry, self.broadcast_requests);
+        unregister_metric!(self.registry, self.direct_message_requests);
+        unregister_metric!(self.registry, self.open_connections);
+        unregister_metric!(self.registry, self.queued_messages);
+        unregister_metric!(self.registry, self.peers);
+        unregister_metric!(self.registry, self.read_futures_in_flight);
+        unregister_metric!(self.registry, self.read_futures_total);
+        unregister_metric!(self.registry, self.write_futures_in_flight);
+        unregister_metric!(self.registry, self.write_futures_total);
     }
 }
