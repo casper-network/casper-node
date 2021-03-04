@@ -218,7 +218,6 @@ where
 
             if current_era > activation_era_id + bonded_eras * 2 {
                 // All eras can be initialized using the key blocks only.
-                info!("all eras can be initialized using the key blocks only.");
                 (key_blocks, booking_blocks, Default::default())
             } else {
                 // We need the validator set for the activation era from some protocol state.
