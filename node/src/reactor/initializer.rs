@@ -164,16 +164,17 @@ impl Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
 
-        if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
-            if !missing_trie_keys.is_empty() {
-                panic!(
-                    "Fatal error! Trie-Key store is not empty.\n {:?}\n \
-                    Wipe the DB to ensure operations.\n Present state_roots: {:?}",
-                    missing_trie_keys, state_roots
-                )
-            }
-        }
+        // TODO - re-enable in some form after deciding how to reduce the time this takes
+        // if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
+        //     let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
+        //     if !missing_trie_keys.is_empty() {
+        //         panic!(
+        //             "Fatal error! Trie-Key store is not empty.\n {:?}\n \
+        //             Wipe the DB to ensure operations.\n Present state_roots: {:?}",
+        //             missing_trie_keys, state_roots
+        //         )
+        //     }
+        // }
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
