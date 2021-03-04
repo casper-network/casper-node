@@ -51,6 +51,9 @@ pub(crate) use era_supervisor::{EraId, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
+#[cfg(test)]
+pub(crate) use era_supervisor::oldest_bonded_era;
+
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
