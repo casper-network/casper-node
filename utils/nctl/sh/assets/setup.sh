@@ -32,7 +32,7 @@ function _set_net_bin()
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
 	do
         cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
-	done    
+	done
 }
 
 #######################################
@@ -64,8 +64,8 @@ function _set_net_chainspec()
     local SCRIPT=(
         "import toml;"
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
+        "cfg['protocol']['activation_point']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
         "cfg['network']['name']='$(get_chain_name)';"
-        "cfg['network']['timestamp']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
         "cfg['core']['validator_slots']=$((COUNT_GENESIS_NODES * 2));"
         "toml.dump(cfg, open('$PATH_TO_CHAINSPEC_FILE', 'w'));"
     )
@@ -98,7 +98,7 @@ function _set_chainspec_account()
 public_key = "${ACCOUNT_KEY}"
 balance = "$INITIAL_BALANCE"
 EOM
-    
+
     if [ "$INITIAL_WEIGHT" != '0' ]; then
         cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
 [accounts.validator]
@@ -230,7 +230,7 @@ function _set_net_users()
             "$NCTL_CASPER_HOME"/target/debug/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
         else
             "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
-        fi    
+        fi
     done
 
     # Set user accounts.
@@ -238,7 +238,7 @@ function _set_net_users()
     do
         _set_chainspec_account_for_user \
             "$PATH_TO_NET"/users/user-"$USER_ID"/public_key_hex \
-            "$NCTL_INITIAL_BALANCE_USER" 
+            "$NCTL_INITIAL_BALANCE_USER"
     done
 }
 
@@ -260,7 +260,7 @@ function _set_nodes()
     for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         setup_node "$NODE_ID" "$COUNT_GENESIS_NODES"
-    done   
+    done
 }
 
 #######################################

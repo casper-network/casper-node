@@ -2,6 +2,7 @@
 //! same set of options in order to join and act as a peer in a given network.
 
 mod accounts_config;
+mod activation_point;
 mod core_config;
 mod deploy_config;
 mod error;
@@ -27,12 +28,12 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
+pub use self::error::Error;
 pub(crate) use self::{
-    accounts_config::AccountsConfig, core_config::CoreConfig, deploy_config::DeployConfig,
-    global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
-    network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig, activation_point::ActivationPoint, core_config::CoreConfig,
+    deploy_config::DeployConfig, global_state_update::GlobalStateUpdate,
+    highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
-pub use self::{error::Error, protocol_config::ActivationPoint};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
@@ -91,7 +92,7 @@ impl Chainspec {
 
     /// Returns true if this chainspec has an activation_point specifying era ID 0.
     pub(crate) fn is_genesis(&self) -> bool {
-        self.protocol_config.activation_point.era_id.0 == 0
+        self.protocol_config.activation_point.is_genesis()
     }
 }
 
@@ -184,7 +185,11 @@ impl From<&Chainspec> for ExecConfig {
             chainspec.core_config.locked_funds_period.millis(),
             chainspec.core_config.round_seigniorage_rate,
             chainspec.core_config.unbonding_delay,
-            chainspec.network_config.timestamp.millis(),
+            chainspec
+                .protocol_config
+                .activation_point
+                .genesis_timestamp()
+                .map_or(0, |timestamp| timestamp.millis()),
         )
     }
 }
@@ -208,7 +213,10 @@ mod tests {
     use casper_types::U512;
 
     use super::*;
-    use crate::{types::TimeDiff, utils::RESOURCES_PATH};
+    use crate::{
+        types::{TimeDiff, Timestamp},
+        utils::RESOURCES_PATH,
+    };
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
@@ -290,6 +298,10 @@ mod tests {
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
             assert_eq!(spec.protocol_config.version, Version::from((0, 9, 0)));
+            assert_eq!(
+                spec.protocol_config.activation_point.genesis_timestamp(),
+                Some(Timestamp::from(1600454700000))
+            );
             assert_eq!(spec.network_config.accounts_config.accounts().len(), 4);
 
             let accounts: Vec<_> = {
@@ -309,6 +321,7 @@ mod tests {
             }
         } else {
             assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
+            assert_eq!(spec.protocol_config.activation_point.era_id().0, 1);
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
             for value in spec.protocol_config.global_state_update.unwrap().0.values() {
@@ -317,7 +330,6 @@ mod tests {
         }
 
         assert_eq!(spec.network_config.name, "test-chain");
-        assert_eq!(spec.network_config.timestamp.millis(), 1600454700000);
 
         assert_eq!(spec.core_config.era_duration, TimeDiff::from(180000));
         assert_eq!(spec.core_config.minimum_era_height, 9);

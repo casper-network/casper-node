@@ -439,15 +439,21 @@ impl reactor::Reactor for Reactor {
             None => {
                 let chainspec = chainspec_loader.chainspec();
                 let era_duration = chainspec.core_config.era_duration;
-                if Timestamp::now() > chainspec.network_config.timestamp + era_duration {
-                    error!(
-                        "Node started with no trusted hash after the expected end of \
-                         the genesis era! Please specify a trusted hash and restart. \
-                         Time: {}, End of genesis era: {}",
-                        Timestamp::now(),
-                        chainspec.network_config.timestamp + era_duration
-                    );
-                    panic!("should have trusted hash after genesis era")
+                if let Some(start_time) = chainspec
+                    .protocol_config
+                    .activation_point
+                    .genesis_timestamp()
+                {
+                    if Timestamp::now() > start_time + era_duration {
+                        error!(
+                            "Node started with no trusted hash after the expected end of \
+                             the genesis era! Please specify a trusted hash and restart. \
+                             Time: {}, End of genesis era: {}",
+                            Timestamp::now(),
+                            start_time + era_duration
+                        );
+                        panic!("should have trusted hash after genesis era")
+                    }
                 }
                 info!("No synchronization of the linear chain will be done.")
             }
