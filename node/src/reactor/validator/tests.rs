@@ -222,25 +222,18 @@ async fn run_equivocator_network() {
     net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(600))
         .await;
 
-    info!("Waiting for Era 1 to end");
-    net.settle_on(&mut rng, is_in_era(EraId(2)), Duration::from_secs(90))
-        .await;
+    let last_era_number = 5;
+    let timeout = Duration::from_secs(90);
 
-    info!("Waiting for Era 2 to end");
-    net.settle_on(&mut rng, is_in_era(EraId(3)), Duration::from_secs(90))
-        .await;
-
-    info!("Waiting for Era 3 to end");
-    net.settle_on(&mut rng, is_in_era(EraId(4)), Duration::from_secs(90))
-        .await;
-
-    let last_era_id = EraId(5);
-    println!("Waiting for Era {} to end", last_era_id.0 - 1);
-    net.settle_on(&mut rng, is_in_era(last_era_id), Duration::from_secs(90))
-        .await;
+    for era_number in 2..last_era_number {
+        info!("Waiting for Era {} to end", era_number);
+        net.settle_on(&mut rng, is_in_era(EraId(era_number)), timeout)
+            .await;
+    }
 
     // Make sure we waited long enough for this test to include unbonding and dropping eras.
-    let oldest_bonded_era_id = consensus::oldest_bonded_era(&protocol_config, last_era_id);
+    let oldest_bonded_era_id =
+        consensus::oldest_bonded_era(&protocol_config, EraId(last_era_number));
     let oldest_evidence_era_id =
         consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
     assert!(!oldest_evidence_era_id.is_genesis());
