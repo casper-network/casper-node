@@ -825,14 +825,15 @@ where
         effects
     }
 
+    ///  Creates new era.
     pub(super) fn handle_create_new_era(
         &mut self,
-        block: Block,
+        switch_block: Block,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
         let (era_end, next_era_validators_weights) = match (
-            block.header().era_end(),
-            block.header().next_era_validator_weights(),
+            switch_block.header().era_end(),
+            switch_block.header().next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
                 (era_end, next_era_validator_weights)
@@ -840,17 +841,19 @@ where
             _ => {
                 return fatal!(
                     self.effect_builder,
-                    "attempted to create a new era with a non-switch block header: {}",
-                    block
+                    "attempted to create a new era with a non-switch block: {}",
+                    switch_block
                 )
                 .ignore()
             }
         };
         let newly_slashed = era_end.equivocators.clone();
-        let era_id = block.header().era_id().successor();
+        let era_id = switch_block.header().era_id().successor();
         info!(era = era_id.0, "era created");
-        let seed =
-            EraSupervisor::<I>::era_seed(booking_block_hash, block.header().accumulated_seed());
+        let seed = EraSupervisor::<I>::era_seed(
+            booking_block_hash,
+            switch_block.header().accumulated_seed(),
+        );
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let slashed = self
             .era_supervisor
@@ -866,11 +869,15 @@ where
             newly_slashed,
             slashed,
             seed,
-            block.header().timestamp(),
-            block.height() + 1,
+            switch_block.header().timestamp(),
+            switch_block.height() + 1,
         );
         let mut effects = self.handle_consensus_outcomes(era_id, outcomes);
-        effects.extend(self.effect_builder.announce_block_handled(block).ignore());
+        effects.extend(
+            self.effect_builder
+                .announce_block_handled(switch_block)
+                .ignore(),
+        );
         effects
     }
 
