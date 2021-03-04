@@ -232,8 +232,8 @@ def create_chainspec(template, network_name, genesis_in, contract_paths):
 
     # Update the chainspec.
     show_val("Genesis", "{} (in {} seconds)".format(genesis_timestamp, genesis_in))
+    chainspec["protocol"]["activation_point"] = genesis_timestamp
     chainspec["network"]["name"] = network_name
-    chainspec["network"]["timestamp"] = genesis_timestamp
 
     # Setup WASM contracts.
     for contract in CONTRACTS:
@@ -304,7 +304,7 @@ def create_accounts_toml(output_file, pubkeys):
             'bonded_amount': f'{weight}'
         }
         accounts += [account]
-    
+
     toml.dump(accounts, output_file)
 
 

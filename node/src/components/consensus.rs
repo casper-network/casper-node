@@ -122,7 +122,7 @@ pub enum Event<I> {
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Timestamp,
+        genesis_start_time: Option<Timestamp>,
     },
     /// An event instructing us to shutdown if the latest era received no votes.
     Shutdown,

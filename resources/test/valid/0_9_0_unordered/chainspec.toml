@@ -1,13 +1,10 @@
 [protocol]
 version = '0.9.0'
 hard_reset = false
-
-[protocol.activation_point]
-era_id = 0
+activation_point = '2020-09-18T18:45:00Z'
 
 [network]
 name = 'test-chain'
-timestamp = '2020-09-18T18:45:00Z'
 
 [core]
 era_duration = '3minutes'

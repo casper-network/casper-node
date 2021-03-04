@@ -169,7 +169,7 @@ where
         let bonded_eras: u64 = protocol_config.unbonding_delay - protocol_config.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
-        let genesis_start_time = protocol_config.timestamp;
+        let genesis_start_time = protocol_config.genesis_timestamp;
         let protocol_version = ProtocolVersion::from_parts(
             protocol_config.protocol_version.major as u32,
             protocol_config.protocol_version.minor as u32,
@@ -519,7 +519,7 @@ where
         key_blocks: HashMap<EraId, BlockHeader>,
         activation_era_validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Timestamp,
+        genesis_start_time: Option<Timestamp>,
     ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
         let mut result_map = HashMap::new();
 
@@ -529,12 +529,12 @@ where
             let start_height;
             let era_start_time;
 
-            if era_id.is_genesis() {
+            if let Some(start_time) = genesis_start_time {
                 newly_slashed = vec![];
                 // The validator set was read from the global state: there's no key block for era 0.
                 validators = activation_era_validators.clone();
                 start_height = 0;
-                era_start_time = genesis_start_time;
+                era_start_time = start_time;
             } else {
                 // If this is not era 0, there must be a key block for it.
                 let key_block = key_blocks.get(&era_id).expect("missing key block");
@@ -805,7 +805,7 @@ where
         key_blocks: HashMap<EraId, BlockHeader>,
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Timestamp,
+        genesis_start_time: Option<Timestamp>,
     ) -> Effects<Event<I>> {
         let result_map = self.era_supervisor.handle_initialize_eras(
             key_blocks,
