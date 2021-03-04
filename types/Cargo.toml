@@ -21,7 +21,7 @@ ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand
 failure = { version = "0.1.8", default-features = false, features = ["failure_derive"] }
 hex = { version = "0.4.2", default-features = false }
 hex_fmt = "0.3.0"
-libsecp256k1 = { version = "0.3.5", default-features = false }
+k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "zeroize"] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.3.0", default-features = false }
@@ -51,6 +51,7 @@ std = [
     "ed25519-dalek/std",
     "ed25519-dalek/serde",
     "hex/std",
+    "k256/std",
     "serde/std",
     "serde_json/std",
     "schemars"

@@ -19,13 +19,13 @@ use ed25519_dalek::{
     SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
 };
 use hex_fmt::HexFmt;
+use k256::ecdsa::{
+    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
+    VerifyingKey as Secp256k1PublicKey,
+};
+
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use secp256k1::util::{
-    COMPRESSED_PUBLIC_KEY_SIZE as SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH,
-    FULL_PUBLIC_KEY_SIZE as SECP256K1_FULL_PUBLIC_KEY_LENGTH,
-    SECRET_KEY_SIZE as SECP256K1_SECRET_KEY_LENGTH, SIGNATURE_SIZE as SECP256K1_SIGNATURE_LENGTH,
-};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -54,6 +54,10 @@ const ED25519: &str = "Ed25519";
 /// Tag for secp256k1 variant
 pub const SECP256K1_TAG: u8 = 2;
 const SECP256K1: &str = "Secp256k1";
+
+const SECP256K1_SECRET_KEY_LENGTH: usize = 32;
+const SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH: usize = 33;
+const SECP256K1_SIGNATURE_LENGTH: usize = 64;
 
 /// Public key for system account
 pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
@@ -341,6 +345,12 @@ impl PublicKey {
 
     /// Constructs a new secp256k1 variant from a byte array.
     pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Result<Self, Error> {
+        Secp256k1PublicKey::from_sec1_bytes(&bytes).map_err(|err| {
+            Error::AsymmetricKey(format!(
+                "failed to construct Ed25519 public key from {:?}. Error: {:?}",
+                bytes, err
+            ))
+        })?;
         Ok(PublicKey::Secp256k1(bytes))
     }
 
@@ -376,59 +386,26 @@ impl AsymmetricType for PublicKey {
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        match bytes.as_ref().len() {
-            SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH => {
-                let bytes =
-                    <[u8; SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH]>::try_from(bytes.as_ref())
-                        .map_err(|err| {
-                            Error::AsymmetricKey(format!(
-                                "failed to construct compressed secp256k1 public key. \
-                                 Expected {} bytes, got {} bytes. \
-                                 Error: {}",
-                                SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH,
-                                bytes.as_ref().len(),
-                                err
-                            ))
-                        })?;
-                Ok(PublicKey::Secp256k1(bytes))
-            }
-            SECP256K1_FULL_PUBLIC_KEY_LENGTH => {
-                let bytes = <[u8; SECP256K1_FULL_PUBLIC_KEY_LENGTH]>::try_from(bytes.as_ref())
-                    .map_err(|err| {
-                        Error::AsymmetricKey(format!(
-                            "failed to construct full secp256k1 public key. \
-                             Expected {} bytes, got {} bytes. \
-                             Error: {}",
-                            SECP256K1_FULL_PUBLIC_KEY_LENGTH,
-                            bytes.as_ref().len(),
-                            err
-                        ))
-                    })?;
-                let public_key = secp256k1::PublicKey::parse(&bytes).map_err(|err| {
-                    Error::AsymmetricKey(format!("Error constructing public key: {:?}", err))
-                })?;
-                Ok(PublicKey::Secp256k1(public_key.serialize_compressed()))
-            }
-            unsupported_number_of_bytes => Err(Error::AsymmetricKey(format!(
-                "failed to construct secp256k1 public key. \
-                 Unsupported number of bytes: {}",
-                unsupported_number_of_bytes
-            ))),
-        }
+        let public_key = Secp256k1PublicKey::from_sec1_bytes(bytes.as_ref()).map_err(|err| {
+            Error::AsymmetricKey(format!(
+                "failed to construct secp256k1 public key. Error: {}",
+                err
+            ))
+        })?;
+        Ok(PublicKey::Secp256k1(public_key.to_bytes()))
     }
 }
 
-// TODO: Change this to TryFrom, since all zero Secp256k1 secrets are forbidden.
 impl From<&SecretKey> for PublicKey {
     fn from(secret_key: &SecretKey) -> PublicKey {
         match secret_key {
             SecretKey::System => PublicKey::System,
             SecretKey::Ed25519(secret_key) => PublicKey::Ed25519(secret_key.into()),
             SecretKey::Secp256k1(secret_key) => {
-                let secret_key = secp256k1::SecretKey::parse(secret_key).unwrap();
-                PublicKey::Secp256k1(
-                    secp256k1::PublicKey::from_secret_key(&secret_key).serialize_compressed(),
-                )
+                let public_key = Secp256k1SecretKey::from_bytes(secret_key)
+                    .map(Secp256k1PublicKey::from)
+                    .expect("cannot parse public key");
+                PublicKey::Secp256k1(public_key.to_bytes())
             }
         }
     }
@@ -610,7 +587,8 @@ pub enum Signature {
     // it is convenient and cheap to use `signature.as_ref()`.
     Ed25519([u8; ED25519_SIGNATURE_LENGTH]),
     /// secp256k1 signature.
-    Secp256k1([u8; SECP256K1_SIGNATURE_LENGTH]),
+    #[data_size(skip)] // Manually verified to have no data on the heap.
+    Secp256k1(Secp256k1Signature),
 }
 
 impl Signature {
@@ -637,7 +615,14 @@ impl Signature {
 
     /// Constructs a new secp256k1 variant from a byte array.
     pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Result<Self, Error> {
-        Ok(Signature::Secp256k1(bytes))
+        let signature = Secp256k1Signature::try_from(&bytes[..]).map_err(|_| {
+            Error::AsymmetricKey(format!(
+                "failed to construct secp256k1 signature from {:?}",
+                &bytes[..]
+            ))
+        })?;
+
+        Ok(Signature::Secp256k1(signature))
     }
 
     fn variant_name(&self) -> &str {
@@ -665,19 +650,13 @@ impl AsymmetricType for Signature {
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(Signature::Secp256k1(
-            <[u8; Self::SECP256K1_LENGTH]>::try_from(bytes.as_ref()).map_err(|err| {
-                Error::AsymmetricKey(format!(
-                    "failed to construct secp256k1 signature from {:?}. \
-                     Expected {} bytes, got {} bytes. \
-                     Error: {}",
-                    bytes.as_ref(),
-                    Self::SECP256K1_LENGTH,
-                    bytes.as_ref().len(),
-                    err
-                ))
-            })?,
-        ))
+        let signature = k256::ecdsa::Signature::try_from(bytes.as_ref()).map_err(|_| {
+            Error::AsymmetricKey(format!(
+                "failed to construct secp256k1 signature from {:?}",
+                bytes.as_ref()
+            ))
+        })?;
+        Ok(Signature::Secp256k1(signature))
     }
 }
 
@@ -873,7 +852,9 @@ mod detail {
             match public_key {
                 PublicKey::System => AsymmetricTypeAsBytes::System,
                 PublicKey::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
-                PublicKey::Secp256k1(secp256k1) => AsymmetricTypeAsBytes::Secp256k1(secp256k1),
+                PublicKey::Secp256k1(secp256k1) => {
+                    AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_ref())
+                }
             }
         }
     }

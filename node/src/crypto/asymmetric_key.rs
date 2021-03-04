@@ -4,7 +4,13 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use ed25519_dalek::ExpandedSecretKey;
-use openssl::sha::Sha256;
+use k256::ecdsa::{
+    signature::{Signer, Verifier},
+    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
+    VerifyingKey as Secp256k1PublicKey,
+};
+#[cfg(test)]
+use k256::elliptic_curve::sec1::ToEncodedPoint;
 use signature::Signature as _Signature;
 
 use casper_types::{PublicKey, SecretKey, Signature};
@@ -35,17 +41,13 @@ pub fn sign<T: AsRef<[u8]>>(
             let signature = expanded_secret_key.sign(message.as_ref(), public_key);
             Signature::Ed25519(signature.to_bytes())
         }
-        (SecretKey::Secp256k1(secret_key), PublicKey::Secp256k1(_public_key)) => {
-            let secret_key =
-                secp256k1::SecretKey::parse(secret_key).expect("should create secp256k1 secret");
-            let message_hash = {
-                let mut sha256 = Sha256::new();
-                sha256.update(message.as_ref());
-                sha256.finish()
-            };
-            let (signature, _) =
-                secp256k1::sign(&secp256k1::Message::parse(&message_hash), &secret_key);
-            Signature::Secp256k1(signature.serialize())
+        (SecretKey::Secp256k1(secret_key_bytes), PublicKey::Secp256k1(_public_key)) => {
+            let signer =
+                Secp256k1SecretKey::from_bytes(secret_key_bytes).expect("should construct signer");
+            let signature: Secp256k1Signature = signer
+                .try_sign(message.as_ref())
+                .expect("should create signature");
+            Signature::Secp256k1(signature)
         }
         _ => panic!("secret and public key types must match"),
     }
@@ -73,30 +75,19 @@ pub fn verify<T: AsRef<[u8]>>(
             )
             .map_err(|_| Error::AsymmetricKey(String::from("failed to verify Ed25519 signature"))),
         (Signature::Secp256k1(signature), PublicKey::Secp256k1(public_key_bytes)) => {
-            let public_key =
-                secp256k1::PublicKey::parse_compressed(public_key_bytes).map_err(|error| {
+            let verifier =
+                Secp256k1PublicKey::from_sec1_bytes(public_key_bytes).map_err(|error| {
                     Error::AsymmetricKey(format!(
-                        "failed to parse compressed secp256k1 public key {:?}: {}",
-                        &public_key_bytes[..],
-                        error
+                        "failed to create secp256k1 public key: {}.  Bytes: {:?}",
+                        error, public_key_bytes
                     ))
                 })?;
-            let message_hash = {
-                let mut sha256 = Sha256::new();
-                sha256.update(message.as_ref());
-                sha256.finish()
-            };
-            if secp256k1::verify(
-                &secp256k1::Message::parse(&message_hash),
-                &secp256k1::Signature::parse(signature),
-                &public_key,
-            ) {
-                Ok(())
-            } else {
-                Err(Error::AsymmetricKey(String::from(
-                    "failed to verify Ed25519 signature",
-                )))
-            }
+
+            verifier
+                .verify(message.as_ref(), signature)
+                .map_err(|error| {
+                    Error::AsymmetricKey(format!("failed to verify secp256k1 signature: {}", error))
+                })
         }
         _ => Err(Error::AsymmetricKey(format!(
             "type mismatch between {} and {}",
@@ -114,8 +105,9 @@ mod tests {
         iter,
     };
 
-    use openssl::pkey::{PKey, Private, Public};
     use rand::RngCore;
+
+    use openssl::pkey::{PKey, Private, Public};
 
     use casper_types::{bytesrepr, AsymmetricType, Tagged};
 
@@ -300,7 +292,7 @@ mod tests {
         assert_eq!(Some(Ordering::Equal), low.partial_cmp(&low_copy));
     }
 
-    mod test_ed25519 {
+    mod ed25519 {
         use rand::Rng;
 
         use casper_types::ED25519_TAG;
@@ -516,7 +508,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         }
     }
 
-    mod test_secp256k1 {
+    mod secp256k1 {
         use rand::Rng;
 
         use casper_types::SECP256K1_TAG;
@@ -759,35 +751,37 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
     fn should_construct_secp256k1_from_uncompressed_bytes() {
         let mut rng = crate::new_rng();
 
-        // Construct a secp256k1 secret key and use that to construct an uncompressed public key.
-        let secp256k1_secret_key_bytes = {
-            let mut bytes = [0u8; SecretKey::SECP256K1_LENGTH];
-            rng.fill_bytes(&mut bytes[..]);
-            bytes
-        };
-        let secp256k1_secret_key = secp256k1::SecretKey::parse(&secp256k1_secret_key_bytes)
-            .expect("should construct secret key");
-        let secp256k1_public_key = secp256k1::PublicKey::from_secret_key(&secp256k1_secret_key);
+        let mut secret_key_bytes = [0u8; SecretKey::SECP256K1_LENGTH];
+        rng.fill_bytes(&mut secret_key_bytes[..]);
+
+        // Construct a secp256k1 secret key and use that to construct a public key.
+        let secp256k1_secret_key = k256::SecretKey::from_bytes(secret_key_bytes).unwrap();
+        let secp256k1_public_key = secp256k1_secret_key.public_key();
 
         // Construct a CL secret key and public key from that (which will be a compressed key).
-        let secret_key = SecretKey::Secp256k1(secp256k1_secret_key_bytes);
+        let secret_key = SecretKey::Secp256k1(secret_key_bytes);
         let public_key = PublicKey::from(&secret_key);
         assert_eq!(public_key.as_ref().len(), PublicKey::SECP256K1_LENGTH);
         assert_ne!(
-            secp256k1_public_key.serialize().len(),
+            secp256k1_public_key
+                .to_encoded_point(false)
+                .as_bytes()
+                .len(),
             PublicKey::SECP256K1_LENGTH
         );
 
-        // Construct a CL public key from the uncompressed one's bytes and ensure it's compressed.
-        let from_uncompressed_bytes =
-            PublicKey::secp256k1_from_bytes(secp256k1_public_key.serialize_compressed()).unwrap();
+        // Construct a CL public key from uncompressed public key bytes and ensure it's compressed.
+        let from_uncompressed_bytes = PublicKey::secp256k1_from_bytes(
+            secp256k1_public_key.to_encoded_point(false).as_bytes(),
+        )
+        .unwrap();
         assert_eq!(public_key, from_uncompressed_bytes);
 
         // Construct a CL public key from the uncompressed one's hex representation and ensure it's
         // compressed.
         let uncompressed_hex = format!(
             "02{}",
-            hex::encode(secp256k1_public_key.serialize_compressed())
+            hex::encode(secp256k1_public_key.to_encoded_point(false).as_bytes())
         );
         let from_uncompressed_hex = PublicKey::from_hex(&uncompressed_hex).unwrap();
         assert_eq!(public_key, from_uncompressed_hex);
