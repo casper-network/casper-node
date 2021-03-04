@@ -139,7 +139,6 @@ function do_background_wasm_transfers() {
         transfers=100 \
         amount=2500000000 \
         node="$NODE_ID" \
-        # Do not create a nohup.out file.
         >/dev/null 2>&1 \
         &
 
@@ -149,14 +148,20 @@ function do_background_wasm_transfers() {
 
 function num_pending() {
     ENDPOINT="$(get_node_address_rest "$NODE_ID")"/metrics
-    NUM_PENDING=$(curl -s --location --request GET "$ENDPOINT" \
-        | grep "pending_deploy" \
-        | tail -n 1 \
-        | sed -r 's/.*pending_deploy ([0-9]+)/\1/g')
+    NUM_PENDING=""
+    while [ -z "$NUM_PENDING" ]
+    do
+        NUM_PENDING="$(curl -s --location --request GET "$ENDPOINT" \
+            | grep "pending_deploy" \
+            | tail -n 1 \
+            | sed -r 's/.*pending_deploy ([0-9]+)/\1/g')"
+        sleep 1
+    done
+    # echo "Num pending: $NUM_PENDING"
 }
 
 function do_verify_deploys_drain() {
-    log_step "waiting for pendings deploys to drain"
+    log_step "waiting for pending deploys to drain"
     num_pending
 
     while [[ "$NUM_PENDING" > "0" ]]
