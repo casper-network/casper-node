@@ -324,6 +324,7 @@ async fn get_switch_block_hash(
     *switch_block_hash
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_joiner() {
     testing::init_logging();
