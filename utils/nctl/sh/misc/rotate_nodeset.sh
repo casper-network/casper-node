@@ -101,7 +101,7 @@ function do_submit_auction_bids()
     do
         log "----- ----- ----- ----- ----- -----"
         BID_AMOUNT=$(get_node_staking_weight "$NODE_ID")
-        BID_DELEGATION_RATE=125
+        BID_DELEGATION_RATE=2
 
         source "$NCTL"/sh/contracts-auction/do_bid.sh \
             node="$NODE_ID" \

@@ -26,20 +26,19 @@ use casper_types::{
             DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-            METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-            METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-            VALIDATOR_SLOTS_KEY,
+            METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
+            METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        handle_payment::{
+            self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
+            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
         },
         mint::{
             self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
             ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
             METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
-        },
-        proof_of_stake::{
-            ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
         },
         standard_payment::METHOD_PAY,
     },
@@ -74,7 +73,6 @@ use crate::{
 };
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
-pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 #[derive(Debug, Serialize)]
@@ -845,29 +843,29 @@ where
         Ok(mint_hash)
     }
 
-    pub fn create_proof_of_stake(&self) -> Result<ContractHash, GenesisError> {
-        let proof_of_stake_payment_purse = self.create_purse(
+    pub fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
+        let handle_payment_payment_purse = self.create_purse(
             U512::zero(),
             DeployHash::new(self.genesis_config_hash.value()),
         )?;
 
         let named_keys = {
             let mut named_keys = NamedKeys::new();
-            let named_key = Key::URef(proof_of_stake_payment_purse);
-            named_keys.insert(POS_PAYMENT_PURSE.to_string(), named_key);
+            let named_key = Key::URef(handle_payment_payment_purse);
+            named_keys.insert(handle_payment::PAYMENT_PURSE_KEY.to_string(), named_key);
             named_keys
         };
 
-        let entry_points = self.proof_of_stake_entry_points();
+        let entry_points = self.handle_payment_entry_points();
 
         let access_key = self
             .uref_address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let (_, proof_of_stake_hash) = self.store_contract(access_key, named_keys, entry_points);
+        let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(proof_of_stake_hash)
+        Ok(handle_payment_hash)
     }
 
     pub(crate) fn create_auction(&self) -> Result<ContractHash, GenesisError> {
@@ -1358,7 +1356,7 @@ where
         entry_points
     }
 
-    fn proof_of_stake_entry_points(&self) -> EntryPoints {
+    fn handle_payment_entry_points(&self) -> EntryPoints {
         let mut entry_points = EntryPoints::new();
 
         let get_payment_purse = EntryPoint::new(
@@ -1410,15 +1408,6 @@ where
             METHOD_GET_ERA_VALIDATORS,
             vec![],
             Option::<ValidatorWeights>::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-            vec![],
-            SeigniorageRecipients::cl_type(),
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );

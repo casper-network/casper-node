@@ -231,7 +231,7 @@ impl ExecutionResult {
             Some(cost) => cost,
             None => return Some(ForcedTransferResult::GasConversionOverflow),
         };
-        // payment_code_spec_3_b_ii: if (balance of PoS pay purse) < (gas spent during
+        // payment_code_spec_3_b_ii: if (balance of handle payment pay purse) < (gas spent during
         // payment code execution) * gas_price, no session
         let insufficient_balance_to_continue = payment_purse_balance < payment_result_cost;
 

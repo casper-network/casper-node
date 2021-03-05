@@ -66,6 +66,11 @@ impl Delegator {
         &self.staked_amount
     }
 
+    /// Returns the mutable staked amount
+    pub fn staked_amount_mut(&mut self) -> &mut U512 {
+        &mut self.staked_amount
+    }
+
     /// Returns the bonding purse
     pub fn bonding_purse(&self) -> &URef {
         &self.bonding_purse

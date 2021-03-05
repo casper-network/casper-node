@@ -112,7 +112,7 @@ fn should_run_genesis() {
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
     let mint_contract_hash = builder.get_mint_contract_hash();
-    let pos_contract_hash = builder.get_pos_contract_hash();
+    let handle_payment_contract_hash = builder.get_handle_payment_contract_hash();
 
     let result = builder.query(None, mint_contract_hash.into(), &[]);
     if let Ok(StoredValue::Contract(_)) = result {
@@ -121,10 +121,12 @@ fn should_run_genesis() {
         panic!("contract not found at mint hash");
     }
 
-    if let Ok(StoredValue::Contract(_)) = builder.query(None, pos_contract_hash.into(), &[]) {
-        // Contract exists at pos contract hash
+    if let Ok(StoredValue::Contract(_)) =
+        builder.query(None, handle_payment_contract_hash.into(), &[])
+    {
+        // Contract exists at handle payment contract hash
     } else {
-        panic!("contract not found at pos hash");
+        panic!("contract not found at handle payment hash");
     }
 }
 

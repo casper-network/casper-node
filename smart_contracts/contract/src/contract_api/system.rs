@@ -49,11 +49,11 @@ pub fn get_mint() -> ContractHash {
     get_system_contract(SystemContractType::Mint)
 }
 
-/// Returns a read-only pointer to the Proof of Stake contract.
+/// Returns a read-only pointer to the Handle Payment contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
-pub fn get_proof_of_stake() -> ContractHash {
-    get_system_contract(SystemContractType::ProofOfStake)
+pub fn get_handle_payment() -> ContractHash {
+    get_system_contract(SystemContractType::HandlePayment)
 }
 
 /// Returns a read-only pointer to the Standard Payment contract.

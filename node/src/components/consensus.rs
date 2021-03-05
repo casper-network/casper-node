@@ -35,8 +35,8 @@ use crate::{
         announcements::ConsensusAnnouncement,
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, NetworkRequest,
-            StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -51,6 +51,9 @@ pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+
+#[cfg(test)]
+pub(crate) use era_supervisor::oldest_bonded_era;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
@@ -119,9 +122,10 @@ pub enum Event<I> {
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
         key_blocks: HashMap<EraId, BlockHeader>,
+        /// This is empty except if the activation era still needs to be instantiated: Its
+        /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Timestamp,
     },
     /// An event instructing us to shutdown if the latest era received no votes.
     Shutdown,
@@ -248,6 +252,7 @@ pub trait ReactorEventT<I>:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
+    + From<LinearChainRequest<I>>
 {
 }
 
@@ -263,6 +268,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
+        + From<LinearChainRequest<I>>
 {
 }
 
@@ -328,14 +334,9 @@ where
                 key_blocks,
                 validators,
                 timestamp,
-                genesis_start_time,
             } => {
-                let mut effects = handling_es.handle_initialize_eras(
-                    key_blocks,
-                    validators,
-                    timestamp,
-                    genesis_start_time,
-                );
+                let mut effects =
+                    handling_es.handle_initialize_eras(key_blocks, validators, timestamp);
 
                 // TODO: remove that when possible
                 // This is needed because we want to make sure that we only try to handle linear

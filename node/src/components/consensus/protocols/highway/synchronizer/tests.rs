@@ -13,7 +13,6 @@ use crate::components::consensus::{
 fn purge_vertices() {
     let params = test_params(0);
     let mut state = State::new(WEIGHTS, params.clone(), vec![]);
-    let mut rng = crate::new_rng();
 
     // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
     //
@@ -22,11 +21,11 @@ fn purge_vertices() {
     // Carol   c0 — c1 — c2
     //            \
     // Bob          ————————— b0 — b1
-    let c0 = add_unit!(state, rng, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
-    let c1 = add_unit!(state, rng, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
-    let c2 = add_unit!(state, rng, CAROL, 0x1A, 4u8, None; N, N, c1).unwrap();
-    let b0 = add_unit!(state, rng, BOB, 0x2A, 4u8, None; N, N, c0).unwrap();
-    let b1 = add_unit!(state, rng, BOB, 0x3A, 4u8, None; N, b0, c0).unwrap();
+    let c0 = add_unit!(state, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
+    let c1 = add_unit!(state, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
+    let c2 = add_unit!(state, CAROL, 0x1A, 4u8, None; N, N, c1).unwrap();
+    let b0 = add_unit!(state, BOB, 0x2A, 4u8, None; N, N, c0).unwrap();
+    let b1 = add_unit!(state, BOB, 0x3A, 4u8, None; N, b0, c0).unwrap();
 
     // A Highway instance that's just used to create PreValidatedVertex instances below.
     let util_highway =
@@ -82,7 +81,7 @@ fn purge_vertices() {
     assert_eq!(Dependency::Unit(c0), maybe_pv.unwrap().vertex().id());
     assert!(outcomes.is_empty());
     let vv_c0 = highway.validate_vertex(pvv(c0)).expect("c0 is valid");
-    highway.add_valid_vertex(vv_c0, &mut rng, now);
+    highway.add_valid_vertex(vv_c0, now);
     let outcomes = sync.remove_satisfied_deps(&highway);
     assert!(
         matches!(*outcomes, [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]),

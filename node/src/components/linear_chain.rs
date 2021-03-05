@@ -7,6 +7,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::{IntGauge, Registry};
 use tracing::{debug, error, info, warn};
@@ -27,10 +28,8 @@ use crate::{
     types::{
         Block, BlockByHeight, BlockHash, BlockSignatures, DeployHash, FinalitySignature, Timestamp,
     },
-    NodeRng,
+    unregister_metric, NodeRng,
 };
-
-use futures::FutureExt;
 
 /// The maximum number of finality signatures from a single validator we keep in memory while
 /// waiting for their block.
@@ -610,7 +609,7 @@ struct LinearChainMetrics {
 }
 
 impl LinearChainMetrics {
-    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let block_completion_duration = IntGauge::new(
             "block_completion_duration",
             "duration of time from consensus through execution for a block",
@@ -622,12 +621,9 @@ impl LinearChainMetrics {
         })
     }
 }
+
 impl Drop for LinearChainMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.block_completion_duration.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect unregister of block_completion_duration to fail"),
-            );
+        unregister_metric!(self.registry, self.block_completion_duration);
     }
 }

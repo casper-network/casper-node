@@ -8,7 +8,7 @@ const SET_REFUND_PURSE: &str = "set_refund_purse";
 const ARG_PURSE: &str = "purse";
 
 fn malicious_revenue_stealing_contract() {
-    let contract_hash = system::get_proof_of_stake();
+    let contract_hash = system::get_handle_payment();
 
     let args = runtime_args! {
         ARG_PURSE => system::create_purse(),

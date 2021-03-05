@@ -301,3 +301,18 @@ where
 {
     (numerator + denominator / T::from(2)) / denominator
 }
+
+/// Used to unregister a metric from the Prometheus registry.
+#[macro_export]
+macro_rules! unregister_metric {
+    ($registry:expr, $metric:expr) => {
+        $registry
+            .unregister(Box::new($metric.clone()))
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    "unregistering {} failed: was not registered",
+                    stringify!($metric)
+                )
+            });
+    };
+}

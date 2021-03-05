@@ -1,11 +1,11 @@
 [package]
-name = "pos-refund-purse"
+name = "refund-purse"
 version = "0.1.0"
 authors = ["Michael Birch <birchmd@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "pos_refund_purse"
+name = "refund_purse"
 path = "src/main.rs"
 bench = false
 doctest = false

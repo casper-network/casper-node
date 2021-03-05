@@ -1,11 +1,11 @@
 [package]
-name = "pos-get-payment-purse"
+name = "get-payment-purse"
 version = "0.1.0"
 authors = ["Michael Birch <birchmd@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "pos_get_payment_purse"
+name = "get_payment_purse"
 path = "src/main.rs"
 bench = false
 doctest = false

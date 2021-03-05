@@ -1,15 +1,17 @@
 use prometheus::{IntGauge, Registry};
 
+use crate::unregister_metric;
+
 #[derive(Debug, Clone)]
-pub struct BlockExecutorMetrics {
+pub(super) struct BlockExecutorMetrics {
     /// The current chain height.
-    pub chain_height: IntGauge,
+    pub(super) chain_height: IntGauge,
     /// registry component.
     registry: Registry,
 }
 
 impl BlockExecutorMetrics {
-    pub fn new(registry: Registry) -> Result<Self, prometheus::Error> {
+    pub(super) fn new(registry: Registry) -> Result<Self, prometheus::Error> {
         let chain_height = IntGauge::new("chain_height", "current chain height")?;
         registry.register(Box::new(chain_height.clone()))?;
         Ok(BlockExecutorMetrics {
@@ -21,9 +23,7 @@ impl BlockExecutorMetrics {
 
 impl Drop for BlockExecutorMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.chain_height.clone()))
-            .expect("did not expect deregistering chain_height to fail");
+        unregister_metric!(self.registry, self.chain_height);
     }
 }
 

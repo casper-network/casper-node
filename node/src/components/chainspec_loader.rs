@@ -152,7 +152,8 @@ impl Display for NextUpgrade {
         write!(
             formatter,
             "next upgrade to {} at start of era {}",
-            self.protocol_version, self.activation_point.era_id
+            self.protocol_version,
+            self.activation_point.era_id()
         )
     }
 }
@@ -313,7 +314,7 @@ impl ChainspecLoader {
         self.chainspec
             .protocol_config
             .hard_reset
-            .then(|| self.chainspec.protocol_config.activation_point.era_id)
+            .then(|| self.chainspec.protocol_config.activation_point.era_id())
     }
 
     fn handle_initialize<REv>(
@@ -367,7 +368,7 @@ impl ChainspecLoader {
         let cached_protocol_version =
             maybe_cached_protocol_version.unwrap_or_else(|| Version::new(1, 0, 0));
         let current_chainspec_activation_point =
-            self.chainspec.protocol_config.activation_point.era_id;
+            self.chainspec.protocol_config.activation_point.era_id();
 
         if highest_block_era_id.successor() == current_chainspec_activation_point {
             if highest_block.header().is_switch_block() {
@@ -404,7 +405,7 @@ impl ChainspecLoader {
         }
 
         let next_upgrade_activation_point = match self.next_upgrade {
-            Some(ref next_upgrade) => next_upgrade.activation_point.era_id,
+            Some(ref next_upgrade) => next_upgrade.activation_point.era_id(),
             None => {
                 // This is a valid run, restarted after an unplanned shutdown.
                 debug_assert!(cached_protocol_version == self.chainspec.protocol_config.version);
@@ -475,7 +476,7 @@ impl ChainspecLoader {
             new_version,
             Some(self.chainspec.wasm_config),
             Some(self.chainspec.system_costs_config),
-            Some(self.chainspec.protocol_config.activation_point.era_id.0),
+            Some(self.chainspec.protocol_config.activation_point.era_id().0),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),
             Some(self.chainspec.core_config.locked_funds_period.millis()),

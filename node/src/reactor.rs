@@ -48,7 +48,7 @@ use futures::{future::BoxFuture, FutureExt};
 use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
-use quanta::IntoNanoseconds;
+use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
@@ -59,12 +59,12 @@ use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
+    unregister_metric,
     utils::{self, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
-use quanta::Clock;
 pub use queue_kind::QueueKind;
 
 /// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
@@ -303,21 +303,16 @@ where
 struct RunnerMetrics {
     /// Total number of events processed.
     events: IntCounter,
-
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-
-    /// Handle to the metrics registry, in case we need to unregister.
-    registry: Registry,
-
     /// Total allocated RAM in bytes, as reported by jemalloc.
     allocated_ram_bytes: IntGauge,
-
     /// Total consumed RAM in bytes, as reported by sys-info.
     consumed_ram_bytes: IntGauge,
-
     /// Total system RAM in bytes, as reported by sys-info.
     total_ram_bytes: IntGauge,
+    /// Handle to the metrics registry, in case we need to unregister.
+    registry: Registry,
 }
 
 impl RunnerMetrics {
@@ -379,21 +374,11 @@ impl RunnerMetrics {
 
 impl Drop for RunnerMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.events.clone()))
-            .expect("did not expect deregistering events to fail");
-        self.registry
-            .unregister(Box::new(self.event_dispatch_duration.clone()))
-            .expect("did not expect deregistering event_dispatch_duration to fail");
-        self.registry
-            .unregister(Box::new(self.allocated_ram_bytes.clone()))
-            .expect("did not expect deregistering allocated_ram_bytes to fail");
-        self.registry
-            .unregister(Box::new(self.consumed_ram_bytes.clone()))
-            .expect("did not expect deregistering consumed_ram_bytes to fail");
-        self.registry
-            .unregister(Box::new(self.total_ram_bytes.clone()))
-            .expect("did not expect deregistering total_ram_bytes to fail");
+        unregister_metric!(self.registry, self.events);
+        unregister_metric!(self.registry, self.event_dispatch_duration);
+        unregister_metric!(self.registry, self.allocated_ram_bytes);
+        unregister_metric!(self.registry, self.consumed_ram_bytes);
+        unregister_metric!(self.registry, self.total_ram_bytes);
     }
 }
 
