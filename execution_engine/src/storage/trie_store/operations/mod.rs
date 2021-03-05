@@ -248,7 +248,7 @@ where
     let mut missing_descendants = Vec::new();
     let mut visited = HashSet::new();
     while let Some(trie_key) = trie_keys_to_visit.pop() {
-        if !visited.insert(trie_key.clone()) {
+        if !visited.insert(trie_key) {
             continue;
         }
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
