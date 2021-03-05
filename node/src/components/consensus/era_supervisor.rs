@@ -673,6 +673,10 @@ where
             }
         }
     } else {
+        // If there's no booking block for the `era_id`
+        // (b/c it would have been from before Genesis, upgrade or emergency restart),
+        // use a "zero" block hash. This should not hurt the security of the leader selection
+        // algorithm.
         BlockHash::default()
     }
 }
@@ -859,29 +863,16 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
-            let effect = match self.era_supervisor.booking_block_era_id(new_era_id) {
-                Some(booking_block_era_id) => self
-                    .effect_builder
-                    .get_switch_block_at_era_id_from_storage(booking_block_era_id)
-                    .event(move |booking_block| Event::CreateNewEra {
-                        block: Box::new(block),
-                        booking_block_hash: booking_block
-                            .map_or_else(|| Err(booking_block_era_id), |block| Ok(*block.hash())),
-                    }),
-                None => {
-                    // If there's no booking block for the new era
-                    // (b/c it would have been from before Genesis, upgrade or emergency restart),
-                    // use a "zero" block hash. This should not hurt the security of the leader
-                    // selection algorithm.
-                    let zero_booking_block_hash = BlockHash::default();
-                    self.effect_builder
-                        .immediately()
-                        .event(move |_| Event::CreateNewEra {
-                            block: Box::new(block),
-                            booking_block_hash: Ok(zero_booking_block_hash),
-                        })
-                }
-            };
+            let effect = get_booking_block_hash(
+                self.effect_builder,
+                new_era_id,
+                self.era_supervisor.protocol_config.auction_delay,
+                self.era_supervisor.protocol_config.last_activation_point,
+            )
+            .event(|booking_block_hash| Event::CreateNewEra {
+                block: Box::new(block),
+                booking_block_hash: Ok(booking_block_hash),
+            });
             effects.extend(effect);
         } else {
             // if it's not a switch block, we can already declare it handled
