@@ -283,14 +283,6 @@ where
         }
     }
 
-    fn booking_block_era_id(&self, era_id: EraId) -> Option<EraId> {
-        valid_booking_block_era_id(
-            era_id,
-            self.protocol_config.auction_delay,
-            self.protocol_config.last_activation_point,
-        )
-    }
-
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let mut result = [0; Digest::LENGTH];
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
@@ -662,7 +654,7 @@ where
             .get_switch_block_at_era_id_from_storage(booking_block_era_id)
             .await
         {
-            Some(block) => block.hash().clone(),
+            Some(block) => *block.hash(),
             None => {
                 error!(
                     ?era_id,
