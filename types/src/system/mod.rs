@@ -4,8 +4,6 @@ pub mod handle_payment;
 pub mod mint;
 pub mod standard_payment;
 
-// use thiserror::Error;
-
 pub use error::Error;
 pub use system_contract_type::{
     SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
