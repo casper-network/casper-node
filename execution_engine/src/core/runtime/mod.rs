@@ -1639,16 +1639,6 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
 
-            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_seigniorage_recipients)?;
-
-                let result = runtime
-                    .read_seigniorage_recipients()
-                    .map_err(Self::reverter)?;
-
-                CLValue::from_t(result).map_err(Self::reverter)
-            })(),
-
             auction::METHOD_ADD_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
 

@@ -42,7 +42,7 @@ where
             correlation_id,
             &txn,
             source_store,
-            root.to_owned(),
+            vec![root.to_owned()],
         )?;
         assert_eq!(missing_from_source, Vec::new());
         txn.commit()?;
@@ -70,7 +70,7 @@ where
                 correlation_id,
                 &target_txn,
                 target_store,
-                trie_key,
+                vec![trie_key],
             )?;
 
             queue.extend(new_keys);
@@ -86,7 +86,7 @@ where
             correlation_id,
             &target_txn,
             target_store,
-            root.to_owned(),
+            vec![root.to_owned()],
         )?;
         assert_eq!(missing_from_target, Vec::new());
         target_txn.commit()?;
@@ -195,7 +195,7 @@ where
             correlation_id,
             &txn,
             target_store,
-            root.to_owned(),
+            vec![root.to_owned()],
         )?;
         txn.commit()?;
         assert_eq!(missing_from_target.len(), usize::one());
@@ -234,7 +234,7 @@ where
                 correlation_id,
                 &target_txn,
                 target_store,
-                trie_key,
+                vec![trie_key],
             )?;
 
             queue.extend(new_keys);
@@ -251,7 +251,7 @@ where
             correlation_id,
             &txn,
             target_store,
-            root.to_owned(),
+            vec![root.to_owned()],
         )?;
         txn.commit()?;
         assert_eq!(missing_from_target, Vec::new());

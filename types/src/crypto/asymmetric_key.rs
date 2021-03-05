@@ -14,9 +14,16 @@ use core::{
 };
 
 use datasize::DataSize;
-use ed25519_dalek::ed25519::signature::Signature as _Signature;
+use ed25519_dalek::{
+    ed25519::signature::Signature as _Signature, PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH,
+    SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
+};
 use hex_fmt::HexFmt;
-use k256::{self, ecdsa};
+use k256::ecdsa::{
+    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
+    VerifyingKey as Secp256k1PublicKey,
+};
+
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -107,14 +114,12 @@ pub trait AsymmetricType: Sized + AsRef<[u8]> + Tagged<u8> {
 #[derive(DataSize)]
 pub enum SecretKey {
     /// System secret key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
     System,
     /// Ed25519 secret key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::SecretKey),
     /// secp256k1 secret key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
-    Secp256k1(k256::SecretKey),
+    Secp256k1([u8; SECP256K1_SECRET_KEY_LENGTH]),
 }
 
 impl SecretKey {
@@ -122,7 +127,7 @@ impl SecretKey {
     pub const SYSTEM_LENGTH: usize = 0;
 
     /// The length in bytes of an Ed25519 secret key.
-    pub const ED25519_LENGTH: usize = ed25519_dalek::SECRET_KEY_LENGTH;
+    pub const ED25519_LENGTH: usize = ED25519_SECRET_KEY_LENGTH;
 
     /// The length in bytes of a secp256k1 secret key.
     pub const SECP256K1_LENGTH: usize = SECP256K1_SECRET_KEY_LENGTH;
@@ -136,9 +141,7 @@ impl SecretKey {
 
     /// Constructs a new secp256k1 variant from a byte array.
     pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Self {
-        // safe to unwrap as `SecretKey::from_bytes` can only fail if the provided slice is the
-        // wrong length.
-        SecretKey::Secp256k1(k256::SecretKey::from_bytes(&bytes).unwrap())
+        SecretKey::Secp256k1(bytes)
     }
 
     /// Exposes the secret values of the key as a byte slice.
@@ -146,7 +149,7 @@ impl SecretKey {
         match self {
             SecretKey::System => &[],
             SecretKey::Ed25519(secret_key) => secret_key.as_ref(),
-            SecretKey::Secp256k1(secret_key) => secret_key.as_bytes().as_slice(),
+            SecretKey::Secp256k1(secret_key) => secret_key,
         }
     }
 
@@ -178,11 +181,14 @@ impl AsymmetricType for SecretKey {
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
         Ok(SecretKey::Secp256k1(
-            k256::SecretKey::from_bytes(bytes.as_ref()).map_err(|_| {
+            <[u8; Self::SECP256K1_LENGTH]>::try_from(bytes.as_ref()).map_err(|err| {
                 Error::AsymmetricKey(format!(
-                    "failed to construct secp256k1 secret key.  Expected {} bytes, got {} bytes.",
+                    "failed to construct secp256k1 secret key. \
+                     Expected {} bytes, got {} bytes. \
+                     Error: {}",
                     Self::SECP256K1_LENGTH,
-                    bytes.as_ref().len()
+                    bytes.as_ref().len(),
+                    err
                 ))
             })?,
         ))
@@ -194,7 +200,7 @@ impl AsRef<[u8]> for SecretKey {
         match self {
             SecretKey::System => &[],
             SecretKey::Ed25519(secret_key) => secret_key.as_ref(),
-            SecretKey::Secp256k1(secret_key) => secret_key.as_bytes(),
+            SecretKey::Secp256k1(secret_key) => secret_key,
         }
     }
 }
@@ -203,8 +209,8 @@ impl Clone for SecretKey {
     fn clone(&self) -> Self {
         match self {
             SecretKey::System => SecretKey::System,
-            SecretKey::Ed25519(sk) => Self::ed25519_from_bytes(sk.as_ref()).unwrap(),
-            SecretKey::Secp256k1(sk) => Self::secp256k1_from_bytes(sk.as_bytes()).unwrap(),
+            SecretKey::Ed25519(sk) => Self::ed25519(*sk.as_bytes()),
+            SecretKey::Secp256k1(sk) => Self::secp256k1(*sk),
         }
     }
 }
@@ -251,10 +257,9 @@ impl ToBytes for SecretKey {
                 let ed25519_bytes = public_key.as_bytes();
                 buffer.extend_from_slice(ed25519_bytes);
             }
-            SecretKey::Secp256k1(public_key) => {
+            SecretKey::Secp256k1(secret_key) => {
                 buffer.insert(0, SECP256K1_TAG);
-                let secp256k1_bytes = public_key.as_bytes();
-                buffer.extend_from_slice(secp256k1_bytes);
+                buffer.extend_from_slice(secret_key);
             }
         }
         Ok(buffer)
@@ -308,14 +313,12 @@ impl<'de> Deserialize<'de> for SecretKey {
 #[derive(Clone, Copy, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// System public key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
     System,
     /// Ed25519 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::PublicKey),
     /// secp256k1 public key.
-    #[data_size(skip)] // Manually verified to have no data on the heap.
-    Secp256k1(k256::PublicKey),
+    Secp256k1([u8; SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH]),
 }
 
 impl PublicKey {
@@ -323,7 +326,7 @@ impl PublicKey {
     pub const SYSTEM_LENGTH: usize = 0;
 
     /// The length in bytes of an Ed25519 public key.
-    pub const ED25519_LENGTH: usize = ed25519_dalek::PUBLIC_KEY_LENGTH;
+    pub const ED25519_LENGTH: usize = ED25519_PUBLIC_KEY_LENGTH;
 
     /// The length in bytes of a secp256k1 public key.
     pub const SECP256K1_LENGTH: usize = SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH;
@@ -342,14 +345,13 @@ impl PublicKey {
 
     /// Constructs a new secp256k1 variant from a byte array.
     pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Result<Self, Error> {
-        Ok(PublicKey::Secp256k1(
-            k256::PublicKey::from_bytes(&bytes[..]).ok_or_else(|| {
-                Error::AsymmetricKey(format!(
-                    "failed to construct secp256k1 public key from {:?}",
-                    &bytes[..]
-                ))
-            })?,
-        ))
+        Secp256k1PublicKey::from_sec1_bytes(&bytes).map_err(|err| {
+            Error::AsymmetricKey(format!(
+                "failed to construct secp256k1 public key from {:?}. Error: {:?}",
+                bytes, err
+            ))
+        })?;
+        Ok(PublicKey::Secp256k1(bytes))
     }
 
     /// Creates an `AccountHash` from a given `PublicKey` instance.
@@ -384,15 +386,13 @@ impl AsymmetricType for PublicKey {
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        let mut public_key = k256::PublicKey::from_bytes(bytes.as_ref()).ok_or_else(|| {
+        let public_key = Secp256k1PublicKey::from_sec1_bytes(bytes.as_ref()).map_err(|err| {
             Error::AsymmetricKey(format!(
-                "failed to construct secp256k1 public key.  Expected {} bytes, got {} bytes.",
-                Self::SECP256K1_LENGTH,
-                bytes.as_ref().len()
+                "failed to construct secp256k1 public key. Error: {}",
+                err
             ))
         })?;
-        public_key.compress();
-        Ok(PublicKey::Secp256k1(public_key))
+        Ok(PublicKey::Secp256k1(public_key.to_bytes()))
     }
 }
 
@@ -401,10 +401,12 @@ impl From<&SecretKey> for PublicKey {
         match secret_key {
             SecretKey::System => PublicKey::System,
             SecretKey::Ed25519(secret_key) => PublicKey::Ed25519(secret_key.into()),
-            SecretKey::Secp256k1(secret_key) => PublicKey::Secp256k1(
-                k256::PublicKey::from_secret_key(secret_key, true)
-                    .expect("should create secp256k1 public key"),
-            ),
+            SecretKey::Secp256k1(secret_key) => {
+                let public_key = Secp256k1SecretKey::from_bytes(secret_key)
+                    .map(Secp256k1PublicKey::from)
+                    .expect("cannot parse public key");
+                PublicKey::Secp256k1(public_key.to_bytes())
+            }
         }
     }
 }
@@ -420,7 +422,7 @@ impl AsRef<[u8]> for PublicKey {
         match self {
             PublicKey::System => &[],
             PublicKey::Ed25519(public_key) => public_key.as_ref(),
-            PublicKey::Secp256k1(public_key) => public_key.as_ref(),
+            PublicKey::Secp256k1(public_key) => public_key,
         }
     }
 }
@@ -499,8 +501,7 @@ impl ToBytes for PublicKey {
             }
             PublicKey::Secp256k1(public_key) => {
                 buffer.insert(0, SECP256K1_TAG);
-                let secp256k1_bytes = public_key.as_bytes();
-                buffer.extend_from_slice(secp256k1_bytes);
+                buffer.extend_from_slice(public_key);
             }
         }
         Ok(buffer)
@@ -584,10 +585,10 @@ pub enum Signature {
     // This is held as a byte array rather than an `ed25519_dalek::Signature` as that type doesn't
     // implement `AsRef` amongst other common traits.  In order to implement these common traits,
     // it is convenient and cheap to use `signature.as_ref()`.
-    Ed25519([u8; ed25519_dalek::SIGNATURE_LENGTH]),
+    Ed25519([u8; ED25519_SIGNATURE_LENGTH]),
     /// secp256k1 signature.
     #[data_size(skip)] // Manually verified to have no data on the heap.
-    Secp256k1(ecdsa::Signature),
+    Secp256k1(Secp256k1Signature),
 }
 
 impl Signature {
@@ -595,7 +596,7 @@ impl Signature {
     pub const SYSTEM_LENGTH: usize = 0;
 
     /// The length in bytes of an Ed25519 signature,
-    pub const ED25519_LENGTH: usize = ed25519_dalek::SIGNATURE_LENGTH;
+    pub const ED25519_LENGTH: usize = ED25519_SIGNATURE_LENGTH;
 
     /// The length in bytes of a secp256k1 signature
     pub const SECP256K1_LENGTH: usize = SECP256K1_SIGNATURE_LENGTH;
@@ -614,7 +615,7 @@ impl Signature {
 
     /// Constructs a new secp256k1 variant from a byte array.
     pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Result<Self, Error> {
-        let signature = ecdsa::Signature::try_from(&bytes[..]).map_err(|_| {
+        let signature = Secp256k1Signature::try_from(&bytes[..]).map_err(|_| {
             Error::AsymmetricKey(format!(
                 "failed to construct secp256k1 signature from {:?}",
                 &bytes[..]
@@ -649,7 +650,7 @@ impl AsymmetricType for Signature {
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        let signature = ecdsa::Signature::try_from(bytes.as_ref()).map_err(|_| {
+        let signature = k256::ecdsa::Signature::try_from(bytes.as_ref()).map_err(|_| {
             Error::AsymmetricKey(format!(
                 "failed to construct secp256k1 signature from {:?}",
                 bytes.as_ref()
@@ -841,9 +842,7 @@ mod detail {
             match secret_key {
                 SecretKey::System => AsymmetricTypeAsBytes::System,
                 SecretKey::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
-                SecretKey::Secp256k1(secp256k1) => {
-                    AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_bytes().as_slice())
-                }
+                SecretKey::Secp256k1(secp256k1) => AsymmetricTypeAsBytes::Secp256k1(secp256k1),
             }
         }
     }

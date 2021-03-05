@@ -5,14 +5,13 @@ extern crate alloc;
 
 use alloc::{collections::BTreeMap, string::String};
 
-use casper_contract::contract_api::{runtime, storage, system};
+use casper_contract::contract_api::{runtime, system};
 
 use casper_types::{
     runtime_args,
     system::auction::{
-        SeigniorageRecipients, ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS,
-        ARG_VALIDATOR, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-        METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
+        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR,
+        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
     },
     ApiError, PublicKey, RuntimeArgs, U512,
 };
@@ -22,7 +21,6 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
-const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 
 #[repr(u16)]
 enum Error {
@@ -41,7 +39,6 @@ pub extern "C" fn call() {
             undelegate();
         }
         ARG_RUN_AUCTION => run_auction(),
-        ARG_READ_SEIGNIORAGE_RECIPIENTS => read_seigniorage_recipients(),
         METHOD_DISTRIBUTE => distribute(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     };
@@ -81,15 +78,6 @@ fn run_auction() {
     let era_end_timestamp_millis: u64 = runtime::get_named_arg(ARG_ERA_END_TIMESTAMP_MILLIS);
     let args = runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis };
     runtime::call_contract::<()>(auction, METHOD_RUN_AUCTION, args);
-}
-
-fn read_seigniorage_recipients() {
-    let auction = system::get_auction();
-    let args = runtime_args! {};
-    let result: SeigniorageRecipients =
-        runtime::call_contract(auction, METHOD_READ_SEIGNIORAGE_RECIPIENTS, args);
-    let uref = storage::new_uref(result);
-    runtime::put_key("seigniorage_recipients_result", uref.into());
 }
 
 fn distribute() {

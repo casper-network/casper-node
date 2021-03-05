@@ -7,7 +7,7 @@ mod validator_config;
 use std::path::Path;
 
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -23,10 +23,21 @@ pub use validator_config::ValidatorConfig;
 
 const CHAINSPEC_ACCOUNTS_FILENAME: &str = "accounts.toml";
 
+fn sorted_vec_deserializer<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: Deserialize<'de> + Ord,
+    D: Deserializer<'de>,
+{
+    let mut vec = Vec::<T>::deserialize(deserializer)?;
+    vec.sort_unstable();
+    Ok(vec)
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
+    #[serde(deserialize_with = "sorted_vec_deserializer")]
     accounts: Vec<AccountConfig>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "sorted_vec_deserializer")]
     delegators: Vec<DelegatorConfig>,
 }
 

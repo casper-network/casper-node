@@ -62,8 +62,6 @@ pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
-/// Named constant for method `read_seigniorage_recipients`.
-pub const METHOD_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
 /// Named constant for method `add_bid`.
 pub const METHOD_ADD_BID: &str = "add_bid";
 /// Named constant for method `withdraw_bid`.

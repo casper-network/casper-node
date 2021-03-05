@@ -25,8 +25,7 @@ use crate::{
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade =
-        NextUpgrade::new(ActivationPoint { era_id: EraId(42) }, Version::new(2, 0, 1));
+    let next_upgrade = NextUpgrade::new(ActivationPoint::EraId(EraId(42)), Version::new(2, 0, 1));
     ChainspecInfo {
         name: String::from("casper-example"),
         starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),

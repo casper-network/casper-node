@@ -32,7 +32,7 @@ function _set_net_bin()
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
 	do
         cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
-	done    
+	done
 }
 
 #######################################
@@ -45,6 +45,7 @@ function _set_net_chainspec()
 {
     local GENESIS_DELAY=${1}
     local COUNT_GENESIS_NODES=${2}
+    local COPY_CHAINSPEC=${3}
     local PATH_TO_NET
     local PATH_TO_CHAINSPEC
     local GENESIS_NAME
@@ -57,14 +58,14 @@ function _set_net_chainspec()
 
     # Set file.
     PATH_TO_CHAINSPEC_FILE=$PATH_TO_NET/chainspec/chainspec.toml
-    cp "$NCTL_CASPER_HOME"/resources/local/chainspec.toml.in "$PATH_TO_CHAINSPEC_FILE"
+    cp "$COPY_CHAINSPEC" "$PATH_TO_CHAINSPEC_FILE"
 
     # Write contents.
     local SCRIPT=(
         "import toml;"
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
+        "cfg['protocol']['activation_point']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
         "cfg['network']['name']='$(get_chain_name)';"
-        "cfg['network']['timestamp']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
         "cfg['core']['validator_slots']=$((COUNT_GENESIS_NODES * 2));"
         "toml.dump(cfg, open('$PATH_TO_CHAINSPEC_FILE', 'w'));"
     )
@@ -97,7 +98,7 @@ function _set_chainspec_account()
 public_key = "${ACCOUNT_KEY}"
 balance = "$INITIAL_BALANCE"
 EOM
-    
+
     if [ "$INITIAL_WEIGHT" != '0' ]; then
         cat >> "$PATH_TO_NET"/chainspec/accounts.toml <<- EOM
 [accounts.validator]
@@ -229,7 +230,7 @@ function _set_net_users()
             "$NCTL_CASPER_HOME"/target/debug/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
         else
             "$NCTL_CASPER_HOME"/target/release/casper-client keygen -f "$PATH_TO_NET"/users/user-"$USER_ID" > /dev/null 2>&1
-        fi    
+        fi
     done
 
     # Set user accounts.
@@ -237,7 +238,7 @@ function _set_net_users()
     do
         _set_chainspec_account_for_user \
             "$PATH_TO_NET"/users/user-"$USER_ID"/public_key_hex \
-            "$NCTL_INITIAL_BALANCE_USER" 
+            "$NCTL_INITIAL_BALANCE_USER"
     done
 }
 
@@ -259,7 +260,7 @@ function _set_nodes()
     for NODE_ID in $(seq 1 $((COUNT_GENESIS_NODES * 2)))
     do
         setup_node "$NODE_ID" "$COUNT_GENESIS_NODES"
-    done   
+    done
 }
 
 #######################################
@@ -294,6 +295,7 @@ function _main()
 {
     local COUNT_NODES=${1}
     local GENESIS_DELAY=${2}
+    local CHAINSPEC_PATH=${3}
     local PATH_TO_NET
 
     # Tear down previous.
@@ -307,7 +309,7 @@ function _main()
 
     # Set artefacts.
     log "... setting chainspec"
-    _set_net_chainspec "$GENESIS_DELAY" "$COUNT_NODES"
+    _set_net_chainspec "$GENESIS_DELAY" "$COUNT_NODES" "$CHAINSPEC_PATH"
 
     log "... setting binaries"
     _set_net_bin
@@ -337,6 +339,7 @@ function _main()
 unset GENESIS_DELAY_SECONDS
 unset NET_ID
 unset NODE_COUNT
+unset CHAINSPEC_PATH
 
 for ARGUMENT in "$@"
 do
@@ -346,6 +349,7 @@ do
         delay) GENESIS_DELAY_SECONDS=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         nodes) NODE_COUNT=${VALUE} ;;
+        chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
         *)
     esac
 done
@@ -354,9 +358,10 @@ done
 export NET_ID=${NET_ID:-1}
 GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
 NODE_COUNT=${NODE_COUNT:-5}
+CHAINSPEC_PATH=${CHAINSPEC_PATH:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
 
 if [ 3 -gt "$NODE_COUNT" ]; then
     log_error "Invalid input: |nodes| MUST BE >= 3"
 else
-    _main "$NODE_COUNT" "$GENESIS_DELAY_SECONDS"
+    _main "$NODE_COUNT" "$GENESIS_DELAY_SECONDS" "$CHAINSPEC_PATH"
 fi

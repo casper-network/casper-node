@@ -22,7 +22,6 @@ use hex_fmt::{HexFmt, HexList};
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
-use rand::SeedableRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -45,7 +44,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, JsonBlock, NodeRng},
+    types::{Deploy, DeployHash, JsonBlock},
     utils::DisplayIter,
 };
 
@@ -148,8 +147,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let mut rng = NodeRng::seed_from_u64(0);
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, block_signature)
@@ -540,6 +538,7 @@ impl Display for FinalizedBlock {
     Copy,
     Clone,
     DataSize,
+    Default,
     Ord,
     PartialOrd,
     Eq,
@@ -996,6 +995,20 @@ impl BlockSignatures {
 
     pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
         self.proofs.contains_key(public_key)
+    }
+
+    /// Verify the signatures contained within.
+    pub(crate) fn verify(&self) -> crypto::Result<()> {
+        for (public_key, signature) in self.proofs.iter() {
+            let signature = FinalitySignature {
+                block_hash: self.block_hash,
+                era_id: self.era_id,
+                signature: *signature,
+                public_key: *public_key,
+            };
+            signature.verify()?;
+        }
+        Ok(())
     }
 }
 
@@ -1581,11 +1594,10 @@ impl FinalitySignature {
         era_id: EraId,
         secret_key: &SecretKey,
         public_key: PublicKey,
-        rng: &mut NodeRng,
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.0.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key, rng);
+        let signature = crypto::sign(bytes, &secret_key, &public_key);
         FinalitySignature {
             block_hash,
             era_id,
@@ -1736,7 +1748,7 @@ mod tests {
         let (secret_key, public_key) = crypto::generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId(1);
-        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key, &mut rng);
+        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key);
         assert!(fs.verify().is_ok());
         let signature = fs.signature;
         // Verify that signature includes era id.

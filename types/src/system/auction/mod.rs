@@ -326,6 +326,10 @@ pub trait Auction:
                 burned_amount += *bid.staked_amount();
                 *bid.staked_amount_mut() = U512::zero();
                 bid.deactivate();
+                // Reset delegator stakes when deactivating validator bid.
+                for delegator in bid.delegators_mut().values_mut() {
+                    *delegator.staked_amount_mut() = U512::zero();
+                }
                 self.write_bid(validator_account_hash, bid)?;
             };
 
@@ -503,10 +507,9 @@ pub trait Auction:
 
             let delegator_rewards =
                 recipient
-                    .delegators()
+                    .delegator_stake()
                     .iter()
-                    .map(|(delegator_key, delegator)| {
-                        let delegator_stake = delegator.staked_amount();
+                    .map(|(delegator_key, delegator_stake)| {
                         let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)

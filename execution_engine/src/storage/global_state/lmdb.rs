@@ -243,7 +243,7 @@ impl StateProvider for LmdbGlobalState {
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_keys: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -251,7 +251,7 @@ impl StateProvider for LmdbGlobalState {
                 correlation_id,
                 &txn,
                 self.trie_store.deref(),
-                trie_key,
+                trie_keys,
             )?;
         txn.commit()?;
         Ok(missing_descendants)
