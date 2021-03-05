@@ -1,7 +1,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::{cmp, collections::VecDeque, convert::TryInto, mem};
+use std::{
+    cmp,
+    collections::{HashSet, VecDeque},
+    convert::TryInto,
+    mem,
+};
 
 use tracing::warn;
 
@@ -241,7 +246,11 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut missing_descendants = Vec::new();
+    let mut visited = HashSet::new();
     while let Some(trie_key) = trie_keys_to_visit.pop() {
+        if !visited.insert(trie_key.clone()) {
+            continue;
+        }
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
         if let Some(trie_value) = &maybe_retrieved_trie {
             let hash_of_trie_value = {
@@ -281,9 +290,6 @@ where
             // If we hit an extension block, add its pointer to the queue
             Some(Trie::Extension { pointer, .. }) => trie_keys_to_visit.push(pointer.into_hash()),
         }
-        // TODO Use BTreeSet when pop_first() is added to stable from nightly.
-        trie_keys_to_visit.sort();
-        trie_keys_to_visit.dedup();
     }
     Ok(missing_descendants)
 }
