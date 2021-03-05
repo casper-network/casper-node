@@ -74,7 +74,7 @@ serde_json = "1.0.55"
 serde_repr = "0.1.6"
 signal-hook = "0.3.4"
 signature = "1.1.0"
-smallvec = { version = "1.4.0", features = ["serde"] }
+smallvec = { version = "1.6.1", features = ["serde"] }
 static_assertions = "1.1.0"
 structopt = "0.3.14"
 sys-info = "0.8.0"
