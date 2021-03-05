@@ -34,7 +34,7 @@ function _upgrade_node() {
         "import toml;"
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
         "cfg['protocol']['version']='$PROTOCOL_VERSION'.replace('_', '.');"
-        "cfg['protocol']['activation_point']['era_id']=$ACTIVATE_ERA;"
+        "cfg['protocol']['activation_point']=$ACTIVATE_ERA;"
         "toml.dump(cfg, open('$PATH_TO_UPGRADED_CHAINSPEC_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
