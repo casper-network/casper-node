@@ -538,6 +538,7 @@ impl Display for FinalizedBlock {
     Copy,
     Clone,
     DataSize,
+    Default,
     Ord,
     PartialOrd,
     Eq,
