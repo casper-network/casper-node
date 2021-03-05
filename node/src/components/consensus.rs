@@ -128,7 +128,6 @@ pub enum Event<I> {
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
-        genesis_start_time: Option<Timestamp>,
     },
     /// An event instructing us to shutdown if the latest era received no votes.
     Shutdown,
@@ -343,15 +342,12 @@ where
                 booking_blocks,
                 validators,
                 timestamp,
-                genesis_start_time,
             } => {
                 let mut effects = handling_es.handle_initialize_eras(
                     key_blocks,
                     booking_blocks,
                     validators,
-                    timestamp,
-                    genesis_start_time,
-                );
+                    timestamp);
 
                 // TODO: remove that when possible
                 // This is needed because we want to make sure that we only try to handle linear
