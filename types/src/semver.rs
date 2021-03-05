@@ -2,8 +2,12 @@ use alloc::vec::Vec;
 use core::{convert::TryFrom, fmt, num::ParseIntError};
 
 use datasize::DataSize;
-use failure::Fail;
 use serde::{Deserialize, Serialize};
+
+#[cfg(not(feature = "std"))]
+use displaydoc::Display;
+#[cfg(feature = "std")]
+use thiserror::Error;
 
 use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
@@ -81,11 +85,15 @@ impl fmt::Display for SemVer {
     }
 }
 
-#[derive(Fail, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Error))]
+#[cfg_attr(not(feature = "std"), derive(Display))]
 pub enum ParseSemVerError {
-    #[fail(display = "Invalid version format")]
+    /// Invalid version format
+    #[cfg_attr(feature = "std", error("Invalid version format"))]
     InvalidVersionFormat,
-    #[fail(display = "{}", _0)]
+    /// {0}
+    #[cfg_attr(feature = "std", error("{}", _0))]
     ParseIntError(ParseIntError),
 }
 
