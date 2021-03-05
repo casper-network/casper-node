@@ -43,7 +43,7 @@ hyper = "0.13.7"
 itertools = "0.9.0"
 jemalloc-ctl = "0.3.3"
 jemallocator = "0.3.2"
-k256 = { version = "0.4.2", features = ["ecdsa", "zeroize"] }
+k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
 libp2p = { version = "0.29.1", default-features = false, features = ["deflate", "dns", "floodsub", "gossipsub", "identify", "kad", "mdns-tokio", "mplex", "noise", "ping", "request-response", "tcp-tokio", "uds", "yamux"] }
 linked-hash-map = "0.5.3"

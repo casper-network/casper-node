@@ -44,7 +44,6 @@ use crate::{
     rpcs::docs::DocExample,
     types::chainspec::DeployConfig,
     utils::DisplayIter,
-    NodeRng,
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -494,7 +493,6 @@ impl Deploy {
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
         secret_key: &SecretKey,
-        rng: &mut NodeRng,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
@@ -523,14 +521,14 @@ impl Deploy {
             is_valid: None,
         };
 
-        deploy.sign(secret_key, rng);
+        deploy.sign(secret_key);
         deploy
     }
 
     /// Adds a signature of this deploy's hash to its approvals.
-    pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut NodeRng) {
+    pub fn sign(&mut self, secret_key: &SecretKey) {
         let signer = PublicKey::from(secret_key);
-        let signature = crypto::sign(&self.hash, secret_key, &signer, rng);
+        let signature = crypto::sign(&self.hash, secret_key, &signer);
         let approval = Approval { signer, signature };
         self.approvals.push(approval);
     }
@@ -743,7 +741,6 @@ impl Deploy {
             payment,
             session,
             &secret_key,
-            rng,
         )
     }
 }
@@ -970,7 +967,6 @@ mod tests {
                 args: transfer_args,
             },
             &secret_key,
-            rng,
         )
     }
 
