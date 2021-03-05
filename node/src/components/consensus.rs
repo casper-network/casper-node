@@ -347,7 +347,8 @@ where
                     key_blocks,
                     booking_blocks,
                     validators,
-                    timestamp);
+                    timestamp,
+                );
 
                 // TODO: remove that when possible
                 // This is needed because we want to make sure that we only try to handle linear

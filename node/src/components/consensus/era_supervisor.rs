@@ -261,7 +261,6 @@ where
                 booking_blocks,
                 validators,
                 timestamp,
-
             },
         );
 
@@ -899,12 +898,12 @@ where
         validators: BTreeMap<PublicKey, U512>,
         timestamp: Timestamp,
     ) -> Effects<Event<I>> {
-        let result_map = self
-            .era_supervisor
-            .handle_initialize_eras(key_blocks,
+        let result_map = self.era_supervisor.handle_initialize_eras(
+            key_blocks,
             booking_blocks,
             validators,
-            timestamp);
+            timestamp,
+        );
 
         let effects = result_map
             .into_iter()
