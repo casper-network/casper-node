@@ -302,12 +302,22 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     "Block execution result doesn't match received block."
                 );
                 if self.is_recent_block(&block) {
-                    info!("downloaded recent block. finished synchronization");
+                    info!(
+                        hash=?block.hash(),
+                        height=?block.header().height(),
+                        era=?block.header().era_id(),
+                        "downloaded recent block. finished synchronization"
+                    );
                     self.mark_done();
                     return Effects::new();
                 }
                 if self.is_currently_active_era(&maybe_switch_block) {
-                    info!("downloaded block from a new era. finished synchronization");
+                    info!(
+                        hash=?block.hash(),
+                        height=?block.header().height(),
+                        era=?block.header().era_id(),
+                        "downloaded switch block of a new era. finished synchronization"
+                    );
                     self.mark_done();
                     return Effects::new();
                 }
