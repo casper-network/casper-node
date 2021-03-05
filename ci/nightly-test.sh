@@ -50,6 +50,7 @@ start_run_teardown "itst01.sh"
 #start_run_teardown "itst02.sh"
 start_run_teardown "itst11.sh"
 start_run_teardown "itst13.sh" "itst13.chainspec.toml.in"
+start_run_teardown "itst14.sh" "itst14.chainspec.toml.in"
 
 # Clean up cloned repo
 popd

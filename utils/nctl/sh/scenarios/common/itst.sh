@@ -81,3 +81,10 @@ function do_await_era_change() {
 function check_current_era {
     echo $(nctl-view-chain-era node=$(get_node_for_dispatch) | awk '{print $NF}')
 }
+
+function check_faulty() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    grep -q 'this validator is faulty' "$NODE_PATH/logs/stdout.log"
+    return $?
+}
