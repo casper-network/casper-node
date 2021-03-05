@@ -305,7 +305,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
-                        era=?block.header().era_id(),
+                        era=block.header().era_id().0,
                         "downloaded recent block. finished synchronization"
                     );
                     self.mark_done();
@@ -315,7 +315,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
-                        era=?block.header().era_id(),
+                        era=block.header().era_id().0,
                         "downloaded switch block of a new era. finished synchronization"
                     );
                     self.mark_done();

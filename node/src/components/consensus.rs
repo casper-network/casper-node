@@ -117,7 +117,7 @@ pub enum Event<I> {
     CreateNewEra {
         /// The header of the switch block
         block: Box<Block>,
-        /// Ok(block_hash) if the booking block was found, Err(height) if not
+        /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
         booking_block_hash: Result<BlockHash, EraId>,
     },
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
