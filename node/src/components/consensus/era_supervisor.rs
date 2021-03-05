@@ -615,26 +615,13 @@ fn valid_booking_block_era_id(
     auction_delay: u64,
     last_activation_point: EraId,
 ) -> Option<EraId> {
-    // If this is the first era after the upgrade/restart/Genesis,
-    // booking block is not defined.
-    if era_id == last_activation_point {
-        return None;
-    }
-
-    let booking_era_id = era_id
-        .saturating_sub(auction_delay)
-        .saturating_sub(1)
-        .max(last_activation_point);
+    let after_booking_era_id = era_id.saturating_sub(auction_delay);
 
     // If we would have gone below the last activation point (the first `AUCTION_DELAY ` eras after
     // an upgrade), we return `None` as there are no booking blocks there that we can use – we
     // can't use anything from before an upgrade.
     // NOTE that it's OK if `booking_era_id` == `last_activation_point`.
-    if booking_era_id < last_activation_point {
-        return None;
-    }
-
-    Some(booking_era_id)
+    (after_booking_era_id > last_activation_point).then(|| after_booking_era_id.saturating_sub(1))
 }
 
 /// Returns a booking block hash for `era_id`.
