@@ -5,6 +5,7 @@ SCENARIO="itst06"
 source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/views/utils.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+source "$NCTL"/sh/scenarios/common/itst.sh
 source "$NCTL"/sh/utils/infra.sh
 
 # Exit if any of the commands fail.
@@ -51,46 +52,6 @@ function main() {
     log "------------------------------------------------------------"
 }
 
-function log_step() {
-    local COMMENT=${1}
-    log "------------------------------------------------------------"
-    log "STEP $STEP: $COMMENT"
-    STEP=$((STEP + 1))
-}
-
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -lt 1 ]; do
-        sleep 1.0
-    done
-}
-
-function do_read_lfb_hash() {
-    LFB_HASH=$(get_chain_latest_block_hash)
-    echo "$LFB_HASH"
-}
-
-function do_read_lfb_hash() {
-    local NODE_ID=${1}
-    LFB_HASH=$(render_last_finalized_block_hash "$NODE_ID" | cut -f2 -d= | cut -f2 -d ' ')
-    echo "$LFB_HASH"
-}
-
-function do_stop_node() {
-    log_step "stopping node-$NODE_ID."
-    do_node_stop "$NODE_ID"
-}
-
-function do_start_node() {
-    log_step "starting node-$NODE_ID. Syncing from hash=${LFB_HASH}"
-    do_node_start "$NODE_ID" "$LFB_HASH"
-    sleep 1
-    if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then
-        log "ERROR: node-${NODE_ID} is not running"
-	exit 1
-    fi
-}
-
 function do_await_full_synchronization() {
     local WAIT_TIME_SEC=0
     log_step "awaiting full synchronization of node=${NODE_ID}…"
@@ -121,12 +82,6 @@ function do_await_full_synchronization() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
-}
-
-function do_await_era_change() {
-    # allow chain height to grow
-    log_step "awaiting 1 eras…"
-    await_n_eras 1
 }
 
 function do_get_another_node() {
