@@ -79,5 +79,5 @@ function do_await_era_change() {
 }
 
 function check_current_era {
-    echo $(nctl-view-chain-era node=$(get_node_for_dispatch) | awk '{print $NF}')
+    echo $(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
 }
