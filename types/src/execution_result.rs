@@ -31,7 +31,7 @@ use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo},
+    system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
@@ -56,13 +56,14 @@ const TRANSFORM_WRITE_DEPLOY_INFO_TAG: u8 = 6;
 const TRANSFORM_WRITE_TRANSFER_TAG: u8 = 7;
 const TRANSFORM_WRITE_ERA_INFO_TAG: u8 = 8;
 const TRANSFORM_WRITE_BID_TAG: u8 = 9;
-const TRANSFORM_ADD_INT32_TAG: u8 = 10;
-const TRANSFORM_ADD_UINT64_TAG: u8 = 11;
-const TRANSFORM_ADD_UINT128_TAG: u8 = 12;
-const TRANSFORM_ADD_UINT256_TAG: u8 = 13;
-const TRANSFORM_ADD_UINT512_TAG: u8 = 14;
-const TRANSFORM_ADD_KEYS_TAG: u8 = 15;
-const TRANSFORM_FAILURE_TAG: u8 = 16;
+const TRANSFORM_WRITE_WITHDRAW_TAG: u8 = 10;
+const TRANSFORM_ADD_INT32_TAG: u8 = 11;
+const TRANSFORM_ADD_UINT64_TAG: u8 = 12;
+const TRANSFORM_ADD_UINT128_TAG: u8 = 13;
+const TRANSFORM_ADD_UINT256_TAG: u8 = 14;
+const TRANSFORM_ADD_UINT512_TAG: u8 = 15;
+const TRANSFORM_ADD_KEYS_TAG: u8 = 16;
+const TRANSFORM_FAILURE_TAG: u8 = 17;
 
 #[cfg(feature = "std")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
@@ -452,6 +453,8 @@ pub enum Transform {
     WriteTransfer(Transfer),
     /// Writes the given Bid to global state.
     WriteBid(Box<Bid>),
+    /// Writes the given Withdraw to global state.
+    WriteWithdraw(Vec<UnbondingPurse>),
     /// Adds the given `i32`.
     AddInt32(i32),
     /// Adds the given `u64`.
@@ -501,6 +504,10 @@ impl ToBytes for Transform {
             Transform::WriteBid(bid) => {
                 buffer.insert(0, TRANSFORM_WRITE_BID_TAG);
                 buffer.extend(bid.to_bytes()?);
+            }
+            Transform::WriteWithdraw(unbonding_purses) => {
+                buffer.insert(0, TRANSFORM_WRITE_WITHDRAW_TAG);
+                buffer.extend(unbonding_purses.to_bytes()?);
             }
             Transform::AddInt32(value) => {
                 buffer.insert(0, TRANSFORM_ADD_INT32_TAG);

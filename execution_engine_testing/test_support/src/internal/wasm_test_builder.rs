@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -39,6 +40,7 @@ use casper_execution_engine::{
     storage::{
         global_state::{
             in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, CommitResult, StateProvider,
+            StateReader,
         },
         protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
@@ -52,13 +54,15 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
+            Bids, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
+            METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, Key, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
+    U512,
 };
 
 use crate::internal::{
@@ -858,6 +862,38 @@ where
             .unwrap();
 
         get_bids_result.bids().cloned().unwrap()
+    }
+
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+
+        let tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        let reader = tracking_copy.reader();
+
+        let withdraws_keys = reader
+            .keys_with_prefix(correlation_id, &[KeyTag::Withdraw as u8])
+            .unwrap_or_default();
+
+        let mut ret = BTreeMap::new();
+
+        for key in withdraws_keys.into_iter() {
+            let read_result = reader.read(correlation_id, &key);
+            if let (
+                Key::Withdraw(account_hash),
+                Ok(Some(StoredValue::Withdraw(unbonding_purses))),
+            ) = (key, read_result)
+            {
+                ret.insert(account_hash, unbonding_purses);
+            }
+        }
+
+        ret
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
