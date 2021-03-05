@@ -16,10 +16,10 @@ macro_rules! panorama {
 /// The short variant is for tests that don't care about timestamps and round lengths: It
 /// automatically picks reasonable values for those.
 macro_rules! add_unit {
-    ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
-        add_unit!($state, $rng, $creator, $val; $($obs),*;)
+    ($state: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
+        add_unit!($state, $creator, $val; $($obs),*;)
     }};
-    ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
+    ($state: ident, $creator: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
         #[allow(unused_imports)] // These might be already imported at the call site.
         use crate::{
             components::consensus::highway_core::{
@@ -72,13 +72,13 @@ macro_rules! add_unit {
         };
         let hwunit = wunit.into_hashed();
         let hash = hwunit.hash();
-        let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0), &mut $rng);
+        let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0));
         $state.add_unit(swunit).map(|()| hash)
     }};
-    ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
-        add_unit!($state, $rng, $creator, $time, $round_exp, $val; $($obs),*; std::collections::BTreeSet::new())
+    ($state: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
+        add_unit!($state, $creator, $time, $round_exp, $val; $($obs),*; std::collections::BTreeSet::new())
     }};
-    ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
+    ($state: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
         use crate::components::consensus::highway_core::{
             state::tests::TestSecret,
             highway::{SignedWireUnit, WireUnit},
@@ -100,27 +100,27 @@ macro_rules! add_unit {
         };
         let hwunit = wunit.into_hashed();
         let hash = hwunit.hash();
-        let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0), &mut $rng);
+        let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0));
         $state.add_unit(swunit).map(|()| hash)
     }};
 }
 
 /// Creates an endorsement of `vote` by `creator` and adds it to the state.
 macro_rules! endorse {
-    ($state: ident, $rng: ident, $vote: expr; $($creators: expr),*) => {
+    ($state: ident, $vote: expr; $($creators: expr),*) => {
         let creators = vec![$($creators.into()),*];
         for creator in creators.into_iter() {
-            endorse!($state, $rng, creator, $vote);
+            endorse!($state, creator, $vote);
         }
     };
-    ($state: ident, $rng: ident, $creator: expr, $vote: expr) => {{
+    ($state: ident, $creator: expr, $vote: expr) => {{
         use crate::components::consensus::highway_core::{
             endorsement::{Endorsement, SignedEndorsement},
             highway::Endorsements,
         };
 
         let endorsement: Endorsement<TestContext> = Endorsement::new($vote, ($creator));
-        let signature = TestSecret(($creator).0).sign(&endorsement.hash(), &mut $rng);
+        let signature = TestSecret(($creator).0).sign(&endorsement.hash());
         let signed_endorsement = SignedEndorsement::new(endorsement, signature);
         let endorsements: Endorsements<TestContext> =
             Endorsements::new(vec![signed_endorsement].into_iter());

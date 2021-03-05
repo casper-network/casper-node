@@ -700,10 +700,7 @@ where
     /// Applies `f` to the consensus protocol of the specified era.
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
-        F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ClContext>,
-            &mut NodeRng,
-        ) -> Vec<ProtocolOutcome<I, ClContext>>,
+        F: FnOnce(&mut dyn ConsensusProtocol<I, ClContext>) -> Vec<ProtocolOutcome<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -715,7 +712,7 @@ where
                 Effects::new()
             }
             Some(era) => {
-                let outcomes = f(&mut *era.consensus, self.rng);
+                let outcomes = f(&mut *era.consensus);
                 self.handle_consensus_outcomes(era_id, outcomes)
             }
         }
@@ -727,8 +724,8 @@ where
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.handle_timer(timestamp, timer_id, rng)
+        self.delegate_to_era(era_id, move |consensus| {
+            consensus.handle_timer(timestamp, timer_id)
         })
     }
 
@@ -737,9 +734,7 @@ where
         era_id: EraId,
         action_id: ActionId,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.handle_action(action_id, rng)
-        })
+        self.delegate_to_era(era_id, move |consensus| consensus.handle_action(action_id))
     }
 
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
@@ -748,8 +743,8 @@ where
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
                 trace!(era = era_id.0, "received a consensus message");
-                self.delegate_to_era(era_id, move |consensus, rng| {
-                    consensus.handle_message(sender, payload, rng)
+                self.delegate_to_era(era_id, move |consensus| {
+                    consensus.handle_message(sender, payload)
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
@@ -760,7 +755,7 @@ where
                 self.era_supervisor
                     .iter_past(era_id, self.era_supervisor.bonded_eras())
                     .flat_map(|e_id| {
-                        self.delegate_to_era(e_id, |consensus, _| {
+                        self.delegate_to_era(e_id, |consensus| {
                             consensus.request_evidence(sender.clone(), &pub_key)
                         })
                     })
@@ -770,7 +765,7 @@ where
     }
 
     pub(super) fn handle_new_peer(&mut self, peer_id: I) -> Effects<Event<I>> {
-        self.delegate_to_era(self.era_supervisor.current_era, move |consensus, _rng| {
+        self.delegate_to_era(self.era_supervisor.current_era, move |consensus| {
             consensus.handle_new_peer(peer_id)
         })
     }
@@ -795,8 +790,8 @@ where
             .collect();
         let candidate_block =
             CandidateBlock::new(proto_block, block_context.timestamp(), accusations);
-        self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.propose(candidate_block, block_context, rng)
+        self.delegate_to_era(era_id, move |consensus| {
+            consensus.propose(candidate_block, block_context)
         })
     }
 
@@ -822,13 +817,7 @@ where
         self.era_supervisor.executed_block(block.header());
         let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block.hash();
-            Some(FinalitySignature::new(
-                *block_hash,
-                era_id,
-                &our_sk,
-                our_pk,
-                &mut self.rng,
-            ))
+            Some(FinalitySignature::new(*block_hash, era_id, &our_sk, our_pk))
         } else {
             None
         };
@@ -996,8 +985,8 @@ where
             return effects;
         };
         for candidate_block in candidate_blocks {
-            effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
-                consensus.resolve_validity(&candidate_block, valid, rng)
+            effects.extend(self.delegate_to_era(era_id, |consensus| {
+                consensus.resolve_validity(&candidate_block, valid)
             }));
         }
         effects
@@ -1205,8 +1194,8 @@ where
                             continue;
                         };
                     for candidate_block in candidate_blocks {
-                        effects.extend(self.delegate_to_era(e_id, |consensus, rng| {
-                            consensus.resolve_validity(&candidate_block, true, rng)
+                        effects.extend(self.delegate_to_era(e_id, |consensus| {
+                            consensus.resolve_validity(&candidate_block, true)
                         }));
                     }
                 }
@@ -1216,7 +1205,7 @@ where
                 .era_supervisor
                 .iter_past_other(era_id, self.era_supervisor.bonded_eras())
                 .flat_map(|e_id| {
-                    self.delegate_to_era(e_id, |consensus, _| {
+                    self.delegate_to_era(e_id, |consensus| {
                         consensus.request_evidence(sender.clone(), &pub_key)
                     })
                 })
