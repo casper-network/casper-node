@@ -285,7 +285,7 @@ where
 
     fn booking_block_era_id(&self, era_id: EraId) -> Option<EraId> {
         valid_booking_block_era_id(
-            &era_id,
+            era_id,
             self.protocol_config.auction_delay,
             self.protocol_config.last_activation_point,
         )
@@ -619,24 +619,25 @@ where
 /// * before emergency restart
 /// In those cases, returns `None`.
 fn valid_booking_block_era_id(
-    era_id: &EraId,
+    era_id: EraId,
     auction_delay: u64,
     last_activation_point: EraId,
 ) -> Option<EraId> {
+    // If this is the first era after the upgrade/restart/Genesis,
+    // booking block is not defined.
+    if era_id == last_activation_point {
+        return None;
+    }
+
     let booking_era_id = era_id
         .saturating_sub(auction_delay)
         .saturating_sub(1)
         .max(last_activation_point);
 
-    // There's no booking block for the first AUCTION_DELAY + 1 eras.
-    // So if `era_id – auction_delay - 1` is <= Genesis era, we can't return a booking era id.
-    if booking_era_id.is_genesis() {
-        return None;
-    }
-
-    // If we would have gone below the last activation point (the first era after an upgrade),
-    // we return `None` as there are no booking blocks there that we can use – we can't use
-    // anything from before an upgrade.
+    // If we would have gone below the last activation point (the first `AUCTION_DELAY ` eras after
+    // an upgrade), we return `None` as there are no booking blocks there that we can use – we
+    // can't use anything from before an upgrade.
+    // NOTE that it's OK if `booking_era_id` == `last_activation_point`.
     if booking_era_id < last_activation_point {
         return None;
     }
@@ -644,6 +645,7 @@ fn valid_booking_block_era_id(
     Some(booking_era_id)
 }
 
+/// Returns a booking block hash for `era_id`.
 async fn get_booking_block_hash<REv>(
     effect_builder: EffectBuilder<REv>,
     era_id: EraId,
@@ -654,14 +656,22 @@ where
     REv: From<StorageRequest>,
 {
     if let Some(booking_block_era_id) =
-        valid_booking_block_era_id(&era_id, auction_delay, last_activation_point)
+        valid_booking_block_era_id(era_id, auction_delay, last_activation_point)
     {
-        effect_builder
+        match effect_builder
             .get_switch_block_at_era_id_from_storage(booking_block_era_id)
             .await
-            .expect("booking block to exist")
-            .hash()
-            .clone()
+        {
+            Some(block) => block.hash().clone(),
+            None => {
+                error!(
+                    ?era_id,
+                    ?booking_block_era_id,
+                    "booking block for era must exist"
+                );
+                panic!("booking block not found in storage");
+            }
+        }
     } else {
         BlockHash::default()
     }
