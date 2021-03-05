@@ -539,8 +539,8 @@ where
                     genesis_start_time.expect("must have genesis start time if era ID is 0");
                 seed = 0;
             } else {
-                let key_block = key_blocks.get(&era_id).expect("missing key block");
                 // If this is not era 0, there must be a key block for it.
+                let key_block = key_blocks.get(&era_id).expect("missing key block");
                 start_height = key_block.height() + 1;
                 era_start_time = key_block.timestamp();
                 seed = Self::era_seed(*booking_block_hash, key_block.accumulated_seed());
@@ -599,7 +599,7 @@ where
     }
 }
 
-/// Returns an era ID in which the booking block for `era_id` lives in, if we can use it.
+/// Returns an era ID in which the booking block for `era_id` lives, if we can use it.
 /// Booking block for era N is the switch block (the last block) in era N – AUCTION_DELAY - 1.
 /// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
 /// We make sure not to use an era ID below the last upgrade activation point, because we will
@@ -932,7 +932,7 @@ where
         effects
     }
 
-    ///  Creates new era.
+    /// Creates a new era.
     pub(super) fn handle_create_new_era(
         &mut self,
         switch_block: Block,
