@@ -1555,25 +1555,6 @@ impl<REv> EffectBuilder<REv> {
         .into_iter()
         .collect()
     }
-
-    /// Collects booking blocks for given eras.
-    /// Booking block is a switch block.
-    /// It is expected that the caller of this function knows in which era the booking blocks live.
-    pub(crate) async fn collect_booking_blocks<I: IntoIterator<Item = EraId>>(
-        self,
-        booking_blocks_era_ids: I,
-    ) -> Option<HashMap<EraId, BlockHeader>>
-    where
-        REv: From<StorageRequest>,
-    {
-        futures::future::join_all(booking_blocks_era_ids.into_iter().map(|era_id| {
-            self.get_key_block_for_era_id_from_storage(era_id)
-                .map(move |maybe_block| maybe_block.map(|block| (era_id, block.take_header())))
-        }))
-        .await
-        .into_iter()
-        .collect()
-    }
 }
 
 /// Construct a fatal error effect.

@@ -118,7 +118,7 @@ pub enum Event<I> {
         /// The header of the switch block
         block: Box<Block>,
         /// Ok(block_hash) if the booking block was found, Err(height) if not
-        booking_block_hash: Result<BlockHash, u64>,
+        booking_block_hash: Result<BlockHash, EraId>,
     },
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
@@ -323,10 +323,10 @@ where
             } => {
                 let booking_block_hash = match booking_block_hash {
                     Ok(hash) => hash,
-                    Err(height) => {
+                    Err(era_id) => {
                         error!(
-                            "could not find the booking block at height {} for era {}",
-                            height,
+                            "could not find the booking block in era {}, for era {}",
+                            era_id,
                             block.header().era_id().successor()
                         );
                         return fatal!(

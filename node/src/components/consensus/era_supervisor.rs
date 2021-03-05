@@ -283,29 +283,12 @@ where
         }
     }
 
-    /// The booking block for era N is the last block of era N - AUCTION_DELAY - 1
-    /// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
-    /// We make sure not to use an era ID below the last upgrade activation point, because we will
-    /// not have instances of eras from before that.
-    /// Returns:
-    /// * `Some(block height)` if there's a booking block we can use,
-    /// * `None` in the case when there would be no valid booking block.
-    fn booking_block_height(&self, era_id: EraId) -> Option<u64> {
-        if let Some(after_booking_era_id) = valid_booking_block(
+    fn booking_block_era_id(&self, era_id: EraId) -> Option<EraId> {
+        valid_booking_block_era_id(
             &era_id,
             self.protocol_config.auction_delay,
             self.protocol_config.last_activation_point,
-        ) {
-            // We subtract 1 from the `start_height` to get the switch block of the era. If it means
-            // we go below zero (Genesis era), return `None`.
-            self.active_eras
-                .get(&after_booking_era_id)
-                .expect("should have era after booking block")
-                .start_height
-                .checked_sub(1)
-        } else {
-            None
-        }
+        )
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
@@ -625,26 +608,63 @@ where
 }
 
 /// Returns an era ID in which the booking block for `era_id` lives in, if we can use it.
+/// Booking block for era N is the switch block (the last block) in era N – AUCTION_DELAY - 1.
+/// To find it, we get the start height of era N - AUCTION_DELAY and subtract 1.
+/// We make sure not to use an era ID below the last upgrade activation point, because we will
+/// not have instances of eras from before that.
+///
 /// We can't use it if it is:
 /// * before Genesis
 /// * before upgrade
 /// * before emergency restart
 /// In those cases, returns `None`.
-fn valid_booking_block(
+fn valid_booking_block_era_id(
     era_id: &EraId,
     auction_delay: u64,
     last_activation_point: EraId,
 ) -> Option<EraId> {
-    let after_booking_era_id = era_id
+    let booking_era_id = era_id
         .saturating_sub(auction_delay)
+        .saturating_sub(1)
         .max(last_activation_point);
-    // If we would have gone below the last activation point (which can be Genesis era or the
-    // first era after an upgrade), we return `None` as there are no booking blocks there that
-    // we can use.
-    if after_booking_era_id == last_activation_point {
+
+    // There's no booking block for the first AUCTION_DELAY + 1 eras.
+    // So if `era_id – auction_delay - 1` is <= Genesis era, we can't return a booking era id.
+    if booking_era_id.is_genesis() {
         return None;
     }
-    Some(after_booking_era_id)
+
+    // If we would have gone below the last activation point (the first era after an upgrade),
+    // we return `None` as there are no booking blocks there that we can use – we can't use
+    // anything from before an upgrade.
+    if booking_era_id < last_activation_point {
+        return None;
+    }
+
+    Some(booking_era_id)
+}
+
+async fn get_booking_block_hash<REv>(
+    effect_builder: EffectBuilder<REv>,
+    era_id: EraId,
+    auction_delay: u64,
+    last_activation_point: EraId,
+) -> BlockHash
+where
+    REv: From<StorageRequest>,
+{
+    if let Some(booking_block_era_id) =
+        valid_booking_block_era_id(&era_id, auction_delay, last_activation_point)
+    {
+        effect_builder
+            .get_switch_block_at_era_id_from_storage(booking_block_era_id)
+            .await
+            .expect("booking block to exist")
+            .hash()
+            .clone()
+    } else {
+        BlockHash::default()
+    }
 }
 
 /// Returns booking block hashes for the eras.
@@ -657,24 +677,13 @@ async fn collect_booking_block_hashes<REv>(
 where
     REv: From<StorageRequest>,
 {
-    let (no_booking_block_eras, eras_with_booking_blocks): (Vec<EraId>, Vec<EraId>) =
-        era_ids.into_iter().partition(|era_id| {
-            valid_booking_block(&era_id, auction_delay, last_activation_point).is_none()
-        });
+    let mut booking_block_hashes: HashMap<EraId, BlockHash> = HashMap::new();
 
-    // For those eras we wouldn't have the booking block, so we use a "zero" one.
-    let mut booking_block_hashes: HashMap<EraId, BlockHash> = no_booking_block_eras
-        .iter()
-        .map(|era_id| (*era_id, BlockHash::default()))
-        .collect();
-
-    let booking_blocks = effect_builder
-        .collect_booking_blocks(eras_with_booking_blocks)
-        .await
-        .expect("should have all booking blocks in the storage");
-
-    for (era_id, header) in booking_blocks {
-        booking_block_hashes.insert(era_id, header.hash());
+    for era_id in era_ids {
+        let booking_block_hash =
+            get_booking_block_hash(effect_builder, era_id, auction_delay, last_activation_point)
+                .await;
+        booking_block_hashes.insert(era_id, booking_block_hash);
     }
 
     booking_block_hashes
@@ -840,14 +849,14 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
-            let effect = match self.era_supervisor.booking_block_height(new_era_id) {
-                Some(booking_block_height) => self
+            let effect = match self.era_supervisor.booking_block_era_id(new_era_id) {
+                Some(booking_block_era_id) => self
                     .effect_builder
-                    .get_block_at_height_from_storage(booking_block_height)
+                    .get_switch_block_at_era_id_from_storage(booking_block_era_id)
                     .event(move |booking_block| Event::CreateNewEra {
                         block: Box::new(block),
                         booking_block_hash: booking_block
-                            .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
+                            .map_or_else(|| Err(booking_block_era_id), |block| Ok(*block.hash())),
                     }),
                 None => {
                     // If there's no booking block for the new era
