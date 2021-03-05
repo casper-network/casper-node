@@ -5,11 +5,12 @@ use alloc::{string::String, vec::Vec};
 use core::fmt;
 
 use datasize::DataSize;
-use failure::Fail;
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
+#[cfg(feature = "std")]
+use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
@@ -39,13 +40,14 @@ impl fmt::Display for CLTypeMismatch {
 }
 
 /// Error relating to [`CLValue`] operations.
-#[derive(Fail, PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum CLValueError {
     /// An error while serializing or deserializing the underlying data.
-    #[fail(display = "CLValue error: {}", _0)]
+    #[cfg_attr(feature = "std", error("CLValue error: {}", _0))]
     Serialization(bytesrepr::Error),
     /// A type mismatch while trying to convert a [`CLValue`] into a given type.
-    #[fail(display = "Type mismatch: {}", _0)]
+    #[cfg_attr(feature = "std", error("Type mismatch: {}", _0))]
     Type(CLTypeMismatch),
 }
 
