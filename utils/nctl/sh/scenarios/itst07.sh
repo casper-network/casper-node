@@ -41,7 +41,7 @@ function main() {
     # 6. Read the latest block hash of this second node.
     do_read_lfb_hash "$COMPARE_NODE_ID"
     # 7. Restart node from LFB
-    do_start_node
+    do_start_node "$NODE_ID" "$LFB_HASH"
     # 8. Ensure pending deploys drain.
     do_verify_deploys_drain
     # 9. Check sync of restarted node

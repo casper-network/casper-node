@@ -41,7 +41,7 @@ function main() {
     # 6. Read the latest block hash of this second node.
     do_read_lfb_hash "$COMPARE_NODE_ID"
     # 7. Restart node from LFB
-    do_start_node
+    do_start_node "$NODE_ID" "$LFB_HASH"
     # 8. Ensure pending deploys drain.
     do_verify_deploys_drain
     # 9. Check sync of restarted node
@@ -110,6 +110,7 @@ function num_pending() {
             | grep "pending_deploy" \
             | tail -n 1 \
             | sed -r 's/.*pending_deploy ([0-9]+)/\1/g')"
+        echo "Num pending: $NUM_PENDING"
         sleep 1
     done
     # echo "Num pending: $NUM_PENDING"
