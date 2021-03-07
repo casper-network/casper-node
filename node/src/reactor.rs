@@ -222,22 +222,6 @@ pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
     fn as_control(&self) -> Option<&ControlAnnouncement>;
 }
 
-// Special implementation for the unit type, used in unit tests.
-// TODO: Refactor unit-testing and get rid of this implementation.
-#[cfg(test)]
-impl ReactorEvent for () {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        None
-    }
-}
-
-#[cfg(test)]
-impl From<ControlAnnouncement> for () {
-    fn from(_: ControlAnnouncement) -> Self {
-        panic!("not supported: `ControlAnnouncement` into `()`")
-    }
-}
-
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///
 /// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.

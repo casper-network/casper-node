@@ -245,6 +245,28 @@ impl<REv: 'static> Default for ComponentHarness<REv> {
     }
 }
 
+/// A special event for unit tests.
+///
+/// Essentially discards all event (they are not even processed by the unit testing hardness),
+/// except for control announcements, which are preserved.
+#[derive(Debug, From)]
+pub enum UnitTestEvent {
+    /// A preserved control announcement.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    /// A different event.
+    Other,
+}
+
+impl ReactorEvent for UnitTestEvent {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        match self {
+            UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            UnitTestEvent::Other => None,
+        }
+    }
+}
+
 /// Test that the random port generator produce at least 40k values without duplicates.
 #[test]
 fn test_random_port_gen() {
