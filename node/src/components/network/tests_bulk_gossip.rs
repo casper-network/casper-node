@@ -5,7 +5,6 @@ use std::{
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
-    str::FromStr,
     sync::Arc,
     thread,
     time::Duration,
@@ -32,6 +31,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Chainspec, NodeId},
+    utils::read_env,
 };
 
 // Reactor for load testing, whose networking component just sends dummy payloads around.
@@ -129,29 +129,6 @@ impl Debug for DummyPayload {
 impl Display for DummyPayload {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
-    }
-}
-
-/// Reads an envvar from the environment and, if present, parses it.
-///
-/// Only absent envvars are returned as `None`.
-///
-/// # Panics
-///
-/// Panics on any parse error.
-fn read_env<T: FromStr>(name: &str) -> Option<T>
-where
-    <T as FromStr>::Err: Debug,
-{
-    match env::var(name) {
-        Ok(raw) => Some(
-            raw.parse()
-                .unwrap_or_else(|_| panic!("cannot parse envvar `{}`", name)),
-        ),
-        Err(env::VarError::NotPresent) => None,
-        Err(err) => {
-            panic!(err)
-        }
     }
 }
 
