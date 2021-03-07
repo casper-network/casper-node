@@ -8,7 +8,6 @@ pub mod utils;
 mod wasm_test_builder;
 
 use num_rational::Ratio;
-use num_traits::identities::Zero;
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
@@ -20,9 +19,7 @@ use casper_execution_engine::{
         motes::Motes, newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig,
     },
 };
-use casper_types::{
-    account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, SecretKey, U512,
-};
+use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
@@ -40,7 +37,7 @@ pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 /// Default lock-in period of 90 days
 pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: EraId = 14;
+pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
 /// Default round seigniorage rate represented as a fractional number.
 ///
@@ -77,18 +74,16 @@ pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
-    let genesis_account = GenesisAccount::new(
+    let genesis_account = GenesisAccount::account(
         *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        *DEFAULT_ACCOUNT_ADDR,
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-        Motes::zero(),
+        None,
     );
     ret.push(genesis_account);
-    let proposer_account = GenesisAccount::new(
+    let proposer_account = GenesisAccount::account(
         *DEFAULT_PROPOSER_PUBLIC_KEY,
-        *DEFAULT_PROPOSER_ADDR,
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-        Motes::zero(),
+        None,
     );
     ret.push(proposer_account);
     ret

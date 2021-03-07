@@ -13,7 +13,11 @@ use casper_execution_engine::{
     shared::{gas::Gas, motes::Motes},
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
-use casper_types::{mint, proof_of_stake, runtime_args, ApiError, RuntimeArgs, U512};
+use casper_types::{
+    runtime_args,
+    system::{handle_payment, mint},
+    ApiError, RuntimeArgs, U512,
+};
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
@@ -59,13 +63,13 @@ fn should_charge_for_user_error(
         proposer_purse_balance_after
     );
 
-    // Verify PoS postconditions
+    // Verify handle payment postconditions
 
-    let pos = builder.get_pos_contract();
-    let payment_purse = pos
+    let handle_payment = builder.get_handle_payment_contract();
+    let payment_purse = handle_payment
         .named_keys()
-        .get(proof_of_stake::POS_PAYMENT_PURSE)
-        .expect("should have pos payment purse")
+        .get(handle_payment::PAYMENT_PURSE_KEY)
+        .expect("should have handle payment payment purse")
         .into_uref()
         .expect("should have uref");
     let payment_purse_balance = builder.get_purse_balance(payment_purse);

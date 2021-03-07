@@ -40,11 +40,19 @@ use crate::{
     NodeRng,
 };
 
-type ConsensusValue = Vec<u32>;
+type ConsensusValue = Vec<u8>;
 
 impl ConsensusValueT for ConsensusValue {
+    type Hash = u64;
+
     fn needs_validation(&self) -> bool {
         !self.is_empty()
+    }
+
+    fn hash(&self) -> Self::Hash {
+        let mut hasher = DefaultHasher::new();
+        std::hash::Hash::hash(&self, &mut hasher);
+        hasher.finish()
     }
 }
 
@@ -216,12 +224,7 @@ impl HighwayValidator {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
-    fn post_hook(
-        &mut self,
-        rng: &mut NodeRng,
-        delivery_time: Timestamp,
-        msg: HighwayMessage,
-    ) -> Vec<HighwayMessage> {
+    fn post_hook(&mut self, delivery_time: Timestamp, msg: HighwayMessage) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             Some(DesFault::TemporarilyMute { from, till })
                 if *from <= delivery_time && delivery_time <= *till =>
@@ -265,7 +268,7 @@ impl HighwayValidator {
                                 }
                                 let secret = TestSecret(wunit2.creator.0.into());
                                 let hwunit2 = wunit2.into_hashed();
-                                let swunit2 = SignedWireUnit::new(hwunit2, &secret, rng);
+                                let swunit2 = SignedWireUnit::new(hwunit2, &secret);
                                 let vertex2 = Box::new(Vertex::Unit(swunit2));
                                 vec![msg, HighwayMessage::NewVertex(vertex2)]
                             }
@@ -384,24 +387,21 @@ where
 
     fn call_validator<F>(
         &mut self,
-        rng: &mut NodeRng,
         delivery_time: Timestamp,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator, &mut NodeRng) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
-        let res = f(validator_node.validator_mut(), rng);
+        let res = f(validator_node.validator_mut());
         let messages = res
             .into_iter()
             .flat_map(|eff| {
-                validator_node.validator_mut().post_hook(
-                    rng,
-                    delivery_time,
-                    HighwayMessage::from(eff),
-                )
+                validator_node
+                    .validator_mut()
+                    .post_hook(delivery_time, HighwayMessage::from(eff))
             })
             .collect();
         Ok(messages)
@@ -427,8 +427,8 @@ where
 
             match hwm {
                 HighwayMessage::Timer(timestamp) => {
-                    self.call_validator(rng, delivery_time, &validator_id, |consensus, rng| {
-                        consensus.highway_mut().handle_timer(timestamp, rng)
+                    self.call_validator(delivery_time, &validator_id, |consensus| {
+                        consensus.highway_mut().handle_timer(timestamp)
                     })?
                 }
                 HighwayMessage::NewVertex(v) => {
@@ -457,10 +457,10 @@ where
                 HighwayMessage::RequestBlock(block_context) => {
                     let consensus_value = self.next_consensus_value(block_context.height());
 
-                    self.call_validator(rng, delivery_time, &validator_id, |consensus, rng| {
+                    self.call_validator(delivery_time, &validator_id, |consensus| {
                         consensus
                             .highway_mut()
-                            .propose(consensus_value, block_context, rng)
+                            .propose(consensus_value, block_context)
                     })?
                 }
                 HighwayMessage::WeAreFaulty(_evidence) => vec![],
@@ -553,9 +553,9 @@ where
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
                         Ok(valid_vertex) => {
-                            self.call_validator(rng, delivery_time, &recipient, |v, rng| {
+                            self.call_validator(delivery_time, &recipient, |v| {
                                 v.highway_mut()
-                                    .add_valid_vertex(valid_vertex, rng, delivery_time)
+                                    .add_valid_vertex(valid_vertex, delivery_time)
                             })?
                         }
                     }
@@ -831,7 +831,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
-        let consensus_values = (0..self.consensus_values_count as u32)
+        let consensus_values = (0..self.consensus_values_count)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();
 
@@ -1023,7 +1023,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }

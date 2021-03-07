@@ -1,4 +1,5 @@
-use crate::types::{Block, BlockHash, BlockHeader};
+use crate::types::{ActivationPoint, Block, BlockHash};
+
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
@@ -9,13 +10,16 @@ pub enum Event<I> {
     GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
-    BlockHandled(Box<BlockHeader>),
+    BlockHandled(Box<Block>),
+    GotUpgradeActivationPoint(ActivationPoint),
+    InitUpgradeShutdown,
+    Shutdown(bool),
 }
 
 #[derive(Debug)]
 pub enum DeploysResult<I> {
-    Found(Box<BlockHeader>),
-    NotFound(Box<BlockHeader>, I),
+    Found(Box<Block>),
+    NotFound(Box<Block>, I),
 }
 
 #[derive(Debug)]
@@ -59,6 +63,15 @@ where
             Event::GetBlockHeightResult(height, res) => {
                 write!(f, "Get block result for height {}: {:?}", height, res)
             }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(f, "new upgrade activation point: {:?}", activation_point)
+            }
+            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiatied"),
+            Event::Shutdown(upgrade) => write!(
+                f,
+                "linear chain sync is ready for shutdown. upgrade: {}",
+                upgrade
+            ),
         }
     }
 }

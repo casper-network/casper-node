@@ -4,7 +4,7 @@
 [node]
 
 # If set, use this hash as a trust anchor when joining an existing network.
-# trusted_hash =
+#trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
 
 # =================================
@@ -21,6 +21,7 @@ color = false
 # Abbreviate module names in text output.  Has no effect if format = 'json'.
 abbreviate_modules = false
 
+
 # ===================================
 # Configuration options for consensus
 # ===================================
@@ -35,6 +36,10 @@ unit_hashes_folder = "/var/lib/casper/casper-node"
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '30min'
+
+# The maximum number of blocks by which execution is allowed to lag behind finalization.
+# If it is more than that, consensus will pause, and resume once the executor has caught up.
+max_execution_delay = 3
 
 
 # ====================================
@@ -73,9 +78,9 @@ gossip_interval = 120_000
 systemd_support = false
 
 
-# =============================================
+# ==================================================
 # Configuration options for the JSON-RPC HTTP server
-# =============================================
+# ==================================================
 [rpc_server]
 
 # Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
@@ -90,9 +95,10 @@ address = '0.0.0.0:7777'
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 5
 
-# =============================================
+
+# ==============================================
 # Configuration options for the REST HTTP server
-# =============================================
+# ==============================================
 [rest_server]
 
 # Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
@@ -107,9 +113,10 @@ address = '0.0.0.0:8888'
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 10
 
-# =============================================
+
+# ==========================================================
 # Configuration options for the SSE HTTP event stream server
-# =============================================
+# ==========================================================
 [event_stream_server]
 
 # Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
@@ -129,6 +136,7 @@ broadcast_channel_size = 100
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 100
+
 
 # ===============================================
 # Configuration options for the storage component
@@ -171,6 +179,7 @@ max_deploy_metadata_store_size = 322_122_547_200
 # 10_737_418_240 == 10 GiB.
 max_state_store_size = 10_737_418_240
 
+
 # ===================================
 # Configuration options for gossiping
 # ===================================
@@ -203,15 +212,16 @@ gossip_request_timeout_secs = 30
 get_remainder_timeout_secs = 5
 
 
-# ===================================
+# =================================
 # Configuration options for fetcher
-# ===================================
+# =================================
 [fetcher]
 
 # The timeout duration in seconds for a single fetcher request, i.e. for a single fetcher message
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
 get_from_peer_timeout = 3
+
 
 # ===================================================
 # Configuration options for deploy acceptor component
@@ -220,6 +230,7 @@ get_from_peer_timeout = 3
 
 # If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
 verify_accounts = true
+
 
 # ========================================================
 # Configuration options for the contract runtime component

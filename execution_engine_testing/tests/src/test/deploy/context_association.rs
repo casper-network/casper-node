@@ -8,7 +8,7 @@ use casper_engine_test_support::{
 
 use casper_types::{
     runtime_args,
-    system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE},
+    system::{AUCTION, HANDLE_PAYMENT, MINT},
     RuntimeArgs,
 };
 
@@ -47,8 +47,8 @@ fn should_put_system_contract_hashes_to_account_context() {
 
     assert!(named_keys.contains_key(MINT), "should contain mint");
     assert!(
-        named_keys.contains_key(PROOF_OF_STAKE),
-        "should contain proof of stake"
+        named_keys.contains_key(HANDLE_PAYMENT),
+        "should contain handle payment"
     );
     assert!(named_keys.contains_key(AUCTION), "should contain auction");
 
@@ -58,11 +58,11 @@ fn should_put_system_contract_hashes_to_account_context() {
         "mint_contract_hash should match"
     );
     assert_eq!(
-        named_keys[PROOF_OF_STAKE]
+        named_keys[HANDLE_PAYMENT]
             .into_hash()
             .expect("should be a hash"),
-        builder.get_pos_contract_hash().value(),
-        "pos_contract_hash should match"
+        builder.get_handle_payment_contract_hash().value(),
+        "handle_payment_contract_hash should match"
     );
     assert_eq!(
         named_keys[AUCTION].into_hash().expect("should be a hash"),

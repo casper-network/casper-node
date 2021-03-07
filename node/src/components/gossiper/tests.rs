@@ -3,12 +3,12 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
-    sync::Arc,
 };
 
 use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
@@ -25,8 +25,8 @@ use crate::{
     },
     effect::{
         announcements::{
-            DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::ContractRuntimeRequest,
         Responder,
@@ -57,6 +57,8 @@ enum Event {
     #[from]
     NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
@@ -66,6 +68,16 @@ enum Event {
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<StorageRequest> for Event {
@@ -94,6 +106,7 @@ impl Display for Event {
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
+            Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
@@ -148,13 +161,16 @@ impl reactor::Reactor for Reactor {
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(&storage_withdir).unwrap();
+        let storage = Storage::new(&storage_withdir, None).unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime =
             ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new(deploy_acceptor::Config::new(false));
+        let deploy_acceptor = DeployAcceptor::new(
+            deploy_acceptor::Config::new(false),
+            &Chainspec::from_resources("local"),
+        );
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -183,12 +199,6 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
-                responder,
-                ..
-            })) => responder
-                .respond(Some(Arc::new(Chainspec::from_resources("local"))))
-                .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
@@ -208,6 +218,9 @@ impl reactor::Reactor for Reactor {
                 self.network
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,
@@ -325,6 +338,10 @@ impl reactor::Reactor for Reactor {
             ),
         }
     }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
+    }
 }
 
 impl NetworkedReactor for Reactor {
@@ -439,11 +456,13 @@ async fn should_get_from_alternate_source() {
     let node_id_0 = node_ids[0].clone();
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
-            Event::NetworkRequest(NetworkRequest::SendMessage {
-                dest,
-                payload: NodeMessage::DeployGossiper(Message::GossipResponse { .. }),
-                ..
-            }) => dest == &node_id_0,
+            Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
+                if let NodeMessage::DeployGossiper(Message::GossipResponse { .. }) = **payload {
+                    **dest == node_id_0
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     };

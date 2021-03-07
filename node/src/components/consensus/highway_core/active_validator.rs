@@ -23,7 +23,6 @@ use crate::{
         traits::{Context, ValidatorSecret},
     },
     types::{TimeDiff, Timestamp},
-    NodeRng,
 };
 
 /// An action taken by a validator.
@@ -65,7 +64,7 @@ where
     C: Context,
 {
     /// Our own validator index.
-    pub(crate) vidx: ValidatorIndex,
+    vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
     /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
@@ -81,6 +80,8 @@ where
     /// The target fault tolerance threshold. The validator pauses (i.e. doesn't create new units)
     /// if not enough validators are online to finalize values at this FTT.
     target_ftt: Weight,
+    /// If this flag is set we don't create new units and just send pings instead.
+    paused: bool,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -89,6 +90,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
             .field("vidx", &self.vidx)
             .field("next_round_exp", &self.next_round_exp)
             .field("next_timer", &self.next_timer)
+            .field("paused", &self.paused)
             .finish()
     }
 }
@@ -125,6 +127,7 @@ impl<C: Context> ActiveValidator<C> {
             unit_hash_file,
             own_last_unit,
             target_ftt,
+            paused: false,
         };
         let effects = av.schedule_timer(start_time, state);
         (av, effects)
@@ -169,6 +172,11 @@ impl<C: Context> ActiveValidator<C> {
         self.next_round_exp = new_round_exp;
     }
 
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        self.paused = paused
+    }
+
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
     /// protocol `state`.
     pub(crate) fn handle_timer(
@@ -176,7 +184,6 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
             warn!("Creator knows it's faulty. Won't create a message.");
@@ -191,15 +198,15 @@ impl<C: Context> ActiveValidator<C> {
         let r_id = state::round_id(timestamp, r_exp);
         let r_len = state::round_len(r_exp);
         // Only create new units if enough validators are online.
-        if self.enough_validators_online(state, timestamp) {
+        if !self.paused && self.enough_validators_online(state, timestamp) {
             if timestamp == r_id && state.leader(r_id) == self.vidx {
-                effects.extend(self.request_new_block(state, instance_id, timestamp, rng));
+                effects.extend(self.request_new_block(state, instance_id, timestamp));
                 return effects;
             } else if timestamp == r_id + self.witness_offset(r_len) {
                 let panorama = self.panorama_at(state, timestamp);
                 if panorama.has_correct() {
                     if let Some(witness_unit) =
-                        self.new_unit(panorama, timestamp, None, state, instance_id, rng)
+                        self.new_unit(panorama, timestamp, None, state, instance_id)
                     {
                         effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
                         return effects;
@@ -210,7 +217,7 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping if necessary, to show that we're online.
         if !state.has_ping(self.vidx, timestamp) {
             warn!(%timestamp, "too many validators offline, sending ping");
-            let ping = Ping::new(self.vidx, timestamp, &self.secret, rng);
+            let ping = Ping::new(self.vidx, timestamp, &self.secret);
             effects.push(Effect::NewVertex(ValidVertex(Vertex::Ping(ping))));
         }
         effects
@@ -238,7 +245,6 @@ impl<C: Context> ActiveValidator<C> {
         now: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         if let Some(fault) = state.maybe_fault(self.vidx) {
             return vec![Effect::WeAreFaulty(fault.clone())];
@@ -248,7 +254,7 @@ impl<C: Context> ActiveValidator<C> {
             let panorama = state.confirmation_panorama(self.vidx, uhash);
             if panorama.has_correct() {
                 if let Some(confirmation_unit) =
-                    self.new_unit(panorama, now, None, state, instance_id, rng)
+                    self.new_unit(panorama, now, None, state, instance_id)
                 {
                     let vv = ValidVertex(Vertex::Unit(confirmation_unit));
                     effects.push(Effect::NewVertex(vv));
@@ -256,7 +262,7 @@ impl<C: Context> ActiveValidator<C> {
             }
         };
         if self.should_endorse(uhash, state) {
-            let endorsement = self.endorse(uhash, rng);
+            let endorsement = self.endorse(uhash);
             effects.extend(vec![Effect::NewVertex(ValidVertex(endorsement))]);
         }
         effects
@@ -269,7 +275,6 @@ impl<C: Context> ActiveValidator<C> {
         &mut self,
         evidence: &Evidence<C>,
         state: &State<C>,
-        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let vidx = evidence.perpetrator();
         state
@@ -278,7 +283,7 @@ impl<C: Context> ActiveValidator<C> {
                 let unit = state.unit(v);
                 unit.new_hash_obs(state, vidx)
             })
-            .map(|v| self.endorse(v, rng))
+            .map(|v| self.endorse(v))
             .map(|endorsement| Effect::NewVertex(ValidVertex(endorsement)))
             .collect()
     }
@@ -293,7 +298,6 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
         timestamp: Timestamp,
-        rng: &mut NodeRng,
     ) -> Option<Effect<C>> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
@@ -305,7 +309,7 @@ impl<C: Context> ActiveValidator<C> {
         let maybe_parent_hash = state.fork_choice(&panorama);
         if maybe_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             return self
-                .new_unit(panorama, timestamp, None, state, instance_id, rng)
+                .new_unit(panorama, timestamp, None, state, instance_id)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
         let maybe_parent = maybe_parent_hash.map(|bh| state.block(bh));
@@ -325,7 +329,6 @@ impl<C: Context> ActiveValidator<C> {
         block_context: BlockContext,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
         let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
@@ -349,7 +352,7 @@ impl<C: Context> ActiveValidator<C> {
             warn!("Creator knows it's faulty. Won't create a message.");
             return vec![];
         }
-        self.new_unit(panorama, timestamp, Some(value), state, instance_id, rng)
+        self.new_unit(panorama, timestamp, Some(value), state, instance_id)
             .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
             .into_iter()
             .collect()
@@ -409,7 +412,6 @@ impl<C: Context> ActiveValidator<C> {
         value: Option<C::ConsensusValue>,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut NodeRng,
     ) -> Option<SignedWireUnit<C>> {
         if !self.can_vote(state) {
             info!(?self.own_last_unit, "not voting - last own unit unknown");
@@ -456,7 +458,7 @@ impl<C: Context> ActiveValidator<C> {
                 self.unit_hash_file, err
             )
         });
-        Some(SignedWireUnit::new(hwunit, &self.secret, rng))
+        Some(SignedWireUnit::new(hwunit, &self.secret))
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
@@ -545,9 +547,9 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Creates endorsement of the `vhash`.
-    fn endorse(&self, vhash: &C::Hash, rng: &mut NodeRng) -> Vertex<C> {
+    fn endorse(&self, vhash: &C::Hash) -> Vertex<C> {
         let endorsement = Endorsement::new(*vhash, self.vidx);
-        let signature = self.secret.sign(&endorsement.hash(), rng);
+        let signature = self.secret.sign(&endorsement.hash());
         Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
             endorsement,
             signature,
@@ -598,13 +600,17 @@ impl<C: Context> ActiveValidator<C> {
             Vertex::Evidence(_) => false,
         }
     }
+
+    pub(crate) fn next_round_length(&self) -> TimeDiff {
+        state::round_len(self.next_round_exp)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
 
-    use crate::{components::consensus::highway_core::validators::ValidatorMap, testing::TestRng};
+    use crate::components::consensus::highway_core::validators::ValidatorMap;
 
     use super::{
         super::{
@@ -635,7 +641,6 @@ mod tests {
     }
 
     struct TestState {
-        rng: TestRng,
         state: State<TestContext>,
         instance_id: u64,
         fd: FinalityDetector<TestContext>,
@@ -646,7 +651,6 @@ mod tests {
     impl TestState {
         fn new(
             state: State<TestContext>,
-            rng: TestRng,
             start_time: Timestamp,
             instance_id: u64,
             fd: FinalityDetector<TestContext>,
@@ -689,7 +693,6 @@ mod tests {
                 .collect();
 
             TestState {
-                rng,
                 state,
                 instance_id,
                 fd,
@@ -709,8 +712,7 @@ mod tests {
             // Remove the timer from the queue if it has been scheduled.
             let _ = self.timers.remove(&(timestamp, vidx));
             let validator = &mut self.active_validators[vidx];
-            let effects =
-                validator.handle_timer(timestamp, &self.state, self.instance_id, &mut self.rng);
+            let effects = validator.handle_timer(timestamp, &self.state, self.instance_id);
             self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);
             effects
@@ -726,13 +728,7 @@ mod tests {
         ) -> (Vec<Effect<TestContext>>, SignedWireUnit<TestContext>) {
             let validator = &mut self.active_validators[vidx];
             let proposal_timestamp = block_context.timestamp();
-            let effects = validator.propose(
-                cv,
-                block_context,
-                &self.state,
-                self.instance_id,
-                &mut self.rng,
-            );
+            let effects = validator.propose(cv, block_context, &self.state, self.instance_id);
 
             // Add the new unit to the state.
             let proposal_wunit = unwrap_single(&effects).unwrap_unit();
@@ -743,7 +739,6 @@ mod tests {
                 proposal_timestamp + 1.into(),
                 &self.state,
                 self.instance_id,
-                &mut self.rng,
             );
             self.schedule_timer(vidx, &effects);
             (effects, proposal_wunit)
@@ -759,13 +754,8 @@ mod tests {
         ) -> Vec<Effect<TestContext>> {
             let validator = &mut self.active_validators[vidx];
             let delivery_timestamp = self.state.unit(uhash).timestamp + 1.into();
-            let effects = validator.on_new_unit(
-                uhash,
-                delivery_timestamp,
-                &self.state,
-                self.instance_id,
-                &mut self.rng,
-            );
+            let effects =
+                validator.on_new_unit(uhash, delivery_timestamp, &self.state, self.instance_id);
             self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);
             effects
@@ -839,7 +829,6 @@ mod tests {
     fn active_validator() {
         let mut test = TestState::new(
             State::new_test(&[Weight(3), Weight(4)], 0),
-            crate::new_rng(),
             410.into(),
             1u64,
             FinalityDetector::new(Weight(2)),

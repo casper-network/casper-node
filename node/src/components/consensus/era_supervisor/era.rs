@@ -1,102 +1,27 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    env,
 };
 
 use datasize::DataSize;
 use itertools::Itertools;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use once_cell::sync::Lazy;
 use tracing::{debug, warn};
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, U512,
-};
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
         candidate_block::CandidateBlock, cl_context::ClContext,
         consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
-        ConsensusMessage,
     },
     types::{ProtoBlock, Timestamp},
 };
 
-#[derive(
-    DataSize,
-    Debug,
-    Clone,
-    Copy,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    JsonSchema,
-)]
-#[serde(deny_unknown_fields)]
-pub struct EraId(pub(crate) u64);
-
-impl EraId {
-    pub(crate) fn message(self, payload: Vec<u8>) -> ConsensusMessage {
-        ConsensusMessage::Protocol {
-            era_id: self,
-            payload,
-        }
-    }
-
-    pub(crate) fn successor(self) -> EraId {
-        EraId(self.0 + 1)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, including this one.
-    pub(crate) fn iter_bonded(&self, bonded_eras: u64) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(bonded_eras)..=self.0).map(EraId)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
-    pub(crate) fn iter_other(&self, count: u64) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(count)..self.0).map(EraId)
-    }
-
-    /// Returns the current era minus `x`, or `None` if that would be less than `0`.
-    pub(crate) fn checked_sub(&self, x: u64) -> Option<EraId> {
-        self.0.checked_sub(x).map(EraId)
-    }
-}
-
-impl Display for EraId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "era {}", self.0)
-    }
-}
-
-impl From<EraId> for u64 {
-    fn from(era_id: EraId) -> Self {
-        era_id.0
-    }
-}
-
-impl ToBytes for EraId {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for EraId {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (id_value, remainder) = u64::from_bytes(bytes)?;
-        let era_id = EraId(id_value);
-        Ok((era_id, remainder))
-    }
-}
+const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
+    "CASPER_ENABLE_DETAILED_CONSENSUS_METRICS";
+static CASPER_ENABLE_DETAILED_CONSENSUS_METRICS: Lazy<bool> =
+    Lazy::new(|| env::var(CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR).is_ok());
 
 /// A candidate block waiting for validation and dependencies.
 #[derive(DataSize)]
@@ -192,20 +117,25 @@ impl<I> Era<I> {
     pub(crate) fn resolve_validity(
         &mut self,
         proto_block: &ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     ) -> Vec<CandidateBlock> {
         if valid {
-            self.accept_proto_block(proto_block)
+            self.accept_proto_block(proto_block, timestamp)
         } else {
-            self.reject_proto_block(proto_block)
+            self.reject_proto_block(proto_block, timestamp)
         }
     }
 
     /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
     /// resolved and returns all candidates that have no missing dependencies left.
-    pub(crate) fn accept_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
+    pub(crate) fn accept_proto_block(
+        &mut self,
+        proto_block: &ProtoBlock,
+        timestamp: Timestamp,
+    ) -> Vec<CandidateBlock> {
         for pc in &mut self.candidates {
-            if pc.candidate.proto_block() == proto_block {
+            if pc.candidate.proto_block() == proto_block && pc.candidate.timestamp() == timestamp {
                 pc.validated = true;
             }
         }
@@ -214,11 +144,14 @@ impl<I> Era<I> {
 
     /// Removes and returns any candidate blocks depending on the validity of the specified proto
     /// block. If it is invalid, all those candidates are invalid.
-    pub(crate) fn reject_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
-        let (invalid, candidates): (Vec<_>, Vec<_>) = self
-            .candidates
-            .drain(..)
-            .partition(|pc| pc.candidate.proto_block() == proto_block);
+    pub(crate) fn reject_proto_block(
+        &mut self,
+        proto_block: &ProtoBlock,
+        timestamp: Timestamp,
+    ) -> Vec<CandidateBlock> {
+        let (invalid, candidates): (Vec<_>, Vec<_>) = self.candidates.drain(..).partition(|pc| {
+            pc.candidate.proto_block() == proto_block && pc.candidate.timestamp() == timestamp
+        });
         self.candidates = candidates;
         invalid.into_iter().map(|pc| pc.candidate).collect()
     }
@@ -245,6 +178,11 @@ impl<I> Era<I> {
     /// Returns whether validator identified with `public_key` is bonded in that era.
     pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
         self.validators.contains_key(public_key)
+    }
+
+    /// Sets the pause status: While paused we don't create consensus messages other than pings.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        self.consensus.set_paused(paused);
     }
 
     /// Removes and returns all candidate blocks with no missing dependencies.
@@ -287,15 +225,16 @@ where
             let any_ref = consensus.as_any();
 
             if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
-                // TODO: Allow switching between `detailed`, `flat` and `off` via envvar or config.
-                let detailed = (*highway).estimate_detailed_heap_size();
-
-                match serde_json::to_string(&detailed) {
-                    Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
-                    Err(err) => warn!(%err, "error encoding consensus memory metrics"),
+                if *CASPER_ENABLE_DETAILED_CONSENSUS_METRICS {
+                    let detailed = (*highway).estimate_detailed_heap_size();
+                    match serde_json::to_string(&detailed) {
+                        Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
+                        Err(err) => warn!(%err, "error encoding consensus memory metrics"),
+                    }
+                    detailed.total()
+                } else {
+                    (*highway).estimate_heap_size()
                 }
-
-                detailed.total()
             } else {
                 warn!(
                     "could not downcast consensus protocol to \
@@ -313,20 +252,5 @@ where
             + slashed.estimate_heap_size()
             + accusations.estimate_heap_size()
             + validators.estimate_heap_size()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use rand::Rng;
-
-    use super::*;
-    use crate::testing::TestRng;
-
-    #[test]
-    fn bytesrepr_roundtrip() {
-        let mut rng = TestRng::new();
-        let era_id = EraId(rng.gen());
-        bytesrepr::test_serialization_roundtrip(&era_id);
     }
 }

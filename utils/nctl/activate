@@ -8,11 +8,12 @@
 export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Set casper-node root.
-export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
+NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
 export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
 
-# Set type of daemon to run.
-export NCTL_DAEMON_TYPE=${NCTL_DAEMON_TYPE:-supervisord}
+# Set casper-node-launcher root.
+NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
+export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
 
 # ###############################################################
 # UTILS
@@ -34,6 +35,7 @@ alias nctl-assets-teardown='source $NCTL/sh/assets/teardown.sh'
 alias nctl-compile='source $NCTL/sh/assets/compile.sh'
 alias nctl-compile-client='source $NCTL/sh/assets/compile_client.sh'
 alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
+alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
 
 # Node control.
 alias nctl-clean='source $NCTL/sh/node/clean.sh'
@@ -48,6 +50,7 @@ alias nctl-start-after-n-blocks='source $NCTL/sh/node/start_after_n_blocks.sh'
 alias nctl-start-after-n-eras='source $NCTL/sh/node/start_after_n_eras.sh'
 alias nctl-status='source $NCTL/sh/node/status.sh'
 alias nctl-stop='source $NCTL/sh/node/stop.sh'
+alias nctl-upgrade-protocol='source $NCTL/sh/node/upgrade.sh'
 
 # Blocking commands.
 alias nctl-await-n-blocks='source $NCTL/sh/misc/await_n_blocks.sh'
@@ -76,6 +79,7 @@ alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
 alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_stderr.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log_stdout.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
+alias nctl-view-node-peer-count='source $NCTL/sh/views/view_node_peer_count.sh'
 alias nctl-view-node-ports='source $NCTL/sh/views/view_node_ports.sh'
 alias nctl-view-node-rpc-endpoint='source $NCTL/sh/views/view_node_rpc_endpoint.sh'
 alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
@@ -91,27 +95,12 @@ alias nctl-view-node-finalisation-time='source $NCTL/sh/views/view_node_metrics.
 
 # Views #4: faucet.
 alias nctl-view-faucet-account='source $NCTL/sh/views/view_faucet_account.sh'
-alias nctl-view-faucet-account-hash='source $NCTL/sh/views/view_faucet_account_hash.sh'
-alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_faucet_account_key.sh'
-alias nctl-view-faucet-balance='source $NCTL/sh/views/view_faucet_balance.sh'
-alias nctl-view-faucet-main-purse-uref='source $NCTL/sh/views/view_faucet_main_purse_uref.sh'
-alias nctl-view-faucet-secret-key-path='source $NCTL/sh/views/view_faucet_secret_key_path.sh'
 
 # Views #5: user.
 alias nctl-view-user-account='source $NCTL/sh/views/view_user_account.sh'
-alias nctl-view-user-account-hash='source $NCTL/sh/views/view_user_account_hash.sh'
-alias nctl-view-user-account-key='source $NCTL/sh/views/view_user_account_key.sh'
-alias nctl-view-user-balance='source $NCTL/sh/views/view_user_balance.sh'
-alias nctl-view-user-main-purse-uref='source $NCTL/sh/views/view_user_main_purse_uref.sh'
-alias nctl-view-user-secret-key-path='source $NCTL/sh/views/view_user_secret_key_path.sh'
 
 # Views #6: validator.
 alias nctl-view-validator-account='source $NCTL/sh/views/view_validator_account.sh'
-alias nctl-view-validator-account-hash='source $NCTL/sh/views/view_validator_account_hash.sh'
-alias nctl-view-validator-account-key='source $NCTL/sh/views/view_validator_account_key.sh'
-alias nctl-view-validator-balance='source $NCTL/sh/views/view_validator_balance.sh'
-alias nctl-view-validator-main-purse-uref='source $NCTL/sh/views/view_validator_main_purse_uref.sh'
-alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_secret_key_path.sh'
 
 # Contracts #1: Transfers.
 alias nctl-transfer='source $NCTL/sh/contracts-transfers/do_dispatch_native.sh'
@@ -136,3 +125,8 @@ alias nctl-erc20-transfer='source $NCTL/sh/contracts-erc20/do_transfer.sh'
 alias nctl-erc20-view-allowances='source $NCTL/sh/contracts-erc20/view_allowances.sh'
 alias nctl-erc20-view-details='source $NCTL/sh/contracts-erc20/view_details.sh'
 alias nctl-erc20-view-balances='source $NCTL/sh/contracts-erc20/view_balances.sh'
+
+# Contracts #4: KV storage.
+alias nctl-kv-storage-get-key='source $NCTL/sh/contracts-kv/get_key.sh'
+alias nctl-kv-storage-install='source $NCTL/sh/contracts-kv/do_install.sh'
+alias nctl-kv-storage-set-key='source $NCTL/sh/contracts-kv/set_key.sh'

@@ -12,20 +12,17 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::{
-    core::engine_state::{BalanceResult, QueryResult},
-    storage::protocol_data::ProtocolData,
-};
+use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult};
 use casper_types::{bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, URef, U512};
 
 use super::{
-    docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
+    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
 };
 use crate::{
-    components::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
@@ -45,7 +42,7 @@ static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -55,12 +52,12 @@ static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParam
         .to_string(),
 });
 static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     auction_state: AuctionState::doc_example().clone(),
 });
 
@@ -116,6 +113,7 @@ impl RpcWithParamsExt for GetItem {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Try to parse a `casper_types::Key` from the params.
@@ -155,7 +153,7 @@ impl RpcWithParamsExt for GetItem {
             };
 
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };
@@ -215,6 +213,7 @@ impl RpcWithParamsExt for GetBalance {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Try to parse the purse's URef from the params.
@@ -243,12 +242,8 @@ impl RpcWithParamsExt for GetBalance {
                 )
                 .await;
 
-            let (balance_value, purse_proof, balance_proof) = match balance_result {
-                Ok(BalanceResult::Success {
-                    motes,
-                    purse_proof,
-                    balance_proof,
-                }) => (motes, purse_proof, balance_proof),
+            let (balance_value, balance_proof) = match balance_result {
+                Ok(BalanceResult::Success { motes, proof }) => (motes, proof),
                 Ok(balance_result) => {
                     let error_msg = format!("get-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
@@ -267,7 +262,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let proof_bytes = match (*purse_proof, *balance_proof).to_bytes() {
+            let proof_bytes = match balance_proof.to_bytes() {
                 Ok(proof_bytes) => proof_bytes,
                 Err(error) => {
                     info!("failed to encode stored value: {}", error);
@@ -279,7 +274,7 @@ impl RpcWithParamsExt for GetBalance {
 
             // Return the result.
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 balance_value,
                 merkle_proof,
             };
@@ -318,6 +313,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let block: Block = {
@@ -345,50 +341,29 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                 }
             };
 
-            let protocol_version = ProtocolVersion::V1_0_0;
-            let protocol_version_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryProtocolData {
-                        protocol_version,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
+            let protocol_version = ProtocolVersion::from_parts(
+                api_version.major as u32,
+                api_version.minor as u32,
+                api_version.patch as u32,
+            );
 
-            let protocol_data = {
-                if let Ok(Some(protocol_data)) = protocol_version_result {
-                    protocol_data
-                } else {
-                    Box::new(ProtocolData::default())
-                }
-            };
-
-            // auction contract key
-            let base_key = protocol_data.auction().into();
-            // bids named key in auction contract
-            let path = vec![casper_types::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();
             // the block height of the last added block
             let block_height = block.header().height();
 
-            let query_result = effect_builder
+            let get_bids_result = effect_builder
                 .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
+                    |responder| RpcRequest::GetBids {
                         state_root_hash,
-                        base_key,
-                        path,
                         responder,
                     },
                     QueueKind::Api,
                 )
                 .await;
 
-            let bids = if let Ok(QueryResult::Success { value, .. }) = query_result {
-                value
-                    .as_cl_value()
-                    .and_then(|cl_value| cl_value.to_owned().into_t().ok())
+            let maybe_bids = if let Ok(GetBidsResult::Success { bids, .. }) = get_bids_result {
+                Some(bids)
             } else {
                 None
             };
@@ -407,9 +382,13 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             let era_validators = era_validators_result.ok();
 
             let auction_state =
-                AuctionState::new(state_root_hash, block_height, era_validators, bids);
-            debug!("responding to client with: {:?}", auction_state);
-            Ok(response_builder.success(auction_state)?)
+                AuctionState::new(state_root_hash, block_height, era_validators, maybe_bids);
+
+            let result = Self::ResponseResult {
+                api_version,
+                auction_state,
+            };
+            Ok(response_builder.success(result)?)
         }
         .boxed()
     }

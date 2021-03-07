@@ -82,16 +82,6 @@ nctl-start node=1
 nctl-status
 ```
 
-- To restart either a single or all daemonised nodes:
-
-```
-# Restart all nodes.
-nctl-restart
-
-# Restart node 1.
-nctl-restart node=1
-```
-
 - To stop either a single or all daemonised nodes:
 
 ```

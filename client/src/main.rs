@@ -1,3 +1,4 @@
+mod account_address;
 mod block;
 mod command;
 mod common;
@@ -11,8 +12,11 @@ mod get_state_hash;
 mod keygen;
 mod query_state;
 
+use std::process;
+
 use clap::{crate_description, crate_version, App};
 
+use casper_client::Error;
 use casper_node::rpcs::{
     account::PutDeploy,
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
@@ -23,7 +27,8 @@ use casper_node::rpcs::{
 
 use deploy::{ListDeploys, MakeDeploy, SendDeploy, SignDeploy};
 
-use command::ClientCommand;
+use account_address::GenerateAccountHash as AccountAddress;
+use command::{ClientCommand, Success};
 use deploy::Transfer;
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
@@ -49,6 +54,7 @@ enum DisplayOrder {
     Keygen,
     GenerateCompletion,
     GetRpcs,
+    AccountAddress,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -80,32 +86,57 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
             DisplayOrder::GenerateCompletion as usize,
         ))
         .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
+        .subcommand(AccountAddress::build(DisplayOrder::AccountAddress as usize))
 }
 
 #[tokio::main]
 async fn main() {
     let arg_matches = cli().get_matches();
-    match arg_matches.subcommand() {
-        (PutDeploy::NAME, Some(matches)) => PutDeploy::run(matches),
-        (MakeDeploy::NAME, Some(matches)) => MakeDeploy::run(matches),
-        (SignDeploy::NAME, Some(matches)) => SignDeploy::run(matches),
-        (SendDeploy::NAME, Some(matches)) => SendDeploy::run(matches),
-        (Transfer::NAME, Some(matches)) => Transfer::run(matches),
-        (GetDeploy::NAME, Some(matches)) => GetDeploy::run(matches),
-        (GetBlock::NAME, Some(matches)) => GetBlock::run(matches),
-        (GetBlockTransfers::NAME, Some(matches)) => GetBlockTransfers::run(matches),
-        (ListDeploys::NAME, Some(matches)) => ListDeploys::run(matches),
-        (GetBalance::NAME, Some(matches)) => GetBalance::run(matches),
-        (GetStateRootHash::NAME, Some(matches)) => GetStateRootHash::run(matches),
-        (QueryState::NAME, Some(matches)) => QueryState::run(matches),
-        (GetEraInfoBySwitchBlock::NAME, Some(matches)) => GetEraInfoBySwitchBlock::run(matches),
-        (GetAuctionInfo::NAME, Some(matches)) => GetAuctionInfo::run(matches),
-        (Keygen::NAME, Some(matches)) => Keygen::run(matches),
-        (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),
-        (ListRpcs::NAME, Some(matches)) => ListRpcs::run(matches),
+    let (result, matches) = match arg_matches.subcommand() {
+        (PutDeploy::NAME, Some(matches)) => (PutDeploy::run(matches), matches),
+        (MakeDeploy::NAME, Some(matches)) => (MakeDeploy::run(matches), matches),
+        (SignDeploy::NAME, Some(matches)) => (SignDeploy::run(matches), matches),
+        (SendDeploy::NAME, Some(matches)) => (SendDeploy::run(matches), matches),
+        (Transfer::NAME, Some(matches)) => (Transfer::run(matches), matches),
+        (GetDeploy::NAME, Some(matches)) => (GetDeploy::run(matches), matches),
+        (GetBlock::NAME, Some(matches)) => (GetBlock::run(matches), matches),
+        (GetBlockTransfers::NAME, Some(matches)) => (GetBlockTransfers::run(matches), matches),
+        (ListDeploys::NAME, Some(matches)) => (ListDeploys::run(matches), matches),
+        (GetBalance::NAME, Some(matches)) => (GetBalance::run(matches), matches),
+        (GetStateRootHash::NAME, Some(matches)) => (GetStateRootHash::run(matches), matches),
+        (QueryState::NAME, Some(matches)) => (QueryState::run(matches), matches),
+        (GetEraInfoBySwitchBlock::NAME, Some(matches)) => {
+            (GetEraInfoBySwitchBlock::run(matches), matches)
+        }
+        (GetAuctionInfo::NAME, Some(matches)) => (GetAuctionInfo::run(matches), matches),
+        (Keygen::NAME, Some(matches)) => (Keygen::run(matches), matches),
+        (GenerateCompletion::NAME, Some(matches)) => (GenerateCompletion::run(matches), matches),
+        (ListRpcs::NAME, Some(matches)) => (ListRpcs::run(matches), matches),
+        (AccountAddress::NAME, Some(matches)) => (AccountAddress::run(matches), matches),
         _ => {
             let _ = cli().print_long_help();
             println!();
+            process::exit(1);
+        }
+    };
+
+    let mut verbosity_level = common::verbose::get(matches);
+    if verbosity_level == 0 {
+        verbosity_level += 1
+    }
+
+    match &result {
+        Ok(Success::Response(response)) => {
+            casper_client::pretty_print_at_level(&response, verbosity_level)
+        }
+        Ok(Success::Output(output)) => println!("{}", output),
+        Err(Error::ResponseIsError(error)) => {
+            casper_client::pretty_print_at_level(&error, verbosity_level);
+            process::exit(1);
+        }
+        Err(error) => {
+            println!("{}", error);
+            process::exit(1);
         }
     }
 }

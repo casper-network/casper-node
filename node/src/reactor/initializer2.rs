@@ -10,7 +10,10 @@ reactor!(Initializer {
 
   components: {
     chainspec_loader = has_effects ChainspecLoader(cfg.dir(), effect_builder);
-    storage = Storage(&cfg.map_ref(|cfg| cfg.storage.clone()));
+    storage = Storage(
+        &cfg.map_ref(|cfg| cfg.storage.clone()),
+        chainspec_loader.hard_reset_to_start_of_era()
+    );
     contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()),
 &cfg.value().contract_runtime, registry);   }
 
@@ -18,6 +21,7 @@ reactor!(Initializer {
 
   requests: {
     StorageRequest -> storage;
+    StateStoreRequest -> storage;
     ContractRuntimeRequest -> contract_runtime;
 
     // No network traffic during initialization, just discard.
@@ -31,11 +35,4 @@ reactor!(Initializer {
 });
 
 // TODO: Metrics
-// TODO: is_stopped
-
-impl Initializer {
-    /// Returns whether the initialization process completed successfully or not.
-    pub fn stopped_successfully(&self) -> bool {
-        self.chainspec_loader.stopped_successfully()
-    }
-}
+// TODO: maybe_exit

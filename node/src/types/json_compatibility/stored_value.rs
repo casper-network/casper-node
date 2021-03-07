@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
-    auction::EraInfo,
     bytesrepr::{self, ToBytes},
+    system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, DeployInfo, Transfer,
 };
 
@@ -41,6 +41,10 @@ pub enum StoredValue {
     DeployInfo(DeployInfo),
     /// Auction metadata
     EraInfo(EraInfo),
+    /// A bid
+    Bid(Box<Bid>),
+    /// A withdraw
+    Withdraw(Vec<UnbondingPurse>),
 }
 
 impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
@@ -64,6 +68,10 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
                 StoredValue::DeployInfo(deploy_info.clone())
             }
             ExecutionEngineStoredValue::EraInfo(era_info) => StoredValue::EraInfo(era_info.clone()),
+            ExecutionEngineStoredValue::Bid(bid) => StoredValue::Bid(bid.clone()),
+            ExecutionEngineStoredValue::Withdraw(unbonding_purses) => {
+                StoredValue::Withdraw(unbonding_purses.clone())
+            }
         };
 
         Ok(stored_value)

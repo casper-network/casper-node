@@ -87,14 +87,14 @@ where
 
     let protocol_data = {
         let mint = builder.get_mint_contract_hash();
-        let pos = builder.get_mint_contract_hash();
+        let handle_payment = builder.get_mint_contract_hash();
         let standard_payment = builder.get_standard_payment_contract_hash();
         let auction = builder.get_auction_contract_hash();
         ProtocolData::new(
             *DEFAULT_WASM_CONFIG,
             *DEFAULT_SYSTEM_CONFIG,
             mint,
-            pos,
+            handle_payment,
             standard_payment,
             auction,
         )

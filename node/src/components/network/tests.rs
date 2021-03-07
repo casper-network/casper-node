@@ -8,17 +8,20 @@ use std::{
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, info};
 
 use super::{
     network_is_isolated, Config, Event as NetworkEvent, Network as NetworkComponent,
-    ENABLE_SMALL_NET_ENV_VAR,
+    ENABLE_LIBP2P_NET_ENV_VAR,
 };
 use crate::{
     components::{network::NetworkIdentity, Component},
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
+        announcements::{ControlAnnouncement, NetworkAnnouncement},
+        requests::NetworkRequest,
+        EffectBuilder, Effects,
     },
     protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
@@ -39,7 +42,19 @@ enum Event {
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, String>),
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
@@ -69,14 +84,20 @@ impl Reactor for TestReactor {
 
     fn new(
         config: Self::Config,
-        _registry: &Registry,
+        registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let chainspec = Chainspec::random(rng);
         let network_identity = NetworkIdentity::new();
-        let (network_component, effects) =
-            NetworkComponent::new(event_queue, config, network_identity, &chainspec, false)?;
+        let (network_component, effects) = NetworkComponent::new(
+            event_queue,
+            config,
+            registry,
+            network_identity,
+            &chainspec,
+            false,
+        )?;
 
         Ok((
             TestReactor { network_component },
@@ -101,6 +122,9 @@ impl Reactor for TestReactor {
                 rng,
                 Event::Network(NetworkEvent::from(request)),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,
@@ -117,6 +141,10 @@ impl Reactor for TestReactor {
                 Effects::new()
             }
         }
+    }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
     }
 }
 
@@ -182,8 +210,8 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 
@@ -248,8 +276,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 
@@ -293,8 +321,8 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is not defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
         return;
     }
 

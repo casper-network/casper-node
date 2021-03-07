@@ -13,6 +13,7 @@ use std::{
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -20,13 +21,12 @@ use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        network::ENABLE_SMALL_NET_ENV_VAR,
+        network::ENABLE_LIBP2P_NET_ENV_VAR,
         small_network::SmallNetworkIdentity,
         Component,
     },
-    crypto::hash::Digest,
     effect::{
-        announcements::{GossiperAnnouncement, NetworkAnnouncement},
+        announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
@@ -52,14 +52,34 @@ enum Event {
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
 }
 
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+}
+
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<NodeId, Message>> for SmallNetworkEvent<Message> {
+    fn from(request: NetworkRequest<NodeId, Message>) -> SmallNetworkEvent<Message> {
+        SmallNetworkEvent::NetworkRequest {
+            req: Box::new(request),
+        }
     }
 }
 
@@ -119,7 +139,7 @@ impl Reactor for TestReactor {
             cfg,
             registry,
             small_network_identity,
-            Digest::default(),
+            "test_network".to_string(),
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
@@ -156,6 +176,9 @@ impl Reactor for TestReactor {
                 rng,
                 Event::SmallNet(SmallNetworkEvent::from(req)),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,
@@ -185,6 +208,10 @@ impl Reactor for TestReactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
+    }
+
+    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
+        unimplemented!()
     }
 }
 
@@ -258,8 +285,8 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
         return;
     }
 
@@ -324,8 +351,8 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
         return;
     }
 
@@ -369,8 +396,8 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    // If the env var "CASPER_ENABLE_LEGACY_NET" is not defined, exit without running the test.
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+    // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without running the test.
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
         return;
     }
 

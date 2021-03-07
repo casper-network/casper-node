@@ -9,6 +9,10 @@ use core::{
 };
 
 use datasize::DataSize;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -97,6 +101,12 @@ impl<'de> Deserialize<'de> for DeployHash {
             <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
         };
         Ok(DeployHash(bytes))
+    }
+}
+
+impl Distribution<DeployHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DeployHash {
+        DeployHash::new(rng.gen())
     }
 }
 
@@ -375,8 +385,15 @@ impl AsRef<[u8]> for TransferAddr {
     }
 }
 
-#[cfg(test)]
-mod gens {
+impl Distribution<TransferAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransferAddr {
+        TransferAddr::new(rng.gen())
+    }
+}
+
+/// Generators for [`Transfer`]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
     use proptest::prelude::{prop::option, Arbitrary, Strategy};
 
     use crate::{
@@ -385,6 +402,7 @@ mod gens {
         Transfer,
     };
 
+    /// Creates an arbitrary [`Transfer`]
     pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
         (
             deploy_hash_arb(),

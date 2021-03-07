@@ -2,10 +2,11 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
+use casper_client::Error;
 use casper_node::rpcs::state::GetItem;
 use casper_types::PublicKey;
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -46,31 +47,30 @@ mod key {
             .display_order(DisplayOrder::Key as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> String {
+    pub(super) fn get(matches: &ArgMatches) -> Result<String, Error> {
         let value = matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
 
         // Try to read as a PublicKey PEM file first.
         if let Ok(public_key) = PublicKey::from_file(value) {
-            return public_key.to_hex();
+            return Ok(public_key.to_hex());
         }
 
         // Try to read as a hex-encoded PublicKey file next.
-        if let Ok(hex_public_key) = fs::read_to_string(value).map(|contents| {
-            PublicKey::from_hex(&contents).unwrap_or_else(|error| {
-                panic!(
-                    "failed to parse '{}' as a hex-encoded public key file: {}",
+        if let Ok(hex_public_key) = fs::read_to_string(value) {
+            let _ = PublicKey::from_hex(&hex_public_key).map_err(|error| {
+                eprintln!(
+                    "Can't parse the contents of {} as a public key: {}",
                     value, error
-                )
-            });
-            contents
-        }) {
-            return hex_public_key;
+                );
+                Error::FailedToParseKey
+            })?;
+            return Ok(hex_public_key);
         }
 
         // Just return the value.
-        value.to_string()
+        Ok(value.to_string())
     }
 }
 
@@ -118,15 +118,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             .arg(path::arg())
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let mut verbosity_level = common::verbose::get(matches);
+        let verbosity_level = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(matches);
-        let key = key::get(matches);
+        let key = key::get(matches)?;
         let path = path::get(matches);
 
-        let response = casper_client::get_item(
+        casper_client::get_item(
             maybe_rpc_id,
             node_address,
             verbosity_level,
@@ -134,11 +134,6 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
             &key,
             path,
         )
-        .unwrap_or_else(|error| panic!("response error: {}", error));
-
-        if verbosity_level == 0 {
-            verbosity_level += 1
-        }
-        casper_client::pretty_print_at_level(&response, verbosity_level);
+        .map(Success::from)
     }
 }

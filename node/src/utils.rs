@@ -1,9 +1,12 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
+mod counting_channel;
+pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
+pub(crate) mod rlimit;
 mod round_robin;
 
 use std::{
@@ -11,6 +14,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io,
     net::{SocketAddr, ToSocketAddrs},
+    ops::{Add, Div},
     path::{Path, PathBuf},
 };
 
@@ -22,6 +26,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::warn;
 
+pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, CountingSender};
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
@@ -287,4 +292,27 @@ impl<I: Display> Display for Source<I> {
             Source::Client => write!(formatter, "client"),
         }
     }
+}
+
+/// Divides `numerator` by `denominator` and rounds to the closest integer.
+pub(crate) fn div_round<T>(numerator: T, denominator: T) -> T
+where
+    T: Add<Output = T> + Div<Output = T> + From<u8> + Copy,
+{
+    (numerator + denominator / T::from(2)) / denominator
+}
+
+/// Used to unregister a metric from the Prometheus registry.
+#[macro_export]
+macro_rules! unregister_metric {
+    ($registry:expr, $metric:expr) => {
+        $registry
+            .unregister(Box::new($metric.clone()))
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    "unregistering {} failed: was not registered",
+                    stringify!($metric)
+                )
+            });
+    };
 }

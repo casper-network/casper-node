@@ -4,14 +4,14 @@ use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::consensus::EraId,
-    types::{BlockHash, BlockHeader, DeployHash, DeployHeader, FinalitySignature, Timestamp},
+    types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp},
 };
 
 #[derive(Debug)]
 pub enum Event {
     BlockAdded {
         block_hash: BlockHash,
-        block_header: Box<BlockHeader>,
+        block: Box<Block>,
     },
     DeployProcessed {
         deploy_hash: DeployHash,

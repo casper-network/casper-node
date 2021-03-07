@@ -11,12 +11,12 @@ use casper_types::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    auction::EraInfo,
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
+    system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion,
+    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
     RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
@@ -248,6 +248,18 @@ where
                 // Users cannot remove era infos from global state
                 Ok(())
             }
+            Key::Balance(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
+            Key::Bid(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
+            Key::Withdraw(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -418,6 +430,13 @@ where
         })
     }
 
+    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_keys(self.correlation_id, key_tag)
+            .map_err(Into::into)
+    }
+
     pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         if let Key::Account(_) = key {
             self.validate_key(key)?;
@@ -563,6 +582,8 @@ where
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
+            StoredValue::Bid(_) => Ok(()),
+            StoredValue::Withdraw(_) => Ok(()),
         }
     }
 
@@ -649,6 +670,9 @@ where
             Key::Transfer(_) => true,
             Key::DeployInfo(_) => true,
             Key::EraInfo(_) => true,
+            Key::Balance(_) => false,
+            Key::Bid(_) => true,
+            Key::Withdraw(_) => true,
         }
     }
 
@@ -660,6 +684,9 @@ where
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
+            Key::Balance(_) => false,
+            Key::Bid(_) => false,
+            Key::Withdraw(_) => false,
         }
     }
 
@@ -671,6 +698,9 @@ where
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
             Key::EraInfo(_) => false,
+            Key::Balance(_) => false,
+            Key::Bid(_) => false,
+            Key::Withdraw(_) => false,
         }
     }
 
@@ -769,7 +799,11 @@ where
         Ok(())
     }
 
-    fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    pub(crate) fn metered_add_gs_unsafe(
+        &mut self,
+        key: Key,
+        value: StoredValue,
+    ) -> Result<(), Error> {
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 

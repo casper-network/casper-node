@@ -23,14 +23,16 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::join;
+use semver::Version;
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, BalanceRequest, BalanceResult, GetEraValidatorsError, QueryRequest, QueryResult,
+        self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
+        QueryResult,
     },
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{auction::EraValidators, Key, ProtocolVersion, URef};
+use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
 
@@ -41,8 +43,8 @@ use crate::{
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, RpcRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            MetricsRequest, NetworkInfoRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -61,6 +63,7 @@ pub trait ReactorEventT:
     + From<RpcServerAnnouncement>
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
+    + From<ConsensusRequest>
     + From<LinearChainRequest<NodeId>>
     + From<MetricsRequest>
     + From<NetworkInfoRequest<NodeId>>
@@ -75,6 +78,7 @@ impl<REv> ReactorEventT for REv where
         + From<RpcServerAnnouncement>
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
+        + From<ConsensusRequest>
         + From<LinearChainRequest<NodeId>>
         + From<MetricsRequest>
         + From<NetworkInfoRequest<NodeId>>
@@ -91,12 +95,18 @@ impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
         let builder = utils::start_listening(&config.address)?;
-        tokio::spawn(http_server::run(builder, effect_builder, config.qps_limit));
+        tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            api_version,
+            config.qps_limit,
+        ));
 
         Ok(RpcServer {})
     }
@@ -244,6 +254,18 @@ where
                 protocol_version,
                 responder,
             ),
+            Event::RpcRequest(RpcRequest::GetBids {
+                state_root_hash,
+                responder,
+            }) => {
+                let get_bids_request = GetBidsRequest::new(state_root_hash.into());
+                effect_builder
+                    .get_bids(get_bids_request)
+                    .event(move |result| Event::GetBidsResult {
+                        result,
+                        main_responder: responder,
+                    })
+            }
             Event::RpcRequest(RpcRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
@@ -263,12 +285,14 @@ where
                     main_responder: responder,
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
-                let (last_added_block, peers, chainspec_info) = join!(
+                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                     effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info(),
+                    effect_builder.consensus_status()
                 );
-                let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
+                let status_feed =
+                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
                 responder.respond(status_feed).await;
             }
             .ignore(),
@@ -297,6 +321,10 @@ where
                 main_responder,
             } => main_responder.respond(result).ignore(),
             Event::QueryEraValidatorsResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::GetBidsResult {
                 result,
                 main_responder,
             } => main_responder.respond(result).ignore(),

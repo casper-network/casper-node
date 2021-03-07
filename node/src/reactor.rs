@@ -31,6 +31,8 @@ pub mod joiner;
 mod queue_kind;
 pub mod validator;
 
+#[cfg(test)]
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     env,
@@ -45,22 +47,24 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
-use quanta::IntoNanoseconds;
+use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
+use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
+use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn};
 use tracing_futures::Instrument;
+use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    effect::{Effect, EffectBuilder, Effects},
-    types::Timestamp,
+    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
+    types::{ExitCode, Timestamp},
+    unregister_metric,
     utils::{self, WeightedRoundRobin},
-    NodeRng,
+    NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
-use quanta::Clock;
 pub use queue_kind::QueueKind;
 
 /// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
@@ -77,6 +81,9 @@ static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
         })
         .ok()
 });
+
+/// The desired limit for open files.
+const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -96,6 +103,16 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         })
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
+
+/// The value returned by a reactor on completion of the `run()` loop.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
+pub enum ReactorExit {
+    /// The process should continue running, moving to the next reactor.
+    ProcessShouldContinue,
+    /// The process should exit with the given exit code to allow the launcher to react
+    /// accordingly.
+    ProcessShouldExit(ExitCode),
+}
 
 /// Event scheduler
 ///
@@ -138,6 +155,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns number of events in each of the scheduler's queues.
+    #[inline]
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
         self.0.event_queues_counts()
     }
@@ -153,7 +171,7 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + Debug + Display + 'static;
+    type Event: ReactorEvent + Display;
 
     /// A configuration for the reactor
     type Config;
@@ -186,14 +204,22 @@ pub trait Reactor: Sized {
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
-    /// Indicates that the reactor has completed all its work and should no longer dispatch events.
-    #[inline]
-    fn is_stopped(&mut self) -> bool {
-        false
-    }
+    /// If `Some`, indicates that the reactor has completed all its work and should no longer
+    /// dispatch events.  The running process may stop or may keep running with a new reactor.
+    fn maybe_exit(&self) -> Option<ReactorExit>;
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+}
+
+/// A reactor event type.
+pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
+    /// Returns the event as a control announcement, if possible.
+    ///
+    /// Returns a reference to a wrapped
+    /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
+    /// is indeed a control announcement variant.
+    fn as_control(&self) -> Option<&ControlAnnouncement>;
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -213,6 +239,8 @@ pub trait Finalize: Sized {
 struct AllocatedMem {
     /// Total allocated memory in bytes.
     allocated: u64,
+    /// Total consumed memory in bytes.
+    consumed: u64,
     /// Total system memory in bytes.
     total: u64,
 }
@@ -259,10 +287,14 @@ where
 struct RunnerMetrics {
     /// Total number of events processed.
     events: IntCounter,
-
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-
+    /// Total allocated RAM in bytes, as reported by jemalloc.
+    allocated_ram_bytes: IntGauge,
+    /// Total consumed RAM in bytes, as reported by sys-info.
+    consumed_ram_bytes: IntGauge,
+    /// Total system RAM in bytes, as reported by sys-info.
+    total_ram_bytes: IntGauge,
     /// Handle to the metrics registry, in case we need to unregister.
     registry: Registry,
 }
@@ -301,25 +333,36 @@ impl RunnerMetrics {
             ]),
         )?;
 
+        let allocated_ram_bytes =
+            IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+        let consumed_ram_bytes =
+            IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
+        let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
+
         registry.register(Box::new(events.clone()))?;
         registry.register(Box::new(event_dispatch_duration.clone()))?;
+        registry.register(Box::new(allocated_ram_bytes.clone()))?;
+        registry.register(Box::new(consumed_ram_bytes.clone()))?;
+        registry.register(Box::new(total_ram_bytes.clone()))?;
 
         Ok(RunnerMetrics {
             events,
             event_dispatch_duration,
             registry: registry.clone(),
+            allocated_ram_bytes,
+            consumed_ram_bytes,
+            total_ram_bytes,
         })
     }
 }
 
 impl Drop for RunnerMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.events.clone()))
-            .expect("did not expect deregistering events to fail");
-        self.registry
-            .unregister(Box::new(self.event_dispatch_duration.clone()))
-            .expect("did not expect deregistering event_dispatch_duration to fail");
+        unregister_metric!(self.registry, self.events);
+        unregister_metric!(self.registry, self.event_dispatch_duration);
+        unregister_metric!(self.registry, self.allocated_ram_bytes);
+        unregister_metric!(self.registry, self.consumed_ram_bytes);
+        unregister_metric!(self.registry, self.total_ram_bytes);
     }
 }
 
@@ -346,6 +389,40 @@ where
         rng: &mut NodeRng,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
+        // Ensure we have reasonable ulimits.
+        match ResourceLimit::<OpenFiles>::get() {
+            Err(err) => {
+                warn!(%err, "could not retrieve open files limit");
+            }
+
+            Ok(current_limit) => {
+                if current_limit.current() < TARGET_OPEN_FILES_LIMIT {
+                    let best_possible = if current_limit.max() < TARGET_OPEN_FILES_LIMIT {
+                        warn!(
+                            wanted = TARGET_OPEN_FILES_LIMIT,
+                            hard_limit = current_limit.max(),
+                            "settling for lower open files limit due to hard limit"
+                        );
+                        current_limit.max()
+                    } else {
+                        TARGET_OPEN_FILES_LIMIT
+                    };
+
+                    let new_limit = ResourceLimit::<OpenFiles>::fixed(best_possible);
+                    if let Err(err) = new_limit.set() {
+                        warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
+                    } else {
+                        debug!(?new_limit, "successfully increased open files limit");
+                    }
+                } else {
+                    debug!(
+                        ?current_limit,
+                        "not changing open files limit, already sufficient"
+                    );
+                }
+            }
+        }
+
         let event_size = mem::size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
@@ -400,8 +477,10 @@ where
     }
 
     /// Processes a single event on the event queue.
+    ///
+    /// Returns `false` if processing should stop.
     #[inline]
-    pub async fn crank(&mut self, rng: &mut NodeRng) {
+    pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         // Create another span for tracing the processing of one event.
         let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
@@ -423,8 +502,16 @@ where
                 self.last_metrics = now;
             }
 
-            if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
+            if let Some(AllocatedMem {
+                allocated,
+                consumed,
+                total,
+            }) = Self::get_allocated_memory()
+            {
                 debug!(%allocated, %total, "memory allocated");
+                self.metrics.allocated_ram_bytes.set(allocated as i64);
+                self.metrics.consumed_ram_bytes.set(consumed as i64);
+                self.metrics.total_ram_bytes.set(total as i64);
                 if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
                     let threshold_bytes = threshold_mb * 1024 * 1024;
                     if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
@@ -441,11 +528,11 @@ where
         }
 
         // Dump event queue if requested, stopping the world.
-        if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
+        if QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
             self.dump_queues().await;
             // Indicate we are done with the dump.
-            crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+            QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let (event, q) = self.scheduler.pop().await;
@@ -461,7 +548,22 @@ where
 
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
-        let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+
+        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+            // We've received a control event, which will _not_ be handled by the reactor.
+            match ctrl_ann {
+                ControlAnnouncement::FatalError { file, line, msg } => {
+                    error!(%file, %line, %msg, "fatal error via control announcement");
+                    (Default::default(), false)
+                }
+            }
+        } else {
+            (
+                self.reactor.dispatch_event(effect_builder, rng, event),
+                true,
+            )
+        };
+
         let end = self.clock.end();
 
         // Warn if processing took a long time, record to histogram.
@@ -487,6 +589,8 @@ where
             .await;
 
         self.event_count += 1;
+
+        keep_going
     }
 
     /// Gets both the allocated and total memory from sys-info + jemalloc
@@ -501,6 +605,7 @@ where
 
         // mem_info gives us kB
         let total = mem_info.total * 1024;
+        let consumed = total - (mem_info.free * 1024);
 
         // whereas jemalloc_ctl gives us the numbers in bytes
         match jemalloc_epoch::mib() {
@@ -529,7 +634,11 @@ where
             }
         };
 
-        Some(AllocatedMem { allocated, total })
+        Some(AllocatedMem {
+            allocated,
+            consumed,
+            total,
+        })
     }
 
     /// Handles dumping queue contents to files in /tmp.
@@ -566,20 +675,34 @@ where
 
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
-    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<()> {
+    #[cfg(test)]
+    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
-            self.crank(rng).await;
-            Some(())
+            Some(self.crank(rng).await)
         }
     }
 
-    /// Runs the reactor until `is_stopped()` returns true.
+    /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
+    /// signal.
     #[inline]
-    pub async fn run(&mut self, rng: &mut NodeRng) {
-        while !self.reactor.is_stopped() {
-            self.crank(rng).await;
+    pub async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
+        loop {
+            match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
+                0 => {
+                    if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                        break reactor_exit;
+                    }
+                    if !self.crank(rng).await {
+                        break ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                    }
+                }
+                SIGINT => break ReactorExit::ProcessShouldExit(ExitCode::SigInt),
+                SIGQUIT => break ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
+                SIGTERM => break ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                _ => error!("should be unreachable - bug in signal handler"),
+            }
         }
     }
 
@@ -606,7 +729,7 @@ where
 impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));

@@ -6,8 +6,6 @@ use std::{
 use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::NodeRng;
-
 pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
 impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
 
@@ -19,6 +17,11 @@ impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send
 pub(crate) trait ConsensusValueT:
     Eq + Clone + Debug + Hash + Serialize + DeserializeOwned + Send + DataSize
 {
+    type Hash: HashT;
+
+    /// Returns hash of self.
+    fn hash(&self) -> Self::Hash;
+
     /// Returns whether the consensus value needs validation.
     fn needs_validation(&self) -> bool;
 }
@@ -49,7 +52,7 @@ pub(crate) trait ValidatorSecret: Send + DataSize {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned + DataSize;
 
-    fn sign(&self, hash: &Self::Hash, rng: &mut NodeRng) -> Self::Signature;
+    fn sign(&self, hash: &Self::Hash) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.

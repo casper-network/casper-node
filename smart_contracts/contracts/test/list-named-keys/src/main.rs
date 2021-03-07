@@ -13,7 +13,7 @@ const ARG_NEW_NAMED_KEYS: &str = "new_named_keys";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    // Account starts with two known named keys: mint uref & pos uref.
+    // Account starts with two known named keys: mint uref & handle payment uref.
     let expected_initial_named_keys: NamedKeys = runtime::get_named_arg(ARG_INITIAL_NAMED_KEYS);
 
     let actual_named_keys = runtime::list_named_keys();

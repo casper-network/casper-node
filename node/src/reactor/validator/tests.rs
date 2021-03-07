@@ -1,23 +1,27 @@
-use std::{
-    collections::{BTreeMap, HashSet},
-    time::Duration,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use log::info;
+use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
-use casper_types::{PublicKey, SecretKey, U512};
+use casper_execution_engine::shared::motes::Motes;
+use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, gossiper, small_network, storage},
+    components::{
+        consensus::{self, EraId},
+        gossiper, small_network, storage,
+    },
     crypto::AsymmetricKeyExt,
-    reactor::{initializer, joiner, validator, Runner},
-    testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::{Chainspec, Timestamp},
+    reactor::{initializer, joiner, validator, ReactorExit, Runner},
+    testing::{self, network::Network, TestRng},
+    types::{
+        chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
+        ActivationPoint, Chainspec, Timestamp,
+    },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
@@ -26,7 +30,7 @@ struct TestChain {
     // Keys that validator instances will use, can include duplicates
     keys: Vec<SecretKey>,
     storages: Vec<TempDir>,
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
 }
 
 type Nodes = crate::testing::network::Nodes<validator::Reactor>;
@@ -53,31 +57,39 @@ impl TestChain {
         stakes: BTreeMap<PublicKey, u64>,
     ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec: Chainspec = Chainspec::from_resources("local");
+        let mut chainspec = Chainspec::from_resources("local");
 
         // Override accounts with those generated from the keys.
-        chainspec.network_config.accounts = stakes
+        let accounts = stakes
             .iter()
             .map(|(public_key, bounded_amounts_u64)| {
-                GenesisAccount::new(
-                    *public_key,
-                    public_key.to_account_hash(),
-                    Motes::new(U512::from(rng.gen_range(10000, 99999999))),
+                let validator_config = ValidatorConfig::new(
                     Motes::new(U512::from(*bounded_amounts_u64)),
+                    DelegationRate::zero(),
+                );
+                AccountConfig::new(
+                    *public_key,
+                    Motes::new(U512::from(rng.gen_range(10000, 99999999))),
+                    Some(validator_config),
                 )
             })
             .collect();
+        let delegators = vec![];
+        chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.network_config.timestamp = Timestamp::now() + 45000.into();
+        chainspec.protocol_config.activation_point =
+            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
         chainspec.core_config.era_duration = 10.into();
+        chainspec.core_config.auction_delay = 1;
+        chainspec.core_config.unbonding_delay = 3;
 
         TestChain {
             keys,
-            chainspec,
+            chainspec: Arc::new(chainspec),
             storages: Vec::new(),
         }
     }
@@ -122,23 +134,22 @@ impl TestChain {
             // We create an initializer reactor here and run it to completion.
             let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
                 WithDir::new(root.clone(), cfg),
-                self.chainspec.clone(),
+                Arc::clone(&self.chainspec),
             )
             .await?;
-            initializer_runner.run(rng).await;
-
-            // Now we can construct the actual node.
-            let initializer = initializer_runner.into_inner();
-            if !initializer.stopped_successfully() {
+            let reactor_exit = initializer_runner.run(rng).await;
+            if reactor_exit != ReactorExit::ProcessShouldContinue {
                 bail!("failed to initialize successfully");
             }
 
+            // Now we can construct the actual node.
+            let initializer = initializer_runner.into_inner();
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
-            joiner_runner.run(rng).await;
+            let _ = joiner_runner.run(rng).await;
 
-            let config = joiner_runner.into_inner().into_validator_config().await;
+            let config = joiner_runner.into_inner().into_validator_config().await?;
 
             network
                 .add_node_with_config(config, rng)
@@ -150,37 +161,12 @@ impl TestChain {
     }
 }
 
-/// Get the set of era IDs from a runner.
-fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSet<EraId> {
-    runner
-        .reactor()
-        .inner()
-        .consensus()
-        .active_eras()
-        .keys()
-        .cloned()
-        .collect()
-}
-
-/// Given an era number, return a predicate to check if all of the nodes are in that specified era.
-fn is_in_era(era_num: usize) -> impl Fn(&Nodes) -> bool {
+/// Given an era number, returns a predicate to check if all of the nodes are in the specified era.
+fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
-        // check ee's era_validators against consensus' validators
-        let first_node = nodes.values().next().expect("need at least one node");
-
-        // Get a list of eras from the first node.
-        let expected_eras = era_ids(&first_node);
-
-        // Return if not in expected era yet.
-        if expected_eras.len() <= era_num {
-            return false;
-        }
-
-        // Ensure eras are all the same for all other nodes.
         nodes
             .values()
-            .map(era_ids)
-            .all(|eras| eras == expected_eras)
+            .all(|runner| runner.reactor().inner().consensus().current_era() == era_id)
     }
 }
 
@@ -200,13 +186,14 @@ async fn run_validator_network() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(90))
+    net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(90))
         .await;
 
-    net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))
+    net.settle_on(&mut rng, is_in_era(EraId(2)), Duration::from_secs(60))
         .await;
 }
 
+// TODO: fix this test
 #[tokio::test]
 async fn run_equivocator_network() {
     testing::init_logging();
@@ -225,29 +212,30 @@ async fn run_equivocator_network() {
     keys.push(alice_sk);
 
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes);
+    let protocol_config = (&*chain.chainspec).into();
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
 
-    info!("Waiting for Era 1 to end");
-    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(600))
+    info!("Waiting for Era 0 to end");
+    net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(600))
         .await;
 
-    info!("Waiting for Era 2 to end");
-    net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(90))
-        .await;
+    let last_era_number = 5;
+    let timeout = Duration::from_secs(90);
 
-    info!("Waiting for Era 3 to end");
-    net.settle_on(&mut rng, is_in_era(3), Duration::from_secs(90))
-        .await;
+    for era_number in 2..last_era_number {
+        info!("Waiting for Era {} to end", era_number);
+        net.settle_on(&mut rng, is_in_era(EraId(era_number)), timeout)
+            .await;
+    }
 
-    info!("Waiting for Era 4 to end");
-    net.settle_on(&mut rng, is_in_era(4), Duration::from_secs(90))
-        .await;
-
-    println!("Waiting for Era 5 to end");
-    net.settle_on(&mut rng, is_in_era(5), Duration::from_secs(90))
-        .await;
+    // Make sure we waited long enough for this test to include unbonding and dropping eras.
+    let oldest_bonded_era_id =
+        consensus::oldest_bonded_era(&protocol_config, EraId(last_era_number));
+    let oldest_evidence_era_id =
+        consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
+    assert!(!oldest_evidence_era_id.is_genesis());
 }

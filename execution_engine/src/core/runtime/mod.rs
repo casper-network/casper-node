@@ -1,8 +1,8 @@
 mod args;
 mod auction_internal;
 mod externals;
+mod handle_payment_internal;
 mod mint_internal;
-mod proof_of_stake_internal;
 mod scoped_instrumenter;
 mod standard_payment_internal;
 
@@ -19,19 +19,22 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
         DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
-    mint::{self, Mint},
-    proof_of_stake::{self, ProofOfStake},
-    standard_payment::{self, StandardPayment},
-    system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
-    TransferredTo, URef, U128, U256, U512,
+    system::{
+        self,
+        auction::{self, Auction, EraId, EraInfo},
+        handle_payment::{self, HandlePayment},
+        mint::{self, Mint},
+        standard_payment::{self, StandardPayment},
+        SystemContractType,
+    },
+    AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase, ProtocolVersion,
+    PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -92,6 +95,9 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Transfer(_) => None,
         Key::DeployInfo(_) => None,
         Key::EraInfo(_) => None,
+        Key::Balance(_) => None,
+        Key::Bid(_) => None,
+        Key::Withdraw(_) => None,
     }
 }
 
@@ -1246,8 +1252,8 @@ where
         key.into_hash() == Some(self.protocol_data().mint().value())
     }
 
-    pub fn is_proof_of_stake(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().proof_of_stake().value())
+    pub fn is_handle_payment(&self, key: Key) -> bool {
+        key.into_hash() == Some(self.protocol_data().handle_payment().value())
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
@@ -1272,18 +1278,16 @@ where
         // GasLimit properly to the user. Once support for wasm system contract will be dropped this
         // won't be necessary anymore.
         match api_error {
-            ApiError::Mint(mint_error)
-                if mint_error == system_contract_errors::mint::Error::GasLimit as u8 =>
-            {
+            ApiError::Mint(mint_error) if mint_error == mint::Error::GasLimit as u8 => {
                 Error::GasLimit
             }
             ApiError::AuctionError(auction_error)
-                if auction_error == system_contract_errors::auction::Error::GasLimit as u8 =>
+                if auction_error == auction::Error::GasLimit as u8 =>
             {
                 Error::GasLimit
             }
-            ApiError::ProofOfStake(pos_error)
-                if pos_error == system_contract_errors::pos::Error::GasLimit as u8 =>
+            ApiError::HandlePayment(handle_payment_error)
+                if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
             {
                 Error::GasLimit
             }
@@ -1303,7 +1307,7 @@ where
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
             keys.push(self.get_mint_contract().into());
-            keys.push(self.get_pos_contract().into());
+            keys.push(self.get_handle_payment_contract().into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
@@ -1361,9 +1365,8 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.mint)?;
 
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
-                let result: Result<URef, system_contract_errors::mint::Error> =
-                    mint_runtime.mint(amount);
-                if let Err(system_contract_errors::mint::Error::GasLimit) = result {
+                let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
+                if let Err(mint::Error::GasLimit) = result {
                     return Err(execution::Error::GasLimit);
                 }
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1372,8 +1375,7 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.reduce_total_supply)?;
 
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
-                let result: Result<(), system_contract_errors::mint::Error> =
-                    mint_runtime.reduce_total_supply(amount);
+                let result: Result<(), mint::Error> = mint_runtime.reduce_total_supply(amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             // Type: `fn create() -> URef`
@@ -1403,7 +1405,7 @@ where
                 let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
-                let result: Result<(), system_contract_errors::mint::Error> =
+                let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -1438,7 +1440,7 @@ where
         Ok(ret)
     }
 
-    pub fn call_host_proof_of_stake(
+    pub fn call_host_handle_payment(
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
@@ -1450,12 +1452,12 @@ where
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
             keys.push(self.get_mint_contract().into());
-            keys.push(self.get_pos_contract().into());
+            keys.push(self.get_handle_payment_contract().into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.protocol_data().proof_of_stake().into();
+        let base_key = self.protocol_data().handle_payment().into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -1500,39 +1502,39 @@ where
         );
 
         let system_config = protocol_data.system_config();
-        let pos_costs = system_config.proof_of_stake_costs();
+        let handle_payment_costs = system_config.handle_payment_costs();
 
         let result = match entry_point_name {
-            proof_of_stake::METHOD_GET_PAYMENT_PURSE => (|| {
-                runtime.charge_system_contract_call(pos_costs.get_payment_purse)?;
+            handle_payment::METHOD_GET_PAYMENT_PURSE => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.get_payment_purse)?;
 
                 let rights_controlled_purse =
                     runtime.get_payment_purse().map_err(Self::reverter)?;
                 CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)
             })(),
-            proof_of_stake::METHOD_SET_REFUND_PURSE => (|| {
-                runtime.charge_system_contract_call(pos_costs.set_refund_purse)?;
+            handle_payment::METHOD_SET_REFUND_PURSE => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.set_refund_purse)?;
 
                 let purse: URef =
-                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_PURSE)?;
+                    Self::get_named_argument(&runtime_args, handle_payment::ARG_PURSE)?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
-            proof_of_stake::METHOD_GET_REFUND_PURSE => (|| {
-                runtime.charge_system_contract_call(pos_costs.get_refund_purse)?;
+            handle_payment::METHOD_GET_REFUND_PURSE => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.get_refund_purse)?;
 
                 let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
                 CLValue::from_t(maybe_purse).map_err(Self::reverter)
             })(),
-            proof_of_stake::METHOD_FINALIZE_PAYMENT => (|| {
-                runtime.charge_system_contract_call(pos_costs.finalize_payment)?;
+            handle_payment::METHOD_FINALIZE_PAYMENT => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
 
                 let amount_spent: U512 =
-                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_AMOUNT)?;
+                    Self::get_named_argument(&runtime_args, handle_payment::ARG_AMOUNT)?;
                 let account: AccountHash =
-                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_ACCOUNT)?;
+                    Self::get_named_argument(&runtime_args, handle_payment::ARG_ACCOUNT)?;
                 let target: URef =
-                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_TARGET)?;
+                    Self::get_named_argument(&runtime_args, handle_payment::ARG_TARGET)?;
                 runtime
                     .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
@@ -1577,7 +1579,7 @@ where
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
             keys.push(self.get_mint_contract().into());
-            keys.push(self.get_pos_contract().into());
+            keys.push(self.get_handle_payment_contract().into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
@@ -1634,16 +1636,6 @@ where
                 runtime.charge_system_contract_call(auction_costs.get_era_validators)?;
 
                 let result = runtime.get_era_validators().map_err(Self::reverter)?;
-
-                CLValue::from_t(result).map_err(Self::reverter)
-            })(),
-
-            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_seigniorage_recipients)?;
-
-                let result = runtime
-                    .read_seigniorage_recipients()
-                    .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -1710,10 +1702,13 @@ where
 
                 let era_end_timestamp_millis =
                     Self::get_named_argument(&runtime_args, auction::ARG_ERA_END_TIMESTAMP_MILLIS)?;
+                let evicted_validators =
+                    Self::get_named_argument(&runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
                 runtime
-                    .run_auction(era_end_timestamp_millis)
+                    .run_auction(era_end_timestamp_millis, evicted_validators)
                     .map_err(Self::reverter)?;
+
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
@@ -1739,40 +1734,25 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey,
-            // delegator_public_key: PublicKey, target_purse: URef) -> Result<(), Error>`
-            auction::METHOD_WITHDRAW_DELEGATOR_REWARD => (|| {
-                runtime.charge_system_contract_call(auction_costs.withdraw_delegator_reward)?;
-
-                let validator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
-                let delegator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_PUBLIC_KEY)?;
-                runtime
-                    .withdraw_delegator_reward(validator_public_key, delegator_public_key)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)
-            })(),
-
-            // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey, target_purse:
-            // URef) -> Result<(), Error>`
-            auction::METHOD_WITHDRAW_VALIDATOR_REWARD => (|| {
-                runtime.charge_system_contract_call(auction_costs.withdraw_validator_reward)?;
-
-                let validator_public_key: PublicKey =
-                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
-                runtime
-                    .withdraw_validator_reward(validator_public_key)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)
-            })(),
-
             // Type: `fn read_era_id() -> Result<EraId, Error>`
             auction::METHOD_READ_ERA_ID => (|| {
                 runtime.charge_system_contract_call(auction_costs.read_era_id)?;
 
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+
+            auction::METHOD_ACTIVATE_BID => (|| {
+                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+
+                let validator_public_key: PublicKey =
+                    Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+
+                runtime
+                    .activate_bid(validator_public_key)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
@@ -1985,8 +1965,8 @@ where
                     &args,
                     &extra_keys,
                 );
-            } else if self.is_proof_of_stake(key) {
-                return self.call_host_proof_of_stake(
+            } else if self.is_handle_payment(key) {
+                return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
                     &mut named_keys,
@@ -2040,7 +2020,7 @@ where
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
             keys.push(self.get_mint_contract().into());
-            keys.push(self.get_pos_contract().into());
+            keys.push(self.get_handle_payment_contract().into());
             extract_access_rights_from_keys(keys)
         };
 
@@ -2720,11 +2700,11 @@ where
         self.context.protocol_data().mint()
     }
 
-    /// Looks up the public PoS contract key in the context's protocol data.
+    /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_pos_contract(&self) -> ContractHash {
-        self.context.protocol_data().proof_of_stake()
+    fn get_handle_payment_contract(&self) -> ContractHash {
+        self.context.protocol_data().handle_payment()
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
@@ -2771,8 +2751,8 @@ where
         let call_result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args);
         self.set_gas_counter(gas_counter);
 
-        let result: Result<URef, system_contract_errors::mint::Error> = call_result?.into_t()?;
-        Ok(result.map_err(system_contract_errors::Error::from)?)
+        let result: Result<URef, mint::Error> = call_result?.into_t()?;
+        Ok(result.map_err(system::Error::from)?)
     }
 
     /// Calls the `reduce_total_supply` method on the mint contract at the given mint
@@ -2795,8 +2775,8 @@ where
         );
         self.set_gas_counter(gas_counter);
 
-        let result: Result<(), system_contract_errors::mint::Error> = call_result?.into_t()?;
-        Ok(result.map_err(system_contract_errors::Error::from)?)
+        let result: Result<(), mint::Error> = call_result?.into_t()?;
+        Ok(result.map_err(system::Error::from)?)
     }
 
     /// Calls the "create" method on the mint contract at the given mint
@@ -2825,7 +2805,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
+    ) -> Result<Result<(), mint::Error>, Error> {
         let args_values = {
             let mut runtime_args = RuntimeArgs::new();
             runtime_args.insert(mint::ARG_TO, to)?;
@@ -2860,17 +2840,13 @@ where
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount > self.get_balance(source)?.unwrap_or_default() {
-            return Ok(Err(
-                system_contract_errors::mint::Error::InsufficientFunds.into()
-            ));
+            return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
 
         let target_purse = self.mint_create(mint_contract_hash)?;
 
         if source == target_purse {
-            return Ok(Err(
-                system_contract_errors::mint::Error::EqualSourceAndTarget.into(),
-            ));
+            return Ok(Err(mint::Error::EqualSourceAndTarget.into()));
         }
 
         match self.mint_transfer(
@@ -2943,7 +2919,7 @@ where
             }
             Some(StoredValue::Account(account)) => {
                 let target_uref = account.main_purse_add_only();
-                if source == target_uref {
+                if source.with_access_rights(AccessRights::ADD) == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse
@@ -2968,7 +2944,7 @@ where
         amount_size: u32,
         id_ptr: u32,
         id_size: u32,
-    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
+    ) -> Result<Result<(), mint::Error>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
@@ -2998,25 +2974,15 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let balance_uref_key = match self.context.read_purse_uref(&purse)? {
-            Some(cl_value) => {
-                let key: Key = cl_value.into_t()?;
-                if key.as_uref().is_none() {
-                    return Err(Error::KeyIsNotAURef(key));
-                }
-                key
+        let maybe_value = self.context.read_gs_direct(&Key::Balance(purse.addr()))?;
+        match maybe_value {
+            Some(StoredValue::CLValue(value)) => {
+                let value = CLValue::into_t(value)?;
+                Ok(Some(value))
             }
-            None => return Ok(None),
-        };
-        let ret = match self.context.read_gs_direct(&balance_uref_key)? {
-            Some(StoredValue::CLValue(cl_value)) => {
-                let balance: U512 = cl_value.into_t()?;
-                Some(balance)
-            }
-            Some(_) => return Err(Error::UnexpectedStoredValueVariant),
-            None => None,
-        };
-        Ok(ret)
+            Some(_) => Err(Error::UnexpectedStoredValueVariant),
+            None => Ok(None),
+        }
     }
 
     fn get_balance_host_buffer(
@@ -3070,7 +3036,7 @@ where
         let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
         {
             Ok(SystemContractType::Mint) => self.get_mint_contract(),
-            Ok(SystemContractType::ProofOfStake) => self.get_pos_contract(),
+            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract(),
             Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract(),
             Ok(SystemContractType::Auction) => self.get_auction_contract(),
             Err(error) => return Ok(Err(error)),

@@ -10,8 +10,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
-    account::AccountHash, proof_of_stake, runtime_args, system_contract_errors::mint, ApiError,
-    RuntimeArgs, U512,
+    account::AccountHash,
+    runtime_args,
+    system::{handle_payment, mint},
+    ApiError, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -72,10 +74,10 @@ fn should_transfer_to_account() {
         initial_account_balance - transaction_fee - transfer_amount
     );
 
-    let pos = builder.get_pos_contract();
-    let payment_purse = pos
+    let handle_payment = builder.get_handle_payment_contract();
+    let payment_purse = handle_payment
         .named_keys()
-        .get(proof_of_stake::PAYMENT_PURSE_KEY)
+        .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap()
         .clone()
         .into_uref()

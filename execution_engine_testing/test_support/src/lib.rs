@@ -33,7 +33,7 @@
 //! let account_addr = AccountHash::new(MY_ADDR);
 //!
 //! let mut context = TestContextBuilder::new()
-//!     .with_public_key(public_key, account_addr, U512::from(128_000_000_000_000u64))
+//!     .with_public_key(public_key, U512::from(128_000_000_000_000u64))
 //!     .build();
 //!
 //! // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
@@ -56,7 +56,7 @@
 //! assert_eq!(expected_value, returned_value);
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/0.7.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/0.9.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",

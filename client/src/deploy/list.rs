@@ -2,10 +2,10 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::ListDeploysResult;
+use casper_client::{Error, ListDeploysResult};
 use casper_node::rpcs::chain::GetBlockResult;
 
-use crate::{command::ClientCommand, common};
+use crate::{command::ClientCommand, common, Success};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
@@ -35,23 +35,21 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
             ))
     }
 
-    fn run(matches: &ArgMatches<'_>) {
+    fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let mut verbosity_level = common::verbose::get(matches);
+        let verbosity_level = common::verbose::get(matches);
         let maybe_block_id = common::block_identifier::get(matches);
 
-        let response_value =
-            casper_client::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
-                .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
-        let response_value = response_value.get_result().cloned().unwrap();
-        let get_block_result =
-            serde_json::from_value::<GetBlockResult>(response_value).expect("should parse");
-        let list_deploys_result: ListDeploysResult = get_block_result.into();
+        let result =
+            casper_client::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
 
-        if verbosity_level == 0 {
-            verbosity_level += 1
-        }
-        casper_client::pretty_print_at_level(&list_deploys_result, verbosity_level);
+        result.map(|response| {
+            let response_value = response.get_result().cloned().unwrap();
+            let get_block_result =
+                serde_json::from_value::<GetBlockResult>(response_value).expect("should parse");
+            let list = ListDeploysResult::from(get_block_result);
+            Success::Output(serde_json::to_string_pretty(&list).expect("should encode"))
+        })
     }
 }

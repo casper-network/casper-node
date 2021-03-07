@@ -1,8 +1,8 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
-    account::AccountHash, mint, AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs,
-    URef, U512,
+    account::AccountHash, system::mint, AccessRights, ApiError, CLType, CLValueError, Key,
+    RuntimeArgs, URef, U512,
 };
 
 use crate::{
@@ -107,10 +107,16 @@ impl TransferRuntimeArgsBuilder {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        // it is a URef but is it a purse URef?
-        tracking_copy
+        let key = match tracking_copy
             .borrow_mut()
             .get_purse_balance_key(correlation_id, uref.into())
+        {
+            Ok(key) => key,
+            Err(_) => return false,
+        };
+        tracking_copy
+            .borrow_mut()
+            .get_purse_balance(correlation_id, key)
             .is_ok()
     }
 

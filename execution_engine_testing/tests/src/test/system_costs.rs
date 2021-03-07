@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -9,7 +10,7 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, GenesisAccount},
+    core::engine_state::{genesis::GenesisValidator, upgrade::ActivationPoint, GenesisAccount},
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -20,15 +21,14 @@ use casper_execution_engine::{
             auction_costs::{
                 AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_DISTRIBUTE_COST,
                 DEFAULT_RUN_AUCTION_COST, DEFAULT_SLASH_COST, DEFAULT_UNDELEGATE_COST,
-                DEFAULT_WITHDRAW_BID_COST, DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
-                DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
+                DEFAULT_WITHDRAW_BID_COST,
+            },
+            handle_payment_costs::{
+                HandlePaymentCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
             },
             mint_costs::{
                 MintCosts, DEFAULT_BALANCE_COST, DEFAULT_MINT_COST,
                 DEFAULT_REDUCE_TOTAL_SUPPLY_COST, DEFAULT_TRANSFER_COST,
-            },
-            proof_of_stake_costs::{
-                ProofOfStakeCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
             },
             standard_payment_costs::StandardPaymentCosts,
             SystemConfig,
@@ -39,9 +39,11 @@ use casper_execution_engine::{
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
-    auction::{self, DelegationRate},
-    mint, proof_of_stake, runtime_args,
-    system_contract_type::AUCTION,
+    runtime_args,
+    system::{
+        auction::{self, DelegationRate},
+        handle_payment, mint, AUCTION,
+    },
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -56,7 +58,7 @@ const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
 const TRANSFER_AMOUNT: u64 = 123;
-const BID_DELEGATION_RATE: DelegationRate = 123;
+const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
@@ -178,13 +180,13 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     };
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 
@@ -294,11 +296,13 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 fn delegate_and_undelegate_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -407,23 +411,25 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     };
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -538,11 +544,13 @@ fn mint_transfer_has_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -611,7 +619,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
-    let pos_hash = builder.get_pos_contract_hash();
+    let handle_payment_hash = builder.get_handle_payment_contract_hash();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -646,16 +654,6 @@ fn should_charge_for_erroneous_system_contract_calls() {
             auction::METHOD_DISTRIBUTE,
             DEFAULT_DISTRIBUTE_COST,
         ),
-        (
-            auction_hash,
-            auction::METHOD_WITHDRAW_DELEGATOR_REWARD,
-            DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
-        ),
-        (
-            auction_hash,
-            auction::METHOD_WITHDRAW_VALIDATOR_REWARD,
-            DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
-        ),
         (mint_hash, mint::METHOD_MINT, DEFAULT_MINT_COST),
         (
             mint_hash,
@@ -665,13 +663,13 @@ fn should_charge_for_erroneous_system_contract_calls() {
         (mint_hash, mint::METHOD_BALANCE, DEFAULT_BALANCE_COST),
         (mint_hash, mint::METHOD_TRANSFER, DEFAULT_TRANSFER_COST),
         (
-            pos_hash,
-            proof_of_stake::METHOD_SET_REFUND_PURSE,
+            handle_payment_hash,
+            handle_payment::METHOD_SET_REFUND_PURSE,
             DEFAULT_SET_REFUND_PURSE_COST,
         ),
         (
-            pos_hash,
-            proof_of_stake::METHOD_FINALIZE_PAYMENT,
+            handle_payment_hash,
+            handle_payment::METHOD_FINALIZE_PAYMENT,
             DEFAULT_FINALIZE_PAYMENT_COST,
         ),
     ];
@@ -845,13 +843,13 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
-    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
         new_auction_costs,
         new_mint_costs,
-        new_proof_of_stake_costs,
+        new_handle_payment_costs,
         new_standard_payment_costs,
     );
 

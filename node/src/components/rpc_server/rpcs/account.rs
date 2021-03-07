@@ -15,9 +15,12 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use super::{docs::DocExample, Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
+use super::{
+    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
+};
 use crate::{
-    components::{rpc_server::rpcs::ErrorCode, CLIENT_API_VERSION},
+    components::rpc_server::rpcs::ErrorCode,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Deploy, DeployHash},
@@ -27,7 +30,7 @@ static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),
 });
 static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     deploy_hash: *Deploy::doc_example().id(),
 });
 
@@ -76,6 +79,7 @@ impl RpcWithParamsExt for PutDeploy {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let deploy_hash = *params.deploy.id();
@@ -97,7 +101,7 @@ impl RpcWithParamsExt for PutDeploy {
                     "deploy was stored"
                     );
                     let result = Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
+                        api_version,
                         deploy_hash,
                     };
                     Ok(response_builder.success(result)?)

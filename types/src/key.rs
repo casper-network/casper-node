@@ -7,31 +7,34 @@ use core::{
     array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
+    num::ParseIntError,
+    str::FromStr,
 };
 
+use datasize::DataSize;
 use hex_fmt::HexFmt;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, TryFromSliceForAccountHashError},
-    auction::EraId,
+    account::{self, AccountHash, AccountHashBytes, TryFromSliceForAccountHashError},
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
-    uref::{self, URef, UREF_SERIALIZED_LENGTH},
-    DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+    system::auction::EraId,
+    uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
+    DeployHash, Tagged, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
-
-const ACCOUNT_ID: u8 = 0;
-const HASH_ID: u8 = 1;
-const UREF_ID: u8 = 2;
-const TRANSFER_ID: u8 = 3;
-const DEPLOY_INFO_ID: u8 = 4;
-const ERA_INFO_ID: u8 = 5;
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
 const ERA_INFO_PREFIX: &str = "era-";
+const BALANCE_PREFIX: &str = "balance-";
+const BID_PREFIX: &str = "bid-";
+const WITHDRAW_PREFIX: &str = "withdraw-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -49,6 +52,9 @@ const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIAL
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
+const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
+const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -59,10 +65,25 @@ impl From<HashAddr> for Key {
     }
 }
 
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum KeyTag {
+    Account = 0,
+    Hash = 1,
+    URef = 2,
+    Transfer = 3,
+    DeployInfo = 4,
+    EraInfo = 5,
+    Balance = 6,
+    Bid = 7,
+    Withdraw = 8,
+}
+
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
 #[repr(C)]
-#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, DataSize)]
 pub enum Key {
     /// A `Key` under which a user account is stored.
     Account(AccountHash),
@@ -77,6 +98,12 @@ pub enum Key {
     DeployInfo(DeployHash),
     /// A `Key` under which we store an era info.
     EraInfo(EraId),
+    /// A `Key` under which we store a purse balance.
+    Balance(URefAddr),
+    /// A `Key` under which we store bid information
+    Bid(AccountHash),
+    /// A `Key` under which we store unbond information.
+    Withdraw(AccountHash),
 }
 
 #[derive(Debug)]
@@ -87,6 +114,7 @@ pub enum FromStrError {
     Hash(TryFromSliceError),
     AccountHash(account::FromStrError),
     URef(uref::FromStrError),
+    EraId(ParseIntError),
 }
 
 impl From<base16::DecodeError> for FromStrError {
@@ -119,6 +147,12 @@ impl From<uref::FromStrError> for FromStrError {
     }
 }
 
+impl From<ParseIntError> for FromStrError {
+    fn from(error: ParseIntError) -> Self {
+        FromStrError::EraId(error)
+    }
+}
+
 impl Display for FromStrError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
@@ -130,6 +164,7 @@ impl Display for FromStrError {
                 write!(f, "account hash from string error: {:?}", error)
             }
             FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
+            FromStrError::EraId(error) => write!(f, "era id from string error: {}", error),
         }
     }
 }
@@ -145,6 +180,9 @@ impl Key {
             Key::Transfer(_) => String::from("Key::Transfer"),
             Key::DeployInfo(_) => String::from("Key::DeployInfo"),
             Key::EraInfo(_) => String::from("Key::EraInfo"),
+            Key::Balance(_) => String::from("Key::Balance"),
+            Key::Bid(_) => String::from("Key::Bid"),
+            Key::Withdraw(_) => String::from("Key::Unbond"),
         }
     }
 
@@ -180,6 +218,15 @@ impl Key {
             Key::EraInfo(era_id) => {
                 format!("{}{}", ERA_INFO_PREFIX, era_id.to_string())
             }
+            Key::Balance(uref_addr) => {
+                format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
+            }
+            Key::Bid(account_hash) => {
+                format!("{}{}", BID_PREFIX, base16::encode_lower(&account_hash))
+            }
+            Key::Withdraw(account_hash) => {
+                format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
+            }
         }
     }
 
@@ -197,8 +244,24 @@ impl Key {
             )))
         } else if let Ok(transfer_addr) = TransferAddr::from_formatted_str(input) {
             Ok(Key::Transfer(transfer_addr))
+        } else if let Ok(uref) = URef::from_formatted_str(input) {
+            Ok(Key::URef(uref))
+        } else if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
+            Ok(Key::EraInfo(u64::from_str(era_id_str)?))
+        } else if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
+            Ok(Key::Balance(URefAddr::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?))
+        } else if let Some(hex) = input.strip_prefix(BID_PREFIX) {
+            Ok(Key::Bid(AccountHash::new(AccountHashBytes::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?)))
+        } else if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
+            Ok(Key::Withdraw(AccountHash::new(AccountHashBytes::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?)))
         } else {
-            Ok(Key::URef(URef::from_formatted_str(input)?))
+            Err(FromStrError::InvalidPrefix)
         }
     }
 
@@ -254,6 +317,9 @@ impl Display for Key {
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
+            Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
+            Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
+            Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
         }
     }
 }
@@ -261,6 +327,29 @@ impl Display for Key {
 impl Debug for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self)
+    }
+}
+
+impl Tagged<KeyTag> for Key {
+    fn tag(&self) -> KeyTag {
+        match self {
+            Key::Account(_) => KeyTag::Account,
+            Key::Hash(_) => KeyTag::Hash,
+            Key::URef(_) => KeyTag::URef,
+            Key::Transfer(_) => KeyTag::Transfer,
+            Key::DeployInfo(_) => KeyTag::DeployInfo,
+            Key::EraInfo(_) => KeyTag::EraInfo,
+            Key::Balance(_) => KeyTag::Balance,
+            Key::Bid(_) => KeyTag::Bid,
+            Key::Withdraw(_) => KeyTag::Withdraw,
+        }
+    }
+}
+
+impl Tagged<u8> for Key {
+    fn tag(&self) -> u8 {
+        let key_tag: KeyTag = self.tag();
+        key_tag as u8
     }
 }
 
@@ -303,30 +392,34 @@ impl From<ContractPackageHash> for Key {
 impl ToBytes for Key {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
+        result.push(self.tag());
         match self {
             Key::Account(account_hash) => {
-                result.push(ACCOUNT_ID);
                 result.append(&mut account_hash.to_bytes()?);
             }
             Key::Hash(hash) => {
-                result.push(HASH_ID);
                 result.append(&mut hash.to_bytes()?);
             }
             Key::URef(uref) => {
-                result.push(UREF_ID);
                 result.append(&mut uref.to_bytes()?);
             }
             Key::Transfer(addr) => {
-                result.push(TRANSFER_ID);
                 result.append(&mut addr.to_bytes()?);
             }
             Key::DeployInfo(addr) => {
-                result.push(DEPLOY_INFO_ID);
                 result.append(&mut addr.to_bytes()?);
             }
             Key::EraInfo(era_id) => {
-                result.push(ERA_INFO_ID);
                 result.append(&mut era_id.to_bytes()?);
+            }
+            Key::Balance(uref_addr) => {
+                result.append(&mut uref_addr.to_bytes()?);
+            }
+            Key::Bid(account_hash) => {
+                result.append(&mut account_hash.to_bytes()?);
+            }
+            Key::Withdraw(account_hash) => {
+                result.append(&mut account_hash.to_bytes()?);
             }
         }
         Ok(result)
@@ -342,39 +435,71 @@ impl ToBytes for Key {
             Key::Transfer(_) => KEY_TRANSFER_SERIALIZED_LENGTH,
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
+            Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
+            Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
+            Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
         }
     }
 }
 
 impl FromBytes for Key {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (id, remainder) = u8::from_bytes(bytes)?;
-        match id {
-            ACCOUNT_ID => {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            tag if tag == KeyTag::Account as u8 => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Account(account_hash), rem))
             }
-            HASH_ID => {
+            tag if tag == KeyTag::Hash as u8 => {
                 let (hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::Hash(hash), rem))
             }
-            UREF_ID => {
+            tag if tag == KeyTag::URef as u8 => {
                 let (uref, rem) = URef::from_bytes(remainder)?;
                 Ok((Key::URef(uref), rem))
             }
-            TRANSFER_ID => {
+            tag if tag == KeyTag::Transfer as u8 => {
                 let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
                 Ok((Key::Transfer(transfer_addr), rem))
             }
-            DEPLOY_INFO_ID => {
+            tag if tag == KeyTag::DeployInfo as u8 => {
                 let (deploy_hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
-            ERA_INFO_ID => {
+            tag if tag == KeyTag::EraInfo as u8 => {
                 let (era_id, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::EraInfo(era_id), rem))
             }
+            tag if tag == KeyTag::Balance as u8 => {
+                let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
+                Ok((Key::Balance(uref_addr), rem))
+            }
+            tag if tag == KeyTag::Bid as u8 => {
+                let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
+                Ok((Key::Bid(account_hash), rem))
+            }
+            tag if tag == KeyTag::Withdraw as u8 => {
+                let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
+                Ok((Key::Withdraw(account_hash), rem))
+            }
             _ => Err(Error::Formatting),
+        }
+    }
+}
+
+impl Distribution<Key> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
+        match rng.gen_range(0, 8) {
+            0 => Key::Account(rng.gen()),
+            1 => Key::Hash(rng.gen()),
+            2 => Key::URef(rng.gen()),
+            3 => Key::Transfer(rng.gen()),
+            4 => Key::DeployInfo(rng.gen()),
+            5 => Key::EraInfo(rng.gen()),
+            6 => Key::Balance(rng.gen()),
+            7 => Key::Bid(rng.gen()),
+            8 => Key::Withdraw(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }
@@ -390,6 +515,9 @@ mod serde_helpers {
         Transfer(String),
         DeployInfo(String),
         EraInfo(String),
+        Balance(String),
+        Bid(String),
+        Withdraw(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -402,6 +530,9 @@ mod serde_helpers {
                 Key::Transfer(_) => HumanReadable::Transfer(formatted_string),
                 Key::DeployInfo(_) => HumanReadable::DeployInfo(formatted_string),
                 Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
+                Key::Balance(_) => HumanReadable::Balance(formatted_string),
+                Key::Bid(_) => HumanReadable::Bid(formatted_string),
+                Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
             }
         }
     }
@@ -416,7 +547,10 @@ mod serde_helpers {
                 | HumanReadable::URef(formatted_string)
                 | HumanReadable::Transfer(formatted_string)
                 | HumanReadable::DeployInfo(formatted_string)
-                | HumanReadable::EraInfo(formatted_string) => {
+                | HumanReadable::EraInfo(formatted_string)
+                | HumanReadable::Balance(formatted_string)
+                | HumanReadable::Bid(formatted_string)
+                | HumanReadable::Withdraw(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -431,6 +565,9 @@ mod serde_helpers {
         Transfer(&'a TransferAddr),
         DeployInfo(&'a DeployHash),
         EraInfo(&'a u64),
+        Balance(&'a URefAddr),
+        Bid(&'a AccountHash),
+        Withdraw(&'a AccountHash),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -442,6 +579,9 @@ mod serde_helpers {
                 Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
+                Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
+                Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
+                Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
             }
         }
     }
@@ -454,6 +594,9 @@ mod serde_helpers {
         Transfer(TransferAddr),
         DeployInfo(DeployHash),
         EraInfo(EraId),
+        Balance(URefAddr),
+        Bid(AccountHash),
+        Withdraw(AccountHash),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -465,6 +608,9 @@ mod serde_helpers {
                 BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
+                BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
+                BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
+                BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
             }
         }
     }
@@ -575,6 +721,8 @@ mod tests {
             format!("{}", deploy_info_key),
             format!("Key::DeployInfo({})", expected_hash)
         );
+        let era_info_key = Key::EraInfo(42);
+        assert_eq!(format!("{}", era_info_key), "Key::EraInfo(42)".to_string());
     }
 
     #[test]
@@ -632,9 +780,12 @@ mod tests {
 
         let key_deploy_info = Key::DeployInfo(DeployHash::new([42; BLAKE2B_DIGEST_LENGTH]));
         assert!(key_deploy_info.serialized_length() <= Key::max_serialized_length());
+
+        let key_era_info = Key::EraInfo(42);
+        assert!(key_era_info.serialized_length() <= Key::max_serialized_length());
     }
 
-    fn round_trip(key: Key) {
+    fn to_string_round_trip(key: Key) {
         let string = key.to_formatted_string();
         let parsed_key = Key::from_formatted_str(&string).unwrap();
         assert_eq!(key, parsed_key);
@@ -642,14 +793,15 @@ mod tests {
 
     #[test]
     fn key_from_str() {
-        round_trip(Key::Account(AccountHash::new([42; BLAKE2B_DIGEST_LENGTH])));
-        round_trip(Key::Hash([42; KEY_HASH_LENGTH]));
-        round_trip(Key::URef(URef::new(
+        to_string_round_trip(Key::Account(AccountHash::new([42; BLAKE2B_DIGEST_LENGTH])));
+        to_string_round_trip(Key::Hash([42; KEY_HASH_LENGTH]));
+        to_string_round_trip(Key::URef(URef::new(
             [255; BLAKE2B_DIGEST_LENGTH],
             AccessRights::READ,
         )));
-        round_trip(Key::Transfer(TransferAddr::new([42; KEY_HASH_LENGTH])));
-        round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
+        to_string_round_trip(Key::Transfer(TransferAddr::new([42; KEY_HASH_LENGTH])));
+        to_string_round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
+        to_string_round_trip(Key::EraInfo(42));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert!(Key::from_formatted_str(invalid_prefix).is_err());
@@ -701,5 +853,64 @@ mod tests {
             serde_json::to_string(&key_deploy_info).unwrap(),
             format!(r#"{{"DeployInfo":"deploy-{}"}}"#, hex_bytes)
         );
+
+        let key_era_info = Key::EraInfo(42);
+        assert_eq!(
+            serde_json::to_string(&key_era_info).unwrap(),
+            r#"{"EraInfo":"era-42"}"#.to_string()
+        );
+    }
+
+    #[test]
+    fn serialization_roundtrip_bincode() {
+        let round_trip = |key: &Key| {
+            let encoded = bincode::serialize(key).unwrap();
+            let decoded = bincode::deserialize(&encoded).unwrap();
+            assert_eq!(key, &decoded);
+        };
+
+        let array = [42; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(array)));
+        round_trip(&Key::Hash(array));
+        round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(array)));
+        round_trip(&Key::DeployInfo(DeployHash::new(array)));
+        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
+        round_trip(&Key::Bid(AccountHash::new(array)));
+        round_trip(&Key::Withdraw(AccountHash::new(array)));
+    }
+
+    #[test]
+    fn serialization_roundtrip_json() {
+        let round_trip = |key: &Key| {
+            let encoded = serde_json::to_string_pretty(key).unwrap();
+            let decoded = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(key, &decoded);
+        };
+
+        let array = [42; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(array)));
+        round_trip(&Key::Hash(array));
+        round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(array)));
+        round_trip(&Key::DeployInfo(DeployHash::new(array)));
+        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
+        round_trip(&Key::Withdraw(AccountHash::new(array)));
+
+        let zeros = [0; BLAKE2B_DIGEST_LENGTH];
+
+        round_trip(&Key::Account(AccountHash::new(zeros)));
+        round_trip(&Key::Hash(zeros));
+        round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
+        round_trip(&Key::Transfer(TransferAddr::new(zeros)));
+        round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
+        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
+        round_trip(&Key::Bid(AccountHash::new(zeros)));
+        round_trip(&Key::Withdraw(AccountHash::new(zeros)));
     }
 }

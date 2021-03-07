@@ -1,8 +1,11 @@
+use std::env;
+
 use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::Reactor;
+use crate::{components::network::ENABLE_LIBP2P_NET_ENV_VAR, unregister_metric};
 
 /// Metrics for memory usage.
 #[derive(Debug)]
@@ -150,7 +153,11 @@ impl MemoryMetrics {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;
-        let net = reactor.small_network.estimate_heap_size() as i64;
+        let net = if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
+            reactor.network.estimate_heap_size() as i64
+        } else {
+            reactor.small_network.estimate_heap_size() as i64
+        };
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
@@ -229,78 +236,23 @@ impl MemoryMetrics {
 
 impl Drop for MemoryMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.mem_total.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_total, to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_metrics.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_metrics, to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_net.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_net, to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_address_gossiper.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_address_gossiper, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_storage.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_storage, to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_contract_runtime.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_contract_runtime, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_rpc_server.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_rpc_server, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_rest_server.clone()))
-            .expect("did not expect deregistering mem_rest_server, to fail");
-        self.registry
-            .unregister(Box::new(self.mem_event_stream_server.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_event_stream_server, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_chainspec_loader.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_chainspec_loader, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_consensus.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_consensus, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_deploy_fetcher.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_deploy_fetcher, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_deploy_gossiper.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_deploy_gossiper, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_block_proposer.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_block_proposer, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_block_executor.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_block_executor, to fail"),
-            );
-        self.registry
-            .unregister(Box::new(self.mem_proto_block_validator.clone()))
-            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_proto_block_validator, to fail"));
-        self.registry
-            .unregister(Box::new(self.mem_linear_chain.clone()))
-            .unwrap_or_else(
-                |err| warn!(%err, "did not expect deregistering mem_linear_chain, to fail"),
-            );
+        unregister_metric!(self.registry, self.mem_total);
+        unregister_metric!(self.registry, self.mem_metrics);
+        unregister_metric!(self.registry, self.mem_net);
+        unregister_metric!(self.registry, self.mem_address_gossiper);
+        unregister_metric!(self.registry, self.mem_storage);
+        unregister_metric!(self.registry, self.mem_contract_runtime);
+        unregister_metric!(self.registry, self.mem_rpc_server);
+        unregister_metric!(self.registry, self.mem_rest_server);
+        unregister_metric!(self.registry, self.mem_event_stream_server);
+        unregister_metric!(self.registry, self.mem_chainspec_loader);
+        unregister_metric!(self.registry, self.mem_consensus);
+        unregister_metric!(self.registry, self.mem_deploy_fetcher);
+        unregister_metric!(self.registry, self.mem_deploy_gossiper);
+        unregister_metric!(self.registry, self.mem_block_proposer);
+        unregister_metric!(self.registry, self.mem_block_executor);
+        unregister_metric!(self.registry, self.mem_proto_block_validator);
+        unregister_metric!(self.registry, self.mem_linear_chain);
+        unregister_metric!(self.registry, self.mem_estimator_runtime_s);
     }
 }

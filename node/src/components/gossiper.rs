@@ -170,17 +170,17 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         })
     }
 
-    /// Handles a new item received from a peer or client.
+    /// Handles a new item received from a peer or client for which we should begin gossiping.
+    ///
+    /// Note that this doesn't include items gossiped to us; those are handled in `handle_gossip()`.
     fn handle_item_received(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         source: Source<NodeId>,
     ) -> Effects<Event<T>> {
-        self.metrics.items_received.inc();
-
         if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
-            self.metrics.items_gossiped_onwards.inc();
+            self.metrics.items_received.inc();
             self.gossip(
                 effect_builder,
                 item_id,
@@ -218,6 +218,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         requested_count: usize,
         peers: HashSet<NodeId>,
     ) -> Effects<Event<T>> {
+        self.metrics.times_gossiped.inc_by(peers.len() as i64);
         // We don't have any peers to gossip to, so pause the process, which will eventually result
         // in the entry being removed.
         if peers.is_empty() {
@@ -339,6 +340,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
         match action {
             GossipAction::ShouldGossip(should_gossip) => {
+                self.metrics.items_received.inc();
                 // Gossip the item ID.
                 let mut effects = self.gossip(
                     effect_builder,
@@ -365,6 +367,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 effects
             }
             GossipAction::GetRemainder { .. } => {
+                self.metrics.items_received.inc();
                 // Send a response to the sender indicating we want the full item from them, and set
                 // a timeout for this response.
                 let reply = Message::GossipResponse {
@@ -425,8 +428,14 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 should_gossip.exclude_peers,
             )),
             GossipAction::Noop => (),
-            GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
-                error!("can't have gossiped if we don't hold the complete item");
+            GossipAction::GetRemainder { .. } => {
+                error!("shouldn't try to get remainder as result of receiving a gossip response");
+            }
+            GossipAction::AwaitingRemainder => {
+                warn!(
+                    "shouldn't have gossiped if we don't hold the complete item - possible \
+                    significant latency, or malicious peer"
+                );
             }
         }
 

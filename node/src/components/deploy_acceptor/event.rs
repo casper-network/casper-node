@@ -1,9 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-use semver::Version;
 use serde::Serialize;
 
-use super::{DeployAcceptorChainspec, Source};
+use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
@@ -19,14 +18,6 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         responder: Option<Responder<Result<(), Error>>>,
-    },
-    /// The result of getting the chainspec from the storage component.
-    GetChainspecResult {
-        deploy: Box<Deploy>,
-        source: Source<NodeId>,
-        chainspec_version: Version,
-        maybe_chainspec: Box<Option<DeployAcceptorChainspec>>,
-        maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {
@@ -61,21 +52,6 @@ impl Display for Event {
         match self {
             Event::Accept { deploy, source, .. } => {
                 write!(formatter, "accept {} from {}", deploy.id(), source)
-            }
-            Event::GetChainspecResult {
-                chainspec_version,
-                maybe_chainspec,
-                ..
-            } => {
-                if maybe_chainspec.is_some() {
-                    write!(formatter, "got chainspec at {}", chainspec_version)
-                } else {
-                    write!(
-                        formatter,
-                        "failed to get chainspec at {}",
-                        chainspec_version
-                    )
-                }
             }
             Event::PutToStorageResult { deploy, is_new, .. } => {
                 if *is_new {

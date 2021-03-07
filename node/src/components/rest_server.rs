@@ -27,13 +27,17 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use semver::Version;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, warn};
 
 use super::Component;
 use crate::{
     effect::{
-        requests::{ChainspecLoaderRequest, MetricsRequest, NetworkInfoRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
@@ -53,6 +57,7 @@ pub trait ReactorEventT:
     + From<NetworkInfoRequest<NodeId>>
     + From<StorageRequest>
     + From<ChainspecLoaderRequest>
+    + From<ConsensusRequest>
     + From<MetricsRequest>
     + Send
 {
@@ -64,6 +69,7 @@ impl<REv> ReactorEventT for REv where
         + From<NetworkInfoRequest<NodeId>>
         + From<StorageRequest>
         + From<ChainspecLoaderRequest>
+        + From<ConsensusRequest>
         + From<MetricsRequest>
         + Send
         + 'static
@@ -82,6 +88,7 @@ impl RestServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
+        api_version: Version,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -92,6 +99,7 @@ impl RestServer {
         let server_join_handle = tokio::spawn(http_server::run(
             builder,
             effect_builder,
+            api_version,
             shutdown_receiver,
             config.qps_limit,
         ));
@@ -118,12 +126,14 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::RestRequest(RestRequest::GetStatus { responder }) => async move {
-                let (last_added_block, peers, chainspec_info) = join!(
+                let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                     effect_builder.get_highest_block_from_storage(),
                     effect_builder.network_peers(),
                     effect_builder.get_chainspec_info(),
+                    effect_builder.consensus_status()
                 );
-                let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
+                let status_feed =
+                    StatusFeed::new(last_added_block, peers, chainspec_info, consensus_status);
                 responder.respond(status_feed).await;
             }
             .ignore(),

@@ -25,14 +25,14 @@ use casper_execution_engine::{
         genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
         GetEraValidatorsRequest,
     },
-    shared::newtypes::CorrelationId,
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{auction::ValidatorWeights, ProtocolVersion};
+use casper_types::{system::auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::Component,
@@ -78,10 +78,12 @@ pub struct ContractRuntimeMetrics {
     apply_effect: Histogram,
     commit_upgrade: Histogram,
     run_query: Histogram,
+    commit_step: Histogram,
     get_balance: Histogram,
     get_validator_weights: Histogram,
     get_era_validators: Histogram,
     get_era_validator_weights_by_era_id: Histogram,
+    get_bids: Histogram,
     missing_trie_keys: Histogram,
     put_trie: Histogram,
     read_trie: Histogram,
@@ -89,10 +91,15 @@ pub struct ContractRuntimeMetrics {
 
 /// Value of upper bound of histogram.
 const EXPONENTIAL_BUCKET_START: f64 = 0.01;
+
 /// Multiplier of previous upper bound for next bound.
 const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
-/// Bucket count, with last going to +Inf.
-const EXPONENTIAL_BUCKET_COUNT: usize = 6;
+
+/// Bucket count, with the last bucket going to +Inf which will not be included in the results.
+/// - start = 0.01, factor = 2.0, count = 10
+/// - start * factor ^ count = 0.01 * 2.0 ^ 10 = 10.24
+/// - Values above 10.24 (f64 seconds here) will not fall in a bucket that is kept.
+const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
 const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
 const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
@@ -100,6 +107,8 @@ const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
 const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
 const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
+const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
+const COMMIT_STEP_HELP: &str = "tracking run of engine_state.commit_step in seconds.";
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
@@ -113,6 +122,8 @@ const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME: &str =
     "contract_runtime_get_era_validator_weights_by_era_id";
 const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP: &str =
     "tracking run of engine_state.get_era_validator_weights_by_era_id in seconds.";
+const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
+const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
 const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
 const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
@@ -148,6 +159,7 @@ impl ContractRuntimeMetrics {
                 APPLY_EFFECT_HELP,
             )?,
             run_query: register_histogram_metric(registry, RUN_QUERY_NAME, RUN_QUERY_HELP)?,
+            commit_step: register_histogram_metric(registry, COMMIT_STEP_NAME, COMMIT_STEP_HELP)?,
             commit_upgrade: register_histogram_metric(
                 registry,
                 COMMIT_UPGRADE_NAME,
@@ -169,6 +181,7 @@ impl ContractRuntimeMetrics {
                 GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME,
                 GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP,
             )?,
+            get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
             read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
             put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
             missing_trie_keys: register_histogram_metric(
@@ -430,6 +443,28 @@ where
                 }
                 .ignore()
             }
+            Event::Request(ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            }) => {
+                trace!(?get_bids_request, "get bids request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.get_bids(correlation_id, get_bids_request);
+                        metrics.get_bids.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "get bids result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             Event::Request(ContractRuntimeRequest::Step {
                 step_request,
                 responder,
@@ -442,7 +477,7 @@ where
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let result = engine_state.commit_step(correlation_id, step_request);
-                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        metrics.commit_step.observe(start.elapsed().as_secs_f64());
                         result
                     })
                     .await
@@ -576,7 +611,7 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis using a chainspec
-    fn commit_genesis(&self, chainspec: Box<Chainspec>) -> Result<GenesisResult, Error> {
+    fn commit_genesis(&self, chainspec: Arc<Chainspec>) -> Result<GenesisResult, Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = ProtocolVersion::from_parts(
@@ -585,12 +620,24 @@ impl ContractRuntime {
             chainspec.protocol_config.version.patch as u32,
         );
         // Transforms a chainspec into a valid genesis config for execution engine.
-        let ee_config = (*chainspec).into();
+        let ee_config = chainspec.as_ref().into();
         self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash.into(),
             protocol_version,
             &ee_config,
         )
+    }
+
+    /// Retrieve trie keys for the integrity check.
+    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+        let correlation_id = CorrelationId::new();
+        match self
+            .engine_state
+            .trie_integrity_check(correlation_id, trie_keys)
+        {
+            Ok(keys) => keys,
+            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
+        }
     }
 }

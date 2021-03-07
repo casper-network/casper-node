@@ -1,12 +1,10 @@
 [protocol]
 version = '1.0.0'
-
-[protocol.activation_point]
-era_id = 1
+hard_reset = false
+activation_point = 1
 
 [network]
 name = 'test-chain'
-timestamp = '2020-09-18T18:45:00Z'
 
 [core]
 era_duration = '3minutes'
@@ -31,6 +29,9 @@ max_block_size = 12
 block_max_deploy_count = 125
 block_max_transfer_count = 1000
 block_gas_limit = 13
+payment_args_max_length = 1024
+session_args_max_length = 1024
+native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 max_memory = 17
@@ -118,6 +119,7 @@ distribute = 10_000
 withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
+activate_bid = 10_000
 
 [system_costs.mint_costs]
 mint = 10_000
@@ -127,7 +129,7 @@ balance = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000
 
-[system_costs.proof_of_stake_costs]
+[system_costs.handle_payment_costs]
 get_payment_purse = 10_000
 set_refund_purse = 10_000
 get_refund_purse = 10_000

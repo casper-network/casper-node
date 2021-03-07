@@ -1,18 +1,12 @@
-use std::{
-    convert::TryFrom,
-    fmt::{self, Debug, Formatter},
-};
+use std::{convert::TryFrom, fmt::Debug};
 
-use serde::{
-    de::{self, SeqAccess, Visitor},
-    ser::{Error, SerializeSeq},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
+use serde_bytes::ByteBuf;
 
 use casper_types::{
-    auction::EraInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
+    system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
@@ -28,6 +22,8 @@ enum Tag {
     Transfer = 5,
     DeployInfo = 6,
     EraInfo = 7,
+    Bid = 8,
+    Withdraw = 9,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -40,6 +36,8 @@ pub enum StoredValue {
     Transfer(Transfer),
     DeployInfo(DeployInfo),
     EraInfo(EraInfo),
+    Bid(Box<Bid>),
+    Withdraw(Vec<UnbondingPurse>),
 }
 
 impl StoredValue {
@@ -92,6 +90,20 @@ impl StoredValue {
         }
     }
 
+    pub fn as_bid(&self) -> Option<&Bid> {
+        match self {
+            StoredValue::Bid(bid) => Some(bid),
+            _ => None,
+        }
+    }
+
+    pub fn as_withdraw(&self) -> Option<&Vec<UnbondingPurse>> {
+        match self {
+            StoredValue::Withdraw(unbonding_purses) => Some(unbonding_purses),
+            _ => None,
+        }
+    }
+
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -102,6 +114,8 @@ impl StoredValue {
             StoredValue::Transfer(_) => "Transfer".to_string(),
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
+            StoredValue::Bid(_) => "Bid".to_string(),
+            StoredValue::Withdraw(_) => "Withdraw".to_string(),
         }
     }
 }
@@ -129,6 +143,11 @@ impl From<Contract> for StoredValue {
 impl From<ContractPackage> for StoredValue {
     fn from(value: ContractPackage) -> StoredValue {
         StoredValue::ContractPackage(value)
+    }
+}
+impl From<Bid> for StoredValue {
+    fn from(bid: Bid) -> StoredValue {
+        StoredValue::Bid(Box::new(bid))
     }
 }
 
@@ -254,6 +273,10 @@ impl ToBytes for StoredValue {
             StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
             StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
             StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
+            StoredValue::Bid(bid) => (Tag::Bid, bid.to_bytes()?),
+            StoredValue::Withdraw(unbonding_purses) => {
+                (Tag::Withdraw, unbonding_purses.to_bytes()?)
+            }
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -273,6 +296,8 @@ impl ToBytes for StoredValue {
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
+                StoredValue::Bid(bid) => bid.serialized_length(),
+                StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
             }
     }
 }
@@ -303,89 +328,34 @@ impl FromBytes for StoredValue {
                 .map(|(deploy_info, remainder)| (StoredValue::DeployInfo(deploy_info), remainder)),
             tag if tag == Tag::EraInfo as u8 => EraInfo::from_bytes(remainder)
                 .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
+            tag if tag == Tag::Bid as u8 => Bid::from_bytes(remainder)
+                .map(|(bid, remainder)| (StoredValue::Bid(Box::new(bid)), remainder)),
+            tag if tag == Tag::Withdraw as u8 => {
+                Vec::<UnbondingPurse>::from_bytes(remainder).map(|(unbonding_purses, remainder)| {
+                    (StoredValue::Withdraw(unbonding_purses), remainder)
+                })
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
 
 impl Serialize for StoredValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // The JSON representation of a StoredValue is just its bytesrepr
         // While this makes it harder to inspect, it makes deterministic representation simple.
         let bytes = self
             .to_bytes()
-            .map_err(|err| S::Error::custom(format!("{:?}", err)))?;
-
-        let number_of_bytes = bytes.len();
-        let mut seq = serializer.serialize_seq(Some(number_of_bytes))?;
-
-        // First push the number of bytes the StoredValue takes
-        seq.serialize_element(&number_of_bytes)?;
-        for byte in bytes {
-            seq.serialize_element(&byte)?;
-        }
-        seq.end()
+            .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
+        ByteBuf::from(bytes).serialize(serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for StoredValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct StoredValueDeserializer;
-
-        impl<'de> Visitor<'de> for StoredValueDeserializer {
-            type Value = StoredValue;
-
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
-                formatter.write_str("Serialized representation of StoredValue in bytes.")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let number_of_bytes: usize = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::custom("Did not have leading number of bytes"))?;
-                let mut bytes: Vec<u8> = Vec::with_capacity(number_of_bytes);
-                let mut count: usize = 0;
-                while let Some(byte) = seq.next_element()? {
-                    count += 1;
-                    if count > number_of_bytes {
-                        return Err(de::Error::custom(format!(
-                            "Serialization should have {} bytes but exceeds this",
-                            number_of_bytes
-                        )));
-                    }
-                    bytes.push(byte);
-                }
-                if count < number_of_bytes {
-                    return Err(de::Error::custom(format!(
-                        "Serialization should have {} bytes but only has {}",
-                        number_of_bytes, count
-                    )));
-                }
-                let (stored_value, additional_bytes) = StoredValue::from_bytes(&bytes)
-                    .map_err(|err| de::Error::custom(format!("{:?}", err)))?;
-                if !additional_bytes.is_empty() {
-                    return Err(de::Error::custom(format!(
-                        "Parsed stored value as well as unexpected additional bytes.\n\
-                         \n\
-                         Stored value: {:?}\n\
-                         \n\
-                         Unexpected additional bytes: {:?}",
-                        stored_value, additional_bytes
-                    )));
-                }
-                Ok(stored_value)
-            }
-        }
-        deserializer.deserialize_seq(StoredValueDeserializer)
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+        Ok(bytesrepr::deserialize::<StoredValue>(bytes)
+            .map_err(|error| de::Error::custom(format!("{:?}", error)))?)
     }
 }
 
@@ -393,11 +363,16 @@ impl<'de> Deserialize<'de> for StoredValue {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::gens::cl_value_arb;
+    use casper_types::{
+        gens::{
+            cl_value_arb, contract_arb, contract_package_arb, contract_wasm_arb, deploy_info_arb,
+            transfer_arb,
+        },
+        system::auction::gens::era_info_arb,
+    };
 
     use super::StoredValue;
     use crate::shared::account::gens::account_arb;
-    use casper_types::gens::{contract_arb, contract_package_arb, contract_wasm_arb};
 
     pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         prop_oneof![
@@ -406,6 +381,9 @@ pub mod gens {
             contract_package_arb().prop_map(StoredValue::ContractPackage),
             contract_arb().prop_map(StoredValue::Contract),
             contract_wasm_arb().prop_map(StoredValue::ContractWasm),
+            era_info_arb(1..10).prop_map(StoredValue::EraInfo),
+            deploy_info_arb().prop_map(StoredValue::DeployInfo),
+            transfer_arb().prop_map(StoredValue::Transfer)
         ]
     }
 }

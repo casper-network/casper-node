@@ -14,8 +14,10 @@ mod tests;
 mod traits;
 
 use std::{
+    collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
+    mem,
     time::Duration,
 };
 
@@ -25,28 +27,35 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::PublicKey;
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::Component,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
+    fatal,
     protocol::Message,
-    types::{ActivationPoint, BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    reactor::ReactorEvent,
+    types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
+use crate::effect::EffectExt;
 pub use config::Config;
-pub(crate) use consensus_protocol::{BlockContext, EraEnd};
+pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+
+#[cfg(test)]
+pub(crate) use era_supervisor::oldest_bonded_era;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
@@ -74,27 +83,28 @@ pub enum Event<I> {
     MessageReceived { sender: I, msg: ConsensusMessage },
     /// We connected to a peer.
     NewPeer(I),
-    /// A scheduled event to be handled by a specified era
+    /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
         timestamp: Timestamp,
         timer_id: TimerId,
     },
-    /// A queued action to be handled by a specific era
+    /// A queued action to be handled by a specific era.
     Action { era_id: EraId, action_id: ActionId },
-    /// We are receiving the data we require to propose a new block
+    /// We are receiving the data we require to propose a new block.
     NewProtoBlock {
         era_id: EraId,
         proto_block: ProtoBlock,
         block_context: BlockContext,
     },
     #[from]
-    ConsensusRequest(requests::ConsensusRequest),
-    /// The proto-block has been validated
+    ConsensusRequest(ConsensusRequest),
+    /// The proto-block has been validated.
     ResolveValidity {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        timestamp: Timestamp,
         valid: bool,
     },
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -104,14 +114,23 @@ pub enum Event<I> {
         delay: Duration,
     },
     /// Event raised when a new era should be created: once we get the set of validators, the
-    /// booking block hash and the seed from the key block
+    /// booking block hash and the seed from the key block.
     CreateNewEra {
         /// The header of the switch block
-        block_header: Box<BlockHeader>,
-        /// Ok(block_hash) if the booking block was found, Err(height) if not
-        booking_block_hash: Result<BlockHash, u64>,
+        block: Box<Block>,
+        /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
+        booking_block_hash: Result<BlockHash, EraId>,
     },
-    /// An event instructing us to shutdown if the latest era received no votes
+    /// Event raised upon initialization, when a number of eras have to be instantiated at once.
+    InitializeEras {
+        key_blocks: HashMap<EraId, BlockHeader>,
+        booking_blocks: HashMap<EraId, BlockHash>,
+        /// This is empty except if the activation era still needs to be instantiated: Its
+        /// validator set is read from the global state, not from a key block.
+        validators: BTreeMap<PublicKey, U512>,
+        timestamp: Timestamp,
+    },
+    /// An event instructing us to shutdown if the latest era received no votes.
     Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
@@ -184,11 +203,13 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
             } => write!(
                 f,
-                "Proto-block received from {:?} for {} is {}: {:?}",
+                "Proto-block received from {:?} at {} for {} is {}: {:?}",
                 sender,
+                timestamp,
                 era_id,
                 if *valid { "valid" } else { "invalid" },
                 proto_block
@@ -202,12 +223,13 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                block_header,
+                block,
             } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, switch block header: {:?}",
-                booking_block_hash, block_header
+                "New era should be created; booking block hash: {:?}, switch block: {:?}",
+                booking_block_hash, block
             ),
+            Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
                 write!(f, "The node finished joining the network at {}", timestamp)
@@ -222,7 +244,8 @@ impl<I: Debug> Display for Event<I> {
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
 pub trait ReactorEventT<I>:
-    From<Event<I>>
+    ReactorEvent
+    + From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
@@ -232,11 +255,13 @@ pub trait ReactorEventT<I>:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
+    + From<LinearChainRequest<I>>
 {
 }
 
 impl<REv, I> ReactorEventT<I> for REv where
-    REv: From<Event<I>>
+    REv: ReactorEvent
+        + From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
@@ -246,6 +271,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
+        + From<LinearChainRequest<I>>
 {
 }
 
@@ -278,45 +304,81 @@ where
                 proto_block,
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
-            Event::ConsensusRequest(requests::ConsensusRequest::HandleLinearBlock(
-                block_header,
-                responder,
-            )) => handling_es.handle_linear_chain_block(*block_header, responder),
+            Event::ConsensusRequest(ConsensusRequest::HandleLinearBlock(block, responder)) => {
+                handling_es.handle_linear_chain_block(*block, responder)
+            }
             Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
+                timestamp,
                 valid,
-            } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            } => handling_es.resolve_validity(era_id, sender, proto_block, timestamp, valid),
             Event::DeactivateEra {
                 era_id,
                 faulty_num,
                 delay,
             } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
-                block_header,
+                block,
                 booking_block_hash,
             } => {
-                let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
-                    error!(
-                        "could not find the booking block at height {} for era {}",
-                        height,
-                        block_header.era_id().successor()
-                    );
-                    panic!("couldn't get the booking block hash");
-                });
-                handling_es.handle_create_new_era(*block_header, booking_block_hash)
+                let booking_block_hash = match booking_block_hash {
+                    Ok(hash) => hash,
+                    Err(era_id) => {
+                        error!(
+                            "could not find the booking block in era {}, for era {}",
+                            era_id,
+                            block.header().era_id().successor()
+                        );
+                        return fatal!(
+                            handling_es.effect_builder,
+                            "couldn't get the booking block hash"
+                        )
+                        .ignore();
+                    }
+                };
+                handling_es.handle_create_new_era(*block, booking_block_hash)
+            }
+            Event::InitializeEras {
+                key_blocks,
+                booking_blocks,
+                validators,
+                timestamp,
+            } => {
+                let mut effects = handling_es.handle_initialize_eras(
+                    key_blocks,
+                    booking_blocks,
+                    validators,
+                    timestamp,
+                );
+
+                // TODO: remove that when possible
+                // This is needed because we want to make sure that we only try to handle linear
+                // chain blocks once the eras are initialized. It's possible that we will get
+                // events with linear chain blocks before that - in such a case we cache the
+                // requests and only handle them here.
+                for queued_request in mem::take(&mut handling_es.era_supervisor.enqueued_requests) {
+                    effects.extend(handling_es.era_supervisor.handle_event(
+                        effect_builder,
+                        handling_es.rng,
+                        queued_request.into(),
+                    ));
+                }
+
+                effects
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }
-            Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
-                era_id,
-                pk,
-                responder,
-            )) => handling_es.is_bonded_validator(era_id, pk, responder),
+            Event::ConsensusRequest(ConsensusRequest::IsBondedValidator(era_id, pk, responder)) => {
+                handling_es.is_bonded_validator(era_id, pk, responder)
+            }
+            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
+                handling_es.status(responder)
+            }
         }
     }
 }

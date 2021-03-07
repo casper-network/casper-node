@@ -1,19 +1,24 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::engine_state::genesis::{GenesisAccount, GenesisValidator},
+    shared::motes::Motes,
+};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    auction::{
-        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
-        METHOD_SLASH, UNBONDING_PURSES_KEY,
+    runtime_args,
+    system::auction::{
+        Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -50,17 +55,21 @@ const VALIDATOR_2_STAKE: u64 = 350_000;
 #[test]
 fn should_run_ee_1120_slash_delegators() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_1_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
-        let validator_2 = GenesisAccount::new(
+        let validator_2 = GenesisAccount::account(
             *VALIDATOR_2,
-            *VALIDATOR_2_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_2_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_2_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -150,13 +159,13 @@ fn should_run_ee_1120_slash_delegators() {
         .commit();
 
     // Ensure that initial bid entries exist for validator 1 and validator 2
-    let initial_bids: Bids = builder.get_value(auction, BIDS_KEY);
+    let initial_bids: Bids = builder.get_bids();
     assert_eq!(
         initial_bids.keys().copied().collect::<BTreeSet<_>>(),
         BTreeSet::from_iter(vec![*VALIDATOR_2, *VALIDATOR_1])
     );
 
-    let initial_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let initial_unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(initial_unbond_purses.len(), 0);
 
     // DELEGATOR_1 partially unbonds from VALIDATOR_1
@@ -201,11 +210,11 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check unbonding purses before slashing
 
-    let unbond_purses_before: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_before: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses_before.len(), 2);
 
     let validator_1_unbond_list_before = unbond_purses_before
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .cloned()
         .expect("should have unbond");
     assert_eq!(validator_1_unbond_list_before.len(), 2); // two entries in order: undelegate, and withdraw bid
@@ -239,7 +248,7 @@ fn should_run_ee_1120_slash_delegators() {
     );
 
     let validator_2_unbond_list = unbond_purses_before
-        .get(&*VALIDATOR_2)
+        .get(&*VALIDATOR_2_ADDR)
         .cloned()
         .expect("should have unbond");
 
@@ -259,7 +268,7 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check bids before slashing
 
-    let bids_before: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids_before: Bids = builder.get_bids();
     assert_eq!(
         bids_before.keys().collect::<Vec<_>>(),
         initial_bids.keys().collect::<Vec<_>>()
@@ -278,10 +287,12 @@ fn should_run_ee_1120_slash_delegators() {
     builder.exec(slash_request_1).expect_success().commit();
 
     // Compare bids after slashing validator 2
-    let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
+    let bids_after: Bids = builder.get_bids();
     assert_ne!(bids_before, bids_after);
-    assert_eq!(bids_after.len(), 1);
-    assert!(!bids_after.contains_key(&VALIDATOR_2));
+    assert_eq!(bids_after.len(), 2);
+    let validator_2_bid = bids_after.get(&VALIDATOR_2).unwrap();
+    assert!(validator_2_bid.inactive());
+    assert!(validator_2_bid.staked_amount().is_zero());
 
     assert!(bids_after.contains_key(&VALIDATOR_1));
     assert_eq!(bids_after[&VALIDATOR_1].delegators().len(), 2);
@@ -294,11 +305,11 @@ fn should_run_ee_1120_slash_delegators() {
         .delegators()
         .contains_key(&DELEGATOR_1));
 
-    let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
     assert_ne!(unbond_purses_before, unbond_purses_after);
 
     let validator_1_unbond_list_after = unbond_purses_after
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .expect("should have validator 1 entry");
     assert_eq!(validator_1_unbond_list_after.len(), 2);
     assert_eq!(
@@ -332,8 +343,19 @@ fn should_run_ee_1120_slash_delegators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
-    assert!(bids_after.is_empty());
-    let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert!(unbond_purses_after.is_empty());
+    let bids_after: Bids = builder.get_bids();
+    assert_eq!(bids_after.len(), 2);
+    let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
+    assert!(validator_1_bid.inactive());
+    assert!(validator_1_bid.staked_amount().is_zero());
+
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
+    assert!(unbond_purses_after
+        .get(&VALIDATOR_1_ADDR)
+        .unwrap()
+        .is_empty());
+    assert!(unbond_purses_after
+        .get(&VALIDATOR_2_ADDR)
+        .unwrap()
+        .is_empty());
 }

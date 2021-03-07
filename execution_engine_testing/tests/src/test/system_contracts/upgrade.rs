@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use casper_engine_test_support::internal::{
     InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
@@ -16,15 +18,18 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
+        stored_value::StoredValue,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
-    auction::{
-        EraId, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+    system::{
+        auction::{
+            AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    mint::ROUND_SEIGNIORAGE_RATE_KEY,
-    ProtocolVersion, U512,
+    CLValue, ProtocolVersion, U512,
 };
 use num_rational::Ratio;
 
@@ -293,13 +298,13 @@ fn should_upgrade_only_validator_slots() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let valdiator_slot_key = builder
+    let validator_slot_key = builder
         .get_contract(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()[VALIDATOR_SLOTS_KEY];
 
     let before_validator_slots: u32 = builder
-        .query(None, valdiator_slot_key, &[])
+        .query(None, validator_slot_key, &[])
         .expect("should have validator slots")
         .as_cl_value()
         .expect("should be CLValue")
@@ -323,7 +328,7 @@ fn should_upgrade_only_validator_slots() {
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
-        .query(None, valdiator_slot_key, &[])
+        .query(None, validator_slot_key, &[])
         .expect("should have validator slots")
         .as_cl_value()
         .expect("should be CLValue")
@@ -408,7 +413,7 @@ fn should_upgrade_only_locked_funds_period() {
         .expect("auction should exist")
         .named_keys()[LOCKED_FUNDS_PERIOD_KEY];
 
-    let before_locked_funds_period: EraId = builder
+    let before_locked_funds_period_millis: u64 = builder
         .query(None, locked_funds_period_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -417,14 +422,14 @@ fn should_upgrade_only_locked_funds_period() {
         .into_t()
         .expect("should be u64");
 
-    let new_locked_funds_period = before_locked_funds_period + 1;
+    let new_locked_funds_period_millis = before_locked_funds_period_millis + 1;
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_locked_funds_period(new_locked_funds_period)
+            .with_new_locked_funds_period_millis(new_locked_funds_period_millis)
             .build()
     };
 
@@ -432,7 +437,7 @@ fn should_upgrade_only_locked_funds_period() {
         .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let after_locked_funds_period: EraId = builder
+    let after_locked_funds_period_millis: u64 = builder
         .query(None, locked_funds_period_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -442,7 +447,7 @@ fn should_upgrade_only_locked_funds_period() {
         .expect("should be u64");
 
     assert_eq!(
-        new_locked_funds_period, after_locked_funds_period,
+        new_locked_funds_period_millis, after_locked_funds_period_millis,
         "Should have upgraded locked funds period"
     )
 }
@@ -525,7 +530,7 @@ fn should_upgrade_only_unbonding_delay() {
         .expect("auction should exist")
         .named_keys()[UNBONDING_DELAY_KEY];
 
-    let before_unbonding_delay: EraId = builder
+    let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -534,7 +539,7 @@ fn should_upgrade_only_unbonding_delay() {
         .into_t()
         .expect("should be u64");
 
-    let new_unbonding_delay: EraId = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -549,7 +554,7 @@ fn should_upgrade_only_unbonding_delay() {
         .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let after_unbonding_delay: EraId = builder
+    let after_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
         .as_cl_value()
@@ -563,5 +568,69 @@ fn should_upgrade_only_unbonding_delay() {
     assert_eq!(
         new_unbonding_delay, after_unbonding_delay,
         "Should have upgraded locked funds period"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_apply_global_state_upgrade() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    // We'll try writing directly to this key.
+    let unbonding_delay_key = builder
+        .get_contract(builder.get_auction_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[UNBONDING_DELAY_KEY];
+
+    let before_unbonding_delay: u64 = builder
+        .query(None, unbonding_delay_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
+
+    let mut update_map = BTreeMap::new();
+    update_map.insert(
+        unbonding_delay_key,
+        StoredValue::from(CLValue::from_t(new_unbonding_delay).expect("should create a CLValue")),
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(update_map)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    let after_unbonding_delay: u64 = builder
+        .query(None, unbonding_delay_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    assert_ne!(before_unbonding_delay, new_unbonding_delay);
+
+    assert_eq!(
+        new_unbonding_delay, after_unbonding_delay,
+        "Should have modified locked funds period"
     );
 }

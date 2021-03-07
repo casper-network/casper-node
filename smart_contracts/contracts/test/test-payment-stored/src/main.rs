@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    mint::ARG_AMOUNT,
+    system::mint::ARG_AMOUNT,
     CLType, RuntimeArgs, URef, U512,
 };
 
@@ -30,12 +30,15 @@ pub extern "C" fn pay() {
 
     let purse_uref = account::get_main_purse();
 
-    // proof of stake contract
-    let pos_contract_hash = system::get_proof_of_stake();
+    // handle payment contract
+    let handle_payment_contract_hash = system::get_handle_payment();
 
     // get payment purse for current execution
-    let payment_purse: URef =
-        runtime::call_contract(pos_contract_hash, GET_PAYMENT_PURSE, RuntimeArgs::default());
+    let payment_purse: URef = runtime::call_contract(
+        handle_payment_contract_hash,
+        GET_PAYMENT_PURSE,
+        RuntimeArgs::default(),
+    );
 
     // transfer amount from named purse to payment purse, which will be used to pay for execution
     system::transfer_from_purse_to_purse(purse_uref, payment_purse, amount, None)

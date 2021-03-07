@@ -35,14 +35,21 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
+use self::event::{BlockByHashResult, DeploysResult};
 use casper_types::{PublicKey, U512};
 
-use self::event::{BlockByHashResult, DeploysResult};
-
-use super::{fetcher::FetchResult, Component};
+use super::{
+    consensus::EraId,
+    fetcher::FetchResult,
+    storage::{self, Storage},
+    Component,
+};
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    types::{
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
+        TimeDiff,
+    },
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -58,61 +65,146 @@ pub(crate) struct LinearChainSync<I> {
     state: State,
     #[data_size(skip)]
     metrics: LinearChainSyncMetrics,
+    /// The next upgrade activation point.
+    /// When we download the switch block of an era immediately before the activation point,
+    /// we need to shut down for an upgrade.
+    next_upgrade_activation_point: Option<ActivationPoint>,
+    stop_for_upgrade: bool,
+    /// Key for storing the linear chain sync state.
+    state_key: Vec<u8>,
+    /// Acceptable drift between the block creation and now.
+    /// If less than than this has passed we will consider syncing as finished.
+    acceptable_drift: TimeDiff,
+    /// Shortest era that is allowed with the given protocol configuration.
+    shortest_era: TimeDiff,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    pub fn new(
+    // TODO: fix this
+    #[allow(clippy::too_many_arguments)]
+    pub fn new<Err>(
         registry: &Registry,
+        chainspec: &Chainspec,
+        storage: &Storage,
         init_hash: Option<BlockHash>,
-        genesis_validator_weights: BTreeMap<PublicKey, U512>,
+        highest_block_header: Option<BlockHeader>,
+        _genesis_validator_weights: BTreeMap<PublicKey, U512>,
+        next_upgrade_activation_point: Option<ActivationPoint>,
+    ) -> Result<Self, Err>
+    where
+        Err: From<prometheus::Error> + From<storage::Error>,
+    {
+        if let Some(state) = read_init_state(storage, chainspec)? {
+            Ok(LinearChainSync::from_state(
+                registry,
+                chainspec,
+                state,
+                next_upgrade_activation_point,
+            )?)
+        } else {
+            let acceptable_drift = chainspec.highway_config.max_round_length();
+            // Shortest era is the maximum of the two.
+            let shortest_era: TimeDiff = std::cmp::max(
+                chainspec.highway_config.min_round_length()
+                    * chainspec.core_config.minimum_era_height,
+                chainspec.core_config.era_duration,
+            );
+            let state = init_hash.map_or(State::None, |init_hash| {
+                State::sync_trusted_hash(init_hash, highest_block_header)
+            });
+            let state_key = create_state_key(&chainspec);
+            Ok(LinearChainSync {
+                peers: PeersState::new(),
+                state,
+                metrics: LinearChainSyncMetrics::new(registry)?,
+                next_upgrade_activation_point,
+                stop_for_upgrade: false,
+                state_key,
+                acceptable_drift,
+                shortest_era,
+            })
+        }
+    }
+
+    /// Initialize `LinearChainSync` component from preloaded `State`.
+    fn from_state(
+        registry: &Registry,
+        chainspec: &Chainspec,
+        state: State,
+        next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, prometheus::Error> {
-        let state = init_hash.map_or(State::None, |init_hash| {
-            State::sync_trusted_hash(init_hash, genesis_validator_weights)
-        });
+        let state_key = create_state_key(chainspec);
+        info!(?state, "reusing previous state");
+        let acceptable_drift = chainspec.highway_config.max_round_length();
+        // Shortest era is the maximum of the two.
+        let shortest_era: TimeDiff = std::cmp::max(
+            chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
+            chainspec.core_config.era_duration,
+        );
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
+            next_upgrade_activation_point,
+            stop_for_upgrade: false,
+            state_key,
+            acceptable_drift,
+            shortest_era,
         })
     }
 
     /// Add new block to linear chain.
-    fn add_block(&mut self, block_header: BlockHeader) {
+    fn add_block(&mut self, block: Block) {
         match &mut self.state {
-            State::None | State::Done => {}
-            State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block_header),
-            State::SyncingDescendants { latest_block, .. } => **latest_block = block_header,
+            State::None | State::Done(_) => {}
+            State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block),
+            State::SyncingDescendants { latest_block, .. } => **latest_block = block,
         };
     }
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        matches!(self.state, State::None | State::Done)
+        matches!(self.state, State::None | State::Done(_))
+    }
+
+    /// Returns `true` if we should stop for upgrade.
+    pub fn stopped_for_upgrade(&self) -> bool {
+        self.stop_for_upgrade
     }
 
     fn block_downloaded<REv>(
         &mut self,
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
-        block_header: &BlockHeader,
+        block: &Block,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
         REv: ReactorEventT<I>,
     {
         self.peers.reset(rng);
-        self.state.block_downloaded(block_header);
-        self.add_block(block_header.clone());
+        self.state.block_downloaded(block);
+        self.add_block(block.clone());
         match &self.state {
-            State::None | State::Done => panic!("Downloaded block when in {} state.", self.state),
-            State::SyncingTrustedHash { .. } => {
-                if block_header.is_genesis_child() {
+            State::None | State::Done(_) => {
+                panic!("Downloaded block when in {} state.", self.state)
+            }
+            State::SyncingTrustedHash {
+                highest_block_header,
+                ..
+            } => {
+                let should_start_downloading_deploys = highest_block_header
+                    .as_ref()
+                    .map(|hdr| hdr.hash() == *block.header().parent_hash())
+                    .unwrap_or(false)
+                    || block.header().is_genesis_child();
+                if should_start_downloading_deploys {
                     info!("linear chain downloaded. Start downloading deploys.");
                     effect_builder
                         .immediately()
                         .event(move |_| Event::StartDownloadingDeploys)
                 } else {
-                    self.fetch_next_block(effect_builder, rng, block_header)
+                    self.fetch_next_block(effect_builder, rng, block)
                 }
             }
             State::SyncingDescendants { .. } => {
@@ -124,7 +216,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 
     fn mark_done(&mut self) {
-        self.state = State::Done;
+        let latest_block = self.latest_block().cloned().map(Box::new);
+        self.state = State::Done(latest_block);
     }
 
     /// Handles an event indicating that a linear chain block has been executed and handled by
@@ -135,39 +228,44 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         &mut self,
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
-        block_header: BlockHeader,
+        block: Block,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
         REv: ReactorEventT<I>,
     {
-        let height = block_header.height();
-        let hash = block_header.hash();
+        let height = block.height();
+        let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
+        if block.header().is_switch_block() {
+            self.state.new_switch_block(&block);
+        }
+        if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
+            info!(era = block.header().era_id().0, "shutting down for upgrade");
+            return effect_builder
+                .immediately()
+                .event(|_| Event::InitUpgradeShutdown);
+        }
         // Reset peers before creating new requests.
         self.peers.reset(rng);
-        let block_height = block_header.height();
-        let mut curr_state = mem::replace(&mut self.state, State::None);
+        let block_height = block.height();
+        let curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
-            State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
+            State::None | State::Done(_) => {
+                panic!("Block handled when in {:?} state.", &curr_state)
+            }
             // Keep syncing from genesis if we haven't reached the trusted block hash
             State::SyncingTrustedHash {
                 highest_block_seen,
                 ref latest_block,
-                ref mut validator_weights,
                 ..
             } if highest_block_seen != block_height => {
                 match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
-                        expected, &block_header,
+                        expected, &block,
                         "Block execution result doesn't match received block."
                     ),
                     None => panic!("Unexpected block execution results."),
-                }
-                if let Some(validator_weights_for_new_era) =
-                    block_header.next_era_validator_weights()
-                {
-                    *validator_weights = validator_weights_for_new_era.clone();
                 }
                 self.state = curr_state;
                 self.fetch_next_block_deploys(effect_builder)
@@ -177,13 +275,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
-                validator_weights,
+                maybe_switch_block,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
-                        expected, &block_header,
+                        expected, &block,
                         "Block execution result doesn't match received block."
                     ),
                     None => panic!("Unexpected block execution results."),
@@ -191,27 +289,55 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block_header, validator_weights);
+                self.state = State::sync_descendants(trusted_hash, block, maybe_switch_block);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
                 ref latest_block,
-                ref mut validators_for_latest_block,
+                ref maybe_switch_block,
                 ..
             } => {
                 assert_eq!(
-                    **latest_block, block_header,
+                    **latest_block, block,
                     "Block execution result doesn't match received block."
                 );
-                match block_header.next_era_validator_weights() {
-                    None => (),
-                    Some(validators_for_next_era) => {
-                        *validators_for_latest_block = validators_for_next_era.clone();
-                    }
+                if self.is_recent_block(&block) {
+                    info!(
+                        hash=?block.hash(),
+                        height=?block.header().height(),
+                        era=block.header().era_id().0,
+                        "downloaded recent block. finished synchronization"
+                    );
+                    self.mark_done();
+                    return Effects::new();
+                }
+                if self.is_currently_active_era(&maybe_switch_block) {
+                    info!(
+                        hash=?block.hash(),
+                        height=?block.header().height(),
+                        era=block.header().era_id().0,
+                        "downloaded switch block of a new era. finished synchronization"
+                    );
+                    self.mark_done();
+                    return Effects::new();
                 }
                 self.state = curr_state;
-                self.fetch_next_block(effect_builder, rng, &block_header)
+                self.fetch_next_block(effect_builder, rng, &block)
             }
+        }
+    }
+
+    // Returns whether `block` can be considered the tip of the chain.
+    fn is_recent_block(&self, block: &Block) -> bool {
+        // Check if block was created "recently".
+        block.header().timestamp().elapsed() <= self.acceptable_drift
+    }
+
+    // Returns whether we've just downloaded a switch block of a currently active era.
+    fn is_currently_active_era(&self, maybe_switch_block: &Option<Box<Block>>) -> bool {
+        match maybe_switch_block {
+            Some(switch_block) => switch_block.header().timestamp().elapsed() < self.shortest_era,
+            None => false,
         }
     }
 
@@ -227,7 +353,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let peer = self.peers.random_unsafe();
 
         let next_block = match &mut self.state {
-            State::None | State::Done => {
+            State::None | State::Done(_) => {
                 panic!("Tried fetching next block when in {:?} state.", self.state)
             }
             State::SyncingTrustedHash {
@@ -262,7 +388,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
-        block_header: &BlockHeader,
+        block: &Block,
     ) -> Effects<Event<I>>
     where
         I: Send + 'static,
@@ -272,27 +398,66 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let peer = self.peers.random_unsafe();
         match self.state {
             State::SyncingTrustedHash { .. } => {
-                let parent_hash = *block_header.parent_hash();
+                let parent_hash = *block.header().parent_hash();
                 self.metrics.reset_start_time();
                 fetch_block_by_hash(effect_builder, peer, parent_hash)
             }
             State::SyncingDescendants { .. } => {
-                let next_height = block_header.height() + 1;
+                let next_height = block.height() + 1;
                 self.metrics.reset_start_time();
                 fetch_block_at_height(effect_builder, peer, next_height)
             }
-            State::Done | State::None => {
+            State::Done(_) | State::None => {
                 panic!("Tried fetching block when in {:?} state", self.state)
             }
         }
     }
 
-    fn latest_block(&self) -> Option<&BlockHeader> {
+    fn handle_upgrade_shutdown<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<I>>
+    where
+        I: Send + 'static,
+        REv: ReactorEventT<I>,
+    {
+        if self.state.is_done() || self.state.is_none() {
+            error!(state=?self.state, "shutdown for upgrade initiated when in wrong state");
+            panic!(
+                "shutdown for upgrade initiated when in wrong state: {}",
+                self.state,
+            )
+        }
+        effect_builder
+            .save_state(self.state_key.clone().into(), Some(self.state.clone()))
+            .event(|_| Event::Shutdown(true))
+    }
+
+    pub(crate) fn latest_block(&self) -> Option<&Block> {
         match &self.state {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
-            State::Done | State::None => None,
+            State::Done(latest_block) => latest_block.as_deref(),
+            State::None => None,
         }
+    }
+
+    fn should_upgrade(&self, era_id: EraId) -> bool {
+        match self.next_upgrade_activation_point {
+            None => false,
+            Some(activation_point) => activation_point.should_upgrade(&era_id),
+        }
+    }
+
+    fn set_last_block_if_syncing_trusted_hash(&mut self, block: &Block) {
+        if let State::SyncingTrustedHash {
+            ref mut latest_block,
+            ..
+        } = &mut self.state
+        {
+            *latest_block = Box::new(Some(block.clone()));
+        }
+        self.state.block_downloaded(block);
     }
 }
 
@@ -312,25 +477,28 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Start(init_peer) => {
-                match self.state {
+                match &self.state {
                     State::None => {
                         // No syncing configured.
                         trace!("received `Start` event when in {} state.", self.state);
                         Effects::new()
                     }
-                    State::Done | State::SyncingDescendants { .. } => {
+                    State::Done(_) => {
                         // Illegal states for syncing start.
-                        error!(
-                            "should not have received `Start` event when in {} state.",
-                            self.state
-                        );
+                        error!("should not have received `Start` event when in `Done` state.",);
                         Effects::new()
+                    }
+                    State::SyncingDescendants { latest_block, .. } => {
+                        let next_block_height = latest_block.height() + 1;
+                        info!(?next_block_height, "start synchronization");
+                        self.metrics.reset_start_time();
+                        fetch_block_at_height(effect_builder, init_peer, next_block_height)
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
                         trace!(?trusted_hash, "start synchronization");
                         // Start synchronization.
                         self.metrics.reset_start_time();
-                        fetch_block_by_hash(effect_builder, init_peer, trusted_hash)
+                        fetch_block_by_hash(effect_builder, init_peer, *trusted_hash)
                     }
                 }
             }
@@ -345,8 +513,8 @@ where
                                 // `block_height` not found on any of the peers.
                                 // We have synchronized all, currently existing, descendants of
                                 // trusted hash.
+                                info!("finished synchronizing descendants of the trusted hash. cleaning state.");
                                 self.mark_done();
-                                info!("finished synchronizing descendants of the trusted hash.");
                                 Effects::new()
                             }
                             Some(peer) => {
@@ -360,16 +528,15 @@ where
                         // If we do, it's a bug.
                         assert_eq!(block.height(), block_height, "Block height mismatch.");
                         trace!(%block_height, "Linear block found in the local storage.");
-                        // When syncing descendants of a trusted hash, we might have some of them in
-                        // our local storage. If that's the case, just
-                        // continue.
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        // When syncing descendants of a trusted hash, we might have some of
+                        // them in our local storage. If that's the case, just continue.
+                        self.block_downloaded(rng, effect_builder, &block)
                     }
                     BlockByHeightResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_height();
                         trace!(%block_height, %peer, "linear chain block downloaded from a peer");
                         if block.height() != block_height
-                            || *block.header().parent_hash() != self.latest_block().unwrap().hash()
+                            || *block.header().parent_hash() != *self.latest_block().unwrap().hash()
                         {
                             warn!(
                                 %peer,
@@ -391,7 +558,7 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        self.block_downloaded(rng, effect_builder, &block)
                     }
                 }
             }
@@ -416,8 +583,14 @@ where
                         // We shouldn't get invalid data from the storage.
                         // If we do, it's a bug.
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
-                        trace!(%block_hash, "linear block found in the local storage.");
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        trace!(%block_hash, "Linear block found in the local storage.");
+                        // We hit a block that we already had in the storage - which should mean
+                        // that we also have all of its ancestors, so we switch to traversing the
+                        // chain forwards and downloading the deploys.
+                        // We don't want to download and execute a block we already have, so
+                        // instead of calling self.block_downloaded(), we take a shortcut:
+                        self.set_last_block_if_syncing_trusted_hash(&block);
+                        self.block_handled(rng, effect_builder, *block)
                     }
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();
@@ -444,24 +617,24 @@ where
                             );
                         }
                         self.peers.success(peer);
-                        self.block_downloaded(rng, effect_builder, block.header())
+                        self.block_downloaded(rng, effect_builder, &block)
                     }
                 }
             }
             Event::GetDeploysResult(fetch_result) => {
                 self.metrics.observe_get_deploys();
                 match fetch_result {
-                    event::DeploysResult::Found(block_header) => {
-                        let block_hash = block_header.hash();
+                    event::DeploysResult::Found(block) => {
+                        let block_hash = block.hash();
                         trace!(%block_hash, "deploys for linear chain block found");
                         // Reset used peers so we can download next block with the full set.
                         self.peers.reset(rng);
                         // Execute block
-                        let finalized_block: FinalizedBlock = (*block_header).into();
+                        let finalized_block: FinalizedBlock = (*block).into();
                         effect_builder.execute_block(finalized_block).ignore()
                     }
-                    event::DeploysResult::NotFound(block_header, peer) => {
-                        let block_hash = block_header.hash();
+                    event::DeploysResult::NotFound(block, peer) => {
+                        let block_hash = block.hash();
                         trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
                         self.peers.failure(&peer);
                         match self.peers.random() {
@@ -472,7 +645,7 @@ where
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
-                                fetch_block_deploys(effect_builder, peer, *block_header)
+                                fetch_block_deploys(effect_builder, peer, *block)
                             }
                         }
                     }
@@ -499,12 +672,27 @@ where
                 self.peers.push(peer_id);
                 effects
             }
-            Event::BlockHandled(header) => {
-                let block_height = header.height();
-                let block_hash = header.hash();
-                let effects = self.block_handled(rng, effect_builder, *header);
-                trace!(%block_height, %block_hash, "block handled.");
+            Event::BlockHandled(block) => {
+                let block_height = block.height();
+                let block_hash = *block.hash();
+                let effects = self.block_handled(rng, effect_builder, *block);
+                trace!(%block_height, %block_hash, "block handled");
                 effects
+            }
+            Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
+                trace!(?next_upgrade_activation_point, "new activation point");
+                self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
+                Effects::new()
+            }
+            Event::InitUpgradeShutdown => {
+                info!("shutdown initiated");
+                // Serialize and store state.
+                self.handle_upgrade_shutdown(effect_builder)
+            }
+            Event::Shutdown(upgrade) => {
+                info!(?upgrade, "ready for shutdown");
+                self.stop_for_upgrade = upgrade;
+                Effects::new()
             }
         }
     }
@@ -513,19 +701,19 @@ where
 fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
-    block_header: BlockHeader,
+    block: Block,
 ) -> Effects<Event<I>>
 where
     REv: ReactorEventT<I>,
 {
-    let block_timestamp = block_header.timestamp();
+    let block_timestamp = block.header().timestamp();
     effect_builder
-        .validate_block(peer.clone(), block_header, block_timestamp)
-        .event(move |(found, block_header)| {
+        .validate_block(peer.clone(), block, block_timestamp)
+        .event(move |(found, block)| {
             if found {
-                Event::GetDeploysResult(DeploysResult::Found(Box::new(block_header)))
+                Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))
             } else {
-                Event::GetDeploysResult(DeploysResult::NotFound(Box::new(block_header), peer))
+                Event::GetDeploysResult(DeploysResult::NotFound(Box::new(block), peer))
             }
         })
 }
@@ -592,4 +780,48 @@ where
             },
             move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
         )
+}
+
+/// Returns key in the database, under which the LinearChainSync's state is stored.
+fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
+    format!(
+        "linear_chain_sync:network_name={}",
+        chainspec.network_config.name.clone()
+    )
+    .into()
+}
+
+/// Deserialized vector of bytes into `LinearChainSync::State`.
+/// Panics on deserialization errors.
+fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
+    bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+        panic!(
+            "could not deserialize state from storage, error {:?}",
+            error
+        )
+    })
+}
+
+/// Reads the `LinearChainSync's` state from storage, if any.
+/// Panics on deserialization errors.
+pub(crate) fn read_init_state(
+    storage: &Storage,
+    chainspec: &Chainspec,
+) -> Result<Option<State>, storage::Error> {
+    let key = create_state_key(&chainspec);
+    if let Some(bytes) = storage.read_state_store(&key)? {
+        Ok(deserialize_state(&bytes))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Cleans the linear chain state storage.
+/// May fail with storage error.
+pub(crate) fn clean_linear_chain_state(
+    storage: &Storage,
+    chainspec: &Chainspec,
+) -> Result<bool, storage::Error> {
+    let key = create_state_key(&chainspec);
+    storage.del_state_store(key)
 }

@@ -41,7 +41,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
-    utils::weighted_median,
+    utils::{ds, weighted_median},
 };
 use block::Block;
 use tallies::Tallies;
@@ -155,9 +155,11 @@ where
     /// All units imported so far, by hash.
     /// This is a downward closed set: A unit must only be added here once all of its dependencies
     /// have been added as well, and it has been fully validated.
+    #[data_size(with = ds::hashmap_sample)]
     units: HashMap<C::Hash, Unit<C>>,
     /// All blocks, by hash. All block hashes are also unit hashes, but units that did not
     /// introduce a new block don't have their own entry here.
+    #[data_size(with = ds::hashmap_sample)]
     blocks: HashMap<C::Hash, Block<C>>,
     /// List of faulty validators and their type of fault.
     /// Every validator that has an equivocation in `units` must have an entry here, but there can
@@ -168,10 +170,12 @@ where
     panorama: Panorama<C>,
     /// All currently endorsed units, by hash: units that have enough endorsements to be cited even
     /// if they naively cite an equivocator.
+    #[data_size(with = ds::hashmap_sample)]
     endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 1/2 of stake endorsing them.
     /// Signatures are stored in a map so that a single validator sending lots of signatures for
     /// different units doesn't cause us to allocate a lot of memory.
+    #[data_size(with = ds::hashmap_sample)]
     incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     /// Timestamp of the last ping or unit we received from each validator.
     pings: ValidatorMap<Timestamp>,
@@ -318,6 +322,12 @@ impl<C: Context> State<C> {
             .iter()
             .find(|hash| !self.endorsements.contains_key(&hash))
             .cloned()
+    }
+
+    /// Returns the timestamp of the last ping or unit received from the validator, or the start
+    /// timestamp if we haven't received anything yet.
+    pub(crate) fn last_seen(&self, idx: ValidatorIndex) -> Timestamp {
+        self.pings[idx]
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -509,15 +519,13 @@ impl<C: Context> State<C> {
     /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
     /// ping we have already received, we drop it without forwarding it to our peers.
     pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
-        let max_round_len = round_len(self.params.max_round_exp());
-        self.pings[creator] + max_round_len > timestamp
+        self.pings[creator] + self.params.max_round_length() > timestamp
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
     /// lengths old.
     pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
-        let max_round_len = round_len(self.params.max_round_exp());
-        self.pings[vidx] + max_round_len * PING_TIMEOUT >= now
+        self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
@@ -884,6 +892,19 @@ impl<C: Context> State<C> {
             }
         }
         result
+    }
+
+    /// Drops all state other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.units.clear();
+        self.blocks.clear();
+        for obs in self.panorama.iter_mut() {
+            if obs.is_correct() {
+                *obs = Observation::None;
+            }
+        }
+        self.endorsements.clear();
+        self.incomplete_endorsements.clear();
     }
 
     /// Validates whether a unit with the given panorama and `endorsed` set satsifies the

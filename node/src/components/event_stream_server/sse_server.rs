@@ -2,7 +2,6 @@
 
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
-use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
@@ -19,18 +18,12 @@ use warp::{
 use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
-    components::{consensus::EraId, CLIENT_API_VERSION},
-    types::{BlockHash, BlockHeader, DeployHash, FinalitySignature, TimeDiff, Timestamp},
+    components::consensus::EraId,
+    types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp},
 };
 
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";
-
-/// The first event sent to every subscribing client.
-pub(super) static SSE_INITIAL_EVENT: Lazy<ServerSentEvent> = Lazy::new(|| ServerSentEvent {
-    id: None,
-    data: SseData::ApiVersion(CLIENT_API_VERSION.clone()),
-});
 
 /// The "id" field of the events sent on the event stream to clients.
 type Id = u32;
@@ -45,7 +38,7 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block_header: Box<BlockHeader>,
+        block: Box<Block>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
@@ -74,6 +67,16 @@ pub(super) struct ServerSentEvent {
     /// The ID should only be `None` where the `data` is `SseData::ApiVersion`.
     pub(super) id: Option<Id>,
     pub(super) data: SseData,
+}
+
+impl ServerSentEvent {
+    /// The first event sent to every subscribing client.
+    pub(super) fn initial_event(client_api_version: Version) -> Self {
+        ServerSentEvent {
+            id: None,
+            data: SseData::ApiVersion(client_api_version),
+        }
+    }
 }
 
 /// The messages sent via the tokio broadcast channel to the handler of each client's SSE stream.

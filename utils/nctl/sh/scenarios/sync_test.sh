@@ -56,16 +56,16 @@ function log_step() {
 
 function do_await_genesis_era_to_complete() {
     log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -lt 1 ]; do
+    while [ "$(get_chain_era)" != "1" ]; do
         sleep 1.0
     done
 }
 
 function do_send_wasm_deploys() {
     # NOTE: Maybe make these arguments to the test?
-    local BATCH_COUNT=2
-    local BATCH_SIZE=10
-    local TRANSFER_AMOUNT=10000
+    local BATCH_COUNT=1
+    local BATCH_SIZE=1
+    local TRANSFER_AMOUNT=2500000000
     log_step "sending Wasm deploys"
     # prepare wasm batch
     prepare_wasm_batch "$TRANSFER_AMOUNT" "$BATCH_COUNT" "$BATCH_SIZE"
@@ -78,8 +78,8 @@ function do_send_wasm_deploys() {
 function do_send_transfers() {
     log_step "sending native transfers"
     # NOTE: Maybe make these arguments to the test?
-    local AMOUNT=1000
-    local TRANSFERS_COUNT=10
+    local AMOUNT=2500000000
+    local TRANSFERS_COUNT=5
     local NODE_ID="random"
 
     # Enumerate set of users.
@@ -89,8 +89,8 @@ function do_send_transfers() {
 }
 
 function do_await_deploy_inclusion() {
-    # Should be enough to await for two eras.
-    log_step "awaiting two eras…"
+    # Should be enough to await for one era.
+    log_step "awaiting one era…"
     await_n_eras 1
 }
 
@@ -115,6 +115,18 @@ function do_await_full_synchronization() {
     while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash 1)" ]; do
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to synchronize in ${SYNC_TIMEOUT_SEC} seconds"
+            exit 1
+        fi
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
+        sleep 1.0
+    done
+    # Wait one more era and then test LFB again.
+    # This way we can verify that the node is up-to-date with the protocol state
+    # after transitioning to an active validator.
+    await_n_eras 1
+    while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash 1)" ]; do
+        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+            log "ERROR: Failed to keep up with the protocol state"
             exit 1
         fi
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))

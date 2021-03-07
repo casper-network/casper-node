@@ -1,9 +1,12 @@
 //! The chainspec is a set of configuration options for the network.  All validators must apply the
 //! same set of options in order to join and act as a peer in a given network.
 
+mod accounts_config;
+mod activation_point;
 mod core_config;
 mod deploy_config;
 mod error;
+mod global_state_update;
 mod highway_config;
 mod network_config;
 mod parse_toml;
@@ -23,12 +26,14 @@ use casper_execution_engine::{
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use self::network_config::parse_accounts_csv;
+#[cfg(test)]
+pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
+pub use self::error::Error;
 pub(crate) use self::{
-    core_config::CoreConfig, deploy_config::DeployConfig, highway_config::HighwayConfig,
-    network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig, activation_point::ActivationPoint, core_config::CoreConfig,
+    deploy_config::DeployConfig, global_state_update::GlobalStateUpdate,
+    highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
-pub use self::{error::Error, protocol_config::ActivationPoint};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
@@ -41,7 +46,7 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Debug)]
+#[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct Chainspec {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,
@@ -83,6 +88,11 @@ impl Chainspec {
             vec![]
         });
         hash::hash(&serialized_chainspec)
+    }
+
+    /// Returns true if this chainspec has an activation_point specifying era ID 0.
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.protocol_config.activation_point.is_genesis()
     }
 }
 
@@ -141,7 +151,7 @@ impl FromBytes for Chainspec {
         let (core_config, remainder) = CoreConfig::from_bytes(remainder)?;
         let (highway_config, remainder) = HighwayConfig::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
-        let (wasm_costs_config, remainder) = WasmConfig::from_bytes(remainder)?;
+        let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
@@ -149,7 +159,7 @@ impl FromBytes for Chainspec {
             core_config,
             highway_config,
             deploy_config,
-            wasm_config: wasm_costs_config,
+            wasm_config,
             system_costs_config,
         };
         Ok((chainspec, remainder))
@@ -164,24 +174,30 @@ impl Loadable for Chainspec {
     }
 }
 
-impl From<Chainspec> for ExecConfig {
-    fn from(chainspec: Chainspec) -> Self {
+impl From<&Chainspec> for ExecConfig {
+    fn from(chainspec: &Chainspec) -> Self {
         ExecConfig::new(
-            chainspec.network_config.accounts,
+            chainspec.network_config.accounts_config.clone().into(),
             chainspec.wasm_config,
             chainspec.system_costs_config,
             chainspec.core_config.validator_slots,
             chainspec.core_config.auction_delay,
             chainspec.core_config.locked_funds_period.millis(),
             chainspec.core_config.round_seigniorage_rate,
-            chainspec.core_config.unbonding_delay.into(),
-            chainspec.network_config.timestamp.millis(),
+            chainspec.core_config.unbonding_delay,
+            chainspec
+                .protocol_config
+                .activation_point
+                .genesis_timestamp()
+                .map_or(0, |timestamp| timestamp.millis()),
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use num_rational::Ratio;
     use once_cell::sync::Lazy;
     use semver::Version;
@@ -191,12 +207,16 @@ mod tests {
         motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
+        stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
     use casper_types::U512;
 
     use super::*;
-    use crate::types::TimeDiff;
+    use crate::{
+        types::{TimeDiff, Timestamp},
+        utils::RESOURCES_PATH,
+    };
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
@@ -278,24 +298,38 @@ mod tests {
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
             assert_eq!(spec.protocol_config.version, Version::from((0, 9, 0)));
-            assert_eq!(spec.network_config.accounts.len(), 4);
-            for index in 0..4 {
+            assert_eq!(
+                spec.protocol_config.activation_point.genesis_timestamp(),
+                Some(Timestamp::from(1600454700000))
+            );
+            assert_eq!(spec.network_config.accounts_config.accounts().len(), 4);
+
+            let accounts: Vec<_> = {
+                let mut accounts = spec.network_config.accounts_config.accounts().to_vec();
+                accounts.sort_by_key(|account_config| {
+                    (account_config.balance(), account_config.bonded_amount())
+                });
+                accounts
+            };
+
+            for (index, account_config) in accounts.into_iter().enumerate() {
+                assert_eq!(account_config.balance(), Motes::new(U512::from(index + 1)),);
                 assert_eq!(
-                    spec.network_config.accounts[index].balance(),
-                    Motes::new(U512::from(index + 1))
-                );
-                assert_eq!(
-                    spec.network_config.accounts[index].bonded_amount(),
+                    account_config.bonded_amount(),
                     Motes::new(U512::from((index as u64 + 1) * 10))
                 );
             }
         } else {
             assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
-            assert!(spec.network_config.accounts.is_empty());
+            assert_eq!(spec.protocol_config.activation_point.era_id().0, 1);
+            assert!(spec.network_config.accounts_config.accounts().is_empty());
+            assert!(spec.protocol_config.global_state_update.is_some());
+            for value in spec.protocol_config.global_state_update.unwrap().0.values() {
+                assert!(StoredValue::from_bytes(value).is_ok());
+            }
         }
 
         assert_eq!(spec.network_config.name, "test-chain");
-        assert_eq!(spec.network_config.timestamp.millis(), 1600454700000);
 
         assert_eq!(spec.core_config.era_duration, TimeDiff::from(180000));
         assert_eq!(spec.core_config.minimum_era_height, 9);
@@ -336,5 +370,33 @@ mod tests {
         let mut rng = crate::new_rng();
         let chainspec = Chainspec::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&chainspec);
+    }
+
+    #[test]
+    fn should_have_deterministic_chainspec_hash() {
+        const PATH: &str = "test/valid/0_9_0";
+        const PATH_UNORDERED: &str = "test/valid/0_9_0_unordered";
+
+        let accounts: Vec<u8> = {
+            let path = RESOURCES_PATH.join(PATH).join("accounts.toml");
+            fs::read(path).expect("should read file")
+        };
+
+        let accounts_unordered: Vec<u8> = {
+            let path = RESOURCES_PATH.join(PATH_UNORDERED).join("accounts.toml");
+            fs::read(path).expect("should read file")
+        };
+
+        // Different accounts.toml file content
+        assert_ne!(accounts, accounts_unordered);
+
+        let chainspec = Chainspec::from_resources(PATH);
+        let chainspec_unordered = Chainspec::from_resources(PATH_UNORDERED);
+
+        // Deserializes into equal objects
+        assert_eq!(chainspec, chainspec_unordered);
+
+        // With equal hashes
+        assert_eq!(chainspec.hash(), chainspec_unordered.hash());
     }
 }

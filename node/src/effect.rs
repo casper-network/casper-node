@@ -41,7 +41,7 @@
 //! Some effects can be further classified into either announcements or requests, although these
 //! properties are not reflected in the type system.
 //!
-//! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
+//! **Announcements** are effects emitted by components that are essentially "fire-and-forget"; the
 //! component will never expect an answer for these and does not rely on them being handled. It is
 //! also conceivable that they are being cloned and dispatched to multiple components by the
 //! reactor.
@@ -73,7 +73,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tracing::{error, warn};
@@ -86,7 +85,9 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
+        upgrade::{UpgradeConfig, UpgradeResult},
+        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        MAX_PAYMENT,
     },
     shared::{
         additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
@@ -95,12 +96,12 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
     components::{
-        chainspec_loader::{ChainspecInfo, NextUpgrade},
+        chainspec_loader::NextUpgrade,
         consensus::{BlockContext, EraId},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -112,17 +113,16 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::Source,
 };
 use announcements::{
     BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
-    RpcServerAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+    NetworkAnnouncement, RpcServerAnnouncement,
 };
-use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -369,6 +369,12 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder(event_queue_handle)
     }
 
+    /// Extract the event queue handle out of the effect builder.
+    #[cfg(test)]
+    pub fn into_inner(self) -> EventQueueHandle<REv> {
+        self.0
+    }
+
     /// Performs a request.
     ///
     /// Given a request `Q`, that when completed will yield a result of `T`, produces a future
@@ -423,10 +429,16 @@ impl<REv> EffectBuilder<REv> {
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
     // inference seems to not work in all cases otherwise.
-    pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
-        panic!("fatal error [{}:{}]: {}", file, line, msg);
-        #[allow(unreachable_code)]
-        async {} // The compiler will complain about an incorrect return value otherwise.
+    pub async fn fatal(self, file: &'static str, line: u32, msg: String)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ControlAnnouncement::FatalError { file, line, msg },
+                QueueKind::Control,
+            )
+            .await
     }
 
     /// Sets a timeout.
@@ -472,8 +484,8 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkRequest::SendMessage {
-                dest,
-                payload,
+                dest: Box::new(dest),
+                payload: Box::new(payload),
                 responder,
             },
             QueueKind::Network,
@@ -489,7 +501,10 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<I, P>>,
     {
         self.make_request(
-            |responder| NetworkRequest::Broadcast { payload, responder },
+            |responder| NetworkRequest::Broadcast {
+                payload: Box::new(payload),
+                responder,
+            },
             QueueKind::Network,
         )
         .await
@@ -514,7 +529,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkRequest::Gossip {
-                payload,
+                payload: Box::new(payload),
                 count,
                 exclude,
                 responder,
@@ -775,8 +790,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the switch block at the given era ID.
-    // TODO - remove once used.
-    #[allow(unused)]
     pub(crate) async fn get_switch_block_at_era_id_from_storage(
         self,
         era_id: EraId,
@@ -789,6 +802,17 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Requests the key block for the given era ID, ie. the switch block at the era before
+    /// (if one exists).
+    pub(crate) async fn get_key_block_for_era_id_from_storage(self, era_id: EraId) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        let era_before = era_id.checked_sub(1)?;
+        self.get_switch_block_at_era_id_from_storage(era_before)
+            .await
     }
 
     /// Requests the highest switch block.
@@ -825,7 +849,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
         trie: Box<Trie<Key, StoredValue>>,
-    ) -> Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>
+    ) -> Result<Vec<Blake2bHash>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -858,7 +882,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
+                deploy_hashes: deploy_hashes.to_vec(),
                 responder,
             },
             QueueKind::Regular,
@@ -877,7 +901,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
-                block_hash,
+                block_hash: Box::new(block_hash),
                 execution_results,
                 responder,
             },
@@ -1096,13 +1120,13 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled<I>(self, block_header: BlockHeader)
+    pub(crate) async fn announce_block_handled<I>(self, block: Block)
     where
         REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Handled(Box::new(block_header)),
+                ConsensusAnnouncement::Handled(Box::new(block)),
                 QueueKind::Regular,
             )
             .await
@@ -1143,16 +1167,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block_header: BlockHeader)
+    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block: Box<Block>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                LinearChainAnnouncement::BlockAdded {
-                    block_hash,
-                    block_header: Box::new(block_header),
-                },
+                LinearChainAnnouncement::BlockAdded { block_hash, block },
                 QueueKind::Regular,
             )
             .await
@@ -1174,14 +1195,14 @@ impl<REv> EffectBuilder<REv> {
     /// Runs the genesis process on the contract runtime.
     pub(crate) async fn commit_genesis(
         self,
-        chainspec: Chainspec,
+        chainspec: Arc<Chainspec>,
     ) -> Result<GenesisResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::CommitGenesis {
-                chainspec: Box::new(chainspec),
+                chainspec,
                 responder,
             },
             QueueKind::Regular,
@@ -1189,28 +1210,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec(self, chainspec: Chainspec)
+    /// Runs the upgrade process on the contract runtime.
+    pub(crate) async fn upgrade_contract_runtime(
+        self,
+        upgrade_config: Box<UpgradeConfig>,
+    ) -> Result<UpgradeResult, engine_state::Error>
     where
-        REv: From<StorageRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::PutChainspec {
-                chainspec: Arc::new(chainspec),
+            |responder| ContractRuntimeRequest::Upgrade {
+                upgrade_config,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Arc<Chainspec>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetChainspec { version, responder },
             QueueKind::Regular,
         )
         .await
@@ -1425,6 +1437,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_bids(
+        self,
+        get_bids_request: GetBidsRequest,
+    ) -> Result<GetBidsResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Runs the end of era step using the system smart contract.
     pub(crate) async fn run_step(
         self,
@@ -1444,15 +1474,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(
-        self,
-        block_header: BlockHeader,
-    ) -> Option<FinalitySignature>
+    pub(crate) async fn handle_linear_chain_block(self, block: Block) -> Option<FinalitySignature>
     where
         REv: From<ConsensusRequest>,
     {
         self.make_request(
-            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
+            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
             QueueKind::Regular,
         )
         .await
@@ -1468,6 +1495,15 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Get our public key from consensus, and if we're a validator, the next round length.
+    pub(crate) async fn consensus_status(self) -> (PublicKey, Option<TimeDiff>)
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+            .await
     }
 
     /// Check if validator is bonded in the future era (`era_id`).
@@ -1495,6 +1531,36 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+
+    /// Collects the key blocks for the eras identified by provided era IDs. Returns
+    /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
+    /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
+    /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
+    /// initialization of era `n`.
+    pub(crate) async fn collect_key_blocks<I: IntoIterator<Item = EraId>>(
+        self,
+        era_ids: I,
+    ) -> Option<HashMap<EraId, BlockHeader>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(
+            era_ids
+                .into_iter()
+                // we would get None for era 0 and that would make it seem like the entire
+                // function failed
+                .filter(|era_id| *era_id != EraId(0))
+                .map(|era_id| {
+                    self.get_key_block_for_era_id_from_storage(era_id)
+                        .map(move |maybe_block| {
+                            maybe_block.map(|block| (era_id, block.take_header()))
+                        })
+                }),
+        )
+        .await
+        .into_iter()
+        .collect()
+    }
 }
 
 /// Construct a fatal error effect.
@@ -1504,6 +1570,6 @@ impl<REv> EffectBuilder<REv> {
 #[macro_export]
 macro_rules! fatal {
     ($effect_builder:expr, $($arg:tt)*) => {
-        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string()).ignore()
+        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string())
     };
 }

@@ -6,7 +6,7 @@ use prometheus::Registry;
 use super::network::NetworkedReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
-    reactor::{EventQueueHandle, Finalize, Reactor},
+    reactor::{EventQueueHandle, Finalize, Reactor, ReactorExit},
     NodeRng,
 };
 
@@ -86,6 +86,10 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
             self.condition_checker = None;
         }
         self.reactor.dispatch_event(effect_builder, rng, event)
+    }
+
+    fn maybe_exit(&self) -> Option<ReactorExit> {
+        self.reactor.maybe_exit()
     }
 }
 

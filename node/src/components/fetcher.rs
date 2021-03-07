@@ -1,10 +1,12 @@
 mod config;
 mod event;
+mod metrics;
 mod tests;
 
-use std::{collections::HashMap, convert::Infallible, fmt::Debug, time::Duration};
+use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
+use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
@@ -26,6 +28,7 @@ use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::
 use casper_types::Key;
 pub use config::Config;
 pub use event::{Event, FetchResult};
+use metrics::FetcherMetrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub trait ReactorEventT<T>:
@@ -172,14 +175,21 @@ where
 {
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
+    #[data_size(skip)]
+    metrics: FetcherMetrics,
 }
 
 impl<T: Item> Fetcher<T> {
-    pub(crate) fn new(config: Config) -> Self {
-        Fetcher {
+    pub(crate) fn new(
+        name: &str,
+        config: Config,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(Fetcher {
             get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
             responders: HashMap::new(),
-        }
+            metrics: FetcherMetrics::new(name, registry)?,
+        })
     }
 }
 
@@ -301,7 +311,7 @@ where
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
-    type ConstructionError = Infallible;
+    type ConstructionError = prometheus::Error;
 
     fn handle_event(
         &mut self,
@@ -321,16 +331,22 @@ where
                 peer,
                 maybe_item,
             } => match *maybe_item {
-                Some(item) => self.got_from_storage(item, peer),
+                Some(item) => {
+                    self.metrics.found_in_storage.inc();
+                    self.got_from_storage(item, peer)
+                }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely { item, source } => {
                 match source {
-                    Source::Peer(peer) => self.signal(
-                        item.id(),
-                        Some(FetchResult::FromPeer(item, peer.clone())),
-                        peer,
-                    ),
+                    Source::Peer(peer) => {
+                        self.metrics.found_on_peer.inc();
+                        self.signal(
+                            item.id(),
+                            Some(FetchResult::FromPeer(item, peer.clone())),
+                            peer,
+                        )
+                    }
                     Source::Client => {
                         // TODO - we could possibly also handle this case
                         Effects::new()
@@ -345,6 +361,7 @@ where
             }
             Event::TimeoutPeer { id, peer } => {
                 info!(%id, %peer, "request timed out");
+                self.metrics.timeouts.inc();
                 self.signal(id, None, peer)
             }
         }

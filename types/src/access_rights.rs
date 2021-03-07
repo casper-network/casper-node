@@ -1,6 +1,11 @@
 use alloc::vec::Vec;
 
 use bitflags::bitflags;
+use datasize::DataSize;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::bytesrepr;
@@ -12,6 +17,7 @@ bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
     #[allow(clippy::derive_hash_xor_eq)]
+    #[derive(DataSize)]
     pub struct AccessRights: u8 {
         /// No permissions
         const NONE = 0;
@@ -106,6 +112,22 @@ impl<'de> Deserialize<'de> for AccessRights {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bits = u8::deserialize(deserializer)?;
         AccessRights::from_bits(bits).ok_or_else(|| SerdeError::custom("invalid bits"))
+    }
+}
+
+impl Distribution<AccessRights> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccessRights {
+        let mut result = AccessRights::NONE;
+        if rng.gen() {
+            result |= AccessRights::READ;
+        }
+        if rng.gen() {
+            result |= AccessRights::WRITE;
+        }
+        if rng.gen() {
+            result |= AccessRights::ADD;
+        }
+        result
     }
 }
 

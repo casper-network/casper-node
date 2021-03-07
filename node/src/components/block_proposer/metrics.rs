@@ -1,9 +1,11 @@
 use datasize::DataSize;
 use prometheus::{self, IntGauge, Registry};
 
+use crate::unregister_metric;
+
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
-pub struct BlockProposerMetrics {
+pub(super) struct BlockProposerMetrics {
     /// Amount of pending deploys
     #[data_size(skip)]
     pub(super) pending_deploys: IntGauge,
@@ -26,8 +28,6 @@ impl BlockProposerMetrics {
 
 impl Drop for BlockProposerMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.pending_deploys.clone()))
-            .expect("did not expect deregistering pending_deploys to fail");
+        unregister_metric!(self.registry, self.pending_deploys);
     }
 }

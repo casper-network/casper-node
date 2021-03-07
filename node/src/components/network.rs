@@ -36,13 +36,10 @@ use libp2p::{
     tcp::TokioTcpConfig,
     Multiaddr, PeerId, Swarm, Transport,
 };
+use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
-use tokio::{
-    select,
-    sync::{mpsc, watch},
-    task::JoinHandle,
-};
+use tokio::{select, sync::watch, task::JoinHandle};
 use tracing::{debug, error, info, trace, warn};
 
 pub(crate) use self::event::Event;
@@ -54,21 +51,21 @@ use self::{
 };
 pub use self::{config::Config, error::Error};
 use crate::{
-    components::Component,
+    components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    reactor::{EventQueueHandle, Finalize, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     types::{Chainspec, NodeId},
-    utils::DisplayIter,
+    utils::{self, ds, CountingReceiver, CountingSender, DisplayIter},
     NodeRng,
 };
 
-/// Env var which, if it's defined at runtime, enables the small_network component.
-pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
+/// Env var which, if it's defined at runtime, enables the network (libp2p based) component.
+pub(crate) const ENABLE_LIBP2P_NET_ENV_VAR: &str = "CASPER_ENABLE_LIBP2P_NET";
 
 /// How long to sleep before reconnecting
 const RECONNECT_DELAY: Duration = Duration::from_millis(500);
@@ -88,14 +85,14 @@ impl<P> PayloadT for P where
 /// A helper trait whose bounds represent the requirements for a reactor event that `Network` can
 /// work with.
 pub trait ReactorEventT<P: PayloadT>:
-    From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
+    ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
 {
 }
 
 impl<REv, P> ReactorEventT<P> for REv
 where
     P: PayloadT,
-    REv: From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static,
 {
 }
 
@@ -106,6 +103,11 @@ enum ConnectionState {
     Failed,
 }
 
+// TODO: Get rid of the `Arc<Mutex<_>>` ASAP.
+fn estimate_known_addresses(map: &Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>) -> usize {
+    ds::hash_map_fixed_size(&*(map.lock().expect("lock poisoned")))
+}
+
 #[derive(DataSize)]
 pub struct Network<REv, P> {
     #[data_size(skip)]
@@ -113,33 +115,39 @@ pub struct Network<REv, P> {
     our_id: NodeId,
     /// The set of peers which are current connected to our node. Kept in sync with libp2p
     /// internals.
-    #[data_size(skip)]
+    // DataSize note: Connected point contains `Arc`'ed Vecs internally, this is better than
+    // skipping at least.
+    #[data_size(with = ds::hash_map_fixed_size)]
     peers: HashMap<NodeId, ConnectedPoint>,
     /// The set of peers whose address we currently know. Kept in sync with the internal Kademlia
     /// routing table.
-    #[data_size(skip)]
+    // DataSize note: `PeerId`s can likely be estimated using `mem::size_of`.
+    #[data_size(with = ds::hash_set_fixed_size)]
     seen_peers: HashSet<PeerId>,
-    #[data_size(skip)]
+    #[data_size(with = ds::vec_fixed_size)]
     listening_addresses: Vec<Multiaddr>,
     /// The addresses of known peers to be used for bootstrapping, and their connection states.
     /// Wrapped in a [Mutex] so it can be shared with [SwarmEvent] handling (which runs in a
     /// separate thread).
-    #[data_size(skip)]
+    #[data_size(with = estimate_known_addresses)]
     known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
     /// Whether this node is a bootstrap node or not.
     is_bootstrap_node: bool,
     /// The channel through which to send outgoing one-way requests.
-    #[data_size(skip)]
-    one_way_message_sender: mpsc::UnboundedSender<OneWayOutgoingMessage>,
+    one_way_message_sender: CountingSender<OneWayOutgoingMessage>,
     max_one_way_message_size: u32,
     /// The channel through which to send new messages for gossiping.
-    #[data_size(skip)]
-    gossip_message_sender: mpsc::UnboundedSender<GossipMessage>,
+    gossip_message_sender: CountingSender<GossipMessage>,
     max_gossip_message_size: u32,
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
     server_join_handle: Option<JoinHandle<()>>,
+
+    /// Networking metrics.
+    #[data_size(skip)]
+    net_metrics: NetworkingMetrics,
+
     _phantom: PhantomData<(REv, P)>,
 }
 
@@ -152,6 +160,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         config: Config,
+        registry: &Registry,
         network_identity: NetworkIdentity,
         chainspec: &Chainspec,
         notify: bool,
@@ -175,12 +184,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             return Err(Error::NoKnownAddress);
         }
 
-        let (one_way_message_sender, one_way_message_receiver) = mpsc::unbounded_channel();
-        let (gossip_message_sender, gossip_message_receiver) = mpsc::unbounded_channel();
+        let (one_way_message_sender, one_way_message_receiver) =
+            utils::counting_unbounded_channel();
+        let (gossip_message_sender, gossip_message_receiver) = utils::counting_unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
-        // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without starting the server.
-        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, start the server and exit.
+        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
             let network = Network {
                 network_identity,
                 our_id,
@@ -195,10 +205,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 max_gossip_message_size: 0,
                 shutdown_sender: Some(server_shutdown_sender),
                 server_join_handle: None,
+                net_metrics: NetworkingMetrics::new(&Registry::default())?,
                 _phantom: PhantomData,
             };
             return Ok((network, Effects::new()));
         }
+
+        let net_metrics = NetworkingMetrics::new(registry).map_err(Error::MetricsError)?;
 
         if notify {
             debug!("our node id: {}", our_id);
@@ -223,7 +236,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .boxed();
 
         // Create a Swarm to manage peers and events.
-        let behavior = Behavior::new(&config, chainspec, network_identity.keypair.public());
+        let behavior = Behavior::new(
+            &config,
+            &net_metrics,
+            chainspec,
+            network_identity.keypair.public(),
+        );
         let mut swarm = SwarmBuilder::new(transport, behavior, our_peer_id)
             .executor(Box::new(|future| {
                 tokio::spawn(future);
@@ -260,6 +278,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             swarm,
             known_addresses_mut.clone(),
             is_bootstrap_node,
+            net_metrics.queued_messages.clone(),
         )));
 
         let network = Network {
@@ -276,6 +295,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             max_gossip_message_size: config.max_gossip_message_size,
             shutdown_sender: Some(server_shutdown_sender),
             server_join_handle,
+            net_metrics,
             _phantom: PhantomData,
         };
         Ok((network, Effects::new()))
@@ -299,6 +319,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                         "Could not acquire `known_addresses_mut` mutex: {:?}",
                         err
                     )
+                    .ignore()
                 }
             };
             if let Some(state) = known_addresses.get_mut(address) {
@@ -309,6 +330,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         };
 
         let _ = self.peers.insert(peer_id.clone(), endpoint);
+
+        self.net_metrics.peers.set(self.peers.len() as i64);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
         effect_builder.announce_new_peer(peer_id).ignore()
     }
@@ -326,8 +349,11 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 return;
             }
         };
-        if let Err(error) = self.one_way_message_sender.send(outgoing_message) {
+        if let Err(error) = self.one_way_message_sender.send_datasized(outgoing_message) {
             warn!(%error, "{}: dropped outgoing message, server has shut down", self.our_id);
+        } else {
+            // `queued_message` might become -1 for a short amount of time, which is fine.
+            self.net_metrics.queued_messages.inc();
         }
     }
 
@@ -340,7 +366,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 return;
             }
         };
-        if let Err(error) = self.gossip_message_sender.send(gossip_message) {
+        if let Err(error) = self.gossip_message_sender.send_datasized(gossip_message) {
             warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
         }
     }
@@ -395,17 +421,20 @@ fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
     NodeId::P2p(Swarm::local_peer_id(swarm).clone())
 }
 
+// TODO: Already refactored in branch.
+#[allow(clippy::too_many_arguments)]
 async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     event_queue: EventQueueHandle<REv>,
     // Receives outgoing one-way messages to be sent out via libp2p.
-    mut one_way_outgoing_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
+    mut one_way_outgoing_message_receiver: CountingReceiver<OneWayOutgoingMessage>,
     // Receives new gossip messages to be sent out via libp2p.
-    mut gossip_message_receiver: mpsc::UnboundedReceiver<GossipMessage>,
+    mut gossip_message_receiver: CountingReceiver<GossipMessage>,
     // Receives notification to shut down the server loop.
     mut shutdown_receiver: watch::Receiver<()>,
     mut swarm: Swarm<Behavior>,
     known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
     is_bootsrap_node: bool,
+    queued_messages: IntGauge,
 ) {
     //let our_id = our
     async move {
@@ -425,6 +454,8 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 maybe_outgoing_message = one_way_outgoing_message_receiver.recv() => {
                     match maybe_outgoing_message {
                         Some(outgoing_message) => {
+                            queued_messages.dec();
+
                             // We've received a one-way request to send to a peer.
                             swarm.send_one_way_message(outgoing_message);
                         }
@@ -487,7 +518,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                 swarm.add_discovered_peer(&peer_id, vec![endpoint.get_remote_address().clone()]);
             }
             Event::ConnectionEstablished {
-                peer_id: NodeId::from(peer_id),
+                peer_id: Box::new(NodeId::from(peer_id)),
                 endpoint,
                 num_established,
             }
@@ -504,7 +535,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                 swarm.discover_peers()
             }
             Event::ConnectionClosed {
-                peer_id: NodeId::from(peer_id),
+                peer_id: Box::new(NodeId::from(peer_id)),
                 endpoint,
                 num_established,
                 cause: cause.map(|error| error.to_string()),
@@ -516,7 +547,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             error,
             attempts_remaining,
         } => Event::UnreachableAddress {
-            peer_id: NodeId::from(peer_id),
+            peer_id: Box::new(NodeId::from(peer_id)),
             address,
             error,
             attempts_remaining,
@@ -808,7 +839,7 @@ impl<REv: Send + 'static, P: Send + 'static> Finalize for Network<REv, P> {
                     Ok(_) => debug!("{}: server exited cleanly", self.our_id),
                     Err(err) => error!(%err, "{}: could not join server task cleanly", self.our_id),
                 }
-            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
+            } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
                 warn!("{}: server shutdown while already shut down", self.our_id)
             }
         }
@@ -845,7 +876,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 num_established,
             } => self.handle_connection_established(
                 effect_builder,
-                peer_id,
+                *peer_id,
                 endpoint,
                 num_established,
             ),
@@ -859,6 +890,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     let _ = self.peers.remove(&peer_id);
                 }
                 debug!(%peer_id, ?endpoint, %num_established, ?cause, "{}: connection closed", self.our_id);
+
+                // Note: We count multiple connections to the same peer as a single connection.
+                self.net_metrics.peers.set(self.peers.len() as i64);
+
                 Effects::new()
             }
             Event::UnreachableAddress {
@@ -882,7 +917,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::ExpiredListenAddress(address) => {
                 self.listening_addresses.retain(|addr| *addr != address);
                 if self.listening_addresses.is_empty() {
-                    return fatal!(effect_builder, "no remaining listening addresses");
+                    return fatal!(effect_builder, "no remaining listening addresses").ignore();
                 }
                 debug!(%address, "{}: listening address expired", self.our_id);
                 Effects::new()
@@ -891,7 +926,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 // If the listener closed without an error, we're already shutting down the server.
                 // Otherwise, we need to kill the node as it cannot function without a listener.
                 match reason {
-                    Err(error) => fatal!(effect_builder, "listener closed: {}", error),
+                    Err(error) => fatal!(effect_builder, "listener closed: {}", error).ignore(),
                     Ok(()) => {
                         debug!("{}: listener closed", self.our_id);
                         Effects::new()
@@ -926,39 +961,52 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                         responder,
                     },
             } => {
-                self.send_message(dest, payload);
+                self.send_message(*dest, *payload);
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
-                self.gossip_message(payload);
+                self.net_metrics.broadcast_requests.inc();
+                self.gossip_message(*payload);
                 responder.respond(()).ignore()
             }
-            Event::NetworkRequest {
-                request:
-                    NetworkRequest::Gossip {
-                        payload,
-                        count,
-                        exclude,
-                        responder,
-                    },
-            } => {
-                let sent_to = self.send_message_to_n_peers(rng, payload, count, exclude);
-                responder.respond(sent_to).ignore()
-            }
-            Event::NetworkInfoRequest {
-                info_request: NetworkInfoRequest::GetPeers { responder },
-            } => {
-                let peers = self
-                    .peers
-                    .iter()
-                    .map(|(node_id, endpoint)| {
-                        (node_id.clone(), endpoint.get_remote_address().to_string())
-                    })
-                    .collect();
-                responder.respond(peers).ignore()
-            }
+            Event::NetworkRequest { request } => match request {
+                NetworkRequest::SendMessage {
+                    dest,
+                    payload,
+                    responder,
+                } => {
+                    self.net_metrics.direct_message_requests.inc();
+                    self.send_message(*dest, *payload);
+                    responder.respond(()).ignore()
+                }
+                NetworkRequest::Broadcast { payload, responder } => {
+                    self.gossip_message(*payload);
+                    responder.respond(()).ignore()
+                }
+                NetworkRequest::Gossip {
+                    payload,
+                    count,
+                    exclude,
+                    responder,
+                } => {
+                    let sent_to = self.send_message_to_n_peers(rng, *payload, count, exclude);
+                    responder.respond(sent_to).ignore()
+                }
+            },
+            Event::NetworkInfoRequest { info_request } => match info_request {
+                NetworkInfoRequest::GetPeers { responder } => {
+                    let peers = self
+                        .peers
+                        .iter()
+                        .map(|(node_id, endpoint)| {
+                            (node_id.clone(), endpoint.get_remote_address().to_string())
+                        })
+                        .collect();
+                    responder.respond(peers).ignore()
+                }
+            },
         }
     }
 }

@@ -45,9 +45,8 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     fmt::{self, Display, Formatter},
-    fs, io,
+    fs, io, mem,
     path::PathBuf,
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -56,10 +55,11 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
 use serde::{Deserialize, Serialize};
+use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 
 use super::Component;
 #[cfg(test)]
@@ -71,10 +71,15 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, Chainspec, Deploy, DeployHash, DeployMetadata},
+    reactor::ReactorEvent,
+    types::{
+        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
+        DeployMetadata,
+    },
     utils::WithDir,
     NodeRng,
 };
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
@@ -97,7 +102,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 6;
+const MAX_DB_COUNT: u32 = 7;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -108,8 +113,11 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 /// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
+const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
+const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
 #[derive(Debug, From, Serialize)]
+#[repr(u8)]
 pub enum Event {
     /// Incoming storage request.
     #[from]
@@ -172,9 +180,12 @@ pub struct Storage {
     /// Environment holding LMDB databases.
     #[data_size(skip)]
     env: Environment,
-    /// The block database.
+    /// The block header database.
     #[data_size(skip)]
-    block_db: Database,
+    block_header_db: Database,
+    /// The block body database.
+    #[data_size(skip)]
+    block_body_db: Database,
     /// The block metadata db.
     #[data_size(skip)]
     block_metadata_db: Database,
@@ -194,11 +205,12 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// Chainspec cache.
-    chainspec_cache: Option<Arc<Chainspec>>,
 }
 
-impl<REv> Component<REv> for Storage {
+impl<REv> Component<REv> for Storage
+where
+    REv: ReactorEvent,
+{
     type Event = Event;
     type ConstructionError = Error;
 
@@ -220,14 +232,17 @@ impl<REv> Component<REv> for Storage {
         // anyway, it should not matter.
         match result {
             Ok(effects) => effects,
-            Err(err) => fatal!(effect_builder, "storage error: {}", err),
+            Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
     }
 }
 
 impl Storage {
     /// Creates a new storage component.
-    pub(crate) fn new(cfg: &WithDir<Config>) -> Result<Self, Error> {
+    pub(crate) fn new(
+        cfg: &WithDir<Config>,
+        hard_reset_to_start_of_era: Option<EraId>,
+    ) -> Result<Self, Error> {
         let config = cfg.value();
 
         // Create the database directory.
@@ -257,31 +272,37 @@ impl Storage {
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
 
-        let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
+        let block_header_db = env.create_db(Some("block_header"), DatabaseFlags::empty())?;
         let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
+        let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
         let block_txn = env.begin_ro_txn()?;
-        let mut cursor = block_txn.open_ro_cursor(block_db)?;
+        let mut cursor = block_txn.open_ro_cursor(block_header_db)?;
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
-            let block: Block = lmdb_ext::deserialize(raw_val)?;
+            let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
+            if let Some(invalid_era) = hard_reset_to_start_of_era {
+                if block.era_id() >= invalid_era {
+                    continue;
+                }
+            }
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,
                 block.hash().as_ref(),
                 "found corrupt block in database"
             );
-            insert_to_block_indices(
+            insert_to_block_header_indices(
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
                 &block,
@@ -291,10 +312,17 @@ impl Storage {
         drop(cursor);
         drop(block_txn);
 
+        // Check the integrity of the block body database.
+        check_block_body_db(&env, &block_body_db)?;
+
+        // Check the integrity of the block metadata database.
+        check_block_metadata_db(&env, &block_metadata_db)?;
+
         Ok(Storage {
             root,
             env,
-            block_db,
+            block_header_db,
+            block_body_db,
             block_metadata_db,
             deploy_db,
             deploy_metadata_db,
@@ -302,7 +330,6 @@ impl Storage {
             state_store_db,
             block_height_index,
             switch_block_era_id_index,
-            chainspec_cache: None,
         })
     }
 
@@ -340,6 +367,39 @@ impl Storage {
         }
     }
 
+    /// Reads from the state storage DB.
+    /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
+    /// May also fail with storage errors.
+    #[cfg(not(feature = "fast-sync"))]
+    pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let txn = self.env.begin_ro_txn()?;
+        let bytes = match txn.get(self.state_store_db, &key) {
+            Ok(slice) => Some(slice.to_owned()),
+            Err(lmdb::Error::NotFound) => None,
+            Err(err) => return Err(err.into()),
+        };
+        Ok(bytes)
+    }
+
+    /// Deletes value living under the key from the state storage DB.
+    #[cfg(not(feature = "fast-sync"))]
+    pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let mut txn = self.env.begin_rw_txn()?;
+        let result = match txn.del(self.state_store_db, &key, None) {
+            Ok(_) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
+            Err(err) => Err(err),
+        }?;
+        txn.commit()?;
+        Ok(result)
+    }
+
     /// Handles a storage request.
     fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where
@@ -351,14 +411,28 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.block_db, block.hash(), &block, true)?;
+                if !txn.put_value(
+                    self.block_body_db,
+                    block.header().body_hash(),
+                    block.body(),
+                    true,
+                )? {
+                    error!("Could not insert block body for block: {}", block);
+                    txn.abort();
+                    return Ok(responder.respond(false).ignore());
+                }
+                if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
+                    error!("Could not insert block header for block: {}", block);
+                    txn.abort();
+                    return Ok(responder.respond(false).ignore());
+                }
                 txn.commit()?;
-                insert_to_block_indices(
+                insert_to_block_header_indices(
                     &mut self.block_height_index,
                     &mut self.switch_block_era_id_index,
-                    block.as_ref(),
+                    block.header(),
                 )?;
-                responder.respond(outcome).ignore()
+                responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
                 block_hash,
@@ -461,7 +535,7 @@ impl Storage {
                         if prev != &execution_result {
                             return Err(Error::DuplicateExecutionResult {
                                 deploy_hash,
-                                block_hash,
+                                block_hash: *block_hash,
                             });
                         }
 
@@ -486,7 +560,7 @@ impl Storage {
                     // Update metadata and write back to db.
                     metadata
                         .execution_results
-                        .insert(block_hash, execution_result);
+                        .insert(*block_hash, execution_result);
                     let was_written =
                         txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
                     assert!(
@@ -496,7 +570,8 @@ impl Storage {
                     );
                 }
 
-                let was_written = txn.put_value(self.transfer_db, &block_hash, &transfers, true)?;
+                let was_written =
+                    txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
                 assert!(
                     was_written,
                     "failed to write transfers for block_hash {}",
@@ -588,18 +663,6 @@ impl Storage {
                     .respond(Some((highest_block, signatures)))
                     .ignore()
             }
-            StorageRequest::PutChainspec {
-                chainspec,
-                responder,
-            } => {
-                self.chainspec_cache = Some(chainspec);
-
-                responder.respond(()).ignore()
-            }
-            StorageRequest::GetChainspec {
-                version: _version,
-                responder,
-            } => responder.respond(self.chainspec_cache.clone()).ignore(),
             StorageRequest::PutBlockSignatures {
                 signatures,
                 responder,
@@ -660,13 +723,60 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves the state root hashes from storage to check the integrity of the trie store.
+    pub fn get_state_root_hashes_for_trie_check(&self) -> Option<Vec<Blake2bHash>> {
+        let mut blake_hashes: Vec<Blake2bHash> = Vec::new();
+        let txn =
+            self.env.begin_ro_txn().ok().unwrap_or_else(|| {
+                panic!("could not open storage transaction for trie store check")
+            });
+        let mut cursor = txn
+            .open_ro_cursor(self.block_header_db)
+            .ok()
+            .unwrap_or_else(|| panic!("could not create cursor for trie store check"));
+        for (_, raw_val) in cursor.iter() {
+            let header: BlockHeader = lmdb_ext::deserialize(raw_val).ok()?;
+            let blake_hash = Blake2bHash::from(*header.state_root_hash());
+            blake_hashes.push(blake_hash);
+        }
+
+        blake_hashes.sort();
+        blake_hashes.dedup();
+
+        Some(blake_hashes)
+    }
+
     /// Retrieves a single block in a separate transaction from storage.
     fn get_single_block<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, LmdbExtError> {
-        tx.get_value(self.block_db, &block_hash)
+        let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
+        let found_block_header_hash = block_header.hash();
+        if found_block_header_hash != *block_hash {
+            return Err(LmdbExtError::BlockHeaderNotStoredUnderItsHash {
+                queried_block_hash: *block_hash,
+                found_block_header_hash,
+            });
+        }
+        let block_body: BlockBody =
+            match tx.get_value(self.block_body_db, block_header.body_hash())? {
+                Some(block_header) => block_header,
+                None => return Ok(None),
+            };
+        let found_block_body_hash = block_body.hash();
+        if found_block_body_hash != *block_header.body_hash() {
+            return Err(LmdbExtError::BlockBodyNotStoredUnderItsHash {
+                queried_block_body_hash: *block_header.body_hash(),
+                found_block_body_hash,
+            });
+        }
+        let block = Block::new_from_header_and_body(block_header, block_body);
+        Ok(Some(block))
     }
 
     /// Retrieves a set of deploys from storage.
@@ -713,44 +823,51 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, Error> {
         Ok(tx.get_value(self.block_metadata_db, block_hash)?)
     }
+
+    /// Get the lmdb environment
+    #[cfg(test)]
+    pub(crate) fn env(&self) -> &Environment {
+        &self.env
+    }
 }
 
 /// Inserts the relevant entries to the two indices.
 ///
 /// If a duplicate entry is encountered, neither index is updated and an error is returned.
-fn insert_to_block_indices(
+fn insert_to_block_header_indices(
     block_height_index: &mut BTreeMap<u64, BlockHash>,
     switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
-    block: &Block,
+    block_header: &BlockHeader,
 ) -> Result<(), Error> {
-    if let Some(first) = block_height_index.get(&block.height()) {
-        if first != block.hash() {
+    let block_hash = block_header.hash();
+    if let Some(first) = block_height_index.get(&block_header.height()) {
+        if *first != block_hash {
             return Err(Error::DuplicateBlockIndex {
-                height: block.height(),
+                height: block_header.height(),
                 first: *first,
-                second: *block.hash(),
+                second: block_hash,
             });
         }
     }
 
-    if block.header().switch_block() {
-        match switch_block_era_id_index.entry(block.header().era_id()) {
+    if block_header.is_switch_block() {
+        match switch_block_era_id_index.entry(block_header.era_id()) {
             Entry::Vacant(entry) => {
-                let _ = entry.insert(*block.hash());
+                let _ = entry.insert(block_hash);
             }
             Entry::Occupied(entry) => {
-                if entry.get() != block.hash() {
+                if *entry.get() != block_hash {
                     return Err(Error::DuplicateEraIdIndex {
-                        era_id: block.header().era_id(),
+                        era_id: block_header.era_id(),
                         first: *entry.get(),
-                        second: *block.hash(),
+                        second: block_hash,
                     });
                 }
             }
         }
     }
 
-    let _ = block_height_index.insert(block.height(), *block.hash());
+    let _ = block_height_index.insert(block_header.height(), block_hash);
     Ok(())
 }
 
@@ -880,4 +997,76 @@ impl Storage {
             })
             .collect()
     }
+
+    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn transactional_get_switch_block_by_era_id(
+        &self,
+        switch_block_era_num: u64,
+    ) -> Option<Block> {
+        let mut read_only_lmdb_transaction = self
+            .env()
+            .begin_ro_txn()
+            .expect("Could not start read only transaction for lmdb");
+        let switch_block = self
+            .get_switch_block_by_era_id(
+                &mut read_only_lmdb_transaction,
+                EraId(switch_block_era_num),
+            )
+            .expect("LMDB panicked trying to get switch block");
+        read_only_lmdb_transaction
+            .commit()
+            .expect("Could not commit transaction");
+        switch_block
+    }
+}
+
+/// Utility function to check the integrity of the block_body database at bringup.
+fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<(), LmdbExtError> {
+    info!("Checking block body db");
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*block_body_db)?;
+
+    for (raw_key, raw_val) in cursor.iter() {
+        let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+        assert_eq!(
+            raw_key,
+            body.hash().as_ref(),
+            "found corrupt block body in database"
+        );
+    }
+    info!("block body db check complete");
+    Ok(())
+}
+
+/// Utility function to check the integrity of the block_metadata database at bringup.
+fn check_block_metadata_db(
+    env: &Environment,
+    block_metadata_db: &Database,
+) -> Result<(), LmdbExtError> {
+    info!("Checking block_metadata_db");
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*block_metadata_db)?;
+
+    for (raw_key, raw_val) in cursor.iter() {
+        let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+        // Signature verification could be very slow process
+        // It iterates over every signature and verifies them.
+        match signatures.verify() {
+            Ok(_) => assert_eq!(
+                raw_key,
+                signatures.block_hash.as_ref(),
+                "Corruption in block_metadata_db"
+            ),
+            Err(error) => panic!(
+                "Error: {} in signature verification. Corruption in database",
+                error
+            ),
+        }
+    }
+    info!("Check for block_metadata_db complete");
+    Ok(())
 }

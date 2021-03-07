@@ -12,6 +12,7 @@ use derive_more::{AsRef, From};
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
+use crate::utils::ds;
 
 /// The index of a validator, in a list of all validators, ordered by ID.
 #[derive(
@@ -94,11 +95,21 @@ impl<VID: Eq + Hash> Validators<VID> {
 
     /// Returns an iterator of all indices of banned validators.
     pub(crate) fn iter_banned_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
-        self.validators
-            .iter()
+        self.iter()
             .enumerate()
             .filter(|(_, v)| v.banned)
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
+    }
+
+    pub(crate) fn enumerate_ids<'a>(&'a self) -> impl Iterator<Item = (ValidatorIndex, &'a VID)> {
+        let to_idx =
+            |(idx, v): (usize, &'a Validator<VID>)| (ValidatorIndex::from(idx as u32), v.id());
+        self.iter().enumerate().map(to_idx)
+    }
+
+    /// Returns the size of validator list.
+    pub(crate) fn len(&self) -> usize {
+        self.validators.len()
     }
 }
 
@@ -128,8 +139,21 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
+
+impl<T> DataSize for ValidatorMap<T>
+where
+    T: DataSize,
+{
+    const IS_DYNAMIC: bool = Vec::<T>::IS_DYNAMIC;
+
+    const STATIC_HEAP_SIZE: usize = Vec::<T>::STATIC_HEAP_SIZE;
+
+    fn estimate_heap_size(&self) -> usize {
+        ds::vec_sample(&self.0)
+    }
+}
 
 impl<T> ValidatorMap<T> {
     /// Returns the value for the given validator. Panics if the index is out of range.
@@ -145,6 +169,11 @@ impl<T> ValidatorMap<T> {
     /// Returns an iterator over all values.
     pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
         self.0.iter()
+    }
+
+    /// Returns an iterator over mutable references to all values.
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.0.iter_mut()
     }
 
     /// Returns an iterator over all values, by validator index.

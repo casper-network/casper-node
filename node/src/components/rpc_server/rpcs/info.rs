@@ -18,11 +18,11 @@ use warp_json_rpc::Builder;
 use casper_types::ExecutionResult;
 
 use super::{
-    docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
-    RpcWithoutParams, RpcWithoutParamsExt,
+    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
+    RpcWithoutParamsExt,
 };
 use crate::{
-    components::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
@@ -32,7 +32,7 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().id(),
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
         block_hash: Block::doc_example().id(),
@@ -40,7 +40,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     }],
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
-    api_version: CLIENT_API_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     peers: GetStatusResult::doc_example().peers.clone(),
 });
 
@@ -101,6 +101,7 @@ impl RpcWithParamsExt for GetDeploy {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Try to get the deploy and metadata from storage.
@@ -136,7 +137,7 @@ impl RpcWithParamsExt for GetDeploy {
                 .collect();
 
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 deploy,
                 execution_results,
             };
@@ -175,6 +176,7 @@ impl RpcWithoutParamsExt for GetPeers {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let peers = effect_builder
@@ -185,7 +187,7 @@ impl RpcWithoutParamsExt for GetPeers {
                 .await;
 
             let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
+                api_version,
                 peers: PeersMap::from(peers),
             };
             Ok(response_builder.success(result)?)
@@ -206,6 +208,7 @@ impl RpcWithoutParamsExt for GetStatus {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the status.
@@ -217,8 +220,7 @@ impl RpcWithoutParamsExt for GetStatus {
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let mut body = Self::ResponseResult::from(status_feed);
-            body.set_api_version(CLIENT_API_VERSION.clone());
+            let body = Self::ResponseResult::new(status_feed, api_version);
             Ok(response_builder.success(body)?)
         }
         .boxed()

@@ -5,9 +5,12 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, mint,
-    proof_of_stake, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
-    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
+    account::AccountHash,
+    bytesrepr::FromBytes,
+    contracts::NamedKeys,
+    system::{auction, handle_payment, mint},
+    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
+    Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -200,8 +203,8 @@ impl Executor {
                     };
                 }
             }
-        } else if runtime.is_proof_of_stake(base_key) {
-            match runtime.call_host_proof_of_stake(
+        } else if runtime.is_handle_payment(base_key) {
+            match runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point.name(),
                 &mut runtime.context().named_keys().to_owned(),
@@ -387,9 +390,9 @@ impl Executor {
             }
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse => {
-                if Some(protocol_data.proof_of_stake().value()) != base_key.into_hash() {
+                if Some(protocol_data.handle_payment().value()) != base_key.into_hash() {
                     panic!(
-                        "{} should only be called with the proof of stake contract",
+                        "{} should only be called with the handle payment contract",
                         direct_system_contract_call.entry_point_name()
                     );
                 }
@@ -659,11 +662,11 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::Slash => auction::METHOD_SLASH,
             DirectSystemContractCall::RunAuction => auction::METHOD_RUN_AUCTION,
             DirectSystemContractCall::DistributeRewards => auction::METHOD_DISTRIBUTE,
-            DirectSystemContractCall::FinalizePayment => proof_of_stake::METHOD_FINALIZE_PAYMENT,
+            DirectSystemContractCall::FinalizePayment => handle_payment::METHOD_FINALIZE_PAYMENT,
             DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
-            DirectSystemContractCall::GetPaymentPurse => proof_of_stake::METHOD_GET_PAYMENT_PURSE,
+            DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
         }
     }
 
@@ -692,7 +695,7 @@ impl DirectSystemContractCall {
                 runtime_args,
                 extra_keys,
             ),
-            DirectSystemContractCall::FinalizePayment => runtime.call_host_proof_of_stake(
+            DirectSystemContractCall::FinalizePayment => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point_name,
                 named_keys,
@@ -715,7 +718,7 @@ impl DirectSystemContractCall {
                 extra_keys,
             ),
 
-            DirectSystemContractCall::GetPaymentPurse => runtime.call_host_proof_of_stake(
+            DirectSystemContractCall::GetPaymentPurse => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point_name,
                 named_keys,

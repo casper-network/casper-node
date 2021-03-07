@@ -10,7 +10,7 @@
     not(feature = "no-unstable-features"),
     feature(min_specialization, try_reserve)
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/0.7.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/0.9.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -26,7 +26,6 @@ extern crate std;
 mod access_rights;
 pub mod account;
 pub mod api_error;
-pub mod auction;
 mod block_time;
 pub mod bytesrepr;
 mod cl_type;
@@ -40,16 +39,12 @@ mod execution_result;
 pub mod gens;
 mod json_pretty_printer;
 mod key;
-pub mod mint;
 mod named_key;
 mod phase;
-pub mod proof_of_stake;
 mod protocol_version;
 pub mod runtime_args;
 mod semver;
-pub mod standard_payment;
-pub mod system_contract_errors;
-pub mod system_contract_type;
+pub mod system;
 mod tagged;
 mod transfer;
 mod transfer_result;
@@ -75,13 +70,12 @@ pub use execution_result::{
 };
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
-pub use key::{HashAddr, Key, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
+pub use key::{HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
-pub use system_contract_type::SystemContractType;
 pub use tagged::Tagged;
 pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH};
 pub use transfer_result::{TransferResult, TransferredTo};

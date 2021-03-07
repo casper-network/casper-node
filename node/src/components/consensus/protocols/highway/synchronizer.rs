@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
 };
@@ -20,6 +20,75 @@ use super::{HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
 
 #[cfg(test)]
 mod tests;
+
+/// Incoming pre-validated vertices that we haven't added to the protocol state yet, and the
+/// timestamp when we received them.
+#[derive(DataSize, Debug)]
+pub(crate) struct PendingVertices<I, C>(HashMap<PreValidatedVertex<C>, HashMap<I, Timestamp>>)
+where
+    C: Context;
+
+impl<I, C: Context> Default for PendingVertices<I, C> {
+    fn default() -> Self {
+        PendingVertices(Default::default())
+    }
+}
+
+impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
+    /// Removes expired vertices.
+    fn remove_expired(&mut self, oldest: Timestamp) {
+        for time_by_sender in self.0.values_mut() {
+            time_by_sender.retain(|_, time_received| *time_received >= oldest);
+        }
+        self.0.retain(|_, time_by_peer| !time_by_peer.is_empty())
+    }
+
+    /// Adds a vertex, or updates its timestamp.
+    fn add(&mut self, sender: I, pvv: PreValidatedVertex<C>, time_received: Timestamp) {
+        self.0
+            .entry(pvv)
+            .or_default()
+            .entry(sender)
+            .and_modify(|timestamp| *timestamp = (*timestamp).max(time_received))
+            .or_insert(time_received);
+    }
+
+    /// Adds a vertex, or updates its timestamp.
+    fn push(&mut self, pv: PendingVertex<I, C>) {
+        self.add(pv.sender, pv.pvv, pv.time_received)
+    }
+
+    fn pop(&mut self) -> Option<PendingVertex<I, C>> {
+        let pvv = self.0.keys().next()?.clone();
+        let (sender, timestamp, is_empty) = {
+            let time_by_sender = self.0.get_mut(&pvv)?;
+            let sender = time_by_sender.keys().next()?.clone();
+            let timestamp = time_by_sender.remove(&sender)?;
+            (sender, timestamp, time_by_sender.is_empty())
+        };
+        if is_empty {
+            self.0.remove(&pvv);
+        }
+        Some(PendingVertex::new(sender, pvv, timestamp))
+    }
+
+    /// Drops all pending vertices other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.0.retain(|pvv, _| pvv.inner().is_evidence());
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<I: NodeIdT, C: Context> Iterator for PendingVertices<I, C> {
+    type Item = PendingVertex<I, C>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.pop()
+    }
+}
 
 /// An incoming pre-validated vertex that we haven't added to the protocol state yet.
 #[derive(DataSize, Debug)]
@@ -59,11 +128,6 @@ impl<I, C: Context> PendingVertex<I, C> {
     pub(crate) fn pvv(&self) -> &PreValidatedVertex<C> {
         &self.pvv
     }
-
-    /// Returns `true` if this vertex was received earlier than at the `oldest` timestamp.
-    fn expired(&self, oldest: Timestamp) -> bool {
-        self.time_received < oldest
-    }
 }
 
 impl<I, C: Context> Into<PreValidatedVertex<C>> for PendingVertex<I, C> {
@@ -78,13 +142,13 @@ where
     C: Context,
 {
     /// Incoming vertices we can't add yet because they are still missing a dependency.
-    vertex_deps: BTreeMap<Dependency<C>, Vec<PendingVertex<I, C>>>,
+    vertex_deps: BTreeMap<Dependency<C>, PendingVertices<I, C>>,
     /// The vertices that are scheduled to be processed at a later time.  The keys of this
     /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
-    vertices_to_be_added_later: BTreeMap<Timestamp, Vec<PendingVertex<I, C>>>,
+    vertices_to_be_added_later: BTreeMap<Timestamp, PendingVertices<I, C>>,
     /// Vertices that might be ready to add to the protocol state: We are not currently waiting for
     /// a requested dependency.
-    vertices_to_be_added: Vec<PendingVertex<I, C>>,
+    vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
 }
@@ -95,7 +159,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
-            vertices_to_be_added: Vec::new(),
+            vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
         }
     }
@@ -103,7 +167,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Removes expired pending vertices from the queues, and schedules the next purge.
     pub(crate) fn purge_vertices(&mut self, now: Timestamp) {
         let oldest = now.saturating_sub(self.pending_vertex_timeout);
-        self.vertices_to_be_added.retain(|pv| !pv.expired(oldest));
+        self.vertices_to_be_added.remove_expired(oldest);
         Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
         Self::remove_expired(&mut self.vertex_deps, oldest);
     }
@@ -120,7 +184,12 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.vertices_to_be_added_later
             .entry(future_timestamp)
             .or_default()
-            .push(PendingVertex::new(sender, pvv, now));
+            .add(sender, pvv, now);
+    }
+
+    /// Returns the timestamps at which we are supposed to add cached vertices.
+    pub(crate) fn timestamps_to_add_vertices(&self) -> Vec<Timestamp> {
+        self.vertices_to_be_added_later.keys().cloned().collect()
     }
 
     /// Schedules calls to `add_vertex` on any vertices in `vertices_to_be_added_later` which are
@@ -246,13 +315,22 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         senders
     }
 
+    /// Drops all pending vertices other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.vertex_deps.clear();
+        self.vertices_to_be_added_later.clear();
+        self.vertices_to_be_added.retain_evidence_only();
+    }
+
     /// Schedules vertices to be added to the protocol state.
     fn schedule_add_vertices<T>(&mut self, pending_vertices: T) -> ProtocolOutcomes<I, C>
     where
         T: IntoIterator<Item = PendingVertex<I, C>>,
     {
         let was_empty = self.vertices_to_be_added.is_empty();
-        self.vertices_to_be_added.extend(pending_vertices);
+        for pv in pending_vertices {
+            self.vertices_to_be_added.push(pv);
+        }
         if was_empty && !self.vertices_to_be_added.is_empty() {
             vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
         } else {
@@ -281,11 +359,11 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     /// Removes all expired entries from a `BTreeMap` of `Vec`s.
     fn remove_expired<T: Ord + Clone>(
-        map: &mut BTreeMap<T, Vec<PendingVertex<I, C>>>,
+        map: &mut BTreeMap<T, PendingVertices<I, C>>,
         oldest: Timestamp,
     ) {
         for pvs in map.values_mut() {
-            pvs.retain(|pv| !pv.expired(oldest));
+            pvs.remove_expired(oldest);
         }
         let keys = map
             .iter()

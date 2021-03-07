@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -10,12 +11,15 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{GenesisAccount, RewardItem, SYSTEM_ACCOUNT_ADDR},
+    core::engine_state::{
+        genesis::GenesisValidator, GenesisAccount, RewardItem, SYSTEM_ACCOUNT_ADDR,
+    },
     shared::motes::Motes,
 };
 use casper_types::{
-    auction::{self, BLOCK_REWARD, INITIAL_ERA_ID},
-    runtime_args, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    runtime_args,
+    system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -29,7 +33,6 @@ static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DELEGATOR_1_SECRET_KEY));
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
 const VALIDATOR_STAKE: u64 = 1_000_000_000;
@@ -39,17 +42,21 @@ const DELEGATE_AMOUNT: u64 = 1_234_567;
 #[test]
 fn should_run_ee_1152_regression_test() {
     let accounts = {
-        let validator_1 = GenesisAccount::new(
+        let validator_1 = GenesisAccount::account(
             *VALIDATOR_1,
-            *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
-        let validator_2 = GenesisAccount::new(
+        let validator_2 = GenesisAccount::account(
             *DELEGATOR_1,
-            *DELEGATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(VALIDATOR_STAKE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_STAKE.into()),
+                DelegationRate::zero(),
+            )),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -113,16 +120,16 @@ fn should_run_ee_1152_regression_test() {
 
     // In reality a step request is made, but to simplify the test I'm just calling the auction part
     // only.
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    builder.run_auction(timestamp_millis); // At this point paying out rewards would fail
+    builder.run_auction(timestamp_millis, Vec::new()); // At this point paying out rewards would fail
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     let era_validators = builder.get_era_validators();
@@ -151,5 +158,5 @@ fn should_run_ee_1152_regression_test() {
 
     builder.step(step_request.build());
 
-    builder.run_auction(timestamp_millis);
+    builder.run_auction(timestamp_millis, Vec::new());
 }

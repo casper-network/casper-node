@@ -1,9 +1,12 @@
+#![allow(unreachable_code)] // TODO: Figure out why this warning triggers.
+
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
     str::FromStr,
+    sync::Arc,
     thread,
     time::Duration,
 };
@@ -15,7 +18,7 @@ use tracing::info;
 
 use casper_node_macros::reactor;
 
-use super::ENABLE_SMALL_NET_ENV_VAR;
+use super::ENABLE_LIBP2P_NET_ENV_VAR;
 use crate::{
     components::{
         collector::Collectable,
@@ -37,7 +40,7 @@ reactor!(LoadTestingReactor {
 
   components: {
       net = has_effects Network::<LoadTestingReactorEvent, DummyPayload>(
-        event_queue, cfg.network_config, NetworkIdentity::new(), &cfg.chainspec, false
+        event_queue, cfg.network_config, registry, NetworkIdentity::new(), &cfg.chainspec, false
       );
       collector = infallible Collector::<DummyPayload>();
   }
@@ -68,7 +71,7 @@ impl NetworkedReactor for LoadTestingReactor {
 #[derive(Debug)]
 pub struct TestReactorConfig {
     /// The fixed chainspec used in testing.
-    chainspec: Chainspec,
+    chainspec: Arc<Chainspec>,
     /// Network configuration used in testing.
     network_config: NetworkComponentConfig,
 }
@@ -159,8 +162,8 @@ where
 async fn send_large_message_across_network() {
     testing::init_logging();
 
-    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
-        eprintln!("{} set, skipping test", ENABLE_SMALL_NET_ENV_VAR);
+    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
+        eprintln!("{} set, skipping test", ENABLE_LIBP2P_NET_ENV_VAR);
         return;
     }
 
@@ -180,11 +183,11 @@ async fn send_large_message_across_network() {
     let first_node_port = testing::unused_port_on_localhost() + 1;
 
     let mut net = TestingNetwork::<LoadTestingReactor>::new();
-    let chainspec = Chainspec::random(&mut rng);
+    let chainspec = Arc::new(Chainspec::random(&mut rng));
 
     // Create the root node.
     let cfg = TestReactorConfig {
-        chainspec: chainspec.clone(),
+        chainspec: Arc::clone(&chainspec),
         network_config: NetworkComponentConfig::default_local_net_first_node(first_node_port),
     };
 
@@ -197,7 +200,7 @@ async fn send_large_message_across_network() {
     // Create `node_count-1` additional node instances.
     for _ in 1..node_count {
         let cfg = TestReactorConfig {
-            chainspec: chainspec.clone(),
+            chainspec: Arc::clone(&chainspec),
             network_config: NetworkComponentConfig::default_local_net(first_node_port),
         };
 

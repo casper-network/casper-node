@@ -22,8 +22,7 @@ use crate::{
         },
         traits::Context,
     },
-    types::Timestamp,
-    NodeRng,
+    types::{TimeDiff, Timestamp},
 };
 
 use super::{
@@ -58,7 +57,7 @@ pub(crate) enum PingError {
 /// The vertex could not be determined to be invalid based on its contents alone. The remaining
 /// checks will be applied once all of its dependencies have been added to `Highway`. (See
 /// `ValidVertex`.)
-#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct PreValidatedVertex<C>(Vertex<C>)
 where
     C: Context;
@@ -283,13 +282,12 @@ impl<C: Context> Highway<C> {
     pub(crate) fn add_valid_vertex(
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
-        rng: &mut NodeRng,
         now: Timestamp,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Unit(unit) => self.add_valid_unit(unit, now, rng),
-                Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
+                Vertex::Unit(unit) => self.add_valid_unit(unit, now),
+                Vertex::Evidence(evidence) => self.add_evidence(evidence),
                 Vertex::Endorsements(endorsements) => self.add_endorsements(endorsements),
                 Vertex::Ping(ping) => self.add_ping(ping),
             }
@@ -366,11 +364,7 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    pub(crate) fn handle_timer(
-        &mut self,
-        timestamp: Timestamp,
-        rng: &mut NodeRng,
-    ) -> Vec<Effect<C>> {
+    pub(crate) fn handle_timer(&mut self, timestamp: Timestamp) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
@@ -384,9 +378,8 @@ impl<C: Context> Highway<C> {
         // set by other nodes.
 
         self.map_active_validator(
-            |av, state, rng| av.handle_timer(timestamp, state, instance_id, rng),
+            |av, state| av.handle_timer(timestamp, state, instance_id),
             timestamp,
-            rng,
         )
         .unwrap_or_else(|| {
             debug!(%timestamp, "Ignoring `handle_timer` event: only an observer node.");
@@ -398,7 +391,6 @@ impl<C: Context> Highway<C> {
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
@@ -420,9 +412,8 @@ impl<C: Context> Highway<C> {
 
         let timestamp = block_context.timestamp();
         self.map_active_validator(
-            |av, state, rng| av.propose(value, block_context, state, instance_id, rng),
+            |av, state| av.propose(value, block_context, state, instance_id),
             timestamp,
-            rng,
         )
         .unwrap_or_else(|| {
             debug!("ignoring `propose` event: validator has been deactivated");
@@ -437,38 +428,44 @@ impl<C: Context> Highway<C> {
     /// Returns an iterator over all validators against which we have direct evidence.
     pub(crate) fn validators_with_evidence(&self) -> impl Iterator<Item = &C::ValidatorId> {
         self.validators
-            .iter()
-            .enumerate()
-            .filter(move |(i, _)| self.state.has_evidence((*i as u32).into()))
-            .map(|(_, v)| v.id())
+            .enumerate_ids()
+            .filter(move |(idx, _)| self.state.has_evidence(*idx))
+            .map(|(_, v_id)| v_id)
     }
 
     pub(crate) fn state(&self) -> &State<C> {
         &self.state
     }
 
-    fn on_new_unit(
-        &mut self,
-        uhash: &C::Hash,
-        timestamp: Timestamp,
-        rng: &mut NodeRng,
-    ) -> Vec<Effect<C>> {
+    /// Sets the pause status: While paused we don't create any new units, just pings.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        if let Some(av) = &mut self.active_validator {
+            av.set_paused(paused);
+        }
+    }
+
+    /// Drops all state other than evidence.
+    pub(crate) fn retain_evidence_only(&mut self) {
+        self.deactivate_validator();
+        self.state.retain_evidence_only();
+    }
+
+    fn on_new_unit(&mut self, uhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
-            |av, state, rng| av.on_new_unit(uhash, timestamp, state, instance_id, rng),
+            |av, state| av.on_new_unit(uhash, timestamp, state, instance_id),
             timestamp,
-            rng,
         )
         .unwrap_or_default()
     }
 
     /// Takes action on a new evidence.
-    fn on_new_evidence(&mut self, evidence: Evidence<C>, rng: &mut NodeRng) -> Vec<Effect<C>> {
+    fn on_new_evidence(&mut self, evidence: Evidence<C>) -> Vec<Effect<C>> {
         let state = &self.state;
         let mut effects = self
             .active_validator
             .as_mut()
-            .map(|av| av.on_new_evidence(&evidence, state, rng))
+            .map(|av| av.on_new_evidence(&evidence, state))
             .unwrap_or_default();
         // Add newly created endorsements to the local state. These can only be our own ones, so we
         // don't need to look for conflicts and call State::add_endorsements directly.
@@ -490,21 +487,16 @@ impl<C: Context> Highway<C> {
     ///
     /// Newly created vertices are added to the state. If an equivocation of this validator is
     /// detected, it gets deactivated.
-    fn map_active_validator<F>(
-        &mut self,
-        f: F,
-        timestamp: Timestamp,
-        rng: &mut NodeRng,
-    ) -> Option<Vec<Effect<C>>>
+    fn map_active_validator<F>(&mut self, f: F, timestamp: Timestamp) -> Option<Vec<Effect<C>>>
     where
-        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut NodeRng) -> Vec<Effect<C>>,
+        F: FnOnce(&mut ActiveValidator<C>, &State<C>) -> Vec<Effect<C>>,
     {
-        let effects = f(self.active_validator.as_mut()?, &self.state, rng);
+        let effects = f(self.active_validator.as_mut()?, &self.state);
         let mut result = vec![];
         for effect in &effects {
             match effect {
                 Effect::NewVertex(vv) => {
-                    result.extend(self.add_valid_vertex(vv.clone(), rng, timestamp))
+                    result.extend(self.add_valid_vertex(vv.clone(), timestamp))
                 }
                 Effect::WeAreFaulty(_) => self.deactivate_validator(),
                 Effect::ScheduleTimer(_) | Effect::RequestNewBlock { .. } => (),
@@ -530,7 +522,7 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_unit(unit)?)
             }
             Vertex::Evidence(evidence) => {
-                Ok(evidence.validate(&self.validators, &self.instance_id, &self.state)?)
+                Ok(evidence.validate(&self.validators, &self.instance_id, self.state.params())?)
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();
@@ -567,9 +559,9 @@ impl<C: Context> Highway<C> {
 
     /// Adds evidence to the protocol state.
     /// Gossip the evidence if it's the first equivocation from the creator.
-    fn add_evidence(&mut self, evidence: Evidence<C>, rng: &mut NodeRng) -> Vec<Effect<C>> {
+    fn add_evidence(&mut self, evidence: Evidence<C>) -> Vec<Effect<C>> {
         if self.state.add_evidence(evidence.clone()) {
-            self.on_new_evidence(evidence, rng)
+            self.on_new_evidence(evidence)
         } else {
             vec![]
         }
@@ -579,12 +571,7 @@ impl<C: Context> Highway<C> {
     ///
     /// Validity must be checked before calling this! Adding an invalid unit will result in a panic
     /// or an inconsistent state.
-    fn add_valid_unit(
-        &mut self,
-        swunit: SignedWireUnit<C>,
-        now: Timestamp,
-        rng: &mut NodeRng,
-    ) -> Vec<Effect<C>> {
+    fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>, now: Timestamp) -> Vec<Effect<C>> {
         let unit_hash = swunit.hash();
         let creator = swunit.wire_unit().creator;
         let was_honest = !self.state.is_faulty(creator);
@@ -595,13 +582,13 @@ impl<C: Context> Highway<C> {
             .cloned()
             .map(|ev| {
                 if was_honest {
-                    self.on_new_evidence(ev, rng)
+                    self.on_new_evidence(ev)
                 } else {
                     vec![]
                 }
             })
             .unwrap_or_default();
-        evidence_effects.extend(self.on_new_unit(&unit_hash, now, rng));
+        evidence_effects.extend(self.on_new_unit(&unit_hash, now));
         evidence_effects
     }
 
@@ -641,6 +628,12 @@ impl<C: Context> Highway<C> {
     pub(crate) fn instance_id(&self) -> &C::InstanceId {
         &self.instance_id
     }
+
+    pub(crate) fn next_round_length(&self) -> Option<TimeDiff> {
+        self.active_validator
+            .as_ref()
+            .map(|av| av.next_round_length())
+    }
 }
 
 #[cfg(test)]
@@ -678,7 +671,6 @@ pub(crate) mod tests {
 
     #[test]
     fn invalid_signature_error() {
-        let mut rng = crate::new_rng();
         let now: Timestamp = 500.into();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
@@ -709,7 +701,7 @@ pub(crate) mod tests {
         assert_eq!(Err(expected), highway.pre_validate_vertex(invalid_vertex));
 
         let hwunit = wunit.into_hashed();
-        let valid_signature = CAROL_SEC.sign(&hwunit.hash(), &mut rng);
+        let valid_signature = CAROL_SEC.sign(&hwunit.hash());
         let correct_signature_unit = SignedWireUnit {
             hashed_wire_unit: hwunit,
             signature: valid_signature,
@@ -718,22 +710,21 @@ pub(crate) mod tests {
         let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
-        assert!(highway.add_valid_vertex(vv, &mut rng, now).is_empty());
+        assert!(highway.add_valid_vertex(vv, now).is_empty());
     }
 
     #[test]
     fn missing_dependency() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
-        let mut rng = crate::new_rng();
         let now: Timestamp = 500.into();
 
-        add_unit!(state, rng, CAROL, 0xC0; N, N, N)?;
-        add_unit!(state, rng, CAROL, 0xC1; N, N, N)?;
-        let a = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
-        endorse!(state, rng, a; ALICE, BOB, CAROL);
+        add_unit!(state, CAROL, 0xC0; N, N, N)?;
+        add_unit!(state, CAROL, 0xC1; N, N, N)?;
+        let a = add_unit!(state, ALICE, 0xA; N, N, N)?;
+        endorse!(state, a; ALICE, BOB, CAROL);
         // Bob's unit depends on Alice's unit, an endorsement of Alice's unit, and evidence against
         // Carol.
-        let b = add_unit!(state, rng, BOB, 0xB; a, N, F; a)?;
+        let b = add_unit!(state, BOB, 0xB; a, N, F; a)?;
 
         let end_a = state.maybe_endorsements(&a).expect("unit a is endorsed");
         let ev_c = state.maybe_evidence(CAROL).unwrap().clone();
@@ -763,7 +754,7 @@ pub(crate) mod tests {
         );
         assert_eq!(None, highway.missing_dependency(&pvv_a));
         let vv_a = highway.validate_vertex(pvv_a).unwrap();
-        highway.add_valid_vertex(vv_a, &mut rng, now);
+        highway.add_valid_vertex(vv_a, now);
 
         assert_eq!(None, highway.missing_dependency(&pvv_end_a));
         assert_eq!(
@@ -772,7 +763,7 @@ pub(crate) mod tests {
         );
         assert_eq!(None, highway.missing_dependency(&pvv_ev_c));
         let vv_ev_c = highway.validate_vertex(pvv_ev_c).unwrap();
-        highway.add_valid_vertex(vv_ev_c, &mut rng, now);
+        highway.add_valid_vertex(vv_ev_c, now);
 
         assert_eq!(
             Some(Dependency::Endorsement(a)),
@@ -780,19 +771,17 @@ pub(crate) mod tests {
         );
         assert_eq!(None, highway.missing_dependency(&pvv_end_a));
         let vv_end_a = highway.validate_vertex(pvv_end_a).unwrap();
-        highway.add_valid_vertex(vv_end_a, &mut rng, now);
+        highway.add_valid_vertex(vv_end_a, now);
 
         assert_eq!(None, highway.missing_dependency(&pvv_b));
         let vv_b = highway.validate_vertex(pvv_b).unwrap();
-        highway.add_valid_vertex(vv_b, &mut rng, now);
+        highway.add_valid_vertex(vv_b, now);
 
         Ok(())
     }
 
     #[test]
     fn invalid_evidence() {
-        let mut rng = crate::new_rng();
-
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let highway = Highway {
             instance_id: TEST_INSTANCE_ID,
@@ -801,14 +790,14 @@ pub(crate) mod tests {
             active_validator: None,
         };
 
-        let mut validate = |wunit0: &WireUnit<TestContext>,
-                            signer0: &TestSecret,
-                            wunit1: &WireUnit<TestContext>,
-                            signer1: &TestSecret| {
+        let validate = |wunit0: &WireUnit<TestContext>,
+                        signer0: &TestSecret,
+                        wunit1: &WireUnit<TestContext>,
+                        signer1: &TestSecret| {
             let hwunit0 = wunit0.clone().into_hashed();
-            let swunit0 = SignedWireUnit::new(hwunit0, signer0, &mut rng);
+            let swunit0 = SignedWireUnit::new(hwunit0, signer0);
             let hwunit1 = wunit1.clone().into_hashed();
-            let swunit1 = SignedWireUnit::new(hwunit1, signer1, &mut rng);
+            let swunit1 = SignedWireUnit::new(hwunit1, signer1);
             let evidence = Evidence::Equivocation(swunit0, swunit1);
             let vertex = Vertex::Evidence(evidence);
             highway

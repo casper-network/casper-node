@@ -1,21 +1,23 @@
 [protocol]
 # Protocol version.
 version = '1.0.0'
-
-[protocol.activation_point]
-# This protocol version becomes active at the start of this era.
-era_id = 0
+# Whether we need to clear latest blocks back to the switch block just before the activation point or not.
+hard_reset = false
+# This protocol version becomes active at this point.
+#
+# If it is a timestamp string, it represents the timestamp for the genesis block.  This is the beginning of era 0.  By
+# this time, a sufficient majority (> 50% + F/2 — see finality_threshold_fraction below) of validator nodes must be up
+# and running to start the blockchain.  This timestamp is also used in seeding the pseudo-random number generator used
+# in contract-runtime for computing genesis post-state hash.
+#
+# If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
+activation_point = '2020-12-29T20:00:00Z'
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
 name = 'casper-delta'
-# Timestamp for the genesis block.  This is the beginning of era 0. By this time, a sufficient majority (> 50% + F/2 —
-# see finality_threshold_percent below) of validator nodes must be up and running to start the blockchain.  This
-# timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
-# post-state hash.
-timestamp = '2020-12-29T20:00:00Z'
 
 [core]
 # Era duration.
@@ -24,7 +26,7 @@ era_duration = '30minutes'
 # minimum height.
 minimum_era_height = 10
 # Number of slots available in validator auction.
-validator_slots = 200
+validator_slots = 75
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
 auction_delay = 3
@@ -35,11 +37,11 @@ unbonding_delay = 14
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 2%
-# Minimum round exponent: 17
+# Minimum round exponent: 16
 # Ticks per year: 31536000000
 #
-# (1+0.02)^((2^17)/31536000000)-1 is expressed as a fractional number below.
-round_seigniorage_rate = [16_837, 204_568_405_924]
+# (1+0.02)^((2^16)/31536000000)-1 is expressed as a fractional number below.
+round_seigniorage_rate = [185_334_351, 4_503_599_627_370_496]
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -73,6 +75,12 @@ block_max_deploy_count = 100
 block_max_transfer_count = 1000
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
+# The limit of length of serialized payment code arguments.
+payment_args_max_length = 1024
+# The limit of length of serialized session code arguments.
+session_args_max_length = 1024
+# The minimum amount in motes for a valid native transfer.
+native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 # Amount of free memory (in 64kB pages) each contract can use for stack.
@@ -181,6 +189,7 @@ distribute = 10_000
 withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
+activate_bid = 10_000
 
 [system_costs.mint_costs]
 mint = 10_000
@@ -190,7 +199,7 @@ balance = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000
 
-[system_costs.proof_of_stake_costs]
+[system_costs.handle_payment_costs]
 get_payment_purse = 10_000
 set_refund_purse = 10_000
 get_refund_purse = 10_000

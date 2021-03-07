@@ -15,10 +15,15 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
-use failure::Fail;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "std")]
+use thiserror::Error;
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -102,22 +107,33 @@ impl TryFrom<u32> for ActionType {
 /// Errors that can occur while changing action thresholds (i.e. the total [`Weight`]s of signing
 /// [`AccountHash`]s required to perform various actions) on an account.
 #[repr(i32)]
-#[derive(Debug, Fail, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "std", derive(Error))]
 pub enum SetThresholdFailure {
     /// Setting the key-management threshold to a value lower than the deployment threshold is
     /// disallowed.
-    #[fail(display = "New threshold should be greater than or equal to deployment threshold")]
+    #[cfg_attr(
+        feature = "std",
+        error("New threshold should be greater than or equal to deployment threshold")
+    )]
     KeyManagementThreshold = 1,
     /// Setting the deployment threshold to a value greater than any other threshold is disallowed.
-    #[fail(display = "New threshold should be lower than or equal to key management threshold")]
+    #[cfg_attr(
+        feature = "std",
+        error("New threshold should be lower than or equal to key management threshold")
+    )]
     DeploymentThreshold = 2,
     /// Caller doesn't have sufficient permissions to set new thresholds.
-    #[fail(display = "Unable to set action threshold due to insufficient permissions")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to set action threshold due to insufficient permissions")
+    )]
     PermissionDeniedError = 3,
     /// Setting a threshold to a value greater than the total weight of associated keys is
     /// disallowed.
-    #[fail(
-        display = "New threshold should be lower or equal than total weight of associated keys"
+    #[cfg_attr(
+        feature = "std",
+        error("New threshold should be lower or equal than total weight of associated keys")
     )]
     InsufficientTotalWeight = 4,
 }
@@ -385,20 +401,36 @@ impl AsRef<[u8]> for AccountHash {
     }
 }
 
+impl Distribution<AccountHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
+        AccountHash::new(rng.gen())
+    }
+}
+
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
-#[derive(PartialEq, Eq, Fail, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
     /// There are already [`MAX_ASSOCIATED_KEYS`] [`AccountHash`]s associated with the given
     /// account.
-    #[fail(display = "Unable to add new associated key because maximum amount of keys is reached")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to add new associated key because maximum amount of keys is reached")
+    )]
     MaxKeysLimit = 1,
     /// The given [`AccountHash`] is already associated with the given account.
-    #[fail(display = "Unable to add new associated key because given key already exists")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to add new associated key because given key already exists")
+    )]
     DuplicateKey = 2,
     /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
     /// given account.
-    #[fail(display = "Unable to add new associated key due to insufficient permissions")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to add new associated key due to insufficient permissions")
+    )]
     PermissionDenied = 3,
 }
 
@@ -418,19 +450,26 @@ impl TryFrom<i32> for AddKeyFailure {
 }
 
 /// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
-#[derive(Fail, Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum RemoveKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[fail(display = "Unable to remove a key that does not exist")]
+    #[cfg_attr(feature = "std", error("Unable to remove a key that does not exist"))]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
     /// given account.
-    #[fail(display = "Unable to remove associated key due to insufficient permissions")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to remove associated key due to insufficient permissions")
+    )]
     PermissionDenied = 2,
     /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
     /// `AccountHash`s to fall below one of the action thresholds for the given account.
-    #[fail(display = "Unable to remove a key which would violate action threshold constraints")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to remove a key which would violate action threshold constraints")
+    )]
     ThresholdViolation = 3,
 }
 
@@ -455,20 +494,30 @@ impl TryFrom<i32> for RemoveKeyFailure {
 
 /// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
 /// associated keys map.
-#[derive(PartialEq, Eq, Fail, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum UpdateKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[fail(display = "Unable to update the value under an associated key that does not exist")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to update the value under an associated key that does not exist")
+    )]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
     /// given account.
-    #[fail(display = "Unable to update associated key due to insufficient permissions")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to update associated key due to insufficient permissions")
+    )]
     PermissionDenied = 2,
     /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
     /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
     /// account.
-    #[fail(display = "Unable to update weight that would fall below any of action thresholds")]
+    #[cfg_attr(
+        feature = "std",
+        error("Unable to update weight that would fall below any of action thresholds")
+    )]
     ThresholdViolation = 3,
 }
 

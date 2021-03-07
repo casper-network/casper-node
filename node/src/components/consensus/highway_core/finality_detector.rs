@@ -11,7 +11,7 @@ use crate::{
         consensus_protocol::{FinalizedBlock, TerminalBlockData},
         highway_core::{
             highway::Highway,
-            state::{Observation, State, Weight},
+            state::{Observation, State, Unit, Weight},
             validators::ValidatorIndex,
         },
         traits::Context,
@@ -22,7 +22,7 @@ use horizon::Horizon;
 
 /// An error returned if the configured fault tolerance has been exceeded.
 #[derive(Debug)]
-pub(crate) struct FttExceeded(Weight);
+pub(crate) struct FttExceeded(pub Weight);
 
 /// An incremental finality detector.
 ///
@@ -65,18 +65,9 @@ impl<C: Context> FinalityDetector<C> {
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let unit = state.unit(bhash);
-            let terminal_block_data = if state.is_terminal_block(bhash) {
-                let rewards = rewards::compute_rewards(state, bhash);
-                let rewards_iter = rewards.enumerate();
-                let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
-                let inactive_validators = unit.panorama.iter_none().map(to_id).collect();
-                Some(TerminalBlockData {
-                    rewards,
-                    inactive_validators,
-                })
-            } else {
-                None
-            };
+            let terminal_block_data = state
+                .is_terminal_block(bhash)
+                .then(|| Self::create_terminal_block_data(bhash, unit, highway));
             let finalized_block = FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
@@ -171,6 +162,38 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn fault_tolerance_threshold(&self) -> Weight {
         self.ftt
     }
+
+    /// Creates the information for the terminal block: which validators were inactive, and how
+    /// rewards should be distributed.
+    fn create_terminal_block_data(
+        bhash: &C::Hash,
+        unit: &Unit<C>,
+        highway: &Highway<C>,
+    ) -> TerminalBlockData<C> {
+        let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
+        let state = highway.state();
+
+        // Compute the rewards, and replace each validator index with the validator ID.
+        let rewards = rewards::compute_rewards(state, bhash);
+        let rewards_iter = rewards.enumerate();
+        let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
+
+        // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
+        // if at least one maximum-length round passed between the first and last block.
+        let first_bhash = state.find_ancestor(bhash, 0).unwrap();
+        let sufficient_time_for_activity =
+            unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();
+        let inactive_validators = if sufficient_time_for_activity {
+            unit.panorama.iter_none().map(to_id).collect()
+        } else {
+            Vec::new()
+        };
+
+        TerminalBlockData {
+            rewards,
+            inactive_validators,
+        }
+    }
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
@@ -184,7 +207,6 @@ mod tests {
     #[test]
     fn finality_detector() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
-        let mut rng = crate::new_rng();
 
         // Create blocks with scores as follows:
         //
@@ -193,12 +215,12 @@ mod tests {
         // b0: 10           b1: 4
         //        \
         //          c0: 1 — c1: 1
-        let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
-        let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
-        let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b0, c1)?;
-        let b1 = add_unit!(state, rng, BOB, 0xB1; a0, b0, N)?;
+        let b0 = add_unit!(state, BOB, 0xB0; N, N, N)?;
+        let c0 = add_unit!(state, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_unit!(state, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_unit!(state, ALICE, 0xA0; N, b0, N)?;
+        let a1 = add_unit!(state, ALICE, 0xA1; a0, b0, c1)?;
+        let b1 = add_unit!(state, BOB, 0xB1; a0, b0, N)?;
 
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         let mut fd6 = FinalityDetector::new(Weight(6)); // Fault tolerance 6.
@@ -213,8 +235,8 @@ mod tests {
         assert_eq!(None, fd4.next_finalized(&state));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
-        let _a2 = add_unit!(state, rng, ALICE, None; a1, b1, c1)?;
-        let _b2 = add_unit!(state, rng, BOB, None; a1, b1, c1)?;
+        let _a2 = add_unit!(state, ALICE, None; a1, b1, c1)?;
+        let _b2 = add_unit!(state, BOB, None; a1, b1, c1)?;
         assert_eq!(Some(&b0), fd6.next_finalized(&state));
         assert_eq!(None, fd6.next_finalized(&state));
         Ok(())
@@ -224,7 +246,6 @@ mod tests {
     fn equivocators() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        let mut rng = crate::new_rng();
 
         // Create blocks with scores as follows:
         //
@@ -234,33 +255,33 @@ mod tests {
         //        \
         //          c0: 1 — c1: 1
         //               \ c1': 1
-        let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
-        let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
-        let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
-        let _c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let b0 = add_unit!(state, BOB, 0xB0; N, N, N)?;
+        let a0 = add_unit!(state, ALICE, 0xA0; N, b0, N)?;
+        let c0 = add_unit!(state, CAROL, 0xC0; N, b0, N)?;
+        let _c1 = add_unit!(state, CAROL, 0xC1; N, b0, c0)?;
         assert_eq!(Weight(0), state.faulty_weight());
-        let _c1_prime = add_unit!(state, rng, CAROL, None; N, b0, c0)?;
+        let _c1_prime = add_unit!(state, CAROL, None; N, b0, c0)?;
         assert_eq!(Weight(1), state.faulty_weight());
-        let b1 = add_unit!(state, rng, BOB, 0xB1; a0, b0, N)?;
+        let b1 = add_unit!(state, BOB, 0xB1; a0, b0, N)?;
         assert_eq!(Some(&b0), fd4.next_finalized(&state));
-        let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b0, F)?;
-        let b2 = add_unit!(state, rng, BOB, None; a1, b1, F)?;
-        let a2 = add_unit!(state, rng, ALICE, 0xA2; a1, b2, F)?;
+        let a1 = add_unit!(state, ALICE, 0xA1; a0, b0, F)?;
+        let b2 = add_unit!(state, BOB, None; a1, b1, F)?;
+        let a2 = add_unit!(state, ALICE, 0xA2; a1, b2, F)?;
         assert_eq!(Some(&a0), fd4.next_finalized(&state));
         assert_eq!(Some(&a1), fd4.next_finalized(&state));
         // Finalize A2.
-        let b3 = add_unit!(state, rng, BOB, None; a2, b2, F)?;
-        let _a3 = add_unit!(state, rng, ALICE, None; a2, b3, F)?;
+        let b3 = add_unit!(state, BOB, None; a2, b2, F)?;
+        let _a3 = add_unit!(state, ALICE, None; a2, b3, F)?;
         assert_eq!(Some(&a2), fd4.next_finalized(&state));
 
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        let _c0 = add_unit!(bstate, rng, CAROL, 0xC0; N, N, N)?;
-        let _c0_prime = add_unit!(bstate, rng, CAROL, 0xCC0; N, N, N)?;
-        let a0 = add_unit!(bstate, rng, ALICE, 0xA0; N, N, F)?;
-        let b0 = add_unit!(bstate, rng, BOB, None; a0, N, F)?;
-        let _a1 = add_unit!(bstate, rng, ALICE, None; a0, b0, F)?;
+        let _c0 = add_unit!(bstate, CAROL, 0xC0; N, N, N)?;
+        let _c0_prime = add_unit!(bstate, CAROL, 0xCC0; N, N, N)?;
+        let a0 = add_unit!(bstate, ALICE, 0xA0; N, N, F)?;
+        let b0 = add_unit!(bstate, BOB, None; a0, N, F)?;
+        let _a1 = add_unit!(bstate, ALICE, None; a0, b0, F)?;
         assert_eq!(Some(&a0), fde4.next_finalized(&bstate));
         Ok(())
     }

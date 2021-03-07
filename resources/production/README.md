@@ -13,7 +13,7 @@ Configuration files and other needed files are installed in `/etc/casper/`. An e
 as `/etc/casper/config-example.toml`. This is automatically modified for your system in `config.toml`. If 
 `config.toml` exists from a previous install, the file we be created as `config.toml.new`. 
 
-The `accounts.csv` and `chainspec.toml` files will be downloaded into `/etc/casper` with the deb package install. 
+The `accounts.toml` and `chainspec.toml` files will be downloaded into `/etc/casper` with the deb package install. 
 If genesis files need to be pulled down again, run `sudo -u casper /etc/casper/pull_genesis.sh`. 
 
 A `casper` user and `casper` group is created during install and used to run the software. 

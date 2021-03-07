@@ -33,10 +33,6 @@ TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test   -minde
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
 
-HIGHWAY_CONTRACTS += \
-	pos-install \
-	pos
-
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
@@ -113,6 +109,10 @@ test-contracts-as: build-contracts-rs build-contracts-as
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts-as
 
+.PHONY: test-fast-sync
+test-fast-sync:
+	cd $(CURDIR)/node && $(CARGO) test --lib testing::multi_stage_test_reactor::test_chain --features "fast-sync"
+
 .PHONY: check-format
 check-format:
 	$(CARGO) fmt --all -- --check
@@ -127,7 +127,7 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) audit --ignore RUSTSEC-2020-0123
+	$(CARGO) audit --ignore RUSTSEC-2020-0123 --ignore RUSTSEC-2020-0146
 
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)

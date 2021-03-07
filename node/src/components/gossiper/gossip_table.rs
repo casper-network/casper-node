@@ -1,7 +1,7 @@
 #[cfg(not(test))]
 use std::time::Instant;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     time::Duration,
@@ -10,7 +10,7 @@ use std::{
 use datasize::DataSize;
 #[cfg(test)]
 use fake_instant::FakeClock as Instant;
-use tracing::warn;
+use tracing::{error, warn};
 
 use super::Config;
 #[cfg(test)]
@@ -104,8 +104,8 @@ impl State {
     }
 }
 
-#[derive(Debug)]
-struct Timeouts<T> {
+#[derive(DataSize, Debug)]
+pub(crate) struct Timeouts<T> {
     values: Vec<(Instant, T)>,
 }
 
@@ -142,14 +142,12 @@ pub(crate) struct GossipTable<T> {
     /// Data IDs for which gossiping is complete.
     finished: HashSet<T>,
     /// Timeouts for removal of items from the `finished` cache.
-    #[data_size(skip)]
     finished_timeouts: Timeouts<T>,
     /// Data IDs for which gossiping has been paused (likely due to detecting that the data was not
     /// correct as per our current knowledge).  Such data could later be decided as still requiring
     /// to be gossiped, so we retain the `State` part here in order to resume gossiping.
     paused: HashMap<T, State>,
     /// Timeouts for removal of items from the `paused` cache.
-    #[data_size(skip)]
     paused_timeouts: Timeouts<T>,
     /// See `Config::infection_target`.
     infection_target: usize,
@@ -209,25 +207,25 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             return GossipAction::Noop;
         }
 
-        if let Some(state) = self.paused.get_mut(data_id) {
-            let _ = state.holders.insert(holder);
-            return GossipAction::Noop;
+        let update = |state: &mut State| {
+            let _ = state.holders.insert(holder.clone());
+        };
+
+        if let Some(action) = self.update_current(data_id, update) {
+            return action;
         }
 
-        match self.current.entry(*data_id) {
-            Entry::Occupied(mut entry) => {
-                let is_new = false;
-                let state = entry.get_mut();
-                let _ = state.holders.insert(holder);
-                state.action(self.infection_target, self.holders_limit, is_new)
-            }
-            Entry::Vacant(entry) => {
-                let is_new = true;
-                let state = entry.insert(State::default());
-                let _ = state.holders.insert(holder);
-                state.action(self.infection_target, self.holders_limit, is_new)
-            }
+        if let Some(action) = self.update_paused(data_id, update) {
+            return action;
         }
+
+        // This isn't in finished, current, or paused - add a new entry to current.
+        let mut state = State::default();
+        update(&mut state);
+        let is_new = true;
+        let action = state.action(self.infection_target, self.holders_limit, is_new);
+        let _ = self.current.insert(*data_id, state);
+        action
     }
 
     /// We received or generated potentially new data with given ID.  If received from a peer,
@@ -250,37 +248,34 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         }
 
         let update = |state: &mut State| {
-            state.holders.extend(maybe_holder);
+            state.holders.extend(maybe_holder.clone());
             state.held_by_us = true;
         };
 
-        if let Some(state) = self.paused.get_mut(data_id) {
-            update(state);
-            return None;
-        }
-
-        let action = match self.current.entry(*data_id) {
-            Entry::Occupied(mut entry) => {
-                let state = entry.get_mut();
-                update(state);
-                let is_new = false;
-                state.action(self.infection_target, self.holders_limit, is_new)
-            }
-            Entry::Vacant(entry) => {
-                let state = entry.insert(State::default());
-                update(state);
-                let is_new = true;
-                state.action(self.infection_target, self.holders_limit, is_new)
-            }
-        };
-
-        match action {
+        // Converts the returned action to an optional `ShouldGossip`.
+        let convert_action = |action: GossipAction| match action {
             GossipAction::ShouldGossip(should_gossip) => Some(should_gossip),
             GossipAction::Noop => None,
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
                 unreachable!("can't be waiting for remainder since we hold the complete data")
             }
+        };
+
+        if let Some(action) = self.update_current(data_id, update) {
+            return convert_action(action);
         }
+
+        if let Some(action) = self.update_paused(data_id, update) {
+            return convert_action(action);
+        }
+
+        // This isn't in finished, current, or paused - add a new entry to current.
+        let mut state = State::default();
+        update(&mut state);
+        let is_new = true;
+        let action = state.action(self.infection_target, self.holders_limit, is_new);
+        let _ = self.current.insert(*data_id, state);
+        convert_action(action)
     }
 
     /// We got a response from a peer we gossiped to indicating we infected it (it didn't previously
@@ -306,63 +301,27 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     }
 
     fn infected(&mut self, data_id: &T, peer: NodeId, by_us: bool) -> GossipAction {
-        let infection_target = self.infection_target;
-        let holders_limit = self.holders_limit;
         let update = |state: &mut State| {
             if !state.held_by_us {
                 warn!(
                     %data_id,
                     %peer, "shouldn't have received a gossip response for partial data"
                 );
-                return None;
+                return;
             }
             let _ = state.holders.insert(peer.clone());
             if by_us {
                 let _ = state.infected_by_us.insert(peer.clone());
             }
             state.in_flight_count = state.in_flight_count.saturating_sub(1);
-            Some(state.is_finished(infection_target, holders_limit))
         };
 
-        let is_finished = if let Some(state) = self.current.get_mut(data_id) {
-            let is_finished = match update(state) {
-                Some(is_finished) => is_finished,
-                None => return GossipAction::Noop,
-            };
-            if !is_finished {
-                let is_new = false;
-                return state.action(self.infection_target, self.holders_limit, is_new);
-            }
-            true
-        } else {
-            false
-        };
-
-        if is_finished {
-            let _ = self.current.remove(data_id);
-            let timeout = Instant::now() + self.finished_entry_duration;
-            let _ = self.finished.insert(*data_id);
-            let _ = self.finished_timeouts.push(timeout, *data_id);
-            return GossipAction::Noop;
+        if let Some(action) = self.update_current(data_id, update) {
+            return action;
         }
 
-        let is_finished = if let Some(state) = self.paused.get_mut(data_id) {
-            match update(state) {
-                Some(is_finished) => is_finished,
-                None => return GossipAction::Noop,
-            }
-        } else {
-            false
-        };
-
-        if is_finished {
-            let _ = self.paused.remove(data_id);
-            let timeout = Instant::now() + self.finished_entry_duration;
-            let _ = self.finished.insert(*data_id);
-            let _ = self.finished_timeouts.push(timeout, *data_id);
-        }
-
-        GossipAction::Noop
+        self.update_paused(data_id, update)
+            .unwrap_or(GossipAction::Noop)
     }
 
     /// Directly reduces the in-flight count of gossip requests for the given item by the given
@@ -382,22 +341,32 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// If the peer is already counted as a holder, it has previously responded and this method
     /// returns Noop.  Otherwise it has timed out and we return the appropriate action to take.
     pub(crate) fn check_timeout(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
-        if let Some(state) = self.current.get_mut(data_id) {
+        let update = |state: &mut State| {
             debug_assert!(
                 state.held_by_us,
                 "shouldn't check timeout for a gossip response for partial data"
             );
+            if !state.held_by_us {
+                error!(
+                    %data_id,
+                    %peer, "shouldn't check timeout for a gossip response for partial data"
+                );
+                return;
+            }
 
             if !state.holders.contains(&peer) {
                 // Add the peer as a holder just to avoid retrying it.
-                let _ = state.holders.insert(peer);
+                let _ = state.holders.insert(peer.clone());
                 state.in_flight_count = state.in_flight_count.saturating_sub(1);
-                let is_new = false;
-                return state.action(self.infection_target, self.holders_limit, is_new);
             }
+        };
+
+        if let Some(action) = self.update_current(data_id, update) {
+            return action;
         }
 
-        GossipAction::Noop
+        self.update_paused(data_id, update)
+            .unwrap_or(GossipAction::Noop)
     }
 
     /// If we hold the full data, assume `peer` provided it to us and shouldn't be removed as a
@@ -455,6 +424,47 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         let action = state.action(self.infection_target, self.holders_limit, is_new);
         let _ = self.current.insert(*data_id, state);
         Ok(action)
+    }
+
+    /// Updates the entry under `data_id` in `self.current` and returns the action we should now
+    /// take, or `None` if the entry does not exist.
+    ///
+    /// If the entry becomes finished, it is moved from `self.current` to `self.finished`.
+    fn update_current<F: Fn(&mut State)>(
+        &mut self,
+        data_id: &T,
+        update: F,
+    ) -> Option<GossipAction> {
+        let mut state = self.current.remove(data_id)?;
+        update(&mut state);
+        if state.is_finished(self.infection_target, self.holders_limit) {
+            let timeout = Instant::now() + self.finished_entry_duration;
+            let _ = self.finished.insert(*data_id);
+            let _ = self.finished_timeouts.push(timeout, *data_id);
+            return Some(GossipAction::Noop);
+        }
+        let is_new = false;
+        let action = state.action(self.infection_target, self.holders_limit, is_new);
+        let _ = self.current.insert(*data_id, state);
+        Some(action)
+    }
+
+    /// Updates the entry under `data_id` in `self.paused` and returns the action we should now
+    /// take, or `None` if the entry does not exist.
+    ///
+    /// If the entry becomes finished, it is moved from `self.paused` to `self.finished`.
+    fn update_paused<F: Fn(&mut State)>(&mut self, data_id: &T, update: F) -> Option<GossipAction> {
+        let mut state = self.paused.remove(data_id)?;
+        update(&mut state);
+        if state.is_finished(self.infection_target, self.holders_limit) {
+            let timeout = Instant::now() + self.finished_entry_duration;
+            let _ = self.finished.insert(*data_id);
+            let _ = self.finished_timeouts.push(timeout, *data_id);
+        } else {
+            let _ = self.paused.insert(*data_id, state);
+        }
+
+        Some(GossipAction::Noop)
     }
 
     /// Retains only those finished entries which still haven't timed out.
@@ -584,10 +594,10 @@ mod tests {
         let _ = gossip_table.new_partial_data(&data_id, node_id.clone());
 
         let action = gossip_table.we_infected(&data_id, node_id.clone());
-        assert_eq!(GossipAction::Noop, action);
+        assert_eq!(GossipAction::AwaitingRemainder, action);
 
         let action = gossip_table.already_infected(&data_id, node_id);
-        assert_eq!(GossipAction::Noop, action);
+        assert_eq!(GossipAction::AwaitingRemainder, action);
     }
 
     #[test]
@@ -701,6 +711,62 @@ mod tests {
         // Check third new infection does cause us to stop gossiping.
         let action = gossip_table.we_infected(&data_id, node_ids[limit].clone());
         assert_eq!(GossipAction::Noop, action);
+        assert!(gossip_table.finished.contains(&data_id));
+    }
+
+    #[test]
+    fn should_terminate_via_incoming_gossip() {
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id1: u64 = rng.gen();
+        let data_id2: u64 = rng.gen();
+
+        let mut gossip_table = GossipTable::new(Config::default());
+
+        // Take the two items close to the termination condition of holder count by simulating
+        // receiving several incoming gossip requests.  Each should remain unfinished.
+        let limit = EXPECTED_DEFAULT_HOLDERS_LIMIT - 1;
+        for node_id in node_ids.iter().take(limit) {
+            let _ = gossip_table.new_partial_data(&data_id1, node_id.clone());
+            assert!(!gossip_table.finished.contains(&data_id1));
+
+            let _ = gossip_table.new_complete_data(&data_id2, Some(node_id.clone()));
+            assert!(!gossip_table.finished.contains(&data_id2));
+        }
+
+        // Simulate receiving a final gossip request for each, which should cause them both to be
+        // moved to the `finished` collection.
+        let _ = gossip_table
+            .new_partial_data(&data_id1, node_ids[EXPECTED_DEFAULT_HOLDERS_LIMIT].clone());
+        assert!(gossip_table.finished.contains(&data_id1));
+
+        let _ = gossip_table.new_complete_data(
+            &data_id2,
+            Some(node_ids[EXPECTED_DEFAULT_HOLDERS_LIMIT].clone()),
+        );
+        assert!(gossip_table.finished.contains(&data_id2));
+    }
+
+    #[test]
+    fn should_terminate_via_checking_timeout() {
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id: u64 = rng.gen();
+
+        let mut gossip_table = GossipTable::new(Config::default());
+
+        // Take the item close to the termination condition of holder count by simulating receiving
+        // several incoming gossip requests.  It should remain unfinished.
+        let limit = EXPECTED_DEFAULT_HOLDERS_LIMIT - 1;
+        for node_id in node_ids.iter().take(limit) {
+            let _ = gossip_table.new_complete_data(&data_id, Some(node_id.clone()));
+            assert!(!gossip_table.finished.contains(&data_id));
+        }
+
+        // Simulate a gossip response timing out, which should cause the item to be moved to the
+        // `finished` collection.
+        let _ =
+            gossip_table.check_timeout(&data_id, node_ids[EXPECTED_DEFAULT_HOLDERS_LIMIT].clone());
         assert!(gossip_table.finished.contains(&data_id));
     }
 

@@ -14,11 +14,10 @@ use crate::{
     reactor::validator::Config,
     types::{chainspec, Chainspec},
     utils::{LoadError, Loadable, WithDir},
-    NodeRng,
 };
 
 // This will be changed in favour of an actual old config type when the migration is not a no-op.
-type OldConfig = Config;
+type OldConfig = toml::Value;
 
 /// The name of the file for recording the new global state hash after a data migration.
 const POST_MIGRATION_STATE_HASH_FILENAME: &str = "post-migration-state-hash";
@@ -161,7 +160,6 @@ fn write_post_migration_info(
     state_hash: Blake2bHash,
     new_protocol_version: Version,
     secret_key: &SecretKey,
-    rng: &mut NodeRng,
     path: PathBuf,
 ) -> Result<(), Error> {
     // Serialize the info.
@@ -173,7 +171,7 @@ fn write_post_migration_info(
 
     // Sign the info.
     let public_key = PublicKey::from(secret_key);
-    let signature = crypto::sign(&serialized_info, secret_key, &public_key, rng);
+    let signature = crypto::sign(&serialized_info, secret_key, &public_key);
     let signed_info = SignedPostMigrationInfo {
         serialized_info,
         signature,
@@ -218,13 +216,7 @@ pub fn migrate_data(
     let state_hash = Blake2bHash::default();
 
     if state_hash != Blake2bHash::default() {
-        write_post_migration_info(
-            state_hash,
-            new_protocol_version,
-            &secret_key,
-            &mut crate::new_rng(),
-            info_path(),
-        )?;
+        write_post_migration_info(state_hash, new_protocol_version, &secret_key, info_path())?;
     }
 
     Ok(())
@@ -251,7 +243,6 @@ mod tests {
             state_hash,
             protocol_version.clone(),
             &secret_key,
-            &mut rng,
             info_path.clone(),
         )
         .unwrap();
@@ -283,7 +274,6 @@ mod tests {
             state_hash,
             protocol_version.clone(),
             &secret_key,
-            &mut rng,
             info_path.clone(),
         )
         .unwrap();
@@ -325,7 +315,6 @@ mod tests {
             state_hash,
             protocol_version.clone(),
             &other_secret_key,
-            &mut rng,
             info_path.clone(),
         )
         .unwrap();

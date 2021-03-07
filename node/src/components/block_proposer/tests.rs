@@ -2,7 +2,7 @@ use casper_execution_engine::core::engine_state::executable_deploy_item::Executa
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     runtime_args,
-    standard_payment::ARG_AMOUNT,
+    system::standard_payment::ARG_AMOUNT,
     RuntimeArgs, SecretKey,
 };
 
@@ -51,7 +51,6 @@ fn generate_transfer(
         payment,
         session,
         &secret_key,
-        rng,
     )
 }
 
@@ -86,7 +85,6 @@ fn generate_deploy(
         payment,
         session,
         &secret_key,
-        rng,
     )
 }
 

@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -21,8 +22,8 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepResult},
-            BalanceResult, EngineConfig, EngineState, GenesisResult, QueryRequest, QueryResult,
-            UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
+            BalanceResult, EngineConfig, EngineState, GenesisResult, GetBidsRequest, QueryRequest,
+            QueryResult, UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -39,6 +40,7 @@ use casper_execution_engine::{
     storage::{
         global_state::{
             in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, CommitResult, StateProvider,
+            StateReader,
         },
         protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
@@ -48,14 +50,19 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{
-        EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS, AUCTION_DELAY_KEY,
-        ERA_ID_KEY, METHOD_RUN_AUCTION,
-    },
     bytesrepr::{self},
-    mint::TOTAL_SUPPLY_KEY,
-    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
+    runtime_args,
+    system::{
+        auction::{
+            Bids, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
+            METHOD_RUN_AUCTION,
+        },
+        mint::TOTAL_SUPPLY_KEY,
+    },
+    CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
+    DeployHash, DeployInfo, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
+    U512,
 };
 
 use crate::internal::{
@@ -96,8 +103,8 @@ pub struct WasmTestBuilder<S> {
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Mint contract key
     mint_contract_hash: Option<ContractHash>,
-    /// PoS contract key
-    pos_contract_hash: Option<ContractHash>,
+    /// Handle payment contract key
+    handle_payment_contract_hash: Option<ContractHash>,
     /// Standard payment contract key
     standard_payment_hash: Option<ContractHash>,
     /// Auction contract key
@@ -129,7 +136,7 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
-            pos_contract_hash: None,
+            handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
@@ -150,7 +157,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
             mint_contract_hash: self.mint_contract_hash,
-            pos_contract_hash: self.pos_contract_hash,
+            handle_payment_contract_hash: self.handle_payment_contract_hash,
             standard_payment_hash: self.standard_payment_hash,
             auction_contract_hash: self.auction_contract_hash,
         }
@@ -222,7 +229,7 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
-            pos_contract_hash: None,
+            handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
@@ -245,7 +252,7 @@ impl LmdbWasmTestBuilder {
         builder.genesis_hash = result.0.genesis_hash;
         builder.post_state_hash = result.0.post_state_hash;
         builder.mint_contract_hash = result.0.mint_contract_hash;
-        builder.pos_contract_hash = result.0.pos_contract_hash;
+        builder.handle_payment_contract_hash = result.0.handle_payment_contract_hash;
         builder
     }
 
@@ -286,7 +293,7 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             mint_contract_hash: None,
-            pos_contract_hash: None,
+            handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
         }
@@ -321,7 +328,7 @@ where
             transforms: Vec::new(),
             genesis_account: result.0.genesis_account,
             mint_contract_hash: result.0.mint_contract_hash,
-            pos_contract_hash: result.0.pos_contract_hash,
+            handle_payment_contract_hash: result.0.handle_payment_contract_hash,
             standard_payment_hash: result.0.standard_payment_hash,
             auction_contract_hash: result.0.auction_contract_hash,
             genesis_transforms: result.0.genesis_transforms,
@@ -362,7 +369,7 @@ where
             self.genesis_hash = Some(state_root_hash);
             self.post_state_hash = Some(state_root_hash);
             self.mint_contract_hash = Some(protocol_data.mint());
-            self.pos_contract_hash = Some(protocol_data.proof_of_stake());
+            self.handle_payment_contract_hash = Some(protocol_data.handle_payment());
             self.standard_payment_hash = Some(protocol_data.standard_payment());
             self.auction_contract_hash = Some(protocol_data.auction());
             self.genesis_account = Some(genesis_account);
@@ -535,14 +542,21 @@ where
         self
     }
 
-    pub fn run_auction(&mut self, era_end_timestamp_millis: u64) -> &mut Self {
+    pub fn run_auction(
+        &mut self,
+        era_end_timestamp_millis: u64,
+        evicted_validators: Vec<PublicKey>,
+    ) -> &mut Self {
         const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
         let auction = self.get_auction_contract_hash();
         let run_request = ExecuteRequestBuilder::contract_call_by_hash(
             SYSTEM_ADDR,
             auction,
             METHOD_RUN_AUCTION,
-            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis },
+            runtime_args! {
+                ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis,
+                ARG_EVICTED_VALIDATORS => evicted_validators,
+            },
         )
         .build();
         self.exec(run_request).commit().expect_success()
@@ -616,9 +630,9 @@ where
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    pub fn get_pos_contract_hash(&self) -> ContractHash {
-        self.pos_contract_hash
-            .expect("Unable to obtain pos contract. Please run genesis first.")
+    pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
+        self.handle_payment_contract_hash
+            .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
@@ -690,26 +704,18 @@ where
         WasmTestResult(self.clone())
     }
 
-    pub fn get_pos_contract(&self) -> Contract {
-        let pos_contract: Key = self
-            .pos_contract_hash
-            .expect("should have pos contract uref")
+    pub fn get_handle_payment_contract(&self) -> Contract {
+        let handle_payment_contract: Key = self
+            .handle_payment_contract_hash
+            .expect("should have handle payment contract uref")
             .into();
-        self.query(None, pos_contract, &[])
+        self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
-            .expect("should find PoS URef")
+            .expect("should find handle payment URef")
     }
 
     pub fn get_purse_balance(&self, purse: URef) -> U512 {
-        let purse_addr = purse.addr();
-        let balance_mapping_key = Key::Hash(purse_addr);
-
-        let base_key = self
-            .query(None, balance_mapping_key, &[])
-            .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
-            .and_then(|cl_value| cl_value.into_t().map_err(|error| format!("{:?}", error)))
-            .expect("should find balance uref");
-
+        let base_key = Key::Balance(purse.addr());
         self.query(None, base_key, &[])
             .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
             .and_then(|cl_value| cl_value.into_t().map_err(|error| format!("{:?}", error)))
@@ -845,6 +851,49 @@ where
     pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let mut result = self.get_era_validators();
         result.remove(&era_id)
+    }
+
+    pub fn get_bids(&mut self) -> Bids {
+        let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
+
+        let get_bids_result = self
+            .engine_state
+            .get_bids(CorrelationId::new(), get_bids_request)
+            .unwrap();
+
+        get_bids_result.bids().cloned().unwrap()
+    }
+
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+
+        let tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        let reader = tracking_copy.reader();
+
+        let withdraws_keys = reader
+            .keys_with_prefix(correlation_id, &[KeyTag::Withdraw as u8])
+            .unwrap_or_default();
+
+        let mut ret = BTreeMap::new();
+
+        for key in withdraws_keys.into_iter() {
+            let read_result = reader.read(correlation_id, &key);
+            if let (
+                Key::Withdraw(account_hash),
+                Ok(Some(StoredValue::Withdraw(unbonding_purses))),
+            ) = (key, read_result)
+            {
+                ret.insert(account_hash, unbonding_purses);
+            }
+        }
+
+        ret
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T

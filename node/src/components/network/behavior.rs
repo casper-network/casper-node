@@ -19,7 +19,10 @@ use super::{
     gossip::{self, TOPIC},
     one_way_messaging, peer_discovery, Config, GossipMessage, OneWayCodec, OneWayOutgoingMessage,
 };
-use crate::types::{Chainspec, NodeId};
+use crate::{
+    components::networking_metrics::NetworkingMetrics,
+    types::{Chainspec, NodeId},
+};
 
 /// An enum defining the top-level events passed to the swarm's handler.  This will be received in
 /// the swarm's handler wrapped in a `SwarmEvent::Behaviour`.
@@ -48,8 +51,14 @@ pub(super) struct Behavior {
 }
 
 impl Behavior {
-    pub(super) fn new(config: &Config, chainspec: &Chainspec, our_public_key: PublicKey) -> Self {
-        let one_way_message_behavior = one_way_messaging::new_behavior(config, chainspec);
+    pub(super) fn new(
+        config: &Config,
+        net_metrics: &NetworkingMetrics,
+        chainspec: &Chainspec,
+        our_public_key: PublicKey,
+    ) -> Self {
+        let one_way_message_behavior =
+            one_way_messaging::new_behavior(config, net_metrics, chainspec);
 
         let gossip_behavior = gossip::new_behavior(config, chainspec, our_public_key.clone());
 

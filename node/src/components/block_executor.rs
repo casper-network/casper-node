@@ -11,6 +11,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
+use semver::Version;
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
@@ -40,7 +41,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId,
+        Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock,
+        NodeId,
     },
     NodeRng,
 };
@@ -77,12 +79,41 @@ struct ExecutedBlockSummary {
     accumulated_seed: Digest,
 }
 
+#[derive(DataSize, Debug, Default)]
+struct InitialState {
+    /// Height of the child of the highest known block at the time of initializing the component.
+    /// Required for the block executor to know when to stop looking for parent blocks when getting
+    /// the pre-state hash for execution. With upgrades, we could get a wrong hash if we went too
+    /// far.
+    child_height: u64,
+    /// Summary of the highest known block.
+    block_summary: Option<ExecutedBlockSummary>,
+    /// Initial state root hash.
+    state_root_hash: Digest,
+}
+
+impl InitialState {
+    fn new(state_root_hash: Digest, block_header: Option<&BlockHeader>) -> Self {
+        let block_summary = block_header.map(|hdr| ExecutedBlockSummary {
+            hash: hdr.hash(),
+            state_root_hash,
+            accumulated_seed: hdr.accumulated_seed(),
+        });
+        Self {
+            child_height: block_header.map_or(0, |hdr| hdr.height() + 1),
+            block_summary,
+            state_root_hash,
+        }
+    }
+}
+
 type BlockHeight = u64;
 
 /// The Block executor component.
 #[derive(DataSize, Debug, Default)]
 pub(crate) struct BlockExecutor {
-    genesis_state_root_hash: Digest,
+    initial_state: InitialState,
+    protocol_version: ProtocolVersion,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
@@ -98,10 +129,20 @@ pub(crate) struct BlockExecutor {
 }
 
 impl BlockExecutor {
-    pub(crate) fn new(genesis_state_root_hash: Digest, registry: Registry) -> Self {
+    pub(crate) fn new(
+        initial_state_root_hash: Digest,
+        initial_block_header: Option<&BlockHeader>,
+        protocol_version: Version,
+        registry: Registry,
+    ) -> Self {
         let metrics = BlockExecutorMetrics::new(registry).unwrap();
         BlockExecutor {
-            genesis_state_root_hash,
+            initial_state: InitialState::new(initial_state_root_hash, initial_block_header),
+            protocol_version: ProtocolVersion::from_parts(
+                protocol_version.major as u32,
+                protocol_version.minor as u32,
+                protocol_version.patch as u32,
+            ),
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
             metrics,
@@ -219,7 +260,7 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                let era_end = match state.finalized_block.era_end() {
+                let era_end = match state.finalized_block.era_report() {
                     Some(era_end) => era_end,
                     // Not at a switch block, so we don't need to have next_era_validators when
                     // constructing the next block
@@ -243,7 +284,7 @@ impl BlockExecutor {
                 let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
-                    protocol_version: ProtocolVersion::V1_0_0,
+                    protocol_version: self.protocol_version,
                     reward_items,
                     slash_items,
                     evict_items,
@@ -264,7 +305,7 @@ impl BlockExecutor {
             state.state_root_hash.into(),
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
-            ProtocolVersion::V1_0_0,
+            self.protocol_version,
             state.finalized_block.proposer(),
         );
 
@@ -406,9 +447,21 @@ impl BlockExecutor {
         state_root_hash: Digest,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Block {
-        let (parent_summary_hash, parent_seed) = if finalized_block.is_genesis_child() {
-            // Genesis, no parent summary.
-            (BlockHash::new(Digest::default()), Digest::default())
+        let (parent_summary_hash, parent_seed) = if self.is_initial_block_child(&finalized_block) {
+            // The first block after the initial one: get initial block summary if we have one, or
+            // if not, this should be the genesis child and so we take the default values.
+            (
+                self.initial_state
+                    .block_summary
+                    .as_ref()
+                    .map(|summary| summary.hash)
+                    .unwrap_or_else(|| BlockHash::new(Digest::default())),
+                self.initial_state
+                    .block_summary
+                    .as_ref()
+                    .map(|summary| summary.accumulated_seed)
+                    .unwrap_or_default(),
+            )
         } else {
             let parent_block_height = finalized_block.height() - 1;
             let summary = self
@@ -424,6 +477,7 @@ impl BlockExecutor {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            self.protocol_version,
         );
         let summary = ExecutedBlockSummary {
             hash: *block.hash(),
@@ -435,8 +489,8 @@ impl BlockExecutor {
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
-        if finalized_block.is_genesis_child() {
-            Some(self.genesis_state_root_hash)
+        if self.is_initial_block_child(finalized_block) {
+            Some(self.initial_state.state_root_hash)
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.
             // We're subtracting 1 from the height as we want to get _parent's_ post-state hash.
@@ -445,6 +499,12 @@ impl BlockExecutor {
                 .get(&parent_block_height)
                 .map(|summary| summary.state_root_hash)
         }
+    }
+
+    /// Returns true if the `finalized_block` is an immediate child of the initial block, ie.
+    /// either genesis or the highest known block at the time of initializing the component.
+    fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
+        finalized_block.height() == self.initial_state.child_height
     }
 }
 
@@ -470,9 +530,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         )
                     })
             }
-            Event::BlockAlreadyExists(block) => effect_builder
-                .handle_linear_chain_block(block.take_header())
-                .ignore(),
+            Event::BlockAlreadyExists(block) => {
+                effect_builder.handle_linear_chain_block(*block).ignore()
+            }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),

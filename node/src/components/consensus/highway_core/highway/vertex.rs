@@ -15,7 +15,6 @@ use crate::{
         traits::{Context, ValidatorSecret},
     },
     types::Timestamp,
-    NodeRng,
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
@@ -95,10 +94,11 @@ impl<C: Context> Vertex<C> {
         }
     }
 
-    pub(crate) fn signed_wire_unit(&self) -> Option<&SignedWireUnit<C>> {
+    pub(crate) fn creator(&self) -> Option<ValidatorIndex> {
         match self {
-            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit),
-            _ => None,
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().creator),
+            Vertex::Ping(ping) => Some(ping.creator),
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
@@ -129,9 +129,8 @@ impl<C: Context> SignedWireUnit<C> {
     pub(crate) fn new(
         hashed_wire_unit: HashedWireUnit<C>,
         secret_key: &C::ValidatorSecret,
-        rng: &mut NodeRng,
     ) -> Self {
-        let signature = secret_key.sign(&hashed_wire_unit.hash, rng);
+        let signature = secret_key.sign(&hashed_wire_unit.hash);
         SignedWireUnit {
             hashed_wire_unit,
             signature,
@@ -323,12 +322,11 @@ impl<C: Context> Ping<C> {
         creator: ValidatorIndex,
         timestamp: Timestamp,
         sk: &C::ValidatorSecret,
-        rng: &mut NodeRng,
     ) -> Self {
         Ping {
             creator,
             timestamp,
-            signature: sk.sign(&Self::hash(creator, timestamp), rng),
+            signature: sk.sign(&Self::hash(creator, timestamp)),
         }
     }
 
