@@ -14,26 +14,33 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     sync::atomic::{AtomicU16, Ordering},
+    time,
 };
 
+use derive_more::From;
 use futures::channel::oneshot;
 use serde::{de::DeserializeOwned, Serialize};
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
+use tracing::{debug, warn};
 
 use crate::{
     components::Component,
-    effect::{EffectBuilder, Effects, Responder},
+    effect::{announcements::ControlAnnouncement, EffectBuilder, Effects, Responder},
     logging,
-    reactor::{EventQueueHandle, QueueKind, Scheduler},
+    reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
 };
 use anyhow::Context;
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 pub(crate) use test_rng::TestRng;
 
-// Lower bound for the port, below there's a high chance of hitting a system service.
+/// Lower bound for the port, below there's a high chance of hitting a system service.
 const PORT_LOWER_BOUND: u16 = 10_000;
+
+/// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
+/// problem.
+const FATAL_GRACE_TIME: time::Duration = time::Duration::from_secs(3);
 
 pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
     let serialized = bincode::serialize(value).unwrap();
@@ -200,6 +207,7 @@ impl<REv: 'static> ComponentHarness<REv> {
         <C as Component<REv>>::Event: Send + 'static,
         T: Send + 'static,
         F: FnOnce(Responder<T>) -> C::Event,
+        REv: ReactorEvent,
     {
         // Prepare a channel.
         let (sender, receiver) = oneshot::channel();
@@ -214,17 +222,60 @@ impl<REv: 'static> ComponentHarness<REv> {
         let returned_effects = self.send_event(component, request_event);
 
         // Execute the effects on our dedicated runtime, hopefully creating the responses.
+        let mut join_handles = Vec::new();
         for effect in returned_effects {
-            self.runtime.spawn(effect);
+            join_handles.push(self.runtime.spawn(effect));
         }
 
         // Wait for a response to arrive.
         self.runtime.block_on(receiver).unwrap_or_else(|err| {
-            // The channel should never be closed, ever.
+            // A channel was closed and this is usually an error. However, we consider all pending
+            // events, in case we did get a control announcement requiring us to fatal error instead
+            // before panicking on the basis of the missing response.
+
+            // We give each of them a little time to produce the desired event. Note that `join_all`
+            // should be safe to cancel, since we are only awaiting join handles.
+            let join_all = async {
+                for handle in join_handles {
+                    if let Err(err) = handle.await {
+                        warn!("Join error while waiting for an effect to finish: {}", err);
+                    };
+                }
+            };
+
+            if let Err(_timeout) = self.runtime.block_on(async move {
+                // Note: timeout can only be called from within a running running, this is why
+                // we use an extra `async` block here.
+                tokio::time::timeout(FATAL_GRACE_TIME, join_all).await
+            }) {
+                warn!(grace_time=?FATAL_GRACE_TIME, "while a responder was dropped in a unit test, \
+                I waited for all other pending effects to complete in case the output of a \
+                `fatal!` was among them but none of them completed");
+            }
+
+            // Iterate over all events that currently are inside the queue and fish out any fatal.
+            for _ in 0..(self.scheduler.item_count()) {
+                let (ev, _queue_kind) = self.runtime.block_on(self.scheduler.pop());
+
+                if let Some(ctrl_ann) = ev.as_control() {
+                    match ctrl_ann {
+                        fatal @ ControlAnnouncement::FatalError { .. } => {
+                            panic!(
+                                "a control announcement requesting a fatal error was received: {}",
+                                fatal
+                            )
+                        }
+                    }
+                } else {
+                    debug!(?ev, "ignoring event while looking for a fatal")
+                }
+            }
+
+            // Barring a `fatal`, the channel should never be closed, ever.
             panic!(
-                "request for {} channel closed with error \"{}\" in unit test harness",
+                "request for {} channel closed with return value \"{}\" in unit test harness",
+                type_name::<T>(),
                 err,
-                type_name::<T>()
             );
         })
     }
