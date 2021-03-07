@@ -179,8 +179,8 @@ function _set_chainspec()
     local SCRIPT=(
         "import toml;"
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
+        "cfg['protocol']['activation_point']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
         "cfg['network']['name']='$(get_chain_name)';"
-        "cfg['network']['timestamp']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
         "cfg['core']['validator_slots']=$(($(get_count_of_nodes) * 2));"
         "toml.dump(cfg, open('$PATH_TO_CHAINSPEC_FILE', 'w'));"
     )
