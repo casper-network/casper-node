@@ -23,7 +23,6 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    testing::TestRng,
     types::{ProtoBlock, Timestamp},
 };
 
@@ -101,9 +100,8 @@ fn test_highway_protocol_handle_message_parse_error() {
 
     let sender = NodeId(123);
     let msg = vec![];
-    let mut rng = TestRng::new();
     let mut effects: Vec<ProtocolOutcome<NodeId, ClContext>> =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), &mut rng);
+        highway_protocol.handle_message(sender.to_owned(), msg.to_owned());
 
     assert_eq!(effects.len(), 1);
 
@@ -131,7 +129,6 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
-    let mut rng = TestRng::new();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
@@ -144,12 +141,12 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     };
     let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
-    let mut outcomes = highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), &mut rng);
+    let mut outcomes = highway_protocol.handle_message(sender.to_owned(), msg.to_owned());
     assert_eq!(outcomes.len(), 1);
 
     let maybe_protocol_outcome = outcomes.pop();
@@ -182,7 +179,6 @@ fn send_a_valid_wire_unit() {
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
-    let mut rng = TestRng::new();
     let timestamp = 0.into();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
@@ -200,18 +196,18 @@ fn send_a_valid_wire_unit() {
     };
     let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
 
-    let mut outcomes = highway_protocol.handle_message(sender, msg, &mut rng);
+    let mut outcomes = highway_protocol.handle_message(sender, msg);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
             ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
-                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, &mut rng))
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX))
             }
             outcome => panic!("Unexpected outcome: {:?}", outcome),
         }
@@ -225,7 +221,6 @@ fn detect_doppelganger() {
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N, N]);
     let seq_number = panorama.next_seq_num(&state, creator);
-    let mut rng = TestRng::new();
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let timestamp = 0.into();
@@ -242,7 +237,7 @@ fn detect_doppelganger() {
     };
     let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
@@ -258,12 +253,12 @@ fn detect_doppelganger() {
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let mut outcomes = highway_protocol.handle_message(sender, msg, &mut rng);
+    let mut outcomes = highway_protocol.handle_message(sender, msg);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::DoppelgangerDetected => return,
             ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
-                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, &mut rng))
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX))
             }
             _ => (),
         }

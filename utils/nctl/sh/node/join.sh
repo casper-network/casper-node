@@ -21,7 +21,7 @@ done
 
 NODE_ID=${NODE_ID:-6}
 BID_AMOUNT=${BID_AMOUNT:-$(get_node_staking_weight "$NODE_ID")}
-BID_DELEGATION_RATE=${BID_DELEGATION_RATE:-125}
+BID_DELEGATION_RATE=${BID_DELEGATION_RATE:-2}
 
 # ----------------------------------------------------------------
 # MAIN

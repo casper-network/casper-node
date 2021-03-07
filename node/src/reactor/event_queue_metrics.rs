@@ -1,9 +1,13 @@
-use prometheus::{self, IntGauge, Registry};
-
-use crate::reactor::{EventQueueHandle, QueueKind};
-use itertools::Itertools;
 use std::collections::HashMap;
-use tracing::debug;
+
+use itertools::Itertools;
+use prometheus::{self, IntGauge, Registry};
+use tracing::{debug, error};
+
+use crate::{
+    reactor::{EventQueueHandle, QueueKind},
+    unregister_metric,
+};
 
 /// Metrics for event queue sizes.
 #[derive(Debug)]
@@ -75,17 +79,13 @@ impl EventQueueMetrics {
 
 impl Drop for EventQueueMetrics {
     fn drop(&mut self) {
-        self.registry
-            .unregister(Box::new(self.event_total.clone()))
-            .expect("did not expect de-registering of scheduler_queue_total_count to fail.");
+        unregister_metric!(self.registry, self.event_total);
         self.event_queue_gauges
             .iter()
             .for_each(|(key, queue_gauge)| {
                 self.registry
                     .unregister(Box::new(queue_gauge.clone()))
-                    .unwrap_or_else(|_| {
-                        panic!("did not expect de-registering of {:?} to fail.", key)
-                    })
+                    .unwrap_or_else(|_| error!("unregistering {} failed: was not registered", key))
             });
     }
 }

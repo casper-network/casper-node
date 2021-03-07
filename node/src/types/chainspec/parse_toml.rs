@@ -14,21 +14,17 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 use super::{
-    accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig,
-    protocol_config::ActivationPoint, Chainspec, CoreConfig, DeployConfig, Error,
-    GlobalStateUpdate, HighwayConfig, NetworkConfig, ProtocolConfig,
+    accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
+    Chainspec, CoreConfig, DeployConfig, Error, GlobalStateUpdate, HighwayConfig, NetworkConfig,
+    ProtocolConfig,
 };
-use crate::{
-    types::Timestamp,
-    utils::{self, Loadable},
-};
+use crate::utils::{self, Loadable};
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 struct TomlNetwork {
     name: String,
-    timestamp: Timestamp,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -63,7 +59,6 @@ impl From<&Chainspec> for TomlChainspec {
         };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
-            timestamp: chainspec.network_config.timestamp,
         };
         let core = chainspec.core_config;
         let deploys = chainspec.deploy_config;
@@ -97,7 +92,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
 
     let network_config = NetworkConfig {
         name: toml_chainspec.network.name,
-        timestamp: toml_chainspec.network.timestamp,
         accounts_config,
     };
 

@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
     types::{TimeDiff, Timestamp},
-    NodeRng,
 };
 
 /// Information about the context in which a new block is created.
@@ -80,6 +79,8 @@ pub(crate) struct FinalizedBlock<C: Context> {
     pub(crate) proposer: C::ValidatorId,
 }
 
+pub(crate) type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
+
 // TODO: get rid of anyhow::Error; use variant and derive Clone and PartialEq. This is for testing.
 #[derive(Debug)]
 pub(crate) enum ProtocolOutcome<I, C: Context> {
@@ -125,38 +126,23 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn as_any(&self) -> &dyn Any;
 
     /// Handles an incoming message (like NewUnit, RequestDependency).
-    fn handle_message(
-        &mut self,
-        sender: I,
-        msg: Vec<u8>,
-        rng: &mut NodeRng,
-    ) -> Vec<ProtocolOutcome<I, C>>;
+    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> ProtocolOutcomes<I, C>;
 
     /// Handles new connection to a peer.
-    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>>;
+    fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(
-        &mut self,
-        timestamp: Timestamp,
-        timer_id: TimerId,
-        rng: &mut NodeRng,
-    ) -> Vec<ProtocolOutcome<I, C>>;
+    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;
 
     /// Triggers a queued action.
-    fn handle_action(
-        &mut self,
-        action_id: ActionId,
-        rng: &mut NodeRng,
-    ) -> Vec<ProtocolOutcome<I, C>>;
+    fn handle_action(&mut self, action_id: ActionId) -> ProtocolOutcomes<I, C>;
 
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut NodeRng,
-    ) -> Vec<ProtocolOutcome<I, C>>;
+    ) -> ProtocolOutcomes<I, C>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ProtocolOutcome::ValidateConsensusvalue`.
@@ -164,8 +150,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-        rng: &mut NodeRng,
-    ) -> Vec<ProtocolOutcome<I, C>>;
+    ) -> ProtocolOutcomes<I, C>;
 
     /// Turns this instance into an active validator, that participates in the consensus protocol.
     fn activate_validator(
@@ -174,7 +159,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
         unit_hash_file: Option<PathBuf>,
-    ) -> Vec<ProtocolOutcome<I, C>>;
+    ) -> ProtocolOutcomes<I, C>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
@@ -189,7 +174,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn mark_faulty(&mut self, vid: &C::ValidatorId);
 
     /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
-    fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> Vec<ProtocolOutcome<I, C>>;
+    fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> ProtocolOutcomes<I, C>;
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
     fn set_paused(&mut self, paused: bool);
@@ -208,7 +193,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
 
     /// Returns the protocol outcomes for all the required timers.
     /// TODO: Remove this once the Joiner no longer has a consensus component.
-    fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>>;
+    fn recreate_timers(&self) -> ProtocolOutcomes<I, C>;
 
     // TODO: Make this lees Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;

@@ -56,7 +56,7 @@ function main()
             --secret-key "$BIDDER_SECRET_KEY" \
             --session-arg "$(get_cl_arg_account_key 'public_key' "$BIDDER_ACCOUNT_KEY")" \
             --session-arg "$(get_cl_arg_u512 'amount' "$BID_AMOUNT")" \
-            --session-arg "$(get_cl_arg_u64 'delegation_rate' "$BID_DELEGATION_RATE")" \
+            --session-arg "$(get_cl_arg_u8 'delegation_rate' "$BID_DELEGATION_RATE")" \
             --session-path "$PATH_TO_CONTRACT" \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
@@ -90,4 +90,4 @@ done
 
 main "${NODE_ID:-6}" \
      "${AMOUNT:-$(get_node_staking_weight "${NODE_ID:-6}")}" \
-     "${DELEGATION_RATE:-125}"
+     "${DELEGATION_RATE:-2}"

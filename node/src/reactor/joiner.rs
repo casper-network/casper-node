@@ -16,8 +16,6 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{PublicKey, U512};
-
 #[cfg(not(feature = "fast-sync"))]
 use crate::components::linear_chain_sync::{self, LinearChainSync};
 #[cfg(feature = "fast-sync")]
@@ -76,6 +74,7 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -338,37 +337,37 @@ impl Display for Event {
 /// Joining node reactor.
 #[derive(DataSize)]
 pub struct Reactor {
-    pub(super) metrics: Metrics,
-    pub(super) network: Network<Event, Message>,
-    pub(super) small_network: SmallNetwork<Event, Message>,
-    pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
-    pub(super) config: validator::Config,
-    pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Storage,
-    pub(super) contract_runtime: ContractRuntime,
-    pub(super) linear_chain_fetcher: Fetcher<Block>,
-    pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<Block, NodeId>,
-    pub(super) deploy_fetcher: Fetcher<Deploy>,
-    pub(super) block_executor: BlockExecutor,
-    pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
-    pub(super) consensus: EraSupervisor<NodeId>,
+    metrics: Metrics,
+    network: Network<Event, Message>,
+    small_network: SmallNetwork<Event, Message>,
+    address_gossiper: Gossiper<GossipedAddress, Event>,
+    config: validator::Config,
+    chainspec_loader: ChainspecLoader,
+    storage: Storage,
+    contract_runtime: ContractRuntime,
+    linear_chain_fetcher: Fetcher<Block>,
+    linear_chain_sync: LinearChainSync<NodeId>,
+    block_validator: BlockValidator<Block, NodeId>,
+    deploy_fetcher: Fetcher<Deploy>,
+    block_executor: BlockExecutor,
+    linear_chain: linear_chain::LinearChain<NodeId>,
+    consensus: EraSupervisor<NodeId>,
     // Handles request for linear chain block by height.
-    pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
+    block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     pub(super) block_header_and_finality_signatures_by_height_fetcher:
         Fetcher<BlockHeaderAndFinalitySignatures>,
     #[data_size(skip)]
-    pub(super) deploy_acceptor: DeployAcceptor,
+    deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
     #[data_size(skip)]
-    pub(super) rest_server: RestServer,
+    rest_server: RestServer,
     #[data_size(skip)]
-    pub(super) event_stream_server: EventStreamServer,
+    event_stream_server: EventStreamServer,
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
-    pub(super) memory_metrics: MemoryMetrics,
+    memory_metrics: MemoryMetrics,
 }
 
 impl reactor::Reactor for Reactor {
@@ -446,15 +445,21 @@ impl reactor::Reactor for Reactor {
             None => {
                 let chainspec = chainspec_loader.chainspec();
                 let era_duration = chainspec.core_config.era_duration;
-                if Timestamp::now() > chainspec.network_config.timestamp + era_duration {
-                    error!(
-                        "Node started with no trusted hash after the expected end of \
-                         the genesis era! Please specify a trusted hash and restart. \
-                         Time: {}, End of genesis era: {}",
-                        Timestamp::now(),
-                        chainspec.network_config.timestamp + era_duration
-                    );
-                    panic!("should have trusted hash after genesis era")
+                if let Some(start_time) = chainspec
+                    .protocol_config
+                    .activation_point
+                    .genesis_timestamp()
+                {
+                    if Timestamp::now() > start_time + era_duration {
+                        error!(
+                            "Node started with no trusted hash after the expected end of \
+                             the genesis era! Please specify a trusted hash and restart. \
+                             Time: {}, End of genesis era: {}",
+                            Timestamp::now(),
+                            start_time + era_duration
+                        );
+                        panic!("should have trusted hash after genesis era")
+                    }
                 }
                 info!("No synchronization of the linear chain will be done.")
             }
@@ -507,7 +512,6 @@ impl reactor::Reactor for Reactor {
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
-
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
@@ -517,7 +521,7 @@ impl reactor::Reactor for Reactor {
             &storage,
             init_hash,
             chainspec_loader.initial_block_header().cloned(),
-            validator_weights.clone(),
+            validator_weights,
             maybe_next_activation_point,
         )?;
 
@@ -529,8 +533,8 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
-            validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),

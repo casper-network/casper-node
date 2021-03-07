@@ -5,7 +5,8 @@ use core::{
     result,
 };
 
-use failure::Fail;
+#[cfg(feature = "std")]
+use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -13,141 +14,148 @@ use crate::{
 };
 
 /// Errors which can occur while executing the Auction contract.
-#[derive(Fail, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Error))]
 #[repr(u8)]
 pub enum Error {
     /// Unable to find named key in the contract's named keys.
-    #[fail(display = "Missing key")]
+    #[cfg_attr(feature = "std", error("Missing key"))]
     MissingKey = 0,
     /// Given named key contains invalid variant.
-    #[fail(display = "Invalid key variant")]
+    #[cfg_attr(feature = "std", error("Invalid key variant"))]
     InvalidKeyVariant = 1,
     /// Value under an uref does not exist. This means the installer contract didn't work properly.
-    #[fail(display = "Missing value")]
+    #[cfg_attr(feature = "std", error("Missing value"))]
     MissingValue = 2,
     /// ABI serialization issue while reading or writing.
-    #[fail(display = "Serialization error")]
+    #[cfg_attr(feature = "std", error("Serialization error"))]
     Serialization = 3,
     /// Triggered when contract was unable to transfer desired amount of tokens into a bid purse.
-    #[fail(display = "Transfer to bid purse error")]
+    #[cfg_attr(feature = "std", error("Transfer to bid purse error"))]
     TransferToBidPurse = 4,
     /// User passed invalid amount of tokens which might result in wrong values after calculation.
-    #[fail(display = "Invalid amount")]
+    #[cfg_attr(feature = "std", error("Invalid amount"))]
     InvalidAmount = 5,
     /// Unable to find a bid by account hash in `active_bids` map.
-    #[fail(display = "Bid not found")]
+    #[cfg_attr(feature = "std", error("Bid not found"))]
     BidNotFound = 6,
     /// Validator's account hash was not found in the map.
-    #[fail(display = "Validator not found")]
+    #[cfg_attr(feature = "std", error("Validator not found"))]
     ValidatorNotFound = 7,
     /// Delegator's account hash was not found in the map.
-    #[fail(display = "Delegator not found")]
+    #[cfg_attr(feature = "std", error("Delegator not found"))]
     DelegatorNotFound = 8,
     /// Storage problem.
-    #[fail(display = "Storage error")]
+    #[cfg_attr(feature = "std", error("Storage error"))]
     Storage = 9,
     /// Raised when system is unable to bond.
-    #[fail(display = "Bonding error")]
+    #[cfg_attr(feature = "std", error("Bonding error"))]
     Bonding = 10,
     /// Raised when system is unable to unbond.
-    #[fail(display = "Unbonding error")]
+    #[cfg_attr(feature = "std", error("Unbonding error"))]
     Unbonding = 11,
     /// Raised when Mint contract is unable to release founder stake.
-    #[fail(display = "Unable to release founder stake")]
+    #[cfg_attr(feature = "std", error("Unable to release founder stake"))]
     ReleaseFounderStake = 12,
     /// Raised when the system is unable to determine purse balance.
-    #[fail(display = "Unable to get purse balance")]
+    #[cfg_attr(feature = "std", error("Unable to get purse balance"))]
     GetBalance = 13,
     /// Raised when an entry point is called from invalid account context.
-    #[fail(display = "Invalid context")]
+    #[cfg_attr(feature = "std", error("Invalid context"))]
     InvalidContext = 14,
     /// Raised whenever a validator's funds are still locked in but an attempt to withdraw was
     /// made.
-    #[fail(display = "Validator's funds are locked")]
+    #[cfg_attr(feature = "std", error("Validator's funds are locked"))]
     ValidatorFundsLocked = 15,
     /// Raised when caller is not the system account.
-    #[fail(display = "Function must be called by system account")]
+    #[cfg_attr(feature = "std", error("Function must be called by system account"))]
     InvalidCaller = 16,
     /// Raised when function is supplied a public key that does match the caller's.
-    #[fail(display = "Supplied public key does not match caller's public key")]
+    #[cfg_attr(
+        feature = "std",
+        error("Supplied public key does not match caller's public key")
+    )]
     InvalidPublicKey = 17,
     /// Validator is not not bonded.
-    #[fail(display = "Validator's bond not found")]
+    #[cfg_attr(feature = "std", error("Validator's bond not found"))]
     BondNotFound = 18,
     /// Unable to create purse.
-    #[fail(display = "Unable to create purse")]
+    #[cfg_attr(feature = "std", error("Unable to create purse"))]
     CreatePurseFailed = 19,
     /// Attempted to unbond an amount which was too large.
-    #[fail(display = "Unbond is too large")]
+    #[cfg_attr(feature = "std", error("Unbond is too large"))]
     UnbondTooLarge = 20,
     /// Attempted to bond with a stake which was too small.
-    #[fail(display = "Bond is too small")]
+    #[cfg_attr(feature = "std", error("Bond is too small"))]
     BondTooSmall = 21,
     /// Raised when rewards are to be distributed to delegators, but the validator has no
     /// delegations.
-    #[fail(display = "Validators has not received any delegations")]
+    #[cfg_attr(feature = "std", error("Validators has not received any delegations"))]
     MissingDelegations = 22,
     /// The validators returned by the consensus component should match
     /// current era validators when distributing rewards.
-    #[fail(display = "Mismatched era validator sets to distribute rewards")]
+    #[cfg_attr(
+        feature = "std",
+        error("Mismatched era validator sets to distribute rewards")
+    )]
     MismatchedEraValidators = 23,
     /// Failed to mint reward tokens.
-    #[fail(display = "Failed to mint rewards")]
+    #[cfg_attr(feature = "std", error("Failed to mint rewards"))]
     MintReward = 24,
     /// Invalid number of validator slots.
-    #[fail(display = "Invalid number of validator slots")]
+    #[cfg_attr(feature = "std", error("Invalid number of validator slots"))]
     InvalidValidatorSlotsValue = 25,
     /// Failed to reduce total supply.
-    #[fail(display = "Failed to reduce total supply")]
+    #[cfg_attr(feature = "std", error("Failed to reduce total supply"))]
     MintReduceTotalSupply = 26,
     /// Triggered when contract was unable to transfer desired amount of tokens into a delegators
     /// purse.
-    #[fail(display = "Transfer to delegators purse error")]
+    #[cfg_attr(feature = "std", error("Transfer to delegators purse error"))]
     TransferToDelegatorPurse = 27,
     /// Triggered when contract was unable to perform a transfer to distribute validators reward.
-    #[fail(display = "Reward transfer to validator error")]
+    #[cfg_attr(feature = "std", error("Reward transfer to validator error"))]
     ValidatorRewardTransfer = 28,
     /// Triggered when contract was unable to perform a transfer to distribute delegators rewards.
-    #[fail(display = "Rewards transfer to delegator error")]
+    #[cfg_attr(feature = "std", error("Rewards transfer to delegator error"))]
     DelegatorRewardTransfer = 29,
     /// Failed to transfer desired amount while withdrawing delegators reward.
-    #[fail(display = "Withdraw delegator reward error")]
+    #[cfg_attr(feature = "std", error("Withdraw delegator reward error"))]
     WithdrawDelegatorReward = 30,
     /// Failed to transfer desired amount while withdrawing validators reward.
-    #[fail(display = "Withdraw validator reward error")]
+    #[cfg_attr(feature = "std", error("Withdraw validator reward error"))]
     WithdrawValidatorReward = 31,
     /// Failed to transfer desired amount into unbonding purse.
-    #[fail(display = "Transfer to unbonding purse error")]
+    #[cfg_attr(feature = "std", error("Transfer to unbonding purse error"))]
     TransferToUnbondingPurse = 32,
     /// Failed to record era info.
-    #[fail(display = "Record era info error")]
+    #[cfg_attr(feature = "std", error("Record era info error"))]
     RecordEraInfo = 33,
     /// Failed to create a [`crate::CLValue`].
-    #[fail(display = "CLValue error")]
+    #[cfg_attr(feature = "std", error("CLValue error"))]
     CLValue = 34,
     /// Missing seigniorage recipients for given era.
-    #[fail(display = "Missing seigniorage recipients for given era")]
+    #[cfg_attr(feature = "std", error("Missing seigniorage recipients for given era"))]
     MissingSeigniorageRecipients = 35,
     /// Failed to transfer funds.
-    #[fail(display = "Transfer error")]
+    #[cfg_attr(feature = "std", error("Transfer error"))]
     Transfer = 36,
     /// Delegation rate exceeds rate.
-    #[fail(display = "Delegation rate too large")]
+    #[cfg_attr(feature = "std", error("Delegation rate too large"))]
     DelegationRateTooLarge = 37,
     /// Raised whenever a delegator's funds are still locked in but an attempt to undelegate was
     /// made.
-    #[fail(display = "Delegator's funds are locked")]
+    #[cfg_attr(feature = "std", error("Delegator's funds are locked"))]
     DelegatorFundsLocked = 38,
 
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
-    #[fail(display = "GasLimit")]
+    #[cfg_attr(feature = "std", error("GasLimit"))]
     GasLimit,
 
     #[cfg(test)]
     #[doc(hidden)]
-    #[fail(display = "Sentinel error")]
+    #[cfg_attr(feature = "std", error("Sentinel error"))]
     Sentinel,
 }
 

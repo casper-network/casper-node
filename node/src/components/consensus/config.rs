@@ -58,8 +58,8 @@ pub(crate) struct ProtocolConfig {
     pub(crate) last_activation_point: EraId,
     /// Name of the network.
     pub(crate) name: String,
-    /// Genesis timestamp.
-    pub(crate) timestamp: Timestamp,
+    /// Genesis timestamp, if available.
+    pub(crate) genesis_timestamp: Option<Timestamp>,
     /// The chainspec hash: All nodes in the network agree on it, and it's unique to this network.
     pub(crate) chainspec_hash: Digest,
 }
@@ -73,9 +73,12 @@ impl From<&Chainspec> for ProtocolConfig {
             auction_delay: chainspec.core_config.auction_delay,
             unbonding_delay: chainspec.core_config.unbonding_delay,
             protocol_version: chainspec.protocol_config.version.clone(),
-            last_activation_point: chainspec.protocol_config.activation_point.era_id,
+            last_activation_point: chainspec.protocol_config.activation_point.era_id(),
             name: chainspec.network_config.name.clone(),
-            timestamp: chainspec.network_config.timestamp,
+            genesis_timestamp: chainspec
+                .protocol_config
+                .activation_point
+                .genesis_timestamp(),
             chainspec_hash: chainspec.hash(),
         }
     }

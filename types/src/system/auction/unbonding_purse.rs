@@ -1,4 +1,11 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -7,7 +14,9 @@ use crate::{
 };
 
 /// Unbonding purse.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct UnbondingPurse {
     /// Bonding Purse
     bonding_purse: URef,
