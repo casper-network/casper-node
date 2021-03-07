@@ -222,8 +222,7 @@ impl<REv: 'static> ComponentHarness<REv> {
         self.runtime.block_on(receiver).unwrap_or_else(|err| {
             // The channel should never be closed, ever.
             panic!(
-                "request for {} channel closed with error \"{}\", this is a serious bug --- \
-                 a component will likely be stuck from now on",
+                "request for {} channel closed with error \"{}\" in unit test harness",
                 err,
                 type_name::<T>()
             );
