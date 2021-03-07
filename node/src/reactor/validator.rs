@@ -843,15 +843,41 @@ impl reactor::Reactor for Reactor {
                                 responder: None,
                             })
                         }
-                        Tag::Block => todo!("Handle GET block response"),
-                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
-                        Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
+                        Tag::Block => {
+                            error!(
+                                "cannot handle get response for block-by-hash from {}",
+                                sender
+                            );
                             return Effects::new();
                         }
-                        Tag::BlockHeaderByHash => todo!("Handle GET BlockHeaderByHash response"),
+                        Tag::BlockByHeight => {
+                            error!(
+                                "cannot handle get response for block-by-height from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::GossipedAddress => {
+                            error!(
+                                "cannot handle get response for gossiped-address from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockHeaderByHash => {
+                            error!(
+                                "cannot handle get response for block-header-by-hash from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
                         Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            todo!("Handle GET BlockHeaderByHeight response")
+                            error!(
+                                "cannot handle get response for \
+                                 block-header-and-finality-signatures-by-height from {}",
+                                sender
+                            );
+                            return Effects::new();
                         }
                     },
                     Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
