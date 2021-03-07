@@ -156,7 +156,6 @@ def is_valid(toml_obj):
 
 if __name__ == '__main__':
     args = parse_args()
-    print(args)
 
     toml_obj = toml.load(args.accounts_toml_path)
     if is_valid(toml_obj):
