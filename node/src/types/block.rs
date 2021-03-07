@@ -855,7 +855,7 @@ pub struct BlockHeaderWithMetadata {
 
 impl Display for BlockHeaderWithMetadata {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{} and {}", self.block_header, self.block_signatures)
     }
 }
 
