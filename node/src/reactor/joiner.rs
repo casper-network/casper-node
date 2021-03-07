@@ -68,8 +68,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderAndFinalitySignatures, Deploy, ExitCode,
-        NodeId, ProtoBlock, Tag, Timestamp,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
+        ProtoBlock, Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -355,8 +355,7 @@ pub struct Reactor {
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
-    pub(super) block_header_and_finality_signatures_by_height_fetcher:
-        Fetcher<BlockHeaderAndFinalitySignatures>,
+    pub(super) block_header_with_metadata_fetcher: Fetcher<BlockHeaderWithMetadata>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -483,7 +482,7 @@ impl reactor::Reactor for Reactor {
         let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
 
         let block_header_and_finality_signatures_by_height_fetcher: Fetcher<
-            BlockHeaderAndFinalitySignatures,
+            BlockHeaderWithMetadata,
         > = Fetcher::new(
             "block_header_and_finality_signatures_by_height",
             config.fetcher,
@@ -563,7 +562,8 @@ impl reactor::Reactor for Reactor {
                 consensus,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
-                block_header_and_finality_signatures_by_height_fetcher,
+                block_header_with_metadata_fetcher:
+                    block_header_and_finality_signatures_by_height_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,

@@ -7,7 +7,7 @@ use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::types::{BlockHash, BlockHeader, BlockHeaderAndFinalitySignatures};
+use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
 use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
@@ -81,7 +81,7 @@ impl Item for BlockHeader {
     }
 }
 
-impl Item for BlockHeaderAndFinalitySignatures {
+impl Item for BlockHeaderWithMetadata {
     type Id = u64;
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;

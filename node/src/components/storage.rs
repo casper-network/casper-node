@@ -76,8 +76,8 @@ use crate::{
     },
     fatal,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderAndFinalitySignatures,
-        BlockSignatures, Deploy, DeployHash, DeployMetadata, FinalitySignature,
+        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
+        DeployHash, DeployMetadata,
     },
     utils::WithDir,
     NodeRng,
@@ -620,15 +620,8 @@ impl Storage {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(block_hash, block.header().era_id()),
                 };
-                for (public_key, signature) in signatures.proofs.iter() {
-                    assert!(FinalitySignature::verify_bare_finality_signature(
-                        &block_hash,
-                        &block.header().era_id(),
-                        signature,
-                        public_key,
-                    )
-                    .is_ok(),)
-                }
+                assert!(signatures.verify().is_ok());
+
                 responder.respond(Some((block, signatures))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
@@ -710,11 +703,11 @@ impl Storage {
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it.
-    fn get_block_header_and_finality_signatures_by_height<Tx: Transaction>(
+    fn get_block_header_and_metadata_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         height: u64,
-    ) -> Result<Option<BlockHeaderAndFinalitySignatures>, Error> {
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let block_hash = match self.block_height_index.get(&height) {
             None => return Ok(None),
             Some(block_hash) => block_hash,
@@ -723,21 +716,16 @@ impl Storage {
             None => return Ok(None),
             Some(block_header) => block_header,
         };
-        let finality_signatures = self
-            .get_finality_signatures(tx, block_hash)?
-            .map_or_else(BTreeMap::new, |block_signatures| block_signatures.proofs);
-        for (public_key, signature) in finality_signatures.iter() {
-            FinalitySignature::verify_bare_finality_signature(
-                &block_hash,
-                &block_header.era_id(),
-                signature,
-                public_key,
-            )
-            .map_err(Error::CryptographicSignatureVerificationError)?
-        }
-        Ok(Some(BlockHeaderAndFinalitySignatures {
+        let block_signatures = match self.get_finality_signatures(tx, block_hash)? {
+            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            Some(signatures) => signatures,
+        };
+        block_signatures
+            .verify()
+            .map_err(Error::CryptographicSignatureVerificationError)?;
+        Ok(Some(BlockHeaderWithMetadata {
             block_header,
-            finality_signatures,
+            block_signatures,
         }))
     }
 
@@ -745,10 +733,10 @@ impl Storage {
     pub fn read_block_header_and_finality_signatures_by_height(
         &self,
         height: u64,
-    ) -> Result<Option<BlockHeaderAndFinalitySignatures>, Error> {
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
         let maybe_block_header_and_finality_signatures =
-            self.get_block_header_and_finality_signatures_by_height(&mut txn, height)?;
+            self.get_block_header_and_metadata_by_height(&mut txn, height)?;
         drop(txn);
         Ok(maybe_block_header_and_finality_signatures)
     }

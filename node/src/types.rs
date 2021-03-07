@@ -21,7 +21,7 @@ pub use block::{
     BlockValidationError, FinalitySignature,
 };
 pub(crate) use block::{
-    BlockByHeight, BlockHeaderAndFinalitySignatures, BlockLike, FinalizedBlock, ProtoBlock,
+    BlockByHeight, BlockHeaderWithMetadata, BlockLike, FinalizedBlock, ProtoBlock,
 };
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
