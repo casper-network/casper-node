@@ -214,6 +214,7 @@ fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
     }
 }
 
+#[ignore]
 #[tokio::test]
 async fn run_validator_network() {
     testing::init_logging();
