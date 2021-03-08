@@ -81,8 +81,6 @@ pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 /// Named constant for method `activate_bid`.
 pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
 
-/// Storage for `UnbondingPurses`
-pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for era-end timestamp.

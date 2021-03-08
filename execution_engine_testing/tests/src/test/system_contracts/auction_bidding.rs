@@ -25,7 +25,7 @@ use casper_types::{
     runtime_args,
     system::auction::{
         self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
-        METHOD_SLASH, UNBONDING_PURSES_KEY,
+        METHOD_SLASH,
     },
     ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -99,7 +99,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -126,11 +126,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let account_balance_before = builder.get_purse_balance(unbonding_purse);
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -147,11 +147,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         Vec::new(),
     );
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -183,11 +183,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_5).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
-        "should remove slashed from unbonds"
-    );
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    assert!(unbond_purses
+        .get(&*DEFAULT_ACCOUNT_ADDR)
+        .unwrap()
+        .is_empty());
 
     let bids: Bids = builder.get_bids();
     let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
@@ -373,8 +373,6 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
-    let auction = builder.get_auction_contract_hash();
-
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
@@ -396,7 +394,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -422,11 +420,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -443,11 +441,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&default_public_key_arg)
+        .get(&DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -480,11 +478,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
         account_balance_before_auction + unbond_amount
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
-        "Unbond entry should be removed"
-    );
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    assert!(unbond_purses
+        .get(&*DEFAULT_ACCOUNT_ADDR)
+        .unwrap()
+        .is_empty());
 
     let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());
@@ -550,8 +548,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
-    let auction = builder.get_auction_contract_hash();
-
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
@@ -574,7 +570,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         GENESIS_ACCOUNT_STAKE.into()
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -603,11 +599,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     let account_balance_before_auction = builder.get_purse_balance(unbonding_purse);
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .get(&*DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -622,11 +618,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     builder.run_auction(timestamp_millis, Vec::new());
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&default_public_key_arg)
+        .get(&DEFAULT_ACCOUNT_ADDR)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -674,11 +670,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         account_balance_before_auction + unbond_amount
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
-        "Unbond entry should be removed"
-    );
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    assert!(unbond_purses
+        .get(&*DEFAULT_ACCOUNT_ADDR)
+        .unwrap()
+        .is_empty());
 
     let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());

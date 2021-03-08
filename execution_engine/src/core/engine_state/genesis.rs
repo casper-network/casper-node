@@ -20,15 +20,14 @@ use casper_types::{
     system::{
         auction::{
             Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-            SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-            ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-            ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY,
-            DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-            INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-            METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-            METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
-            METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-            UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY, VALIDATOR_SLOTS_KEY,
+            SeigniorageRecipientsSnapshot, ValidatorWeights, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR,
+            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
+            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
+            METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
+            METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
@@ -1025,19 +1024,6 @@ where
                 StoredValue::Bid(Box::new(bid)),
             )
         }
-
-        let unbonding_purses_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
-            unbonding_purses_uref.into(),
-            StoredValue::CLValue(
-                CLValue::from_t(UnbondingPurses::new())
-                    .map_err(|_| GenesisError::CLValue(UNBONDING_PURSES_KEY.to_string()))?,
-            ),
-        );
-        named_keys.insert(UNBONDING_PURSES_KEY.into(), unbonding_purses_uref.into());
 
         let validator_slots = self.exec_config.validator_slots();
         let validator_slots_uref = self

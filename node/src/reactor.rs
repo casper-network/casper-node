@@ -57,7 +57,7 @@ use tracing_futures::Instrument;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    effect::{Effect, EffectBuilder, Effects},
+    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     unregister_metric,
     utils::{self, WeightedRoundRobin},
@@ -171,7 +171,7 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + Debug + Display + 'static;
+    type Event: ReactorEvent + Display;
 
     /// A configuration for the reactor
     type Config;
@@ -210,6 +210,16 @@ pub trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+}
+
+/// A reactor event type.
+pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
+    /// Returns the event as a control announcement, if possible.
+    ///
+    /// Returns a reference to a wrapped
+    /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
+    /// is indeed a control announcement variant.
+    fn as_control(&self) -> Option<&ControlAnnouncement>;
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -467,8 +477,10 @@ where
     }
 
     /// Processes a single event on the event queue.
+    ///
+    /// Returns `false` if processing should stop.
     #[inline]
-    pub async fn crank(&mut self, rng: &mut NodeRng) {
+    pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         // Create another span for tracing the processing of one event.
         let crank_span = debug_span!("crank", ev = self.event_count);
         let _inner_enter = crank_span.enter();
@@ -536,7 +548,22 @@ where
 
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
-        let effects = self.reactor.dispatch_event(effect_builder, rng, event);
+
+        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+            // We've received a control event, which will _not_ be handled by the reactor.
+            match ctrl_ann {
+                ControlAnnouncement::FatalError { file, line, msg } => {
+                    error!(%file, %line, %msg, "fatal error via control announcement");
+                    (Default::default(), false)
+                }
+            }
+        } else {
+            (
+                self.reactor.dispatch_event(effect_builder, rng, event),
+                true,
+            )
+        };
+
         let end = self.clock.end();
 
         // Warn if processing took a long time, record to histogram.
@@ -562,6 +589,8 @@ where
             .await;
 
         self.event_count += 1;
+
+        keep_going
     }
 
     /// Gets both the allocated and total memory from sys-info + jemalloc
@@ -647,12 +676,11 @@ where
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
     #[cfg(test)]
-    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<()> {
+    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
-            self.crank(rng).await;
-            Some(())
+            Some(self.crank(rng).await)
         }
     }
 
@@ -664,13 +692,15 @@ where
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(reactor_exit) = self.reactor.maybe_exit() {
-                        return reactor_exit;
+                        break reactor_exit;
                     }
-                    self.crank(rng).await;
+                    if !self.crank(rng).await {
+                        break ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                    }
                 }
-                SIGINT => return ReactorExit::ProcessShouldExit(ExitCode::SigInt),
-                SIGQUIT => return ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
-                SIGTERM => return ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                SIGINT => break ReactorExit::ProcessShouldExit(ExitCode::SigInt),
+                SIGQUIT => break ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
+                SIGTERM => break ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
                 _ => error!("should be unreachable - bug in signal handler"),
             }
         }

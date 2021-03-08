@@ -13,7 +13,7 @@ function log_step() {
 
 function do_await_genesis_era_to_complete() {
     log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -lt 1 ]; do
+    while [ "$(get_chain_era)" != "1" ]; do
         sleep 1.0
     done
 }
@@ -79,7 +79,7 @@ function do_await_era_change() {
 }
 
 function check_current_era {
-    echo $(nctl-view-chain-era node=$(get_node_for_dispatch) | awk '{print $NF}')
+    echo $(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
 }
 
 function check_faulty() {
