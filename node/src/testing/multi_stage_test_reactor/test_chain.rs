@@ -309,6 +309,7 @@ async fn get_switch_block_hash(
     *switch_block_hash
 }
 
+/// Test a node joining to a single node network
 #[ignore]
 #[tokio::test]
 async fn test_joiner() {
@@ -356,6 +357,7 @@ async fn test_joiner() {
         .await;
 }
 
+/// Test a node joining to a network with five nodes
 #[ignore]
 #[tokio::test]
 async fn test_joiner_network() {
