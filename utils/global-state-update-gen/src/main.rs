@@ -13,10 +13,15 @@ use casper_types::{
 
 use clap::{App, Arg};
 
+/// Parses a Blake2bHash from a string. Panics if parsing fails.
 fn hash_from_str(hex_str: &str) -> Blake2bHash {
     (&base16::decode(hex_str).unwrap()[..]).try_into().unwrap()
 }
 
+/// Generates a new `SeigniorageRecipientsSnapshot` based on:
+/// - The list of validators, in format (validator_public_key,stake), both expressed as strings.
+/// - The starting era ID (the era ID at which the snapshot should start).
+/// - Count - the number of eras to be included in the snapshot.
 fn gen_snapshot(
     validators: Vec<(String, String)>,
     starting_era_id: u64,
@@ -38,6 +43,8 @@ fn gen_snapshot(
     new_snapshot
 }
 
+/// Returns the set of public keys that have bids larger than the smallest bid among the new
+/// validators.
 fn find_large_bids(
     builder: &mut LmdbWasmTestBuilder,
     new_snapshot: &SeigniorageRecipientsSnapshot,
@@ -48,7 +55,7 @@ fn find_large_bids(
         .unwrap()
         .values()
         .map(SeigniorageRecipient::stake)
-        .max()
+        .min()
         .unwrap();
     builder
         .get_bids()
@@ -63,6 +70,7 @@ struct ValidatorsDiff {
     removed: BTreeSet<PublicKey>,
 }
 
+/// Calculates the sets of added and removed validators between the two snapshots.
 fn validators_diff(
     old_snapshot: &SeigniorageRecipientsSnapshot,
     new_snapshot: &SeigniorageRecipientsSnapshot,
@@ -90,6 +98,11 @@ fn validators_diff(
     }
 }
 
+/// Generates a set of writes necessary to "fix" the bids, ie.:
+/// - set the bids of the new validators to their desired stakes,
+/// - remove the bids of the old validators that are no longer validators,
+/// - remove all the bids that are larger than the smallest bid among the new validators
+/// (necessary, because such bidders would outbid the validators decided by the social consensus).
 fn fix_bids(
     builder: &mut LmdbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
@@ -127,6 +140,7 @@ fn fix_bids(
         .collect()
 }
 
+/// Removes pending withdraws of all the old validators that cease to be validators.
 fn fix_withdraws(
     builder: &mut LmdbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
@@ -142,6 +156,7 @@ fn fix_withdraws(
         .collect()
 }
 
+/// Prints a global state update entry in a format ready for inclusion in a TOML file.
 fn print_entry(key: &Key, value: &StoredValue) {
     println!("[[entries]]");
     println!("key = \"{}\"", key.to_formatted_string());
@@ -197,22 +212,26 @@ fn main() {
             .collect(),
     };
 
+    // Open the global state that should be in the supplied directory.
     let mut test_builder =
         LmdbWasmTestBuilder::open(data_dir, Default::default(), hash_from_str(state_hash));
 
     let protocol_data = test_builder
         .get_engine_state()
-        .get_protocol_data(ProtocolVersion::from_parts(1, 0, 0))
+        .get_protocol_data(ProtocolVersion::from_parts(1, 0, 0)) // TODO: make it a parameter?
         .unwrap()
         .expect("should have protocol data");
 
+    // Find the hash of the auction contract.
     let auction_contract_hash = protocol_data.auction();
 
+    // Read the key under which the snapshot is stored.
     let validators_key = test_builder
         .get_contract(auction_contract_hash)
         .expect("auction should exist")
         .named_keys()["seigniorage_recipients_snapshot"];
 
+    // Decode the old snapshot.
     let stored_value = test_builder
         .query(None, validators_key, &[])
         .expect("should query");
@@ -222,12 +241,14 @@ fn main() {
         .expect("should be cl value");
     let old_snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
 
+    // Create a new snapshot based on the old one and the supplied validators.
     let new_snapshot = gen_snapshot(
         validators,
         *old_snapshot.keys().next().unwrap(),
         old_snapshot.len() as u64,
     );
 
+    // Print the write to the snapshot key.
     print_entry(
         &validators_key,
         &StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
@@ -235,10 +256,12 @@ fn main() {
 
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 
+    // Print the writes fixing the bids.
     for (key, value) in fix_bids(&mut test_builder, &validators_diff, &new_snapshot) {
         print_entry(&key, &value);
     }
 
+    // Print the writes removing the no longer valid withdraws.
     for (key, value) in fix_withdraws(&mut test_builder, &validators_diff) {
         print_entry(&key, &value);
     }
