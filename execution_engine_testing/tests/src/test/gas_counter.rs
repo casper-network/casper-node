@@ -191,7 +191,7 @@ fn should_correctly_measure_gas_for_opcodes() {
         // 0 == 1
         (Some(opcode_costs.op_const), Instruction::I32Const(0)),
         (Some(opcode_costs.op_const), Instruction::I32Const(1)),
-        (Some(opcode_costs.integer_comparsion), Instruction::I32Eqz),
+        (Some(opcode_costs.integer_comparison), Instruction::I32Eqz),
         (Some(opcode_costs.store), Instruction::I32Store(0, 4)), /* Store `eqz` result
                                                                   * whatever it is */
         // i32 -> i64

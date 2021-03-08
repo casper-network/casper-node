@@ -3,21 +3,21 @@
 version = '1.0.0'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = false
-
-[protocol.activation_point]
-# This protocol version becomes active at the start of this era.
-era_id = 0
+# This protocol version becomes active at this point.
+#
+# If it is a timestamp string, it represents the timestamp for the genesis block.  This is the beginning of era 0.  By
+# this time, a sufficient majority (> 50% + F/2 — see finality_threshold_fraction below) of validator nodes must be up
+# and running to start the blockchain.  This timestamp is also used in seeding the pseudo-random number generator used
+# in contract-runtime for computing genesis post-state hash.
+#
+# If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
+activation_point = '2020-12-29T20:00:00Z'
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
 name = 'casper-delta'
-# Timestamp for the genesis block.  This is the beginning of era 0. By this time, a sufficient majority (> 50% + F/2 —
-# see finality_threshold_percent below) of validator nodes must be up and running to start the blockchain.  This
-# timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
-# post-state hash.
-timestamp = '2020-12-29T20:00:00Z'
 
 [core]
 # Era duration.
@@ -114,7 +114,7 @@ global = 390
 # Control flow operations multiplier.
 control_flow = 440
 # Integer operations multiplier.
-integer_comparsion = 250
+integer_comparison = 250
 # Conversion operations multiplier.
 conversion = 420
 # Unreachable operation multiplier.

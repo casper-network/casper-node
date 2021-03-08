@@ -58,7 +58,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    reactor::{EventQueueHandle, Finalize, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     types::{Chainspec, NodeId},
     utils::{self, ds, CountingReceiver, CountingSender, DisplayIter},
     NodeRng,
@@ -85,14 +85,14 @@ impl<P> PayloadT for P where
 /// A helper trait whose bounds represent the requirements for a reactor event that `Network` can
 /// work with.
 pub trait ReactorEventT<P: PayloadT>:
-    From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
+    ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static
 {
 }
 
 impl<REv, P> ReactorEventT<P> for REv
 where
     P: PayloadT,
-    REv: From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + Send + 'static,
 {
 }
 

@@ -1,13 +1,10 @@
 [protocol]
 version = '1.0.0'
 hard_reset = false
-
-[protocol.activation_point]
-era_id = 1
+activation_point = 1
 
 [network]
 name = 'test-chain'
-timestamp = '2020-09-18T18:45:00Z'
 
 [core]
 era_duration = '3minutes'
@@ -51,7 +48,7 @@ const = 19
 local = 20
 global = 21
 control_flow = 22
-integer_comparsion = 23
+integer_comparison = 23
 conversion = 24
 unreachable = 25
 nop = 26

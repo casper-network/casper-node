@@ -14,7 +14,6 @@ use crate::{
         self,
         hash::{self, Digest},
     },
-    NodeRng,
 };
 
 #[derive(DataSize)]
@@ -43,8 +42,8 @@ impl ValidatorSecret for Keypair {
     type Hash = Digest;
     type Signature = Signature;
 
-    fn sign(&self, hash: &Digest, rng: &mut NodeRng) -> Signature {
-        crypto::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
+    fn sign(&self, hash: &Digest) -> Signature {
+        crypto::sign(hash, self.secret_key.as_ref(), &self.public_key)
     }
 }
 

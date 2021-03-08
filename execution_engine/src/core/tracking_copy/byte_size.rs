@@ -44,6 +44,7 @@ impl ByteSize for StoredValue {
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
                 StoredValue::Bid(bid) => bid.serialized_length(),
+                StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
             }
     }
 }
