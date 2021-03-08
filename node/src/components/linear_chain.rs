@@ -22,7 +22,7 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
             StorageRequest,
         },
-        EffectBuilder, EffectExt, EffectOptionExt, EffectResultExt, Effects, Responder,
+        EffectBuilder, EffectExt, EffectOptionExt, EffectResultExt, Effects,
     },
     protocol::Message,
     types::{
@@ -53,12 +53,6 @@ pub enum Event<I> {
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
-    /// A continuation for `GetBlock` scenario.
-    GetBlockResult(BlockHash, Option<Box<Block>>, I),
-    /// A continuation for `BlockAtHeight` scenario.
-    GetBlockByHeightResult(u64, Option<Box<Block>>, I),
-    /// A continuation for `BlockAtHeightLocal` scenario.
-    GetBlockByHeightResultLocal(u64, Option<Box<Block>>, Responder<Option<Block>>),
     /// Finality signature received.
     /// Not necessarily _new_ finality signature.
     FinalitySignatureReceived(Box<FinalitySignature>),
@@ -85,32 +79,12 @@ impl<I: Display> Display for Event<I> {
             Event::LinearChainBlock { block, .. } => {
                 write!(f, "linear chain new block: {}", block.hash())
             }
-            Event::GetBlockResult(block_hash, maybe_block, peer) => write!(
-                f,
-                "linear chain get-block for {} from {} found: {}",
-                block_hash,
-                peer,
-                maybe_block.is_some()
-            ),
             Event::FinalitySignatureReceived(fs) => write!(
                 f,
                 "linear-chain new finality signature for block: {}, from: {}",
                 fs.block_hash, fs.public_key,
             ),
             Event::PutBlockResult { .. } => write!(f, "linear-chain put-block result"),
-            Event::GetBlockByHeightResult(height, result, peer) => write!(
-                f,
-                "linear chain get-block-height for height {} from {} found: {}",
-                height,
-                peer,
-                result.is_some()
-            ),
-            Event::GetBlockByHeightResultLocal(height, block, _) => write!(
-                f,
-                "linear chain get-block-height-local for height={} found={}",
-                height,
-                block.is_some()
-            ),
             Event::GetStoredFinalitySignaturesResult(finality_signature, maybe_signatures) => {
                 write!(
                     f,
@@ -166,9 +140,8 @@ impl SignatureCache {
             Entry::Occupied(mut entry) => {
                 entry.get_mut().proofs.extend(block_signature.proofs);
             }
-            Entry::Vacant(_) => {
-                self.signatures
-                    .insert(block_signature.block_hash, block_signature);
+            Entry::Vacant(entry) => {
+                entry.insert(block_signature);
             }
         }
     }
@@ -237,7 +210,7 @@ impl<I> LinearChain<I> {
     }
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
-    /// them, and the updated block.
+    /// them, and the updated block signatures.
     fn collect_pending_finality_signatures<REv>(
         &mut self,
         block_hash: &BlockHash,
@@ -268,10 +241,6 @@ impl<I> LinearChain<I> {
             if fs.era_id != block_era {
                 // finality signature was created with era id that doesn't match block's era.
                 // TODO: disconnect from the sender.
-                continue;
-            }
-            if known_signatures.proofs.contains_key(&fs.public_key) {
-                // Don't send finality signatures we already know of.
                 continue;
             }
             known_signatures.insert_proof(fs.public_key, fs.signature);
@@ -342,55 +311,44 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => effect_builder
-                .get_block_from_storage(block_hash)
-                .event(move |maybe_block| {
-                    Event::GetBlockResult(block_hash, maybe_block.map(Box::new), sender)
-                }),
+            Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => async move {
+                match effect_builder.get_block_from_storage(block_hash).await {
+                    None => debug!("failed to get {} for {}", block_hash, sender),
+                    Some(block) => match Message::new_get_response(&block) {
+                        Ok(message) => effect_builder.send_message(sender, message).await,
+                        Err(error) => error!("failed to create get-response {}", error),
+                    },
+                }
+            }
+            .ignore(),
             Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
-                effect_builder
+                async move {
+                    let block = effect_builder
+                        .get_block_at_height_from_storage(height)
+                        .await;
+                    responder.respond(block).await
+                }
+                .ignore()
+            }
+            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => async move {
+                let block_by_height = match effect_builder
                     .get_block_at_height_from_storage(height)
-                    .event(move |block| {
-                        Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder)
-                    })
-            }
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => effect_builder
-                .get_block_at_height_from_storage(height)
-                .event(move |maybe_block| {
-                    Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender)
-                }),
-            Event::GetBlockByHeightResultLocal(_height, block, responder) => {
-                responder.respond(block.map(|boxed| *boxed)).ignore()
-            }
-            Event::GetBlockByHeightResult(block_height, maybe_block, sender) => {
-                let block_at_height = match maybe_block {
+                    .await
+                {
                     None => {
-                        debug!("failed to get {} for {}", block_height, sender);
-                        BlockByHeight::Absent(block_height)
+                        debug!("failed to get {} for {}", height, sender);
+                        BlockByHeight::Absent(height)
                     }
-                    Some(block) => BlockByHeight::new(*block),
+                    Some(block) => BlockByHeight::new(block),
                 };
-                match Message::new_get_response(&block_at_height) {
-                    Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                match Message::new_get_response(&block_by_height) {
+                    Ok(message) => effect_builder.send_message(sender, message).await,
                     Err(error) => {
                         error!("failed to create get-response {}", error);
-                        Effects::new()
                     }
                 }
             }
-            Event::GetBlockResult(block_hash, maybe_block, sender) => match maybe_block {
-                None => {
-                    debug!("failed to get {} for {}", block_hash, sender);
-                    Effects::new()
-                }
-                Some(block) => match Message::new_get_response(&*block) {
-                    Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                    Err(error) => {
-                        error!("failed to create get-response {}", error);
-                        Effects::new()
-                    }
-                },
-            },
+            .ignore(),
             Event::LinearChainBlock {
                 block,
                 execution_results,
@@ -402,7 +360,11 @@ where
                 );
                 // Cache the signature as we expect more finality signatures to arrive soon.
                 self.signature_cache.insert(signatures.clone());
-                effects.extend(effect_builder.put_signatures_to_storage(signatures).ignore());
+                effects.extend(
+                    effect_builder
+                        .put_signatures_to_storage(signatures)
+                        .ignore(),
+                );
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
                         block,
@@ -417,9 +379,11 @@ where
             } => {
                 self.latest_block = Some(*block.clone());
 
-                let completion_duration = Timestamp::now().millis() - block.header().timestamp().millis();
-                self.metrics.block_completion_duration.set(completion_duration as i64);
-
+                let completion_duration =
+                    Timestamp::now().millis() - block.header().timestamp().millis();
+                self.metrics
+                    .block_completion_duration
+                    .set(completion_duration as i64);
 
                 let block_hash = block.header().hash();
                 let era_id = block.header().era_id();
@@ -477,7 +441,8 @@ where
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
                 if let Some(signatures) = &maybe_signatures {
                     if signatures.era_id != fs.era_id {
-                        warn!(public_key=%fs.public_key, expected=%signatures.era_id, got=%fs.era_id,
+                        warn!(public_key=%fs.public_key,
+                            expected=%signatures.era_id, got=%fs.era_id,
                             "finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
                         self.remove_from_pending_fs(&*fs);
