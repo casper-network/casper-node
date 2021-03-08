@@ -276,6 +276,23 @@ where
         &self.nodes
     }
 
+    /// Returns the internal map of nodes.
+    pub fn nodes_mut(&mut self) -> &mut HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+        &mut self.nodes
+    }
+
+    /// Returns an iterator over all reactors.
+    pub fn reactors(&self) -> impl Iterator<Item = &R> {
+        self.nodes.values().map(|runner| runner.reactor().inner())
+    }
+
+    /// Returns an iterator over all reactors, mutable.
+    pub fn reactors_mut(&mut self) -> impl Iterator<Item = &mut R> {
+        self.nodes
+            .values_mut()
+            .map(|runner| runner.reactor_mut().inner_mut())
+    }
+
     /// Create effects and dispatch them on the given node.
     ///
     /// The effects are created via a call to `create_effects` which is itself passed an instance of

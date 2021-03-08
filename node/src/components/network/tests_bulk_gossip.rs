@@ -1,11 +1,12 @@
 #![allow(unreachable_code)] // TODO: Figure out why this warning triggers.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     env, fmt,
     fmt::{Debug, Display, Formatter},
     sync::Arc,
+    thread,
     time::Duration,
 };
 
@@ -30,6 +31,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Chainspec, NodeId},
+    utils::read_env,
 };
 
 // Reactor for load testing, whose networking component just sends dummy payloads around.
@@ -75,7 +77,7 @@ pub struct TestReactorConfig {
 }
 
 /// A dummy payload.
-#[derive(Clone, Eq, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Eq, Deserialize, Hash, PartialEq, Serialize)]
 pub struct DummyPayload(Vec<u8>);
 
 const DUMMY_PAYLOAD_ID_LEN: usize = 16;
@@ -131,6 +133,7 @@ impl Display for DummyPayload {
 }
 
 // TODO - investigate why this fails on CI.
+// DONE - probably because we are not running with --release!
 #[ignore]
 #[tokio::test]
 async fn send_large_message_across_network() {
@@ -143,12 +146,13 @@ async fn send_large_message_across_network() {
 
     // This can, on a decent machine, be set to 30, 50, maybe even 100 nodes. The default is set to
     // 5 to avoid overloading CI.
-    let node_count: usize = 5;
+    let node_count: usize = read_env("TEST_NODE_COUNT").unwrap_or(5);
 
     // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time for gossip
     // and connecting.
     let timeout = Duration::from_secs(60);
-    let large_size: usize = 1024 * 1024 * 4;
+    let payload_size: usize = read_env("TEST_PAYLOAD_SIZE").unwrap_or(1024 * 1024 * 4);
+    let payload_count: usize = read_env("TEST_PAYLOAD_COUNT").unwrap_or(1);
 
     let mut rng = crate::new_rng();
 
@@ -165,6 +169,10 @@ async fn send_large_message_across_network() {
     };
 
     net.add_node_with_config(cfg, &mut rng).await.unwrap();
+
+    // Hack to get network component to connect. This gives the libp2p thread (which is independent
+    // of cranking) a little time to bind to the socket.
+    thread::sleep(Duration::from_secs(2));
 
     // Create `node_count-1` additional node instances.
     for _ in 1..node_count {
@@ -184,21 +192,35 @@ async fn send_large_message_across_network() {
     // gossiping large payloads. We gossip one on each node.
     let node_ids: Vec<_> = net.nodes().keys().cloned().collect();
     for (index, sender) in node_ids.iter().enumerate() {
-        let dummy_payload = DummyPayload::random_with_size(&mut rng, large_size);
+        // Clear all collectors at the beginning of a round.
+        net.reactors_mut()
+            .for_each(|reactor| reactor.collector.payloads.clear());
 
-        // Calling `broadcast_message` actually triggers libp2p gossping.
-        net.process_injected_effect_on(sender, |effect_builder| {
-            effect_builder
-                .broadcast_message(dummy_payload.clone())
-                .ignore()
-        })
-        .await;
+        let mut dummy_payloads = HashSet::new();
+        let mut dummy_payload_ids = HashSet::new();
 
-        info!(?sender, payload = %dummy_payload, round=index, total=node_ids.len(),
-              "Started broadcast/gossip of payload, waiting for all nodes to receive it");
+        // Prepare a set of dummy payloads.
+        for _ in 0..payload_count {
+            let payload = DummyPayload::random_with_size(&mut rng, payload_size);
+            dummy_payload_ids.insert(payload.id());
+            dummy_payloads.insert(payload);
+        }
+
+        for dummy_payload in &dummy_payloads {
+            // Calling `broadcast_message` actually triggers libp2p gossping.
+            net.process_injected_effect_on(sender, |effect_builder| {
+                effect_builder
+                    .broadcast_message(dummy_payload.clone())
+                    .ignore()
+            })
+            .await;
+        }
+
+        info!(?sender, num_payloads = %dummy_payloads.len(), round=index, total_rounds=node_ids.len(),
+              "Started broadcast/gossip of payloads, waiting for all nodes to receive it");
         net.settle_on(
             &mut rng,
-            others_received(dummy_payload.id(), sender.clone()),
+            others_received(dummy_payload_ids, sender.clone()),
             timeout,
         )
         .await;
@@ -236,7 +258,7 @@ fn network_online(
 
 /// Checks whether or not every node except `sender` on the network received the given payload.
 fn others_received(
-    payload_id: DummyPayloadId,
+    payloads: HashSet<DummyPayloadId>,
     sender: NodeId,
 ) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool {
     move |nodes| {
@@ -247,6 +269,7 @@ fn others_received(
             // Skip the sender.
             .filter(|reactor| reactor.node_id() != sender)
             // Ensure others all have received the payload.
-            .all(|reactor| reactor.collector.payloads.contains(&payload_id))
+            // Note: `std` HashSet short circuits on length, so this should be fine.
+            .all(|reactor| reactor.collector.payloads == payloads)
     }
 }
