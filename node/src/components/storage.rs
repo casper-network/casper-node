@@ -69,7 +69,6 @@ use super::Component;
 use crate::crypto::hash::Digest;
 use crate::{
     components::consensus::EraId,
-    crypto,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -165,9 +164,6 @@ pub enum Error {
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
-    /// A cryptographic signature verification error.
-    #[error(transparent)]
-    CryptographicSignatureVerificationError(crypto::Error),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -720,9 +716,6 @@ impl Storage {
             None => BlockSignatures::new(*block_hash, block_header.era_id()),
             Some(signatures) => signatures,
         };
-        block_signatures
-            .verify()
-            .map_err(Error::CryptographicSignatureVerificationError)?;
         Ok(Some(BlockHeaderWithMetadata {
             block_header,
             block_signatures,

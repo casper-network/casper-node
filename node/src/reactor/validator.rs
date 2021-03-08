@@ -759,14 +759,14 @@ impl reactor::Reactor for Reactor {
                             match self.storage.read_block_header_by_hash(&block_hash) {
                                 Ok(Some(block_header)) => {
                                     match Message::new_get_response(&block_header) {
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
                                         Ok(message) => {
                                             return effect_builder
                                                 .send_message(sender, message)
                                                 .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
                                         }
                                     };
                                 }
