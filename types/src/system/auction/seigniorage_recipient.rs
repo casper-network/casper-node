@@ -1,5 +1,8 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::{Bid, DelegationRate},
@@ -7,7 +10,7 @@ use crate::{
 };
 
 /// The seigniorage recipient details.
-#[derive(Default, PartialEq, Clone, Debug)]
+#[derive(Default, PartialEq, Clone, Debug, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
     stake: U512,

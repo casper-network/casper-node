@@ -11,6 +11,7 @@ use casper_types::{
 };
 
 use crate::shared::{account::Account, TypeMismatch};
+use casper_types::system::auction::SeigniorageRecipients;
 
 #[repr(u8)]
 enum Tag {
@@ -24,6 +25,7 @@ enum Tag {
     EraInfo = 7,
     Bid = 8,
     Withdraw = 9,
+    EraValidators = 10,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -38,6 +40,7 @@ pub enum StoredValue {
     EraInfo(EraInfo),
     Bid(Box<Bid>),
     Withdraw(Vec<UnbondingPurse>),
+    EraValidators(SeigniorageRecipients),
 }
 
 impl StoredValue {
@@ -116,6 +119,7 @@ impl StoredValue {
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
             StoredValue::Bid(_) => "Bid".to_string(),
             StoredValue::Withdraw(_) => "Withdraw".to_string(),
+            StoredValue::EraValidators(_) => "EraValidators".to_string(),
         }
     }
 }
@@ -277,6 +281,7 @@ impl ToBytes for StoredValue {
             StoredValue::Withdraw(unbonding_purses) => {
                 (Tag::Withdraw, unbonding_purses.to_bytes()?)
             }
+            StoredValue::EraValidators(recipients) => (Tag::EraValidators, recipients.to_bytes()?),
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -298,6 +303,7 @@ impl ToBytes for StoredValue {
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
                 StoredValue::Bid(bid) => bid.serialized_length(),
                 StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
+                StoredValue::EraValidators(recipients) => recipients.serialized_length(),
             }
     }
 }

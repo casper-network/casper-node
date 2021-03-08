@@ -35,6 +35,7 @@ const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
+const VALIDATORS_PREFIX: &str = "validator-era-id";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -55,6 +56,8 @@ const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SER
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+const KEY_ERA_VALIDATORS_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -78,6 +81,7 @@ pub enum KeyTag {
     Balance = 6,
     Bid = 7,
     Withdraw = 8,
+    EraValidators = 9,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -104,6 +108,8 @@ pub enum Key {
     Bid(AccountHash),
     /// A `Key` under which we store unbond information.
     Withdraw(AccountHash),
+    /// A `Key` under which we store validator information.
+    EraValidators(EraId),
 }
 
 #[derive(Debug)]
@@ -183,6 +189,7 @@ impl Key {
             Key::Balance(_) => String::from("Key::Balance"),
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
+            Key::EraValidators(_) => String::from("Key::EraValidators"),
         }
     }
 
@@ -226,6 +233,9 @@ impl Key {
             }
             Key::Withdraw(account_hash) => {
                 format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
+            }
+            Key::EraValidators(era_id) => {
+                format!("{}{}", VALIDATORS_PREFIX, era_id.to_string())
             }
         }
     }
@@ -320,6 +330,7 @@ impl Display for Key {
             Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
+            Key::EraValidators(era_id) => write!(f, "Key::EraValidators({})", era_id),
         }
     }
 }
@@ -342,6 +353,7 @@ impl Tagged<KeyTag> for Key {
             Key::Balance(_) => KeyTag::Balance,
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
+            Key::EraValidators(_) => KeyTag::EraValidators,
         }
     }
 }
@@ -421,6 +433,9 @@ impl ToBytes for Key {
             Key::Withdraw(account_hash) => {
                 result.append(&mut account_hash.to_bytes()?);
             }
+            Key::EraValidators(era_id) => {
+                result.append(&mut era_id.to_bytes()?);
+            }
         }
         Ok(result)
     }
@@ -438,6 +453,7 @@ impl ToBytes for Key {
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
+            Key::EraValidators(_) => KEY_ERA_VALIDATORS_SERIALIZED_LENGTH,
         }
     }
 }
@@ -518,6 +534,7 @@ mod serde_helpers {
         Balance(String),
         Bid(String),
         Withdraw(String),
+        EraValidators(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -533,6 +550,7 @@ mod serde_helpers {
                 Key::Balance(_) => HumanReadable::Balance(formatted_string),
                 Key::Bid(_) => HumanReadable::Bid(formatted_string),
                 Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
+                Key::EraValidators(_) => HumanReadable::EraValidators(formatted_string),
             }
         }
     }
@@ -550,7 +568,8 @@ mod serde_helpers {
                 | HumanReadable::EraInfo(formatted_string)
                 | HumanReadable::Balance(formatted_string)
                 | HumanReadable::Bid(formatted_string)
-                | HumanReadable::Withdraw(formatted_string) => {
+                | HumanReadable::Withdraw(formatted_string)
+                | HumanReadable::EraValidators(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -568,6 +587,7 @@ mod serde_helpers {
         Balance(&'a URefAddr),
         Bid(&'a AccountHash),
         Withdraw(&'a AccountHash),
+        EraValidators(&'a u64),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -582,6 +602,7 @@ mod serde_helpers {
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
+                Key::EraValidators(era_id) => BinarySerHelper::EraValidators(era_id),
             }
         }
     }

@@ -143,7 +143,23 @@ pub fn get_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    Ok(read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)?)
+    let era_keys = provider.get_keys(&KeyTag::EraValidators)?;
+
+    let mut ret = BTreeMap::new();
+
+    for key in era_keys {
+        let era_id = match key {
+            Key::EraValidators(era_id) => era_id,
+            _ => return Err(Error::InvalidKeyVariant),
+        };
+        let recipient = match provider.read_era_validators(era_id)? {
+            Some(recipient) => recipient,
+            None => return Err(Error::ValidatorNotFound),
+        };
+        ret.insert(era_id, recipient);
+    }
+
+    Ok(ret)
 }
 
 pub fn set_seigniorage_recipients_snapshot<P>(
@@ -153,7 +169,10 @@ pub fn set_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
+    for (era_id, recipients) in snapshot.into_iter() {
+        provider.write_era_validators(era_id, recipients)?;
+    }
+    Ok(())
 }
 
 pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>

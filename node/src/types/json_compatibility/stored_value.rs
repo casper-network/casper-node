@@ -17,6 +17,7 @@ use casper_types::{
 };
 
 use super::{Account, Contract, ContractPackage};
+use casper_types::system::auction::SeigniorageRecipients;
 
 /// Representation of a value stored in global state.
 ///
@@ -45,6 +46,8 @@ pub enum StoredValue {
     Bid(Box<Bid>),
     /// A withdraw
     Withdraw(Vec<UnbondingPurse>),
+    /// The seignorage recipients.
+    EraValidators(SeigniorageRecipients),
 }
 
 impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
@@ -71,6 +74,9 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::Bid(bid) => StoredValue::Bid(bid.clone()),
             ExecutionEngineStoredValue::Withdraw(unbonding_purses) => {
                 StoredValue::Withdraw(unbonding_purses.clone())
+            }
+            ExecutionEngineStoredValue::EraValidators(recipients) => {
+                StoredValue::EraValidators(recipients.clone())
             }
         };
 
