@@ -720,7 +720,7 @@ dependencies = [
  "num-rational 0.3.2",
  "num-traits",
  "once_cell",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "rand 0.7.3",
  "serde_json",
  "tempfile",
@@ -753,9 +753,9 @@ dependencies = [
  "num-rational 0.3.2",
  "num-traits",
  "once_cell",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "proptest",
- "pwasm-utils 0.12.0",
+ "pwasm-utils",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
  "schemars",
@@ -820,13 +820,11 @@ dependencies = [
  "num-traits",
  "once_cell",
  "openssl",
- "parity-wasm 0.42.1",
  "parking_lot 0.11.1",
  "pem",
  "pnet",
  "prometheus",
  "proptest",
- "pwasm-utils 0.16.0",
  "quanta",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
@@ -865,7 +863,6 @@ dependencies = [
  "vergen",
  "warp",
  "warp-json-rpc",
- "wasmi",
  "wheelbuf",
 ]
 
@@ -1632,6 +1629,12 @@ name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
+
+[[package]]
+name = "downcast-rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "dtoa"
@@ -3794,12 +3797,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
 
 [[package]]
-name = "parity-wasm"
-version = "0.42.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d17797de36b94bc5f73edad736fd0a77ce5ab64dd622f809c1eead8c91fa6564"
-
-[[package]]
 name = "parking"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4338,24 +4335,13 @@ dependencies = [
 
 [[package]]
 name = "pwasm-utils"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f7a12f176deee919f4ba55326ee17491c8b707d0987aed822682c821b660192"
-dependencies = [
- "byteorder",
- "log 0.4.14",
- "parity-wasm 0.41.0",
-]
-
-[[package]]
-name = "pwasm-utils"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c8ac87af529432d3a4f0e2b3bbf08af49f28f09cc73ed7e551161bdaef5f78d"
 dependencies = [
  "byteorder",
  "log 0.4.14",
- "parity-wasm 0.41.0",
+ "parity-wasm",
 ]
 
 [[package]]
@@ -6329,15 +6315,16 @@ dependencies = [
 
 [[package]]
 name = "wasmi"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf617d864d25af3587aa745529f7aaa541066c876d57e050c0d0c85c61c92aff"
+checksum = "4bb6825d9b2147105789adb4c2d84b9b568719713f3ac39618b637b4dafc86c4"
 dependencies = [
+ "downcast-rs",
  "libc",
  "memory_units 0.3.0",
  "num-rational 0.2.4",
  "num-traits",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "wasmi-validation",
 ]
 
@@ -6347,7 +6334,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea78c597064ba73596099281e2f4cfc019075122a65cdda3205af94f0b264d93"
 dependencies = [
- "parity-wasm 0.41.0",
+ "parity-wasm",
 ]
 
 [[package]]
