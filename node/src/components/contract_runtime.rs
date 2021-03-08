@@ -945,9 +945,12 @@ impl ContractRuntime {
                         state
                             .execution_results
                             .insert(deploy_hash, (deploy_header, execution_result));
+                        state.state_root_hash = state_hash.clone();
                         parent_state_hash = state_hash.into();
                     }
-                    Err(_) => todo!("break?"),
+                    // When commit fails we panic as we'll not be able to execute the next
+                    // block.
+                    Err(_err) => panic!("unable to commit"),
                 }
             }
             state

@@ -62,13 +62,10 @@ pub(super) async fn commit_execution_effects(
             Ok((state_root.into(), execution_result))
         }
         _ => {
-            // When commit fails we panic as we'll not be able to execute the next
-            // block.
             error!(
                 ?commit_result,
                 "commit failed - internal contract runtime error"
             );
-            //panic!("unable to commit");
             Err(())
         }
     }
