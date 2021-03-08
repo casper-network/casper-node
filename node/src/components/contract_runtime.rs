@@ -904,7 +904,6 @@ impl ContractRuntime {
         let metrics = Arc::clone(&self.metrics);
         let protocol_version = self.protocol_version;
         let block_time = state.finalized_block.timestamp().millis();
-        let mut parent_state_hash = state.state_root_hash.into();
         let proposer = state.finalized_block.proposer();
         async move {
             for deploy in state.remaining_deploys.drain(..) {
@@ -913,7 +912,7 @@ impl ContractRuntime {
                 let deploy_item = DeployItem::from(deploy);
 
                 let execute_request = ExecuteRequest::new(
-                    parent_state_hash,
+                    state.state_root_hash.into(),
                     block_time,
                     vec![Ok(deploy_item)],
                     protocol_version,
@@ -946,7 +945,6 @@ impl ContractRuntime {
                             .execution_results
                             .insert(deploy_hash, (deploy_header, execution_result));
                         state.state_root_hash = state_hash.clone();
-                        parent_state_hash = state_hash.into();
                     }
                     // When commit fails we panic as we'll not be able to execute the next
                     // block.
