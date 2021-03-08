@@ -171,3 +171,76 @@ impl Drop for Pidfile {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::{Pidfile, PidfileOutcome};
+
+    #[test]
+    fn pidfile_creates_file_and_cleans_it_up() {
+        let tmp_dir = TempDir::new().expect("could not create tmp_dir");
+        let pidfile_path = tmp_dir.path().join("create_and_cleanup.pid");
+
+        let outcome = Pidfile::acquire(&pidfile_path);
+
+        match outcome {
+            PidfileOutcome::Clean(pidfile) => {
+                // Check the pidfile exists, the verify it gets removed after dropping the pidfile.
+                assert!(pidfile_path.exists());
+                drop(pidfile);
+                assert!(!pidfile_path.exists());
+            }
+            other => panic!("pidfile outcome not clean, but {:?}", other),
+        }
+    }
+
+    #[test]
+    fn detects_unclean_shutdown() {
+        let tmp_dir = TempDir::new().expect("could not create tmp_dir");
+        let pidfile_path = tmp_dir.path().join("create_and_cleanup.pid");
+
+        // We create a garbage pidfile to simulate an unclean shutdown.
+        fs::write(&pidfile_path, b"12345").expect("could not write garbage pid file");
+
+        let outcome = Pidfile::acquire(&pidfile_path);
+
+        match outcome {
+            PidfileOutcome::Crashed(pidfile) => {
+                assert_eq!(pidfile.previous, Some(12345));
+
+                // After we've crashed, we still expect cleanup.
+                assert!(pidfile_path.exists());
+                drop(pidfile);
+                assert!(!pidfile_path.exists());
+            }
+            other => panic!("pidfile outcome did not detect crash, is {:?}", other),
+        }
+    }
+
+    #[test]
+    fn blocks_second_instance() {
+        let tmp_dir = TempDir::new().expect("could not create tmp_dir");
+        let pidfile_path = tmp_dir.path().join("create_and_cleanup.pid");
+
+        let outcome = Pidfile::acquire(&pidfile_path);
+
+        match outcome {
+            PidfileOutcome::Clean(_pidfile) => {
+                match Pidfile::acquire(&pidfile_path) {
+                    PidfileOutcome::AnotherNodeRunning(_) => {
+                        // All good, lets ensure the loaded pid matches our current pid.
+                    }
+                    other => panic!(
+                        "expected detection of duplicate pidfile access, instead got: {:?}",
+                        other
+                    ),
+                }
+            }
+            other => panic!("pidfile outcome not clean, but {:?}", other),
+        }
+    }
+}
