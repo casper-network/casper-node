@@ -37,12 +37,6 @@ function main() {
 
 }
 
-
-function do_await_eras_to_bid() {
-    log_step "Presenting a buffer of one era"
-    await_n_eras 1
-}
-
 function do_submit_auction_bids()
 {
     local NODE_ID=${1}
