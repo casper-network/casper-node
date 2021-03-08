@@ -20,6 +20,7 @@ use tracing::warn;
 /// an application was shut down cleanly.
 ///
 /// The pidfile is held open with an exclusive but advisory lock.
+#[derive(Debug)]
 struct Pidfile {
     /// The pidfile.
     ///
@@ -60,6 +61,7 @@ enum PidfileError {
 ///
 /// High-level description of the outcome of opening and locking the PIDfile.
 #[must_use]
+#[derive(Debug)]
 enum PidfileOutcome {
     /// Another instance of the node is likely running, or an attempt was made to reuse a pidfile.
     ///
