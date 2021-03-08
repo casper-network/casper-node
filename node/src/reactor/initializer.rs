@@ -11,6 +11,7 @@ use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::info;
 
 #[cfg(test)]
 use crate::{
