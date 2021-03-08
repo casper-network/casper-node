@@ -874,6 +874,11 @@ impl reactor::Reactor for Reactor {
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
+                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                        let reactor_event =
+                            Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs));
+                        self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
                     ConsensusAnnouncement::Handled(_) => {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
                         Effects::new()
@@ -943,12 +948,14 @@ impl reactor::Reactor for Reactor {
                 block_hash,
                 block,
             }) => {
-                let reactor_event =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded {
-                        block_hash,
-                        block,
-                    });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                let ess_event = Event::EventStreamServer(event_stream_server::Event::BlockAdded {
+                    block_hash,
+                    block: block.clone(),
+                });
+                let mut effects = self.dispatch_event(effect_builder, rng, ess_event);
+                let consensus_event = Event::Consensus(consensus::Event::BlockAdded(block));
+                effects.extend(self.dispatch_event(effect_builder, rng, consensus_event));
+                effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =

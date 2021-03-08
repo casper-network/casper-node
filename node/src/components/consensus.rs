@@ -99,6 +99,8 @@ pub enum Event<I> {
     },
     #[from]
     ConsensusRequest(ConsensusRequest),
+    /// A new block has been added: consensus needs to sign it and possibly start a new era.
+    BlockAdded(Box<Block>),
     /// The proto-block has been validated.
     ResolveValidity {
         era_id: EraId,
@@ -196,9 +198,12 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::ConsensusRequest(request) => write!(
                 f,
-                "A request for consensus component hash been receieved: {:?}",
+                "A request for consensus component hash been received: {:?}",
                 request
             ),
+            Event::BlockAdded(block) => {
+                write!(f, "Block {} added, height {}", block.hash(), block.height())
+            }
             Event::ResolveValidity {
                 era_id,
                 sender,
@@ -304,9 +309,7 @@ where
                 proto_block,
                 block_context,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
-            Event::ConsensusRequest(ConsensusRequest::HandleLinearBlock(block, responder)) => {
-                handling_es.handle_linear_chain_block(*block, responder)
-            }
+            Event::BlockAdded(block) => handling_es.handle_block_added(*block),
             Event::ResolveValidity {
                 era_id,
                 sender,

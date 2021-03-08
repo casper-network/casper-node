@@ -38,7 +38,7 @@ use crate::{
             BlockExecutorRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
             StorageRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
     types::{
         Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock,
@@ -523,15 +523,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                 debug!(?finalized_block, "execute block");
                 effect_builder
                     .get_block_at_height_local(finalized_block.height())
-                    .event(move |maybe_block| {
-                        maybe_block.map(Box::new).map_or_else(
-                            || Event::BlockIsNew(finalized_block),
-                            Event::BlockAlreadyExists,
-                        )
-                    })
-            }
-            Event::BlockAlreadyExists(block) => {
-                effect_builder.handle_linear_chain_block(*block).ignore()
+                    .map_some(|_| Event::BlockIsNew(finalized_block))
             }
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.

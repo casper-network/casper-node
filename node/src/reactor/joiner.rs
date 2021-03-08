@@ -807,43 +807,46 @@ impl reactor::Reactor for Reactor {
                 Event::Consensus,
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
-            Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block) => {
-                    let mut effects = Effects::new();
-                    let reactor_event =
-                        Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
-                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                    let reactor_event =
-                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                    effects
-                }
-                ConsensusAnnouncement::Finalized(_) => {
-                    // A block was finalized.
-                    Effects::new()
-                }
-                ConsensusAnnouncement::Fault {
-                    era_id,
-                    public_key,
-                    timestamp,
-                } => reactor::wrap_effects(
-                    Event::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::Fault {
-                            era_id,
-                            public_key: *public_key,
-                            timestamp,
-                        },
+            Event::ConsensusAnnouncement(announcement) => {
+                match announcement {
+                    ConsensusAnnouncement::Handled(block) => {
+                        let mut effects = Effects::new();
+                        let reactor_event =
+                            Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                        let reactor_event =
+                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                        effects
+                    }
+                    ConsensusAnnouncement::CreatedFinalitySignature(_)
+                    | ConsensusAnnouncement::Finalized(_) => {
+                        debug!("Ignoring {:?} in Joiner reactor.", announcement);
+                        Effects::new()
+                    }
+                    ConsensusAnnouncement::Fault {
+                        era_id,
+                        public_key,
+                        timestamp,
+                    } => reactor::wrap_effects(
+                        Event::EventStreamServer,
+                        self.event_stream_server.handle_event(
+                            effect_builder,
+                            rng,
+                            event_stream_server::Event::Fault {
+                                era_id,
+                                public_key: *public_key,
+                                timestamp,
+                            },
+                        ),
                     ),
-                ),
-                ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                    // TODO: handle the announcement and actually disconnect
-                    warn!("disconnecting from a given peer not yet implemented.");
-                    Effects::new()
+                    ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                        // TODO: handle the announcement and actually disconnect
+                        warn!("disconnecting from a given peer not yet implemented.");
+                        Effects::new()
+                    }
                 }
-            },
+            }
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.

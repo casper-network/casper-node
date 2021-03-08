@@ -795,33 +795,21 @@ where
         })
     }
 
-    pub(super) fn handle_linear_chain_block(
-        &mut self,
-        block: Block,
-        responder: Responder<Option<FinalitySignature>>,
-    ) -> Effects<Event<I>> {
-        // TODO: Delete once `EraSupervisor` gets removed from the joiner reactor.
-        if !self.era_supervisor.is_initialized() {
-            // enqueue
-            self.era_supervisor
-                .enqueued_requests
-                .push_back(ConsensusRequest::HandleLinearBlock(
-                    Box::new(block),
-                    responder,
-                ));
-            return Effects::new();
-        }
+    pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
         self.era_supervisor.executed_block(block.header());
-        let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
-            let block_hash = block.hash();
-            Some(FinalitySignature::new(*block_hash, era_id, &our_sk, our_pk))
-        } else {
-            None
-        };
-        let mut effects = responder.respond(maybe_fin_sig).ignore();
+        let mut effects = Effects::new();
+        if self.era_supervisor.is_validator_in(&our_pk, era_id) {
+            // TODO: Verify that the block is finalized?
+            let fs = FinalitySignature::new(*block.hash(), era_id, &our_sk, our_pk);
+            effects.extend(
+                self.effect_builder
+                    .announce_created_finality_signature(fs)
+                    .ignore(),
+            );
+        }
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;

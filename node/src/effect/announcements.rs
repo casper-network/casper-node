@@ -162,6 +162,8 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 pub enum ConsensusAnnouncement<I> {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
+    /// A finality signature was created.
+    CreatedFinalitySignature(Box<FinalitySignature>),
     /// A linear chain block has been handled.
     Handled(Box<Block>),
     /// An equivocation has been detected.
@@ -185,6 +187,9 @@ where
         match self {
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
+            }
+            ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                write!(formatter, "signed an executed block: {}", fs)
             }
             ConsensusAnnouncement::Handled(block) => write!(
                 formatter,
