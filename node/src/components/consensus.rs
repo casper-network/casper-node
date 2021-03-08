@@ -40,11 +40,14 @@ use crate::{
         },
         EffectBuilder, Effects,
     },
+    fatal,
     protocol::Message,
+    reactor::ReactorEvent,
     types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
+use crate::effect::EffectExt;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -115,12 +118,13 @@ pub enum Event<I> {
     CreateNewEra {
         /// The header of the switch block
         block: Box<Block>,
-        /// Ok(block_hash) if the booking block was found, Err(height) if not
-        booking_block_hash: Result<BlockHash, u64>,
+        /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
+        booking_block_hash: Result<BlockHash, EraId>,
     },
     /// Event raised upon initialization, when a number of eras have to be instantiated at once.
     InitializeEras {
         key_blocks: HashMap<EraId, BlockHeader>,
+        booking_blocks: HashMap<EraId, BlockHash>,
         /// This is empty except if the activation era still needs to be instantiated: Its
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
@@ -240,7 +244,8 @@ impl<I: Debug> Display for Event<I> {
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
 pub trait ReactorEventT<I>:
-    From<Event<I>>
+    ReactorEvent
+    + From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
@@ -255,7 +260,8 @@ pub trait ReactorEventT<I>:
 }
 
 impl<REv, I> ReactorEventT<I> for REv where
-    REv: From<Event<I>>
+    REv: ReactorEvent
+        + From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
@@ -317,23 +323,35 @@ where
                 block,
                 booking_block_hash,
             } => {
-                let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
-                    error!(
-                        "could not find the booking block at height {} for era {}",
-                        height,
-                        block.header().era_id().successor()
-                    );
-                    panic!("couldn't get the booking block hash");
-                });
+                let booking_block_hash = match booking_block_hash {
+                    Ok(hash) => hash,
+                    Err(era_id) => {
+                        error!(
+                            "could not find the booking block in era {}, for era {}",
+                            era_id,
+                            block.header().era_id().successor()
+                        );
+                        return fatal!(
+                            handling_es.effect_builder,
+                            "couldn't get the booking block hash"
+                        )
+                        .ignore();
+                    }
+                };
                 handling_es.handle_create_new_era(*block, booking_block_hash)
             }
             Event::InitializeEras {
                 key_blocks,
+                booking_blocks,
                 validators,
                 timestamp,
             } => {
-                let mut effects =
-                    handling_es.handle_initialize_eras(key_blocks, validators, timestamp);
+                let mut effects = handling_es.handle_initialize_eras(
+                    key_blocks,
+                    booking_blocks,
+                    validators,
+                    timestamp,
+                );
 
                 // TODO: remove that when possible
                 // This is needed because we want to make sure that we only try to handle linear

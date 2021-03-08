@@ -3,7 +3,8 @@
 use alloc::{fmt, vec::Vec};
 use core::convert::{TryFrom, TryInto};
 
-use failure::Fail;
+#[cfg(feature = "std")]
+use thiserror::Error;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -11,73 +12,74 @@ use crate::{
 };
 
 /// Errors which can occur while executing the Mint contract.
-#[derive(Fail, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Error))]
 #[repr(u8)]
 pub enum Error {
     /// Insufficient funds to complete the transfer.
-    #[fail(display = "Insufficient funds")]
+    #[cfg_attr(feature = "std", error("Insufficient funds"))]
     InsufficientFunds = 0,
     /// Source purse not found.
-    #[fail(display = "Source not found")]
+    #[cfg_attr(feature = "std", error("Source not found"))]
     SourceNotFound = 1,
     /// Destination purse not found.
-    #[fail(display = "Destination not found")]
+    #[cfg_attr(feature = "std", error("Destination not found"))]
     DestNotFound = 2,
     /// See [`PurseError::InvalidURef`].
-    #[fail(display = "Invalid URef")]
+    #[cfg_attr(feature = "std", error("Invalid URef"))]
     InvalidURef = 3,
     /// See [`PurseError::InvalidAccessRights`].
-    #[fail(display = "Invalid AccessRights")]
+    #[cfg_attr(feature = "std", error("Invalid AccessRights"))]
     InvalidAccessRights = 4,
     /// Tried to create a new purse with a non-zero initial balance.
-    #[fail(display = "Invalid non-empty purse creation")]
+    #[cfg_attr(feature = "std", error("Invalid non-empty purse creation"))]
     InvalidNonEmptyPurseCreation = 5,
     /// Failed to read from local or global storage.
-    #[fail(display = "Storage error")]
+    #[cfg_attr(feature = "std", error("Storage error"))]
     Storage = 6,
     /// Purse not found while trying to get balance.
-    #[fail(display = "Purse not found")]
+    #[cfg_attr(feature = "std", error("Purse not found"))]
     PurseNotFound = 7,
     /// Unable to obtain a key by its name.
-    #[fail(display = "Missing key")]
+    #[cfg_attr(feature = "std", error("Missing key"))]
     MissingKey = 8,
     /// Total supply not found.
-    #[fail(display = "Total supply not found")]
+    #[cfg_attr(feature = "std", error("Total supply not found"))]
     TotalSupplyNotFound = 9,
     /// Failed to record transfer.
-    #[fail(display = "Failed to record transfer")]
+    #[cfg_attr(feature = "std", error("Failed to record transfer"))]
     RecordTransferFailure = 10,
     /// Invalid attempt to reduce total supply.
-    #[fail(display = "Invalid attempt to reduce total supply")]
+    #[cfg_attr(feature = "std", error("Invalid attempt to reduce total supply"))]
     InvalidTotalSupplyReductionAttempt = 11,
     /// Failed to create new uref.
-    #[fail(display = "Failed to create new uref")]
+    #[cfg_attr(feature = "std", error("Failed to create new uref"))]
     NewURef = 12,
     /// Failed to put key.
-    #[fail(display = "Failed to put key")]
+    #[cfg_attr(feature = "std", error("Failed to put key"))]
     PutKey = 13,
     /// Failed to write local key.
-    #[fail(display = "Failed to write local key")]
+    #[cfg_attr(feature = "std", error("Failed to write local key"))]
     WriteLocal = 14,
     /// Failed to create a [`crate::CLValue`].
-    #[fail(display = "Failed to create a CLValue")]
+    #[cfg_attr(feature = "std", error("Failed to create a CLValue"))]
     CLValue = 15,
     /// Failed to serialize data.
-    #[fail(display = "Failed to serialize data")]
+    #[cfg_attr(feature = "std", error("Failed to serialize data"))]
     Serialize = 16,
     /// Source and target purse [`crate::URef`]s are equal.
-    #[fail(display = "Invalid target purse")]
+    #[cfg_attr(feature = "std", error("Invalid target purse"))]
     EqualSourceAndTarget = 17,
 
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]
-    #[fail(display = "GasLimit")]
+    #[cfg_attr(feature = "std", error("GasLimit"))]
     GasLimit = 18,
 
     #[cfg(test)]
     #[doc(hidden)]
-    #[fail(display = "Sentinel error")]
+    #[cfg_attr(feature = "std", error("Sentinel error"))]
     Sentinel,
 }
 

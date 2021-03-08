@@ -21,7 +21,10 @@ use parse::ReactorDefinition;
 /// Generates a new reactor implementation, along with types.
 #[proc_macro]
 pub fn reactor(input: TokenStream) -> TokenStream {
-    let def = parse_macro_input!(input as ReactorDefinition);
+    let mut def = parse_macro_input!(input as ReactorDefinition);
+
+    // Insert the control announcements.
+    def.inject_control_announcements();
 
     let mut output: proc_macro2::TokenStream = Default::default();
 

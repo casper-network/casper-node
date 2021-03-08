@@ -11,12 +11,14 @@ mod round_robin;
 
 use std::{
     cell::RefCell,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     fs, io,
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, Div},
     path::{Path, PathBuf},
 };
+#[cfg(test)]
+use std::{env, str::FromStr};
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
@@ -315,4 +317,28 @@ macro_rules! unregister_metric {
                 )
             });
     };
+}
+
+/// Reads an envvar from the environment and, if present, parses it.
+///
+/// Only absent envvars are returned as `None`.
+///
+/// # Panics
+///
+/// Panics on any parse error.
+#[cfg(test)]
+pub fn read_env<T: FromStr>(name: &str) -> Option<T>
+where
+    <T as FromStr>::Err: Debug,
+{
+    match env::var(name) {
+        Ok(raw) => Some(
+            raw.parse()
+                .unwrap_or_else(|_| panic!("cannot parse envvar `{}`", name)),
+        ),
+        Err(env::VarError::NotPresent) => None,
+        Err(err) => {
+            panic!(err)
+        }
+    }
 }

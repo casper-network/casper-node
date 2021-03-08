@@ -15,12 +15,12 @@ use crate::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
     },
-    testing::{ComponentHarness, TestRng},
+    testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
 };
 
-fn new_config(harness: &ComponentHarness<()>) -> Config {
+fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
 
     // Restrict all stores to 50 mibibytes, to catch issues before filling up the entire disk.
@@ -40,7 +40,7 @@ fn new_config(harness: &ComponentHarness<()>) -> Config {
 /// # Panics
 ///
 /// Panics if setting up the storage fixture fails.
-fn storage_fixture(harness: &ComponentHarness<()>) -> Storage {
+fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(&WithDir::new(harness.tmp.path(), cfg), None)
         .expect("could not create storage component fixture")
@@ -53,7 +53,10 @@ fn storage_fixture(harness: &ComponentHarness<()>) -> Storage {
 /// # Panics
 ///
 /// Panics if setting up the storage fixture fails.
-fn storage_fixture_with_hard_reset(harness: &ComponentHarness<()>, reset_era_id: EraId) -> Storage {
+fn storage_fixture_with_hard_reset(
+    harness: &ComponentHarness<UnitTestEvent>,
+    reset_era_id: EraId,
+) -> Storage {
     let cfg = new_config(harness);
     Storage::new(&WithDir::new(harness.tmp.path(), cfg), Some(reset_era_id))
         .expect("could not create storage component fixture")
@@ -68,7 +71,7 @@ fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
 
 /// Requests block at a specific height from a storage component.
 fn get_block_at_height(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     height: u64,
 ) -> Option<Block> {
@@ -81,7 +84,7 @@ fn get_block_at_height(
 
 /// Loads a block from a storage component.
 fn get_block(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
 ) -> Option<Block> {
@@ -98,7 +101,7 @@ fn get_block(
 
 /// Loads a set of deploys from a storage component.
 fn get_deploys(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hashes: Multiple<DeployHash>,
 ) -> Vec<Option<Deploy>> {
@@ -115,7 +118,7 @@ fn get_deploys(
 
 /// Loads a deploy with associated metadata from the storage component.
 fn get_deploy_and_metadata(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hash: DeployHash,
 ) -> Option<(Deploy, DeployMetadata)> {
@@ -131,7 +134,10 @@ fn get_deploy_and_metadata(
 }
 
 /// Requests the highest block from a storage component.
-fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
+fn get_highest_block(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetHighestBlock { responder }.into()
     });
@@ -141,7 +147,7 @@ fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) 
 
 /// Loads state from the storage component.
 fn load_state<T>(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     key: Cow<'static, [u8]>,
 ) -> Option<T>
@@ -158,7 +164,11 @@ where
 }
 
 /// Stores a block in a storage component.
-fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
+fn put_block(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    block: Box<Block>,
+) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutBlock { block, responder }.into()
     });
@@ -168,7 +178,7 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
 
 /// Stores a deploy in a storage component.
 fn put_deploy(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy: Box<Deploy>,
 ) -> bool {
@@ -181,7 +191,7 @@ fn put_deploy(
 
 /// Stores execution results in a storage component.
 fn put_execution_results(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
     execution_results: HashMap<DeployHash, ExecutionResult>,
@@ -200,7 +210,7 @@ fn put_execution_results(
 
 /// Saves state from the storage component.
 fn save_state<T>(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     key: Cow<'static, [u8]>,
     value: &T,
@@ -526,7 +536,7 @@ fn store_random_execution_results() {
     let mut expected_outcome = HashMap::new();
 
     fn setup_block(
-        harness: &mut ComponentHarness<()>,
+        harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
         expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
         block_hash: &BlockHash,

@@ -13,6 +13,7 @@ use datasize::DataSize;
 use derive_more::From;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
@@ -48,8 +49,8 @@ use crate::{
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            NetworkAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -194,6 +195,10 @@ pub enum Event {
     StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
+    /// A control announcement.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+
     /// Network announcement.
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
@@ -221,6 +226,16 @@ pub enum Event {
     /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
@@ -322,6 +337,7 @@ impl Display for Event {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            Event::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
@@ -570,6 +586,9 @@ impl reactor::Reactor for Reactor {
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => reactor::wrap_effects(
                 Event::LinearChainSync,
                 self.linear_chain_sync.handle_event(
