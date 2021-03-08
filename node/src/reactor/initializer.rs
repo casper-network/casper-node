@@ -172,7 +172,7 @@ impl Reactor {
         // integrity checks are even a good idea, as they can block the node for one or more hours
         // on restarts (online checks are an alternative).
         if crashed {
-            info!("running trie-store integrity check, this may take a while")
+            info!("running trie-store integrity check, this may take a while");
             if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
                 let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
                 if !missing_trie_keys.is_empty() {
