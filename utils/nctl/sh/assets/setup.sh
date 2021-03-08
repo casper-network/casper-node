@@ -354,7 +354,6 @@ function _main()
     if [ "$ACCOUNTS_PATH" = "" ]; then
         _set_accounts
     else
-        echo "$ACCOUNTS_PATH"
         _set_accounts_from_template "$ACCOUNTS_PATH"
     fi
     _set_nodes
