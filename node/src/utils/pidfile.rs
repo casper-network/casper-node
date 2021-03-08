@@ -117,7 +117,9 @@ impl Pidfile {
 
         // Now try to acquire an exclusive lock. This will fail if another process or another
         // instance of `Pidfile` is holding a lock onto the same pidfile.
-        pidfile.lock_exclusive().map_err(PidfileError::LockFailed)?;
+        pidfile
+            .try_lock_exclusive()
+            .map_err(PidfileError::LockFailed)?;
 
         // At this point, we're the exclusive users of the file and can read its contents.
         let mut raw_contents = String::new();
