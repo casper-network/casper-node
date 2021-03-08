@@ -14,7 +14,7 @@ use anyhow::{self, Context};
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 use crate::config;
 use casper_node::{
@@ -162,12 +162,21 @@ impl Cli {
                     Pidfile::acquire(root.join("initializer.pid"))
                 };
 
-                let (pidfile, crashed) = match pidfile_outcome {
+                // Note: Do not change `_pidfile` to `_`, or it will be dropped prematurely.
+                // Instantiating `pidfile` guarantees that it will be dropped _after_ any reactor,
+                // which is what we want.
+                let (_pidfile, crashed) = match pidfile_outcome {
                     PidfileOutcome::AnotherNodeRunning(_) => {
                         anyhow::bail!("another node instance is running (pidfile is locked)");
                     }
-                    PidfileOutcome::Crashed(pidfile) => (pidfile, true),
-                    PidfileOutcome::Clean(pidfile) => (pidfile, false),
+                    PidfileOutcome::Crashed(pidfile) => {
+                        warn!("previous node instance seems to have crashed, integrity checks may be run");
+                        (pidfile, true)
+                    }
+                    PidfileOutcome::Clean(pidfile) => {
+                        info!("no previous crash detected");
+                        (pidfile, false)
+                    }
                     PidfileOutcome::PidfileError(err) => {
                         return Err(anyhow::anyhow!(err));
                     }
@@ -183,7 +192,7 @@ impl Cli {
                 let registry = Registry::new();
 
                 let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
-                    validator_config,
+                    (crashed, validator_config),
                     &mut rng,
                     &registry,
                 )

@@ -151,7 +151,7 @@ impl Reactor {
     }
 
     fn new_with_chainspec_loader(
-        config: <Self as reactor::Reactor>::Config,
+        (crashed, config): <Self as reactor::Reactor>::Config,
         registry: &Registry,
         chainspec_loader: ChainspecLoader,
         chainspec_effects: Effects<chainspec_loader::Event>,
@@ -171,14 +171,17 @@ impl Reactor {
         // Refactoring this has been postponed for now, since it is unclear whether time-consuming
         // integrity checks are even a good idea, as they can block the node for one or more hours
         // on restarts (online checks are an alternative).
-        if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
-            if !missing_trie_keys.is_empty() {
-                panic!(
-                    "Fatal error! Trie-Key store is not empty.\n {:?}\n \
-                    Wipe the DB to ensure operations.\n Present state_roots: {:?}",
-                    missing_trie_keys, state_roots
-                )
+        if crashed {
+            info!("running trie-store integrity check, this may take a while")
+            if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
+                let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
+                if !missing_trie_keys.is_empty() {
+                    panic!(
+                        "Fatal error! Trie-Key store is not empty.\n {:?}\n \
+                        Wipe the DB to ensure operations.\n Present state_roots: {:?}",
+                        missing_trie_keys, state_roots
+                    )
+                }
             }
         }
 
@@ -210,7 +213,7 @@ impl Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = WithDir<validator::Config>;
+    type Config = (bool, WithDir<validator::Config>);
     type Error = Error;
 
     fn new(
@@ -223,7 +226,7 @@ impl reactor::Reactor for Reactor {
 
         // Construct the `ChainspecLoader` first so we fail fast if the chainspec is invalid.
         let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(config.dir(), effect_builder)?;
+            ChainspecLoader::new(config.1.dir(), effect_builder)?;
         Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
     }
 

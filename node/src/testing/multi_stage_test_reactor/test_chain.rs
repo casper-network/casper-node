@@ -185,7 +185,7 @@ impl TestChain {
 
         // Bundle our config with a chainspec for creating a multi-stage reactor
         let config = InitializerReactorConfigWithChainspec {
-            config: WithDir::new(&*CONFIG_DIR, validator_config),
+            config: (false, WithDir::new(&*CONFIG_DIR, validator_config)),
             chainspec: Arc::clone(&self.chainspec),
         };
 
