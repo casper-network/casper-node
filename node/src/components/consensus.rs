@@ -42,6 +42,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
+    reactor::ReactorEvent,
     types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
@@ -243,7 +244,8 @@ impl<I: Debug> Display for Event<I> {
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
 pub trait ReactorEventT<I>:
-    From<Event<I>>
+    ReactorEvent
+    + From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
@@ -258,7 +260,8 @@ pub trait ReactorEventT<I>:
 }
 
 impl<REv, I> ReactorEventT<I> for REv where
-    REv: From<Event<I>>
+    REv: ReactorEvent
+        + From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>

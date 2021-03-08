@@ -74,6 +74,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
+    reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
         DeployHash, DeployMetadata,
@@ -207,7 +208,10 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
 }
 
-impl<REv> Component<REv> for Storage {
+impl<REv> Component<REv> for Storage
+where
+    REv: ReactorEvent,
+{
     type Event = Event;
     type ConstructionError = Error;
 
