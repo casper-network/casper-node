@@ -4,7 +4,7 @@
 
 use std::{
     fs::{self, File},
-    io::{self, Read, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
     num::ParseIntError,
     path::{Path, PathBuf},
     process,
@@ -143,10 +143,18 @@ impl Pidfile {
             return Err(PidfileError::DuplicatedPid);
         }
 
+        // Truncate and rewind.
+        pidfile.set_len(0).map_err(PidfileError::WriteFailed)?;
+        pidfile
+            .seek(SeekFrom::Start(0))
+            .map_err(PidfileError::WriteFailed)?;
+
         // Do our best to ensure that we always have some contents in the file immediately.
         pidfile
             .write_all(pid.to_string().as_bytes())
             .map_err(PidfileError::WriteFailed)?;
+
+        pidfile.flush().map_err(PidfileError::WriteFailed)?;
 
         Ok(Pidfile {
             pidfile,
@@ -210,6 +218,7 @@ mod tests {
 
         match outcome {
             PidfileOutcome::Crashed(pidfile) => {
+                // Now check if the written pid matches our PID.
                 assert_eq!(pidfile.previous, Some(12345));
 
                 // After we've crashed, we still expect cleanup.
