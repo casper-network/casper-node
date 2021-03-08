@@ -94,7 +94,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     fatal,
-    reactor::{EventQueueHandle, Finalize, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::{NodeId, TimeDiff, Timestamp},
     utils, NodeRng,
@@ -184,7 +184,7 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
-    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
     ///
@@ -498,10 +498,17 @@ where
         transport: Transport,
     ) -> Effects<Event<P>> {
         // This connection is send-only, we only use the sink.
-        let peer_address = transport
-            .get_ref()
-            .peer_addr()
-            .expect("should have peer address");
+        let peer_address = match transport.get_ref().peer_addr() {
+            Ok(peer_addr) => peer_addr,
+            Err(err) => {
+                // The peer address disappeared, likely because the connection was closed while
+                // we are setting up.
+                warn!(%peer_id, %err, "peer connection terminated while setting up outgoing connection, dropping");
+
+                // We still need to clean up any trace of the connection.
+                return self.remove(effect_builder, &peer_id, false);
+            }
+        };
 
         if !self.pending.remove(&peer_address) {
             info!(
@@ -850,7 +857,7 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
@@ -869,11 +876,6 @@ where
             } => {
                 warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
 
-                let was_removed = self.pending.remove(&peer_address);
-                assert!(
-                    was_removed,
-                    "Bootstrap failed for node, but it was not in the set of pending connections"
-                );
                 self.terminate_if_isolated(effect_builder)
             }
             Event::IncomingNew {

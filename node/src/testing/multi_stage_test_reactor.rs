@@ -17,12 +17,12 @@ use tracing::warn;
 
 use crate::{
     components::{consensus::EraSupervisor, storage::Storage},
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::{
         initializer::Reactor as InitializerReactor,
         joiner::Reactor as JoinerReactor,
         validator::{Reactor as ValidatorReactor, ValidatorInitConfig},
-        wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorExit, Scheduler,
+        wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorEvent, ReactorExit, Scheduler,
     },
     testing::network::NetworkedReactor,
     types::{Chainspec, NodeId},
@@ -54,6 +54,23 @@ pub enum MultiStageTestEvent {
 
     // Events related to stage transitions.
     JoinerFinalized(#[serde(skip_serializing)] Box<ValidatorInitConfig>),
+
+    // Control announcement.
+    // These would only be used for fatal errors emitted by the multi-stage reactor itself, all
+    // "real" control announcements will be inside `InitializerEvent`, `JoinerEvent` or
+    // `ValidatorEvent`.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+}
+
+impl ReactorEvent for MultiStageTestEvent {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for MultiStageTestEvent {
@@ -70,6 +87,9 @@ impl Display for MultiStageTestEvent {
             }
             MultiStageTestEvent::JoinerFinalized(_) => {
                 write!(f, "joiner finalization complete")
+            }
+            MultiStageTestEvent::ControlAnnouncement(ctrl_ann) => {
+                write!(f, "control: {}", ctrl_ann)
             }
         }
     }

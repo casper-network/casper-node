@@ -13,6 +13,7 @@ use std::{
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -25,7 +26,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{GossiperAnnouncement, NetworkAnnouncement},
+        announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, Effects,
     },
@@ -51,9 +52,21 @@ enum Event {
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
@@ -163,6 +176,9 @@ impl Reactor for TestReactor {
                 rng,
                 Event::SmallNet(SmallNetworkEvent::from(req)),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

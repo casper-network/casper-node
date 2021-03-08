@@ -8,6 +8,7 @@ use std::{
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, info};
 
@@ -18,7 +19,9 @@ use super::{
 use crate::{
     components::{network::NetworkIdentity, Component},
     effect::{
-        announcements::NetworkAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
+        announcements::{ControlAnnouncement, NetworkAnnouncement},
+        requests::NetworkRequest,
+        EffectBuilder, Effects,
     },
     protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
@@ -39,7 +42,19 @@ enum Event {
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, String>),
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, String>),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
@@ -107,6 +122,9 @@ impl Reactor for TestReactor {
                 rng,
                 Event::Network(NetworkEvent::from(request)),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

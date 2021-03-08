@@ -74,7 +74,7 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
     local: 0,
     global: 0,
     control_flow: 0,
-    integer_comparsion: 0,
+    integer_comparison: 0,
     conversion: 0,
     unreachable: 0,
     nop: 0,

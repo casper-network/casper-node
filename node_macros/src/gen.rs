@@ -138,6 +138,16 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
            #(#event_variants,)*
         }
 
+        impl crate::reactor::ReactorEvent for #event_ident {
+            fn as_control(&self) -> Option<&crate::effect::announcements::ControlAnnouncement> {
+                if let #event_ident::ControlAnnouncement(ref ctrl_ann) = self {
+                    Some(ctrl_ann)
+                } else {
+                    None
+                }
+            }
+        }
+
         #[doc = #error_docs]
         #[derive(Debug)]
         pub enum #error_ident {
@@ -225,7 +235,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 dispatches.push(quote!(
                     #event_ident::#request_variant_ident(request) => {
                         // Request is discarded.
-                        panic!("received request that was expressively marked panic: {:?}", request)
+                        panic!("received event that was explicitly routed to a panic: {:?}", request)
                     },
                 ));
             }

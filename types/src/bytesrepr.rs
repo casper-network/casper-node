@@ -15,10 +15,11 @@ use alloc::{
 use core::any;
 use core::{mem, ptr::NonNull};
 
-use failure::Fail;
 use num_integer::Integer;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
+use thiserror::Error;
 
 pub use bytes::Bytes;
 
@@ -98,20 +99,21 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 }
 
 /// Serialization and deserialization errors.
-#[derive(Debug, Fail, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(Error))]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.
-    #[fail(display = "Deserialization error: early end of stream")]
+    #[cfg_attr(feature = "std", error("Deserialization error: early end of stream"))]
     EarlyEndOfStream = 0,
     /// Formatting error while deserializing.
-    #[fail(display = "Deserialization error: formatting")]
+    #[cfg_attr(feature = "std", error("Deserialization error: formatting"))]
     Formatting,
     /// Not all input bytes were consumed in [`deserialize`].
-    #[fail(display = "Deserialization error: left-over bytes")]
+    #[cfg_attr(feature = "std", error("Deserialization error: left-over bytes"))]
     LeftOverBytes,
     /// Out of memory error.
-    #[fail(display = "Serialization error: out of memory")]
+    #[cfg_attr(feature = "std", error("Serialization error: out of memory"))]
     OutOfMemory,
 }
 

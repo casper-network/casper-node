@@ -146,7 +146,6 @@ impl DeployExt for Deploy {
             chain_name,
             secret_key,
         } = params;
-        let mut rng = casper_node::new_rng();
         Deploy::new(
             timestamp,
             ttl,
@@ -156,7 +155,6 @@ impl DeployExt for Deploy {
             payment,
             session,
             &secret_key,
-            &mut rng,
         )
     }
 
@@ -187,8 +185,7 @@ impl DeployExt for Deploy {
         W: Write,
     {
         let mut deploy = Deploy::read_deploy(input)?;
-        let mut rng = casper_node::new_rng();
-        deploy.sign(&secret_key, &mut rng);
+        deploy.sign(&secret_key);
         deploy.write_deploy(output)?;
         Ok(())
     }
