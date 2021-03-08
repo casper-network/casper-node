@@ -431,28 +431,25 @@ where
         let mut results = ExecutionResults::with_capacity(deploys.len());
 
         for deploy_item in deploys {
-            let result = match deploy_item {
-                Err(exec_result) => Ok(exec_result),
-                Ok(deploy_item) => match deploy_item.session {
-                    ExecutableDeployItem::Transfer { .. } => self.transfer(
-                        correlation_id,
-                        &executor,
-                        exec_request.protocol_version,
-                        exec_request.parent_state_hash,
-                        BlockTime::new(exec_request.block_time),
-                        deploy_item,
-                        exec_request.proposer,
-                    ),
-                    _ => self.deploy(
-                        correlation_id,
-                        &executor,
-                        exec_request.protocol_version,
-                        exec_request.parent_state_hash,
-                        BlockTime::new(exec_request.block_time),
-                        deploy_item,
-                        exec_request.proposer,
-                    ),
-                },
+            let result = match deploy_item.session {
+                ExecutableDeployItem::Transfer { .. } => self.transfer(
+                    correlation_id,
+                    &executor,
+                    exec_request.protocol_version,
+                    exec_request.parent_state_hash,
+                    BlockTime::new(exec_request.block_time),
+                    deploy_item,
+                    exec_request.proposer,
+                ),
+                _ => self.deploy(
+                    correlation_id,
+                    &executor,
+                    exec_request.protocol_version,
+                    exec_request.parent_state_hash,
+                    BlockTime::new(exec_request.block_time),
+                    deploy_item,
+                    exec_request.proposer,
+                ),
             };
             match result {
                 Ok(result) => results.push_back(result),
