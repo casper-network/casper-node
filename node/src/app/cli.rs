@@ -7,7 +7,6 @@ pub mod arglang;
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process,
     str::FromStr,
 };
 
@@ -23,7 +22,10 @@ use casper_node::{
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
     setup_signal_hooks,
     types::ExitCode,
-    utils::WithDir,
+    utils::{
+        pidfile::{Pidfile, PidfileOutcome},
+        WithDir,
+    },
 };
 use prometheus::Registry;
 
@@ -139,7 +141,7 @@ impl FromStr for ConfigExt {
 
 impl Cli {
     /// Executes selected CLI command.
-    pub async fn run(self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<i32> {
         match self {
             Cli::Validator { config, config_ext } => {
                 // Setup UNIX signal hooks.
@@ -147,6 +149,29 @@ impl Cli {
 
                 let validator_config = Self::init(&config, config_ext)?;
                 info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
+
+                // Determine storage directory to store pidfile in.
+                let pidfile_outcome = {
+                    let storage_config = validator_config.map_ref(|cfg| cfg.storage.clone());
+                    let root = storage_config.with_dir(storage_config.value().path.clone());
+
+                    if !root.exists() {
+                        anyhow::bail!("could not create storage directory to store pidfile in");
+                    }
+
+                    Pidfile::acquire(root.join("initializer.pid"))
+                };
+
+                let (pidfile, crashed) = match pidfile_outcome {
+                    PidfileOutcome::AnotherNodeRunning(_) => {
+                        anyhow::bail!("another node instance is running (pidfile is locked)");
+                    }
+                    PidfileOutcome::Crashed(pidfile) => (pidfile, true),
+                    PidfileOutcome::Clean(pidfile) => (pidfile, false),
+                    PidfileOutcome::PidfileError(err) => {
+                        return Err(anyhow::anyhow!(err));
+                    }
+                };
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -173,8 +198,7 @@ impl Cli {
                 // initializer2_runner.run(&mut rng).await;
 
                 match initializer_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(ExitCode::Success) => return Ok(()),
-                    ReactorExit::ProcessShouldExit(exit_code) => process::exit(exit_code as i32),
+                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
                     ReactorExit::ProcessShouldContinue => info!("finished initialization"),
                 }
 
@@ -190,8 +214,7 @@ impl Cli {
                 )
                 .await?;
                 match joiner_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(ExitCode::Success) => return Ok(()),
-                    ReactorExit::ProcessShouldExit(exit_code) => process::exit(exit_code as i32),
+                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
                     ReactorExit::ProcessShouldContinue => info!("finished joining"),
                 }
 
@@ -200,13 +223,11 @@ impl Cli {
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
 
                 match validator_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(ExitCode::Success) => (),
-                    ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigInt)
-                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigQuit)
-                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigTerm) => {
-                        process::exit(exit_code as i32)
+                    ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
+                    reactor_exit => {
+                        error!("validator should not exit with {:?}", reactor_exit);
+                        Ok(ExitCode::Abort as i32)
                     }
-                    reactor_exit => error!("validator should not exit with {:?}", reactor_exit),
                 }
             }
             Cli::MigrateConfig {
@@ -226,6 +247,7 @@ impl Cli {
 
                 info!(version = %env!("CARGO_PKG_VERSION"), "migrating config");
                 casper_node::migrate_config(WithDir::new(old_root, old_config), new_config)?;
+                Ok(ExitCode::Success as i32)
             }
             Cli::MigrateData {
                 old_config,
@@ -244,10 +266,9 @@ impl Cli {
 
                 info!(version = %env!("CARGO_PKG_VERSION"), "migrating data");
                 casper_node::migrate_data(WithDir::new(old_root, old_config), new_config)?;
+                Ok(ExitCode::Success as i32)
             }
         }
-
-        Ok(())
     }
 
     /// Parses the config file for the current version of casper-node, and initializes logging.

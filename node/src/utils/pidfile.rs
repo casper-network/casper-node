@@ -21,7 +21,7 @@ use tracing::warn;
 ///
 /// The pidfile is held open with an exclusive but advisory lock.
 #[derive(Debug)]
-struct Pidfile {
+pub struct Pidfile {
     /// The pidfile.
     ///
     /// The file will be locked for the lifetime of `Pidfile`.
@@ -34,7 +34,7 @@ struct Pidfile {
 
 /// An error acquiring a pidfile.
 #[derive(Debug, Error)]
-enum PidfileError {
+pub enum PidfileError {
     /// The pidfile could not be opened at all.
     #[error("could not pidfile: {0}")]
     CouldNotOpen(#[source] io::Error),
@@ -62,7 +62,7 @@ enum PidfileError {
 /// High-level description of the outcome of opening and locking the PIDfile.
 #[must_use]
 #[derive(Debug)]
-enum PidfileOutcome {
+pub enum PidfileOutcome {
     /// Another instance of the node is likely running, or an attempt was made to reuse a pidfile.
     ///
     /// **Recommendation**: Exit to avoid resource conflicts.

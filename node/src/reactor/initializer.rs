@@ -164,6 +164,13 @@ impl Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
 
+        // TODO: This integrity check is misplaced, it should be part of the components
+        // `handle_event` function. Ideally it would be in the constructor, but since a query to
+        // storage needs to be made, this is not possible.
+        //
+        // Refactoring this has been postponed for now, since it is unclear whether time-consuming
+        // integrity checks are even a good idea, as they can block the node for one or more hours
+        // on restarts (online checks are an alternative).
         if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
             let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
             if !missing_trie_keys.is_empty() {

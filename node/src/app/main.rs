@@ -41,6 +41,7 @@ fn panic_hook(info: &PanicInfo) {
     process::abort()
 }
 
+#[quit::main]
 fn main() -> anyhow::Result<()> {
     let mut runtime = Builder::new()
         .threaded_scheduler()
@@ -54,5 +55,6 @@ fn main() -> anyhow::Result<()> {
     // Parse CLI args and run selected subcommand.
     let opts = Cli::from_args();
 
-    runtime.block_on(async { opts.run().await })
+    let exit_code = runtime.block_on(async { opts.run().await })?;
+    quit::with_code(exit_code)
 }

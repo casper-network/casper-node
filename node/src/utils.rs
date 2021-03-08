@@ -6,7 +6,7 @@ pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
-pub(crate) mod pidfile;
+pub mod pidfile;
 pub(crate) mod rlimit;
 mod round_robin;
 
@@ -231,7 +231,7 @@ impl<T> WithDir<T> {
     }
 
     /// Returns a reference to the inner path.
-    pub(crate) fn dir(&self) -> &Path {
+    pub fn dir(&self) -> &Path {
         self.dir.as_ref()
     }
 
@@ -240,7 +240,8 @@ impl<T> WithDir<T> {
         (self.dir, self.value)
     }
 
-    pub(crate) fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
+    /// Maps an internal value onto a reference.
+    pub fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
         WithDir {
             dir: self.dir.clone(),
             value: f(&self.value),
@@ -248,12 +249,12 @@ impl<T> WithDir<T> {
     }
 
     /// Get a reference to the inner value.
-    pub(crate) fn value(&self) -> &T {
+    pub fn value(&self) -> &T {
         &self.value
     }
 
     /// Adds `self.dir` as a parent if `path` is relative, otherwise returns `path` unchanged.
-    pub(crate) fn with_dir(&self, path: PathBuf) -> PathBuf {
+    pub fn with_dir(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
             self.dir.join(path)
         } else {
