@@ -10,16 +10,16 @@ mod test_rng;
 
 use std::{
     any::type_name,
-    collections::HashSet,
     fmt::Debug,
     marker::PhantomData,
-    sync::atomic::{AtomicU16, Ordering},
+    net::{Ipv4Addr, TcpListener},
 };
 
 use futures::channel::oneshot;
 use serde::{de::DeserializeOwned, Serialize};
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
+use tracing::info;
 
 use crate::{
     components::Component,
@@ -32,9 +32,6 @@ pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 pub(crate) use test_rng::TestRng;
 
-// Lower bound for the port, below there's a high chance of hitting a system service.
-const PORT_LOWER_BOUND: u16 = 10_000;
-
 pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
     let serialized = bincode::serialize(value).unwrap();
     let deserialized = bincode::deserialize(serialized.as_slice()).unwrap();
@@ -42,34 +39,29 @@ pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T
 }
 
 /// Create an unused port on localhost.
-#[allow(clippy::assertions_on_constants)]
 pub(crate) fn unused_port_on_localhost() -> u16 {
-    // Prime used for the LCG.
-    const PRIME: u16 = 54101;
-    // Generating member of prime group.
-    const GENERATOR: u16 = 35892;
+    // Unfortunately a random port has still a chance to hit the occasional duplicate every once in
+    // a while, or hit an already bound port. For this reason, we ask the OS for an unused port
+    // instead and hope that no one binds to it in the meantime.
 
-    // This assertion can never fail, but the compiler should output a warning if the constants
-    // combined exceed the valid values of `u16`.
-    assert!(PORT_LOWER_BOUND + PRIME + 10 < u16::MAX);
+    // For a collision to occur, it is now required that after running this function, but before
+    // rebinding the port, an unrelated program or a parallel running test must manage to bind to
+    // precisely this port, hitting the same port randomly.
 
-    // Poor man's linear congurential random number generator:
-    static RNG_STATE: AtomicU16 = AtomicU16::new(GENERATOR);
+    // This is slightly better than a strictly random port, since it takes already bound ports
+    // across the entire interface into account.
 
-    // Attempt 10k times to swap the atomic with the next generator value.
-    for _ in 0..10_000 {
-        if let Ok(fresh_port) =
-            RNG_STATE.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |state| {
-                let new_value = (state as u32 + GENERATOR as u32) % (PRIME as u32);
-                Some(new_value as u16 + PORT_LOWER_BOUND)
-            })
-        {
-            return fresh_port;
-        }
-    }
+    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0))
+        .expect("could not bind new random port on localhost");
+    let local_addr = listener
+        .local_addr()
+        .expect("local listener has no address?");
 
-    // Give up - likely we're in a very tight, oscillatory race with another thread.
-    panic!("could not generate random new port after 10_000 tries");
+    let port = local_addr.port();
+    info!(%port, "OS generated random localhost port");
+
+    // Once we drop the listener, the port should be closed.
+    port
 }
 
 /// Sets up logging for testing.
@@ -246,21 +238,6 @@ impl<REv: 'static> Default for ComponentHarness<REv> {
     }
 }
 
-/// Test that the random port generator produce at least 40k values without duplicates.
-#[test]
-fn test_random_port_gen() {
-    const NUM_ROUNDS: usize = 40_000;
-
-    let values: HashSet<_> = (0..NUM_ROUNDS)
-        .map(|_| {
-            let port = unused_port_on_localhost();
-            assert!(port >= PORT_LOWER_BOUND);
-            port
-        })
-        .collect();
-
-    assert_eq!(values.len(), NUM_ROUNDS);
-}
 #[test]
 fn default_works_without_panicking_for_component_harness() {
     let _harness = ComponentHarness::<()>::default();
