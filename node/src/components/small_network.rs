@@ -364,8 +364,8 @@ where
         }
 
         // If any connection attempt succeeded, we will have a pending address, and thus are not
-        // isolated. However, should all DNS reconnection attempts fail, we want to retry
-        // resolving them as well, so we call `reconnect_if_isolated` again.
+        // isolated. However, should all DNS resolutions fail, we want to retry, so call
+        // `reconnect_if_isolated` again.
         effects.extend(self.reconnect_if_isolated(effect_builder));
 
         effects
