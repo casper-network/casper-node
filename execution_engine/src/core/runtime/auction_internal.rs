@@ -5,8 +5,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-        StorageProvider, SystemProvider, UnbondingPurse,
+        AccountProvider, Auction, Bid, EraId, EraInfo, Error, MintProvider, RuntimeProvider,
+        SeigniorageRecipients, StorageProvider, SystemProvider, UnbondingPurse,
     },
     CLTyped, CLValue, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
@@ -15,7 +15,6 @@ use super::Runtime;
 use crate::{
     core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
 };
-use casper_types::system::auction::{EraId, SeigniorageRecipients};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {

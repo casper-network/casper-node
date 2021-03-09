@@ -12,12 +12,11 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    system::auction::{Bid, EraInfo, UnbondingPurse},
+    system::auction::{Bid, EraInfo, SeigniorageRecipients, UnbondingPurse},
     CLValue, DeployInfo, Transfer,
 };
 
 use super::{Account, Contract, ContractPackage};
-use casper_types::system::auction::SeigniorageRecipients;
 
 /// Representation of a value stored in global state.
 ///

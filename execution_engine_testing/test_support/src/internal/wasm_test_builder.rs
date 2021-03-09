@@ -54,9 +54,9 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION,
+            Bids, EraId, EraValidators, SeigniorageRecipientsSnapshot, UnbondingPurses,
+            ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -68,7 +68,6 @@ use casper_types::{
 use crate::internal::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
 };
-use casper_types::system::auction::SeigniorageRecipientsSnapshot;
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
