@@ -16,10 +16,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::{
-        auction::{
-            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        },
+        auction::{Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD},
         mint::TOTAL_SUPPLY_KEY,
     },
     CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
@@ -93,10 +90,8 @@ fn should_step() {
         .with_next_era_id(1)
         .build();
 
-    let auction_hash = builder.get_auction_contract_hash();
-
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+        builder.get_seigniorage_recipients_snapshot();
 
     let bids_before_slashing: Bids = builder.get_bids();
     assert!(
@@ -127,7 +122,7 @@ fn should_step() {
 
     // seigniorage snapshot should have changed after auction
     let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+        builder.get_seigniorage_recipients_snapshot();
     assert!(
         !before_auction_seigniorage
             .keys()

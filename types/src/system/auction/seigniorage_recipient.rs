@@ -1,5 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
+#[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +11,8 @@ use crate::{
 };
 
 /// The seigniorage recipient details.
-#[derive(Default, PartialEq, Clone, Debug, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Default, PartialEq, Clone, Debug, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
     stake: U512,

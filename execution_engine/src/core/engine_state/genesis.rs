@@ -27,7 +27,7 @@ use casper_types::{
             INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
             METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
             METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
@@ -973,6 +973,13 @@ where
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&validators, auction_delay);
 
+        for (era_id, recipients) in initial_seigniorage_recipients.into_iter() {
+            self.tracking_copy.borrow_mut().write(
+                Key::EraValidators(era_id),
+                StoredValue::EraValidators(recipients),
+            )
+        }
+
         let era_id_uref = self
             .uref_address_generator
             .borrow_mut()
@@ -1002,20 +1009,6 @@ where
             era_end_timestamp_millis_uref.into(),
         );
 
-        let initial_seigniorage_recipients_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
-            initial_seigniorage_recipients_uref.into(),
-            StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
-                |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
-            )?),
-        );
-        named_keys.insert(
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
-            initial_seigniorage_recipients_uref.into(),
-        );
 
         for (validator_public_key, bid) in validators.into_iter() {
             let validator_account_hash = AccountHash::from(&validator_public_key);

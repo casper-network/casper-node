@@ -270,6 +270,8 @@ impl Key {
             Ok(Key::Withdraw(AccountHash::new(AccountHashBytes::try_from(
                 base16::decode(hex)?.as_ref(),
             )?)))
+        } else if let Some(era_id_str) = input.strip_prefix(VALIDATORS_PREFIX) {
+            Ok(Key::EraValidators(u64::from_str(era_id_str)?))
         } else {
             Err(FromStrError::InvalidPrefix)
         }
@@ -498,6 +500,10 @@ impl FromBytes for Key {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Withdraw(account_hash), rem))
             }
+            tag if tag == KeyTag::EraValidators as u8 => {
+                let (era_id, rem) = u64::from_bytes(remainder)?;
+                Ok((Key::EraValidators(era_id), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -515,6 +521,7 @@ impl Distribution<Key> for Standard {
             6 => Key::Balance(rng.gen()),
             7 => Key::Bid(rng.gen()),
             8 => Key::Withdraw(rng.gen()),
+            9 => Key::EraValidators(rng.gen()),
             _ => unreachable!(),
         }
     }

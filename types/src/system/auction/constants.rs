@@ -86,7 +86,7 @@ pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for era-end timestamp.
 pub const ERA_END_TIMESTAMP_MILLIS_KEY: &str = "era_end_timestamp_millis";
 /// Storage for `SeigniorageRecipientsSnapshot`.
-pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
+//pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
 /// Total validator slots allowed.
 pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 /// Amount of auction delay.

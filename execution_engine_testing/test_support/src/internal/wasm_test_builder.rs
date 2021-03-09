@@ -68,6 +68,7 @@ use casper_types::{
 use crate::internal::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
 };
+use casper_types::system::auction::SeigniorageRecipientsSnapshot;
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -890,6 +891,36 @@ where
             ) = (key, read_result)
             {
                 ret.insert(account_hash, unbonding_purses);
+            }
+        }
+
+        ret
+    }
+
+    pub fn get_seigniorage_recipients_snapshot(&mut self) -> SeigniorageRecipientsSnapshot {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+
+        let tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        let reader = tracking_copy.reader();
+
+        let era_ids = reader
+            .keys_with_prefix(correlation_id, &[KeyTag::EraValidators as u8])
+            .unwrap_or_default();
+
+        let mut ret = BTreeMap::new();
+
+        for era_id in era_ids.into_iter() {
+            let read_result = reader.read(correlation_id, &era_id);
+            if let (Key::EraValidators(era_id), Ok(Some(StoredValue::EraValidators(recipients)))) =
+                (era_id, read_result)
+            {
+                ret.insert(era_id, recipients);
             }
         }
 

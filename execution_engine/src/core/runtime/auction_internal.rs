@@ -107,13 +107,19 @@ where
     ) -> Result<Option<SeigniorageRecipients>, Error> {
         match self.context.read_gs(&Key::EraValidators(era_id)) {
             Ok(Some(StoredValue::EraValidators(recipients))) => Ok(Some(recipients)),
-            Ok(Some(_)) => Err(Error::Storage),
+            Ok(Some(_)) => {
+                println!("Word");
+                Err(Error::Storage)
+            }
             Ok(None) => Ok(None),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
             Err(execution::Error::GasLimit) => Err(Error::GasLimit),
-            Err(_) => Err(Error::Storage),
+            Err(_) => {
+                println!("Word 2");
+                Err(Error::Storage)
+            }
         }
     }
 

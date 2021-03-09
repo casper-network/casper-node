@@ -6,12 +6,11 @@ use serde_bytes::ByteBuf;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    system::auction::{Bid, EraInfo, UnbondingPurse},
+    system::auction::{Bid, EraInfo, SeigniorageRecipients, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
 use crate::shared::{account::Account, TypeMismatch};
-use casper_types::system::auction::SeigniorageRecipients;
 
 #[repr(u8)]
 enum Tag {
@@ -107,6 +106,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_era_validators(&self) -> Option<&SeigniorageRecipients> {
+        match self {
+            StoredValue::EraValidators(recipients) => Some(recipients),
+            _ => None,
+        }
+    }
+
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -152,6 +158,12 @@ impl From<ContractPackage> for StoredValue {
 impl From<Bid> for StoredValue {
     fn from(bid: Bid) -> StoredValue {
         StoredValue::Bid(Box::new(bid))
+    }
+}
+
+impl From<SeigniorageRecipients> for StoredValue {
+    fn from(recipients: SeigniorageRecipients) -> StoredValue {
+        StoredValue::EraValidators(recipients)
     }
 }
 
@@ -341,6 +353,8 @@ impl FromBytes for StoredValue {
                     (StoredValue::Withdraw(unbonding_purses), remainder)
                 })
             }
+            tag if tag == Tag::EraValidators as u8 => SeigniorageRecipients::from_bytes(remainder)
+                .map(|(recipients, remainder)| (StoredValue::EraValidators(recipients), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
