@@ -53,6 +53,8 @@ use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, trace, warn};
 use tracing_futures::Instrument;
+
+#[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
@@ -102,6 +104,50 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         })
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
+
+#[cfg(target_os = "linux")]
+/// Adjusts the maximum number of open file handles upwards towards the hard limit.
+fn adjust_open_files_limit() {
+    // Ensure we have reasonable ulimits.
+    match ResourceLimit::<OpenFiles>::get() {
+        Err(err) => {
+            warn!(%err, "could not retrieve open files limit");
+        }
+
+        Ok(current_limit) => {
+            if current_limit.current() < TARGET_OPEN_FILES_LIMIT {
+                let best_possible = if current_limit.max() < TARGET_OPEN_FILES_LIMIT {
+                    warn!(
+                        wanted = TARGET_OPEN_FILES_LIMIT,
+                        hard_limit = current_limit.max(),
+                        "settling for lower open files limit due to hard limit"
+                    );
+                    current_limit.max()
+                } else {
+                    TARGET_OPEN_FILES_LIMIT
+                };
+
+                let new_limit = ResourceLimit::<OpenFiles>::fixed(best_possible);
+                if let Err(err) = new_limit.set() {
+                    warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
+                } else {
+                    debug!(?new_limit, "successfully increased open files limit");
+                }
+            } else {
+                debug!(
+                    ?current_limit,
+                    "not changing open files limit, already sufficient"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+/// File handle limit adjustment shim.
+fn adjust_open_files_limit() {
+    info!("not on linux, not adjusting open files limit");
+}
 
 /// The value returned by a reactor on completion of the `run()` loop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
@@ -388,39 +434,7 @@ where
         rng: &mut NodeRng,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
-        // Ensure we have reasonable ulimits.
-        match ResourceLimit::<OpenFiles>::get() {
-            Err(err) => {
-                warn!(%err, "could not retrieve open files limit");
-            }
-
-            Ok(current_limit) => {
-                if current_limit.current() < TARGET_OPEN_FILES_LIMIT {
-                    let best_possible = if current_limit.max() < TARGET_OPEN_FILES_LIMIT {
-                        warn!(
-                            wanted = TARGET_OPEN_FILES_LIMIT,
-                            hard_limit = current_limit.max(),
-                            "settling for lower open files limit due to hard limit"
-                        );
-                        current_limit.max()
-                    } else {
-                        TARGET_OPEN_FILES_LIMIT
-                    };
-
-                    let new_limit = ResourceLimit::<OpenFiles>::fixed(best_possible);
-                    if let Err(err) = new_limit.set() {
-                        warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
-                    } else {
-                        debug!(?new_limit, "successfully increased open files limit");
-                    }
-                } else {
-                    debug!(
-                        ?current_limit,
-                        "not changing open files limit, already sufficient"
-                    );
-                }
-            }
-        }
+        adjust_open_files_limit();
 
         let event_size = mem::size_of::<R::Event>();
 
