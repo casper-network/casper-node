@@ -360,9 +360,10 @@ where
                         peer_id: Box::new(peer_id),
                         transport,
                     },
-                    move |error| Event::BootstrappingFailed {
+                    move |error| Event::OutgoingFailed {
                         peer_address: Box::new(address),
-                        error,
+                        peer_id: Box::new(None),
+                        error: Box::new(Some(error)),
                     },
                 ),
             );
@@ -876,14 +877,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BootstrappingFailed {
-                peer_address,
-                error,
-            } => {
-                warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
-
-                self.reconnect_if_isolated(effect_builder)
-            }
             Event::IsolationReconnection => {
                 if self.is_isolated() {
                     info!("still isolated after grace time, attempting to reconnect to all known_nodes");

@@ -20,11 +20,6 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
 pub enum Event<P> {
-    /// Connection to the known node failed.
-    BootstrappingFailed {
-        peer_address: Box<SocketAddr>,
-        error: Error,
-    },
     /// We were isolated and have waited the appropriate time.
     IsolationReconnection,
     /// A new TCP connection has been established from an incoming connection.
@@ -100,14 +95,6 @@ impl From<NetworkInfoRequest<NodeId>> for Event<ProtocolMessage> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::BootstrappingFailed {
-                peer_address,
-                error,
-            } => write!(
-                f,
-                "bootstrapping failed for node {}: {}",
-                peer_address, error
-            ),
             Event::IsolationReconnection => write!(f, "perform reconnection after isolation"),
             Event::IncomingNew { peer_address, .. } => {
                 write!(f, "incoming connection from {}", peer_address)
