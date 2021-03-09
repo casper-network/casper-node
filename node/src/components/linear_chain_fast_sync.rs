@@ -44,26 +44,30 @@ pub(crate) struct LinearChainFastSync<I> {
 
 #[allow(dead_code)]
 impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
-    pub fn new<Err>(
+    #[allow(clippy::too_many_arguments)]
+    pub fn new<REv, Err>(
         registry: &Registry,
+        _effect_builder: EffectBuilder<REv>,
         _chainspec: &Chainspec,
         _storage: &Storage,
         init_hash: Option<BlockHash>,
         _highest_block_header: Option<BlockHeader>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
         _next_upgrade_activation_point: Option<ActivationPoint>,
-    ) -> Result<Self, Err>
+    ) -> Result<(Self, Effects<Event<I>>), Err>
     where
         Err: From<prometheus::Error> + From<storage::Error>,
     {
+        let no_effects = Effects::new();
         let state = init_hash.map_or(State::None, |init_hash| {
             State::sync_trusted_hash(init_hash, genesis_validator_weights)
         });
-        Ok(LinearChainFastSync {
+        let fast_sync = LinearChainFastSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
-        })
+        };
+        Ok((fast_sync, no_effects))
     }
 
     /// Add new block to linear chain.
