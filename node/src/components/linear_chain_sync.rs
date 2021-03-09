@@ -29,7 +29,7 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{cmp, collections::BTreeMap, convert::Infallible, fmt::Display, mem, str::FromStr};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem, str::FromStr};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -49,7 +49,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
-        TimeDiff, Timestamp,
+        TimeDiff,
     },
     NodeRng,
 };
@@ -99,20 +99,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         REv: From<Event<I>> + Send,
         Err: From<prometheus::Error> + From<storage::Error>,
     {
-        let now = Timestamp::now();
-        // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
+        // set timeout to 5 minutes after now.
         let five_minutes = TimeDiff::from_str("5minutes").unwrap();
-        let later_timestamp = cmp::max(
-            now,
-            chainspec
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .unwrap_or_else(Timestamp::zero),
-        );
-        let timer_duration = later_timestamp + five_minutes - now;
         let timeout_event = effect_builder
-            .set_timeout(timer_duration.into())
+            .set_timeout(five_minutes.into())
             .event(|_| Event::InitializeTimeout);
         if let Some(state) = read_init_state(storage, chainspec)? {
             let linear_chain_sync = LinearChainSync::from_state(
