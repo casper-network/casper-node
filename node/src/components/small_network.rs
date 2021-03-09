@@ -303,36 +303,7 @@ where
         // Bootstrap process.
         let mut effects = Effects::new();
 
-        for address in &cfg.known_addresses {
-            match utils::resolve_address(address) {
-                Ok(known_address) => {
-                    model.pending.insert(known_address);
-
-                    // We successfully resolved an address, add an effect to connect to it.
-                    effects.extend(
-                        connect_outgoing(
-                            known_address,
-                            Arc::clone(&model.certificate),
-                            Arc::clone(&model.secret_key),
-                            Arc::clone(&model.is_stopped),
-                        )
-                        .result(
-                            move |(peer_id, transport)| Event::OutgoingEstablished {
-                                peer_id: Box::new(peer_id),
-                                transport,
-                            },
-                            move |error| Event::BootstrappingFailed {
-                                peer_address: Box::new(known_address),
-                                error,
-                            },
-                        ),
-                    );
-                }
-                Err(err) => {
-                    warn!(%address, %err, "failed to resolve known address");
-                }
-            }
-        }
+        effects.extend(model.connect_to_known_addresses());
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -776,7 +747,7 @@ where
         }
     }
 
-    fn terminate_if_isolated(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
+    fn terminate_if_isolated(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
         if self.is_isolated() {
             if self.is_bootstrap_node {
                 info!(
@@ -784,18 +755,20 @@ where
                     "failed to bootstrap to any other nodes, but continuing to run as we are a \
                     bootstrap node"
                 );
+                self.connect_to_known_addresses()
             } else {
                 // Note that we could retry the connection to other nodes, but for now we
                 // just leave it up to the node operator to restart.
-                return fatal!(
+                fatal!(
                     effect_builder,
                     "{}: failed to connect to any known node, now isolated",
                     self.our_id
                 )
-                .ignore();
+                .ignore()
             }
+        } else {
+            Effects::new()
         }
-        Effects::new()
     }
 
     /// Returns the set of connected nodes.
@@ -824,6 +797,41 @@ where
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.our_id.clone()
+    }
+
+    fn connect_to_known_addresses(&mut self) -> Effects<Event<P>> {
+        let mut effects = Effects::new();
+        for address in &self.known_addresses {
+            match utils::resolve_address(address) {
+                Ok(known_address) => {
+                    self.pending.insert(known_address);
+
+                    // We successfully resolved an address, add an effect to connect to it.
+                    effects.extend(
+                        connect_outgoing(
+                            known_address,
+                            Arc::clone(&self.certificate),
+                            Arc::clone(&self.secret_key),
+                            Arc::clone(&self.is_stopped),
+                        )
+                        .result(
+                            move |(peer_id, transport)| Event::OutgoingEstablished {
+                                peer_id: Box::new(peer_id),
+                                transport,
+                            },
+                            move |error| Event::BootstrappingFailed {
+                                peer_address: Box::new(known_address),
+                                error,
+                            },
+                        ),
+                    );
+                }
+                Err(err) => {
+                    warn!(%address, %err, "failed to resolve known address");
+                }
+            }
+        }
+        effects
     }
 }
 
