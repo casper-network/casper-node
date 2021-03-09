@@ -284,7 +284,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                             .ignore();
                     }
                     None => {
-                        error!("block execution results recevied when not expected");
+                        error!("block execution results received when not expected");
                         return fatal!(effect_builder, "unexpected block execution results.")
                             .ignore();
                     }
@@ -309,7 +309,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                             .ignore();
                     }
                     None => {
-                        error!("block execution results recevied when not expected");
+                        error!("block execution results received when not expected");
                         return fatal!(effect_builder, "unexpected block execution results.")
                             .ignore();
                     }
@@ -618,7 +618,7 @@ where
                                 .ignore();
                             }
                             None => {
-                                warn!("run out of peers before managed to start syncing. Resetting peers' list and continueing");
+                                warn!("run out of peers before managed to start syncing. Resetting peers' list and continuing");
                                 self.peers.reset(rng);
                                 self.metrics.reset_start_time();
                                 fetch_block_by_hash(effect_builder, peer, block_hash)
