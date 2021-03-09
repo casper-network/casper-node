@@ -637,7 +637,7 @@ where
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
-            let peer_ip = format!("{}", outgoing.peer_address.ip());
+            let peer_ip = outgoing.peer_address.to_string();
             if add_to_blocklist && !self.known_addresses.contains(&peer_ip) {
                 info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
                 self.blocklist
