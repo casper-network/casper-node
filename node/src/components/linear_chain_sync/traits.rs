@@ -1,7 +1,13 @@
-use crate::{effect::{announcements::ControlAnnouncement, requests::{
-        BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StateStoreRequest,
-        StorageRequest,
-    }}, types::{Block, BlockByHeight}};
+use crate::{
+    effect::{
+        announcements::ControlAnnouncement,
+        requests::{
+            BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StateStoreRequest,
+            StorageRequest,
+        },
+    },
+    types::{Block, BlockByHeight},
+};
 pub trait ReactorEventT<I>:
     From<StorageRequest>
     + From<FetcherRequest<I, Block>>

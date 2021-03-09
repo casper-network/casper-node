@@ -514,8 +514,9 @@ impl reactor::Reactor for Reactor {
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
-        let linear_chain_sync = LinearChainSync::new::<Error>(
+        let (linear_chain_sync, init_sync_effects) = LinearChainSync::new::<Event, Error>(
             registry,
+            effect_builder,
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
@@ -524,11 +525,16 @@ impl reactor::Reactor for Reactor {
             maybe_next_activation_point,
         )?;
 
+        effects.extend(reactor::wrap_effects(
+            Event::LinearChainSync,
+            init_sync_effects,
+        ));
+
         // Used to decide whether era should be activated.
-        let timestamp = Timestamp::now();
+        let now = Timestamp::now();
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            timestamp,
+            now,
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
