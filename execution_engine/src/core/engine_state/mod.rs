@@ -179,10 +179,7 @@ where
         let handle_payment_hash = genesis_installer.create_handle_payment()?;
 
         // Create auction
-        let auction_hash = match genesis_installer.create_auction() {
-            Ok(hash) => hash,
-            Err(e) => panic!("{:?}", e),
-        };
+        let auction_hash = genesis_installer.create_auction()?;
 
         // Create standard payment
         let standard_payment_hash = genesis_installer.create_standard_payment();
