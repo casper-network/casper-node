@@ -322,7 +322,7 @@ where
         // We kick things off by adding effects to connect to all known addresses. This will
         // automatically attempt to repeat the connection process if it fails (see
         // `connect_to_known_addresses` for details).
-        let mut effects = model.connect_to_known_addresses(effect_builder);
+        let mut effects = model.connect_to_known_addresses();
 
         // Start broadcasting our public listening address.
         effects.extend(model.gossip_our_address(effect_builder));
@@ -340,10 +340,7 @@ where
     /// Try to establish a connection to all known addresses in the configuration.
     ///
     /// Will schedule another reconnection if no DNS addresses could be resolved.
-    fn connect_to_known_addresses(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<P>> {
+    fn connect_to_known_addresses(&mut self) -> Effects<Event<P>> {
         let mut effects = Effects::new();
 
         for &address in &self.known_addresses {
@@ -370,11 +367,6 @@ where
                 ),
             );
         }
-
-        // If any connection attempt succeeded, we will have a pending address, and thus are not
-        // isolated. However, should all DNS resolutions fail, we want to retry, so call
-        // `reconnect_if_isolated` again.
-        effects.extend(self.reconnect_if_isolated(effect_builder));
 
         effects
     }
@@ -609,24 +601,29 @@ where
     ) -> Effects<Event<P>> {
         let _ = self.pending.remove(&peer_address);
 
+        let mut effects = Effects::new();
+
         if let Some(peer_id) = peer_id {
-            if let Some(err) = error {
+            if let Some(ref err) = error {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "outgoing connection failed");
             } else {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
             }
-            return self.remove(effect_builder, &peer_id, false);
+            effects.extend(self.remove(effect_builder, &peer_id, false));
+        } else {
+            // If we are not calling remove, call the reconnection check explicitly.
+            effects.extend(self.reconnect_if_not_connected_to_any_known_addresses(effect_builder));
         }
 
         // If we don't have the node ID passed in here, it was never added as an
         // outgoing connection, hence no need to call `self.remove()`.
-        if let Some(err) = error {
+        if let Some(ref err) = error {
             warn!(our_id=%self.our_id, %peer_address, %err, "outgoing connection failed");
         } else {
             warn!(our_id=%self.our_id, %peer_address, "outgoing connection closed");
         }
 
-        Effects::new()
+        effects
     }
 
     fn remove(
@@ -651,7 +648,8 @@ where
                     .insert(outgoing.peer_address, Timestamp::now());
             }
         }
-        self.reconnect_if_isolated(effect_builder)
+
+        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
     }
 
     /// Gossips our public listening address, and schedules the next such gossip round.
@@ -795,8 +793,11 @@ where
     }
 
     /// If we are isolated, try to reconnect to all known nodes.
-    fn reconnect_if_isolated(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        if self.is_isolated() {
+    fn reconnect_if_not_connected_to_any_known_addresses(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
+        if self.is_not_connected_to_any_known_address() {
             info!(delay=?ISOLATION_RECONNECT_DELAY, "we are isolated. will attempt to reconnect to all known nodes after a delay");
 
             effect_builder
@@ -820,12 +821,25 @@ where
         ret
     }
 
-    /// Returns whether or not this node has been isolated.
-    ///
-    /// An isolated node has no chance of recovering a connection to the network and is not
-    /// connected to any peer.
-    fn is_isolated(&self) -> bool {
-        self.pending.is_empty() && self.outgoing.is_empty() && self.incoming.is_empty()
+    /// Returns whether or not this node has been disconnected from all known nodes.
+    fn is_not_connected_to_any_known_address(&self) -> bool {
+        if self
+            .pending
+            .intersection(&self.known_addresses)
+            .next()
+            .is_some()
+        {
+            // We have at least one pending connection to a known node, exit early.
+            return false;
+        }
+
+        for (_node_id, outgoing) in &self.outgoing {
+            if self.known_addresses.contains(&outgoing.peer_address) {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Returns the node id of this network node.
@@ -880,15 +894,10 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::IsolationReconnection => {
-                if self.is_isolated() {
+                if self.is_not_connected_to_any_known_address() {
                     info!("still isolated after grace time, attempting to reconnect to all known_nodes");
-                    self.connect_to_known_addresses(effect_builder)
+                    self.connect_to_known_addresses()
                 } else {
-                    // Note: This _can_ be problematic if we are isolated, but receive one
-                    // connection from another node that is in our isolated networking subgraph. It
-                    // may be better to reconnect anway, but on the other hand, this can wreak havoc
-                    // by causing multiple duplicate connection attempts. We err on the side of
-                    // caution for now.
                     info!("would attempt to reconnect, but no longer isolated. not reconnecting");
                     Effects::new()
                 }
