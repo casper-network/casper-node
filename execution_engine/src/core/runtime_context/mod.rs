@@ -261,8 +261,6 @@ where
                 Ok(())
             }
             Key::EraValidators(_) => {
-                //let _era_validators_info: EraValidators =
-                // self.read_gs_typed(&era_validators_info_addr)?;
                 self.named_keys.remove(name);
                 // Users cannot remove era validators info from global state
                 Ok(())
