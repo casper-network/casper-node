@@ -6,6 +6,7 @@ pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
+#[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
 
