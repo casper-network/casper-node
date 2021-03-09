@@ -50,6 +50,7 @@ use crate::{
         ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
         TimeDiff,
     },
+    fatal,
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -187,7 +188,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         self.add_block(block.clone());
         match &self.state {
             State::None | State::Done(_) => {
-                panic!("Downloaded block when in {} state.", self.state)
+                error!(state=?self.state, "block downloaded when in incorrect state.");
+                return fatal!(effect_builder, "block downloaded in incorrect state").ignore();
             }
             State::SyncingTrustedHash {
                 highest_block_header,
@@ -252,7 +254,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
             State::None | State::Done(_) => {
-                panic!("Block handled when in {:?} state.", &curr_state)
+                error!(state=?self.state, "block handled when in incorrect state.");
+                return fatal!(effect_builder, "block handled in incorrect state").ignore();
             }
             // Keep syncing from genesis if we haven't reached the trusted block hash
             State::SyncingTrustedHash {
@@ -261,11 +264,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ..
             } if highest_block_seen != block_height => {
                 match latest_block.as_ref() {
-                    Some(expected) => assert_eq!(
-                        expected, &block,
-                        "Block execution result doesn't match received block."
-                    ),
-                    None => panic!("Unexpected block execution results."),
+                    Some(expected) if expected != &block => {
+                        error!(?expected, got=?block, "block execution result doesn't match received block");
+                        return fatal!(effect_builder, "unexpected block execution result").ignore();
+                    },
+                    None => {
+                        error!("block execution results recevied when not expected");
+                        return fatal!(effect_builder, "unexpected block execution results.").ignore();
+                    }
+                    Some(_) => (),
                 }
                 self.state = curr_state;
                 self.fetch_next_block_deploys(effect_builder)
@@ -280,11 +287,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             } => {
                 assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
-                    Some(expected) => assert_eq!(
-                        expected, &block,
-                        "Block execution result doesn't match received block."
-                    ),
-                    None => panic!("Unexpected block execution results."),
+                    Some(expected) if expected != &block => {
+                        error!(?expected, got=?block, "block execution result doesn't match received block");
+                        return fatal!(effect_builder, "unexpected block execution result").ignore();
+                    },
+                    None => {
+                        error!("block execution results recevied when not expected");
+                        return fatal!(effect_builder, "unexpected block execution results.").ignore();
+                    }
+                    Some(_) => (),
                 }
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
@@ -297,10 +308,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ref maybe_switch_block,
                 ..
             } => {
-                assert_eq!(
-                    **latest_block, block,
-                    "Block execution result doesn't match received block."
-                );
+                if latest_block.as_ref() != &block {
+                    error!(expected=?*latest_block, got=?block, "block execution result doesn't match received block");
+                    return fatal!(effect_builder, "unexpected block execution result").ignore();
+                }
                 if self.is_recent_block(&block) {
                     info!(
                         hash=?block.hash(),
@@ -354,7 +365,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
         let next_block = match &mut self.state {
             State::None | State::Done(_) => {
-                panic!("Tried fetching next block when in {:?} state.", self.state)
+                error!(state=?self.state, "tried fetching next block when in wrong state");
+                return fatal!(effect_builder, "tried fetching next block when in wrong state").ignore();
             }
             State::SyncingTrustedHash {
                 linear_chain,
@@ -408,7 +420,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 fetch_block_at_height(effect_builder, peer, next_height)
             }
             State::Done(_) | State::None => {
-                panic!("Tried fetching block when in {:?} state", self.state)
+                error!(state=?self.state, "tried fetching next block when in wrong state");
+                return fatal!(effect_builder, "tried fetching next block when in wrong state").ignore();
             }
         }
     }
@@ -423,10 +436,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     {
         if self.state.is_done() || self.state.is_none() {
             error!(state=?self.state, "shutdown for upgrade initiated when in wrong state");
-            panic!(
-                "shutdown for upgrade initiated when in wrong state: {}",
-                self.state,
-            )
+            return fatal!(effect_builder,
+                "shutdown for upgrade initiated when in wrong state").ignore();
         }
         effect_builder
             .save_state(self.state_key.clone().into(), Some(self.state.clone()))
@@ -570,8 +581,8 @@ where
                         self.peers.failure(&peer);
                         match self.peers.random() {
                             None => {
-                                error!(%block_hash, "Could not download linear block from any of the peers.");
-                                panic!("Failed to download linear chain.")
+                                error!(%block_hash, "could not download linear block from any of the peers.");
+                                return fatal!(effect_builder, "failed to synchronize linear chain").ignore();
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
@@ -641,7 +652,7 @@ where
                             None => {
                                 error!(%block_hash,
                                 "could not download deploys from linear chain block.");
-                                panic!("Failed to download linear chain deploys.")
+                                return fatal!(effect_builder, "failed to download linear chain deploys").ignore();
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
@@ -795,6 +806,7 @@ fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
 /// Panics on deserialization errors.
 fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
     bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+        // Panicking here should not corrupt the state of any component as it's done in the constructor.
         panic!(
             "could not deserialize state from storage, error {:?}",
             error
