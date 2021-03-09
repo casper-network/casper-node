@@ -818,7 +818,7 @@ where
     /// An isolated node has no chance of recovering a connection to the network and is not
     /// connected to any peer.
     fn is_isolated(&self) -> bool {
-        self.pending.is_empty() && self.outgoing.is_empty() && self.incoming.is_empty()
+        self.pending.is_empty() && self.outgoing.is_empty()
     }
 
     /// Returns the node id of this network node.
