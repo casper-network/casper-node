@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{collections::BTreeMap, vec::Vec};
 
 #[cfg(feature = "std")]

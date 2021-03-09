@@ -1009,7 +1009,6 @@ where
             era_end_timestamp_millis_uref.into(),
         );
 
-
         for (validator_public_key, bid) in validators.into_iter() {
             let validator_account_hash = AccountHash::from(&validator_public_key);
             self.tracking_copy.borrow_mut().write(

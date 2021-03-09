@@ -123,12 +123,10 @@ fn should_step() {
     // seigniorage snapshot should have changed after auction
     let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_seigniorage_recipients_snapshot();
-    assert!(
-        !before_auction_seigniorage
-            .keys()
-            .all(|key| after_auction_seigniorage.contains_key(key)),
-        "run auction should have changed seigniorage keys"
-    );
+
+    assert!(before_auction_seigniorage
+        .keys()
+        .ne(after_auction_seigniorage.keys()))
 }
 
 /// Should be able to step slashing, rewards, and run auction.
