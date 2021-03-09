@@ -885,11 +885,11 @@ where
                     info!("still isolated after grace time, attempting to reconnect to all known_nodes");
                     self.connect_to_known_addresses(effect_builder)
                 } else {
-                    // Note: This _can_ be problemtic if we are isolated, but receive one connection
-                    // from another node that is also somewhat isolated. It may be better to
-                    // reconnect anway, but on the other hand, this can wreak havoc by causing
-                    // multiple duplicate connection attempts. We err on the side of caution for
-                    // now.
+                    // Note: This _can_ be problematic if we are isolated, but receive one
+                    // connection from another node that is in our isolated networking subgraph. It
+                    // may be better to reconnect anway, but on the other hand, this can wreak havoc
+                    // by causing multiple duplicate connection attempts. We err on the side of
+                    // caution for now.
                     info!("would attempt to reconnect, but no longer isolated. not reconnecting");
                     Effects::new()
                 }
