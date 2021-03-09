@@ -101,12 +101,15 @@ use crate::{
 pub use config::Config;
 pub use error::Error;
 
-const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
+const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
 /// Minimum amount of time that has to pass before attempting to reconnect after isolation.
 const ISOLATION_RECONNECT_DELAY: Duration = Duration::from_secs(2);
+
+/// Initial delay before the first round of gossip.
+const INITIAL_GOSSIP_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -325,7 +328,11 @@ where
         let mut effects = model.connect_to_known_addresses();
 
         // Start broadcasting our public listening address.
-        effects.extend(model.gossip_our_address(effect_builder));
+        effects.extend(
+            effect_builder
+                .set_timeout(INITIAL_GOSSIP_DELAY)
+                .event(|_| Event::GossipOurAddress),
+        );
 
         Ok((model, effects))
     }
