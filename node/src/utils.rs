@@ -12,9 +12,11 @@ mod round_robin;
 use std::{
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
-    fs, io,
+    fs,
+    io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, Div},
+    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
 #[cfg(test)]
@@ -210,6 +212,26 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
         path: path.to_owned(),
         error,
     })
+}
+
+/// Writes data to `path`, ensuring only the owner can read or write it.
+///
+/// Otherwise functions like [`write_file`].
+pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
+    filename: P,
+    data: B,
+) -> Result<(), WriteFileError> {
+    let path = filename.as_ref();
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .open(path)
+        .and_then(|mut file| file.write_all(data.as_ref()))
+        .map_err(|error| WriteFileError {
+            path: path.to_owned(),
+            error,
+        })
 }
 
 /// With-directory context.
