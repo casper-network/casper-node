@@ -180,7 +180,7 @@ where
     net_metrics: NetworkingMetrics,
 
     /// Known addresses for this node.
-    known_addresses: Vec<String>,
+    known_addresses: Vec<SocketAddr>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -201,9 +201,21 @@ where
         network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
+        let mut known_addresses = Vec::new();
+        for address in &cfg.known_addresses {
+            match utils::resolve_address(address) {
+                Ok(known_address) => {
+                    known_addresses.push(known_address);
+                }
+                Err(err) => {
+                    warn!(%address, %err, "failed to resolve known address");
+                }
+            }
+        }
+
         // Assert we have at least one known address in the config.
-        if cfg.known_addresses.is_empty() {
-            warn!("no known addresses provided via config");
+        if known_addresses.is_empty() {
+            warn!("no known addresses provided via config or all failed DNS resolution");
             return Err(Error::InvalidConfig);
         }
 
@@ -218,7 +230,7 @@ where
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
-                known_addresses: cfg.known_addresses.clone(),
+                known_addresses: known_addresses.clone(),
                 certificate,
                 secret_key,
                 public_address,
@@ -282,7 +294,7 @@ where
         ));
 
         let mut model = SmallNetwork {
-            known_addresses: cfg.known_addresses,
+            known_addresses: known_addresses,
             certificate,
             secret_key,
             public_address,
@@ -332,35 +344,28 @@ where
     ) -> Effects<Event<P>> {
         let mut effects = Effects::new();
 
-        for address in &self.known_addresses {
-            match utils::resolve_address(address) {
-                Ok(known_address) => {
-                    self.pending.insert(known_address);
+        for &address in &self.known_addresses {
+            self.pending.insert(address);
 
-                    // We successfully resolved an address, add an effect to connect to it.
-                    effects.extend(
-                        connect_outgoing(
-                            known_address,
-                            Arc::clone(&self.certificate),
-                            Arc::clone(&self.secret_key),
-                            Arc::clone(&self.is_stopped),
-                        )
-                        .result(
-                            move |(peer_id, transport)| Event::OutgoingEstablished {
-                                peer_id: Box::new(peer_id),
-                                transport,
-                            },
-                            move |error| Event::BootstrappingFailed {
-                                peer_address: Box::new(known_address),
-                                error,
-                            },
-                        ),
-                    );
-                }
-                Err(err) => {
-                    warn!(%address, %err, "failed to resolve known address");
-                }
-            }
+            // Add an effect to connect to the known address it.
+            effects.extend(
+                connect_outgoing(
+                    address,
+                    Arc::clone(&self.certificate),
+                    Arc::clone(&self.secret_key),
+                    Arc::clone(&self.is_stopped),
+                )
+                .result(
+                    move |(peer_id, transport)| Event::OutgoingEstablished {
+                        peer_id: Box::new(peer_id),
+                        transport,
+                    },
+                    move |error| Event::BootstrappingFailed {
+                        peer_address: Box::new(address),
+                        error,
+                    },
+                ),
+            );
         }
 
         // If any connection attempt succeeded, we will have a pending address, and thus are not
@@ -637,8 +642,7 @@ where
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
-            let peer_ip = format!("{}", outgoing.peer_address.ip());
-            if add_to_blocklist && !self.known_addresses.contains(&peer_ip) {
+            if add_to_blocklist && !self.known_addresses.contains(&outgoing.peer_address) {
                 info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
                 self.blocklist
                     .insert(outgoing.peer_address, Timestamp::now());
