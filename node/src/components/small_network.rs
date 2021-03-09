@@ -180,7 +180,7 @@ where
     net_metrics: NetworkingMetrics,
 
     /// Known addresses for this node.
-    known_addresses: Vec<SocketAddr>,
+    known_addresses: HashSet<SocketAddr>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -201,11 +201,13 @@ where
         network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
-        let mut known_addresses = Vec::new();
+        let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
             match utils::resolve_address(address) {
                 Ok(known_address) => {
-                    known_addresses.push(known_address);
+                    if known_addresses.insert(known_address) {
+                        warn!(%address, resolved=%known_address, "ignoring duplicated known address");
+                    };
                 }
                 Err(err) => {
                     warn!(%address, %err, "failed to resolve known address");
