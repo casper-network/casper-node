@@ -25,23 +25,35 @@ base64 = "0.13.0"
 casper-execution-engine = { version = "0.9.0", path = "../execution_engine" }
 casper-node = { version = "0.9.0", path = "../node" }
 casper-types = { version = "0.9.0", path = "../types", features = ["std"] }
-clap = "2.33.1"
+clap = "2"
 futures = "0.3.5"
 hex = { version = "0.4.2", features = ["serde"] }
-humantime = "2.0.1"
+humantime = "2"
 jsonrpc-lite = "0.5.0"
-once_cell = "1.5.2"
+once_cell = "1"
 rand = "0.8.3"
-reqwest = { version = "0.10.6", features = ["json"] }
+reqwest = { version = "0.11.1", features = ["json"] }
 semver = { version = "0.11.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
-serde_json = "1.0.55"
+serde_json = "1"
 tempfile = "3"
-thiserror = "1.0.20"
-tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [build-dependencies]
 cbindgen = { version = "0.18", optional = true }
+
+[dev-dependencies]
+anyhow = "1"
+casper-node = { path = "../node" }
+futures = "0.3.13"
+hyper = "0.14.4"
+jsonrpc-lite = "0.5.0"
+semver = "0.11"
+serde = "1"
+tower = "0.4.6"
+warp = "0.3.0"
+warp-json-rpc = "0.3.0"
 
 [features]
 default = ["ffi"]
@@ -58,15 +70,3 @@ Package for Casper Client to connect to Casper Node.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
-
-[dev-dependencies]
-anyhow = "1.0.28"
-casper-node = { path = "../node" }
-futures = "0.3.5"
-hyper = "0.13.7"
-jsonrpc-lite = "0.5.0"
-semver = "0.11"
-serde = "1"
-tower = "0.3.1"
-warp = "0.2.4"
-warp-json-rpc = "0.2"

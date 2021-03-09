@@ -233,7 +233,9 @@ where
     ///
     /// Asynchronously waits until a queue is non-empty or panics if an internal error occurred.
     pub(crate) async fn pop(&self) -> (I, K) {
-        self.total.acquire().await.forget();
+        // Safe to `expect` here as the only way for acquiring a permit to fail would be if the
+        // `self.total` semaphore were closed.
+        self.total.acquire().await.expect("should acquire").forget();
 
         let mut inner = self.state.lock().await;
 

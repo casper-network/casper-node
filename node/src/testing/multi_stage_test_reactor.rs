@@ -517,7 +517,7 @@ impl NetworkedReactor for MultiStageTestReactor {
                 ..
             } => initializer_reactor.node_id(),
             MultiStageTestReactor::Joiner { joiner_reactor, .. } => joiner_reactor.node_id(),
-            MultiStageTestReactor::JoinerFinalizing { node_id, .. } => node_id.clone(),
+            MultiStageTestReactor::JoinerFinalizing { node_id, .. } => *node_id,
             MultiStageTestReactor::Validator {
                 validator_reactor, ..
             } => validator_reactor.node_id(),

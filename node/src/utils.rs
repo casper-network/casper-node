@@ -113,7 +113,7 @@ pub enum ListeningError {
         /// The address attempted to listen on.
         address: SocketAddr,
         /// The failure reason.
-        error: hyper::Error,
+        error: Box<dyn std::error::Error + Send + Sync>,
     },
 }
 
@@ -125,7 +125,10 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 
     Server::try_bind(&address).map_err(|error| {
         warn!(%error, %address, "failed to start HTTP server");
-        ListeningError::Listen { address, error }
+        ListeningError::Listen {
+            address,
+            error: Box::new(error),
+        }
     })
 }
 
