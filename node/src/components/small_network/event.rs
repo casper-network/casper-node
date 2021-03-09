@@ -25,6 +25,8 @@ pub enum Event<P> {
         peer_address: Box<SocketAddr>,
         error: Error,
     },
+    /// We were isolated and have waited the appropriate time.
+    IsolationReconnection,
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         #[serde(skip_serializing)]
@@ -106,6 +108,7 @@ impl<P: Display> Display for Event<P> {
                 "bootstrapping failed for node {}: {}",
                 peer_address, error
             ),
+            Event::IsolationReconnection => write!(f, "perform reconnection after isolation"),
             Event::IncomingNew { peer_address, .. } => {
                 write!(f, "incoming connection from {}", peer_address)
             }

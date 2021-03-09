@@ -93,7 +93,6 @@ use crate::{
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
-    fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::{NodeId, TimeDiff, Timestamp},
@@ -105,6 +104,9 @@ pub use error::Error;
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
+
+/// Minimum amount of time that has to pass before attempting to reconnect after isolation.
+const ISOLATION_RECONNECT_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -280,7 +282,7 @@ where
         ));
 
         let mut model = SmallNetwork {
-            known_addresses: cfg.known_addresses.clone(),
+            known_addresses: cfg.known_addresses,
             certificate,
             secret_key,
             public_address,
@@ -301,20 +303,47 @@ where
         };
 
         // Bootstrap process.
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        // We kick things off by adding effects to connect to all known addresses. This will
+        // automatically attempt to repeat the connection process if it fails (see
+        // `connect_to_known_addresses` for details).
+        let mut effects = model.connect_to_known_addresses(effect_builder);
+
+        // Start broadcasting our public listening address.
+        effects.extend(model.gossip_our_address(effect_builder));
+
+        Ok((model, effects))
+    }
+
+    /// Queues a message to be sent to all nodes.
+    fn broadcast_message(&self, msg: Message<P>) {
+        for peer_id in self.outgoing.keys() {
+            self.send_message(peer_id.clone(), msg.clone());
+        }
+    }
+
+    /// Try to establish a connection to all known addresses in the configuration.
+    ///
+    /// Will schedule another reconnection if no DNS addresses could be resolved.
+    fn connect_to_known_addresses(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
         let mut effects = Effects::new();
 
-        for address in &cfg.known_addresses {
+        for address in &self.known_addresses {
             match utils::resolve_address(address) {
                 Ok(known_address) => {
-                    model.pending.insert(known_address);
+                    self.pending.insert(known_address);
 
                     // We successfully resolved an address, add an effect to connect to it.
                     effects.extend(
                         connect_outgoing(
                             known_address,
-                            Arc::clone(&model.certificate),
-                            Arc::clone(&model.secret_key),
-                            Arc::clone(&model.is_stopped),
+                            Arc::clone(&self.certificate),
+                            Arc::clone(&self.secret_key),
+                            Arc::clone(&self.is_stopped),
                         )
                         .result(
                             move |(peer_id, transport)| Event::OutgoingEstablished {
@@ -334,30 +363,12 @@ where
             }
         }
 
-        let effect_builder = EffectBuilder::new(event_queue);
+        // If any connection attempt succeeded, we will have a pending address, and thus are not
+        // isolated. However, should all DNS reconnection attempts fail, we want to retry
+        // resolving them as well, so we call `reconnect_if_isolated` again.
+        effects.extend(self.reconnect_if_isolated(effect_builder));
 
-        // If there are no pending connections, we failed to resolve any.
-        if model.pending.is_empty() && !cfg.known_addresses.is_empty() {
-            effects.extend(
-                fatal!(
-                    effect_builder,
-                    "was given known addresses, but failed to resolve any of them"
-                )
-                .ignore(),
-            );
-        } else {
-            // Start broadcasting our public listening address.
-            effects.extend(model.gossip_our_address(effect_builder));
-        }
-
-        Ok((model, effects))
-    }
-
-    /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, msg: Message<P>) {
-        for peer_id in self.outgoing.keys() {
-            self.send_message(peer_id.clone(), msg.clone());
-        }
+        effects
     }
 
     /// Queues a message to `count` random nodes on the network.
@@ -633,7 +644,7 @@ where
                     .insert(outgoing.peer_address, Timestamp::now());
             }
         }
-        self.terminate_if_isolated(effect_builder)
+        self.reconnect_if_isolated(effect_builder)
     }
 
     /// Gossips our public listening address, and schedules the next such gossip round.
@@ -776,26 +787,17 @@ where
         }
     }
 
-    fn terminate_if_isolated(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
+    /// If we are isolated, try to reconnect to all known nodes.
+    fn reconnect_if_isolated(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
         if self.is_isolated() {
-            if self.is_bootstrap_node {
-                info!(
-                    our_id=%self.our_id,
-                    "failed to bootstrap to any other nodes, but continuing to run as we are a \
-                    bootstrap node"
-                );
-            } else {
-                // Note that we could retry the connection to other nodes, but for now we
-                // just leave it up to the node operator to restart.
-                return fatal!(
-                    effect_builder,
-                    "{}: failed to connect to any known node, now isolated",
-                    self.our_id
-                )
-                .ignore();
-            }
+            info!(delay=?ISOLATION_RECONNECT_DELAY, "we are isolated. will attempt to reconnect to all known nodes after a delay");
+
+            effect_builder
+                .set_timeout(ISOLATION_RECONNECT_DELAY)
+                .event(|_| Event::IsolationReconnection)
+        } else {
+            Effects::new()
         }
-        Effects::new()
     }
 
     /// Returns the set of connected nodes.
@@ -876,7 +878,21 @@ where
             } => {
                 warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
 
-                self.terminate_if_isolated(effect_builder)
+                self.reconnect_if_isolated(effect_builder)
+            }
+            Event::IsolationReconnection => {
+                if self.is_isolated() {
+                    info!("still isolated after grace time, attempting to reconnect to all known_nodes");
+                    self.connect_to_known_addresses(effect_builder)
+                } else {
+                    // Note: This _can_ be problemtic if we are isolated, but receive one connection
+                    // from another node that is also somewhat isolated. It may be better to
+                    // reconnect anway, but on the other hand, this can wreak havoc by causing
+                    // multiple duplicate connection attempts. We err on the side of caution for
+                    // now.
+                    info!("would attempt to reconnect, but no longer isolated. not reconnecting");
+                    Effects::new()
+                }
             }
             Event::IncomingNew {
                 stream,
