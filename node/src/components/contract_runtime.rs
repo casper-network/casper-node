@@ -915,7 +915,7 @@ impl ContractRuntime {
                 let execute_request = ExecuteRequest::new(
                     state.state_root_hash.into(),
                     block_time,
-                    vec![Ok(deploy_item)],
+                    vec![deploy_item],
                     protocol_version,
                     proposer,
                 );

@@ -10,7 +10,7 @@ use casper_execution_engine::{
     storage::global_state::{lmdb::LmdbGlobalState, CommitResult},
 };
 use casper_types::{ExecutionResult, Key};
-use engine_state::{ExecuteRequest, RootNotFound};
+use engine_state::ExecuteRequest;
 use itertools::Itertools;
 use tracing::{debug, error, trace};
 
@@ -90,7 +90,7 @@ pub(super) async fn execute(
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
     execute_request: ExecuteRequest,
-) -> Result<VecDeque<EngineExecutionResult>, RootNotFound> {
+) -> Result<VecDeque<EngineExecutionResult>, engine_state::Error> {
     trace!(?execute_request, "execute");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
