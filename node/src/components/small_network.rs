@@ -446,6 +446,7 @@ where
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
                     network_name: self.network_name.clone(),
+                    public_address: self.public_address,
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -552,6 +553,7 @@ where
 
         let handshake = Message::Handshake {
             network_name: self.network_name.clone(),
+            public_address: self.public_address,
         };
         let peer_id_cloned = peer_id.clone();
         effects.extend(
@@ -697,7 +699,10 @@ where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
         match msg {
-            Message::Handshake { network_name } => {
+            Message::Handshake {
+                network_name,
+                public_address,
+            } => {
                 if network_name != self.network_name {
                     info!(
                         our_id=%self.our_id,
@@ -710,8 +715,12 @@ where
                     self.update_peers_metric();
                     return remove;
                 }
+
+                // This speeds up the connection process, but masks potential bugs in the gossiper.
+                let effects = self.connect_to_peer_if_required(public_address);
                 self.update_peers_metric();
-                Effects::new()
+
+                effects
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
