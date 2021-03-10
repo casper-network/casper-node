@@ -711,11 +711,6 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// The timestamp from when the proto block was proposed.
-    pub fn timestamp(&self) -> Timestamp {
-        self.timestamp
-    }
-
     /// Returns reward and slashing information if this is the era's last block.
     pub fn era_end(&self) -> Option<&EraReport> {
         match &self.era_end {
@@ -724,9 +719,9 @@ impl BlockHeader {
         }
     }
 
-    /// Returns `true` if this block is the last one in the current era.
-    pub fn is_switch_block(&self) -> bool {
-        self.era_end.is_some()
+    /// The timestamp from when the proto block was proposed.
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Era ID in which this block was created.
@@ -737,6 +732,16 @@ impl BlockHeader {
     /// Returns the height of this block, i.e. the number of ancestors.
     pub fn height(&self) -> u64 {
         self.height
+    }
+
+    /// Returns the protocol version of the network from when this block was created.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    /// Returns `true` if this block is the last one in the current era.
+    pub fn is_switch_block(&self) -> bool {
+        self.era_end.is_some()
     }
 
     /// The validators for the upcoming era and their respective weights.
@@ -750,6 +755,13 @@ impl BlockHeader {
         }
     }
 
+    /// Hash of the block header.
+    pub fn hash(&self) -> BlockHash {
+        let serialized_header = Self::serialize(&self)
+            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+        BlockHash::new(hash::hash(&serialized_header))
+    }
+
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
@@ -759,13 +771,6 @@ impl BlockHeader {
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()
-    }
-
-    /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(hash::hash(&serialized_header))
     }
 }
 
