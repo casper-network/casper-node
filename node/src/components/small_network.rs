@@ -238,7 +238,7 @@ where
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
-                known_addresses: known_addresses.clone(),
+                known_addresses,
                 certificate,
                 secret_key,
                 public_address,
@@ -302,7 +302,7 @@ where
         ));
 
         let mut model = SmallNetwork {
-            known_addresses: known_addresses,
+            known_addresses,
             certificate,
             secret_key,
             public_address,
@@ -875,7 +875,7 @@ where
             }
         }
 
-        for (_node_id, outgoing) in &self.outgoing {
+        for outgoing in self.outgoing.values() {
             if self.known_addresses.contains(&outgoing.peer_address) {
                 return false;
             }
