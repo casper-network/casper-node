@@ -1304,7 +1304,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    ) -> Result<ExecutionResults, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

@@ -59,8 +59,6 @@ fn should_record_wasmless_transfer() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
-            .map(Result::as_ref)
-            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -127,8 +125,6 @@ fn should_record_wasm_transfer() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
-            .map(Result::as_ref)
-            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -195,8 +191,6 @@ fn should_record_wasm_transfer_with_id() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
-            .map(Result::as_ref)
-            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -277,8 +271,6 @@ fn should_record_wasm_transfers() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
-            .map(Result::as_ref)
-            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -425,8 +417,6 @@ fn should_record_wasm_transfers_with_subcall() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
-            .map(Result::as_ref)
-            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
