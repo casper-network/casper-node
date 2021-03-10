@@ -292,11 +292,13 @@ pub enum Source<I> {
     Peer(I),
     /// A client.
     Client,
+    /// This node.
+    Ourself,
 }
 
 impl<I> Source<I> {
-    pub(crate) fn from_client(&self) -> bool {
-        matches!(self, Source::Client)
+    pub(crate) fn from_peer(&self) -> bool {
+        matches!(self, Source::Peer(_))
     }
 }
 
@@ -305,7 +307,7 @@ impl<I: Clone> Source<I> {
     pub(crate) fn node_id(&self) -> Option<I> {
         match self {
             Source::Peer(node_id) => Some(node_id.clone()),
-            Source::Client => None,
+            Source::Client | Source::Ourself => None,
         }
     }
 }
@@ -315,6 +317,7 @@ impl<I: Display> Display for Source<I> {
         match self {
             Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
+            Source::Ourself => write!(formatter, "ourself"),
         }
     }
 }

@@ -1167,13 +1167,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block: Box<Block>)
+    pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                LinearChainAnnouncement::BlockAdded { block_hash, block },
+                LinearChainAnnouncement::BlockAdded(block),
                 QueueKind::Regular,
             )
             .await
@@ -1304,7 +1304,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    ) -> Result<ExecutionResults, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

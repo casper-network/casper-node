@@ -193,7 +193,7 @@ impl Reactor for TestReactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Client,
+                    source: Source::<NodeId>::Ourself,
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
@@ -242,7 +242,7 @@ fn network_is_complete(
     if nodes.len() == 1 {
         let nodes = &nodes.values().collect::<Vec<_>>();
         let net = &nodes[0].reactor().inner().net;
-        if net.is_isolated() {
+        if net.is_not_connected_to_any_known_address() {
             return true;
         }
     }
