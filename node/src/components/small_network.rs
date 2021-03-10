@@ -105,15 +105,6 @@ const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
-/// Minimum amount of time that has to pass before attempting to reconnect after isolation.
-const ISOLATION_RECONNECT_DELAY: Duration = Duration::from_secs(2);
-
-/// Initial delay before the first round of gossip.
-const INITIAL_GOSSIP_DELAY: Duration = Duration::from_secs(5);
-
-/// Maximum allowed time for an address to be kept in the pending set.
-const MAX_ADDR_PENDING_TIME: Duration = Duration::from_secs(60);
-
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
@@ -139,6 +130,8 @@ pub(crate) struct SmallNetwork<REv, P>
 where
     REv: 'static,
 {
+    /// Initial configuration values.
+    cfg: Config,
     /// Server certificate.
     certificate: Arc<TlsCert>,
     /// Server secret key.
@@ -162,8 +155,6 @@ where
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashMap<SocketAddr, Instant>,
-    /// The interval between each fresh round of gossiping the node's public listening address.
-    gossip_interval: Duration,
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     network_name: String,
@@ -238,6 +229,7 @@ where
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
+                cfg,
                 known_addresses,
                 certificate,
                 secret_key,
@@ -249,7 +241,6 @@ where
                 outgoing: HashMap::new(),
                 pending: HashMap::new(),
                 blocklist: HashMap::new(),
-                gossip_interval: cfg.gossip_interval,
                 network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
@@ -302,6 +293,7 @@ where
         ));
 
         let mut model = SmallNetwork {
+            cfg,
             known_addresses,
             certificate,
             secret_key,
@@ -313,7 +305,6 @@ where
             outgoing: HashMap::new(),
             pending: HashMap::new(),
             blocklist: HashMap::new(),
-            gossip_interval: cfg.gossip_interval,
             network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
@@ -333,7 +324,7 @@ where
         // Start broadcasting our public listening address.
         effects.extend(
             effect_builder
-                .set_timeout(INITIAL_GOSSIP_DELAY)
+                .set_timeout(model.cfg.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
         );
 
@@ -445,6 +436,7 @@ where
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<P>> {
         let now = Instant::now();
+        let max_addr_pending_time: Duration = self.cfg.max_addr_pending_time.into();
 
         // Remove pending connections that have been pending for a long time. Ideally, we would use
         // `drain_filter` here, but it is still unstable, so just collect the keys.
@@ -452,7 +444,7 @@ where
             .pending
             .iter()
             .filter_map(|(&addr, &timestamp)| {
-                if now - timestamp > MAX_ADDR_PENDING_TIME {
+                if now - timestamp > max_addr_pending_time {
                     Some(addr)
                 } else {
                     None
@@ -466,7 +458,7 @@ where
         });
 
         effect_builder
-            .set_timeout(MAX_ADDR_PENDING_TIME / 2)
+            .set_timeout(max_addr_pending_time / 2)
             .event(|_| Event::SweepPending)
     }
 
@@ -706,7 +698,7 @@ where
             .ignore();
         effects.extend(
             effect_builder
-                .set_timeout(self.gossip_interval)
+                .set_timeout(self.cfg.gossip_interval)
                 .event(|_| Event::GossipOurAddress),
         );
         effects
@@ -852,10 +844,10 @@ where
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<P>> {
         if self.is_not_connected_to_any_known_address() {
-            info!(delay=?ISOLATION_RECONNECT_DELAY, "we are isolated. will attempt to reconnect to all known nodes after a delay");
+            info!(delay=?self.cfg.isolation_reconnect_delay, "we are isolated. will attempt to reconnect to all known nodes after a delay");
 
             effect_builder
-                .set_timeout(ISOLATION_RECONNECT_DELAY)
+                .set_timeout(self.cfg.isolation_reconnect_delay.into())
                 .event(|_| Event::IsolationReconnection)
         } else {
             Effects::new()
