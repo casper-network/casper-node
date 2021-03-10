@@ -211,7 +211,7 @@ where
         for address in &cfg.known_addresses {
             match utils::resolve_address(address) {
                 Ok(known_address) => {
-                    if known_addresses.insert(known_address) {
+                    if !known_addresses.insert(known_address) {
                         warn!(%address, resolved=%known_address, "ignoring duplicated known address");
                     };
                 }
@@ -357,7 +357,7 @@ where
         for &address in &self.known_addresses {
             self.pending.insert(address, now);
 
-            // Add an effect to connect to the known address it.
+            // Add an effect to connect to the known address.
             effects.extend(
                 connect_outgoing(
                     address,
@@ -434,7 +434,7 @@ where
     /// Sweep and timeout pending connections.
     ///
     /// This is a reliability measure that sweeps pending connections, since leftover entries will
-    /// block any renewed connections attempts to a specific address.
+    /// block any renewed connection attempts to a specific address.
     ///
     /// In 100% bug free code, this would not be necessary, so this is in here as a stop-gap measure
     /// to avoid locking up a node with unremoved pending connections.
