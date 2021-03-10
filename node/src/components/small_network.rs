@@ -52,7 +52,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::Context;
@@ -106,6 +106,9 @@ const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
+/// Maximum allowed time for an address to be kept in the pending set.
+const MAX_ADDR_PENDING_TIME: Duration = Duration::from_secs(60);
+
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
@@ -153,7 +156,7 @@ where
     blocklist: HashMap<SocketAddr, Timestamp>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
-    pending: HashSet<SocketAddr>,
+    pending: HashMap<SocketAddr, Instant>,
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
     /// Name of the network we participate in. We only remain connected to peers with the same
@@ -225,7 +228,7 @@ where
                 event_queue,
                 incoming: HashMap::new(),
                 outgoing: HashMap::new(),
-                pending: HashSet::new(),
+                pending: HashMap::new(),
                 blocklist: HashMap::new(),
                 gossip_interval: cfg.gossip_interval,
                 network_name,
@@ -289,7 +292,7 @@ where
             event_queue,
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
-            pending: HashSet::new(),
+            pending: HashMap::new(),
             blocklist: HashMap::new(),
             gossip_interval: cfg.gossip_interval,
             network_name,
@@ -303,10 +306,11 @@ where
         // Bootstrap process.
         let mut effects = Effects::new();
 
+        let now = Instant::now();
         for address in &cfg.known_addresses {
             match utils::resolve_address(address) {
                 Ok(known_address) => {
-                    model.pending.insert(known_address);
+                    model.pending.insert(known_address, now);
 
                     // We successfully resolved an address, add an effect to connect to it.
                     effects.extend(
@@ -349,6 +353,9 @@ where
             // Start broadcasting our public listening address.
             effects.extend(model.gossip_our_address(effect_builder));
         }
+
+        // Start the sweeping process.
+        effects.extend(model.sweep_pending_connections(effect_builder));
 
         Ok((model, effects))
     }
@@ -407,6 +414,45 @@ where
             // We are not connected, so the reconnection is likely already in progress.
             debug!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, no connection");
         }
+    }
+
+    /// Sweep and timeout pending connections.
+    ///
+    /// This is a reliability measure that sweeps pending connections, since leftover entries will
+    /// block any renewed connections attempts to a specific address.
+    ///
+    /// In 100% bug free code, this would not be necessary, so this is in here as a stop-gap measure
+    /// to avoid locking up a node with unremoved pending connections.
+    ///
+    /// Connections will only be removed from pending, they will NOT be forcefully disconnected.
+    fn sweep_pending_connections(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
+        let now = Instant::now();
+
+        // Remove pending connections that have been pending for a long time. Ideally, we would use
+        // `drain_filter` here, but it is still unstable, so just collect the keys.
+        let outdated_keys: Vec<_> = self
+            .pending
+            .iter()
+            .filter_map(|(&addr, &timestamp)| {
+                if now - timestamp > MAX_ADDR_PENDING_TIME {
+                    Some(addr)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        outdated_keys.iter().for_each(|key| {
+            warn!(addr=%key, "swept pending address");
+            self.pending.remove(key);
+        });
+
+        effect_builder
+            .set_timeout(MAX_ADDR_PENDING_TIME / 2)
+            .event(|_| Event::SweepPending)
     }
 
     fn handle_incoming_tls_handshake_completed(
@@ -510,14 +556,8 @@ where
             }
         };
 
-        if !self.pending.remove(&peer_address) {
-            info!(
-                our_id=%self.our_id,
-                %peer_address,
-                "this peer's incoming connection has dropped, so don't establish an outgoing"
-            );
-            return Effects::new();
-        }
+        // Remove from pending connection set, but ignore if it is missing.
+        self.pending.remove(&peer_address);
 
         // If we have connected to ourself, allow the connection to drop.
         if peer_id == self.our_id {
@@ -726,7 +766,7 @@ where
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
         self.blocklist
             .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
-        if self.pending.contains(&peer_address)
+        if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
                 .outgoing
@@ -738,7 +778,8 @@ where
             Effects::new()
         } else {
             // We need to connect.
-            assert!(self.pending.insert(peer_address));
+            let now = Instant::now();
+            self.pending.insert(peer_address, now);
             connect_outgoing(
                 peer_address,
                 Arc::clone(&self.certificate),
@@ -923,6 +964,7 @@ where
                 peer_address,
                 error,
             } => self.handle_outgoing_lost(effect_builder, *peer_id, *peer_address, *error),
+            Event::SweepPending => self.sweep_pending_connections(effect_builder),
             Event::NetworkRequest { req } => {
                 match *req {
                     NetworkRequest::SendMessage {
