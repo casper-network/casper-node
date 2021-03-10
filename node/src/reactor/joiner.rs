@@ -872,17 +872,17 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block_hash,
-                block,
-            }) => reactor::wrap_effects(
-                Event::EventStreamServer,
-                self.event_stream_server.handle_event(
-                    effect_builder,
-                    rng,
-                    event_stream_server::Event::BlockAdded { block_hash, block },
-                ),
-            ),
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                let block_hash = *block.hash();
+                let ess_event = Event::EventStreamServer(event_stream_server::Event::BlockAdded {
+                    block_hash,
+                    block: block.clone(),
+                });
+                let mut effects = self.dispatch_event(effect_builder, rng, ess_event);
+                let consensus_event = Event::Consensus(consensus::Event::BlockAdded(block));
+                effects.extend(self.dispatch_event(effect_builder, rng, consensus_event));
+                effects
+            }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));

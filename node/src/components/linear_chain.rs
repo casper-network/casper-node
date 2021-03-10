@@ -392,11 +392,7 @@ where
                 let mut effects = effect_builder
                     .put_execution_results_to_storage(block_hash, execution_results)
                     .ignore();
-                effects.extend(
-                    effect_builder
-                        .announce_block_added(block_hash, block)
-                        .ignore(),
-                );
+                effects.extend(effect_builder.announce_block_added(block).ignore());
                 effects
             }
             Event::FinalitySignatureReceived(fs) => {

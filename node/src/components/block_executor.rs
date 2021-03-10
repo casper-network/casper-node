@@ -33,12 +33,12 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
-        announcements::BlockExecutorAnnouncement,
+        announcements::{BlockExecutorAnnouncement, LinearChainAnnouncement},
         requests::{
             BlockExecutorRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
             StorageRequest,
         },
-        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     types::{
         Block, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock,
@@ -56,6 +56,7 @@ pub trait ReactorEventT:
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
+    + From<LinearChainAnnouncement>
     + From<ConsensusRequest>
     + Send
 {
@@ -67,6 +68,7 @@ impl<REv> ReactorEventT for REv where
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
+        + From<LinearChainAnnouncement>
         + From<ConsensusRequest>
         + Send
 {
@@ -523,8 +525,16 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                 debug!(?finalized_block, "execute block");
                 effect_builder
                     .get_block_at_height_local(finalized_block.height())
-                    .map_some(|_| Event::BlockIsNew(finalized_block))
+                    .event(move |maybe_block| {
+                        maybe_block.map(Box::new).map_or_else(
+                            || Event::BlockIsNew(finalized_block),
+                            Event::BlockAlreadyExists,
+                        )
+                    })
             }
+            // TODO: Remove this, and the LinearChainAnnouncement dependency, once the
+            // EraSupervisor has been removed from the joiner reactor.
+            Event::BlockAlreadyExists(block) => effect_builder.announce_block_added(block).ignore(),
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),

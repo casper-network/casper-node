@@ -944,10 +944,8 @@ impl reactor::Reactor for Reactor {
                 ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block_hash,
-                block,
-            }) => {
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                let block_hash = *block.hash();
                 let ess_event = Event::EventStreamServer(event_stream_server::Event::BlockAdded {
                     block_hash,
                     block: block.clone(),
