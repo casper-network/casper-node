@@ -72,10 +72,10 @@ impl HighwayConfig {
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let finality_threshold_fraction = Ratio::new(rng.gen_range(1, 100), 100);
-        let minimum_round_exponent = rng.gen_range(0, 16);
-        let maximum_round_exponent = rng.gen_range(16, 22);
-        let reduced_reward_multiplier = Ratio::new(rng.gen_range(0, 10), 10);
+        let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
+        let minimum_round_exponent = rng.gen_range(0..16);
+        let maximum_round_exponent = rng.gen_range(16..22);
+        let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);
 
         HighwayConfig {
             finality_threshold_fraction,

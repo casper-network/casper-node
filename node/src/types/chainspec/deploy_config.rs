@@ -40,19 +40,17 @@ pub struct DeployConfig {
 impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let max_payment_cost = Motes::new(U512::from(
-            rng.gen_range::<_, u64, u64>(1_000_000, 1_000_000_000),
-        ));
-        let max_ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
+        let max_payment_cost = Motes::new(U512::from(rng.gen_range(1_000_000..1_000_000_000)));
+        let max_ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
         let max_dependencies = rng.gen();
-        let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
+        let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let block_max_deploy_count = rng.gen();
         let block_max_transfer_count = rng.gen();
-        let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
+        let block_gas_limit = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
         let payment_args_max_length = rng.gen();
         let session_args_max_length = rng.gen();
         let native_transfer_minimum_motes =
-            rng.gen_range(MAX_PAYMENT_AMOUNT, 1_000_000_000_000_000);
+            rng.gen_range(MAX_PAYMENT_AMOUNT..1_000_000_000_000_000);
 
         DeployConfig {
             max_payment_cost,

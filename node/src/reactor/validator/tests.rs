@@ -43,7 +43,7 @@ impl TestChain {
         let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
         let stakes = keys
             .iter()
-            .map(|secret_key| (PublicKey::from(secret_key), rng.gen_range(100, 999)))
+            .map(|secret_key| (PublicKey::from(secret_key), rng.gen_range(100..999)))
             .collect();
         Self::new_with_keys(rng, keys, stakes)
     }
@@ -69,7 +69,7 @@ impl TestChain {
                 );
                 AccountConfig::new(
                     *public_key,
-                    Motes::new(U512::from(rng.gen_range(10000, 99999999))),
+                    Motes::new(U512::from(rng.gen_range(10000..99999999))),
                     Some(validator_config),
                 )
             })

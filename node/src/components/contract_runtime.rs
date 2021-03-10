@@ -522,23 +522,6 @@ where
                         }
                         .ignore()
                     }
-                    ContractRuntimeRequest::MissingTrieKeys {
-                        trie_key,
-                        responder,
-                    } => {
-                        trace!(?trie_key, "missing_trie_keys request");
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
-                        async move {
-                            let correlation_id = CorrelationId::new();
-                            let start = Instant::now();
-                            let result = engine_state.missing_trie_keys(correlation_id, trie_key);
-                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "missing_trie_keys response");
-                            responder.respond(result).await
-                        }
-                        .ignore()
-                    }
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
                         debug!(?finalized_block, "execute block");
                         effect_builder
@@ -563,6 +546,24 @@ where
                             let result = engine_state.get_bids(correlation_id, get_bids_request);
                             metrics.get_bids.observe(start.elapsed().as_secs_f64());
                             trace!(?result, "get bids result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::MissingTrieKeys {
+                        trie_key,
+                        responder,
+                    } => {
+                        trace!(?trie_key, "missing_trie_keys request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result =
+                                engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
+                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "missing_trie_keys response");
                             responder.respond(result).await
                         }
                         .ignore()
@@ -723,7 +724,7 @@ impl ContractRuntime {
         let correlation_id = CorrelationId::new();
         match self
             .engine_state
-            .trie_integrity_check(correlation_id, trie_keys)
+            .missing_trie_keys(correlation_id, trie_keys)
         {
             Ok(keys) => keys,
             Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),

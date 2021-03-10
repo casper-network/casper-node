@@ -1141,5 +1141,5 @@ fn log2(x: u64) -> u32 {
 
 /// Returns a pseudorandom `u64` betweend `1` and `upper` (inclusive).
 fn leader_prng(upper: u64, seed: u64) -> u64 {
-    ChaCha8Rng::seed_from_u64(seed).gen_range(0, upper) + 1
+    ChaCha8Rng::seed_from_u64(seed).gen_range(0..upper) + 1
 }

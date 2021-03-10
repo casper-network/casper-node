@@ -83,9 +83,6 @@ static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
         .ok()
 });
 
-/// The desired limit for open files.
-const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
-
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
 const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
@@ -104,6 +101,10 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         })
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
+
+#[cfg(target_os = "linux")]
+/// The desired limit for open files.
+const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
 #[cfg(target_os = "linux")]
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
