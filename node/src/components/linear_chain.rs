@@ -397,11 +397,7 @@ where
                         .handle_linear_chain_block(*block.clone())
                         .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
                 );
-                effects.extend(
-                    effect_builder
-                        .announce_block_added(block_hash, block)
-                        .ignore(),
-                );
+                effects.extend(effect_builder.announce_block_added(block).ignore());
                 effects
             }
             Event::FinalitySignatureReceived(fs) => {
