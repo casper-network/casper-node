@@ -203,7 +203,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         match &self.state {
             State::None | State::Done(_) => {
                 error!(state=?self.state, "block downloaded when in incorrect state.");
-                return fatal!(effect_builder, "block downloaded in incorrect state").ignore();
+                fatal!(effect_builder, "block downloaded in incorrect state").ignore()
             }
             State::SyncingTrustedHash {
                 highest_block_header,
@@ -269,7 +269,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         match curr_state {
             State::None | State::Done(_) => {
                 error!(state=?self.state, "block handled when in incorrect state.");
-                return fatal!(effect_builder, "block handled in incorrect state").ignore();
+                fatal!(effect_builder, "block handled in incorrect state").ignore()
             }
             // Keep syncing from genesis if we haven't reached the trusted block hash
             State::SyncingTrustedHash {
@@ -443,11 +443,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             }
             State::Done(_) | State::None => {
                 error!(state=?self.state, "tried fetching next block when in wrong state");
-                return fatal!(
+                fatal!(
                     effect_builder,
                     "tried fetching next block when in wrong state"
                 )
-                .ignore();
+                .ignore()
             }
         }
     }
@@ -611,11 +611,8 @@ where
                         match self.peers.random() {
                             None if self.started_syncing => {
                                 error!(%block_hash, "could not download linear block from any of the peers.");
-                                return fatal!(
-                                    effect_builder,
-                                    "failed to synchronize linear chain"
-                                )
-                                .ignore();
+                                fatal!(effect_builder, "failed to synchronize linear chain")
+                                    .ignore()
                             }
                             None => {
                                 warn!("run out of peers before managed to start syncing. Resetting peers' list and continuing");
@@ -691,11 +688,8 @@ where
                             None => {
                                 error!(%block_hash,
                                 "could not download deploys from linear chain block.");
-                                return fatal!(
-                                    effect_builder,
-                                    "failed to download linear chain deploys"
-                                )
-                                .ignore();
+                                fatal!(effect_builder, "failed to download linear chain deploys")
+                                    .ignore()
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();

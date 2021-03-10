@@ -162,8 +162,8 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 pub enum ConsensusAnnouncement<I> {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
-    /// A linear chain block has been handled.
-    Handled(Box<Block>),
+    /// A finality signature was created.
+    CreatedFinalitySignature(Box<FinalitySignature>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -186,12 +186,9 @@ where
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(block) => write!(
-                formatter,
-                "Linear chain block has been handled by consensus, height={}, hash={}",
-                block.height(),
-                block.hash()
-            ),
+            ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                write!(formatter, "signed an executed block: {}", fs)
+            }
             ConsensusAnnouncement::Fault {
                 era_id,
                 public_key,
@@ -218,6 +215,11 @@ pub enum BlockExecutorAnnouncement {
         /// The results of executing the deploys in this block.
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     },
+    /// A block was requested to be executed, but it had been executed before.
+    BlockAlreadyExecuted {
+        /// The block.
+        block: Block,
+    },
 }
 
 impl Display for BlockExecutorAnnouncement {
@@ -225,6 +227,9 @@ impl Display for BlockExecutorAnnouncement {
         match self {
             BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
                 write!(f, "created linear chain block {}", block.hash())
+            }
+            BlockExecutorAnnouncement::BlockAlreadyExecuted { block } => {
+                write!(f, "block had been executed before: {}", block.hash())
             }
         }
     }

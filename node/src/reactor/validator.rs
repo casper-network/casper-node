@@ -874,10 +874,11 @@ impl reactor::Reactor for Reactor {
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
-                    ConsensusAnnouncement::Handled(_) => {
-                        debug!("Ignoring `Handled` announcement in `validator` reactor.");
-                        Effects::new()
-                    }
+                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs)),
+                    ),
                     ConsensusAnnouncement::Fault {
                         era_id,
                         public_key,
@@ -929,6 +930,12 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted {
+                block: _,
+            }) => {
+                debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
+                Effects::new()
+            }
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
             }
@@ -946,9 +953,12 @@ impl reactor::Reactor for Reactor {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::BlockAdded {
                         block_hash,
-                        block,
+                        block: block.clone(),
                     });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+                let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =
