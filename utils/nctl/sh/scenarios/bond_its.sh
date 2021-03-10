@@ -13,6 +13,7 @@ function main() {
     log "Starting Scenario: Bonding test"
     log "------------------------------------------------------------"
 
+
     # 0. Wait for network to start up
     do_await_genesis_era_to_complete
     # 1. Allow the chain to progress
@@ -30,6 +31,10 @@ function main() {
     do_await_era_change "2"
     # 7. Assert that the validator is bonded in.
     assert_new_bonded_validator "6"
+    log "The new node has bonded in."
+    # 8. Assert that the new bonded validator is producing blocks.
+    assert_node_proposed "1"
+
 
     log "------------------------------------------------------------"
     log "Scenario bonding complete"
@@ -73,6 +78,17 @@ function assert_new_bonded_validator() {
       echo "Could not find key in bids"
       exit 1
     fi
+}
+
+function assert_node_proposed() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    echo "$NODE_PATH"
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
+    log_step "Waiting for node-$NODE_ID to produce a block..."
+    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    log "node-$NODE_ID created a block!"
+    log "$OUTPUT"
 }
 
 
