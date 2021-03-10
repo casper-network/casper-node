@@ -238,9 +238,14 @@ impl FromStr for TimeDiff {
 }
 
 impl TimeDiff {
-    /// Returns the timestamp as the number of milliseconds since the Unix epoch
+    /// Returns the time difference as the number of milliseconds since the Unix epoch
     pub fn millis(&self) -> u64 {
         self.0
+    }
+
+    /// Creates a new time difference from seconds.
+    pub const fn from_seconds(seconds: u32) -> Self {
+        TimeDiff(seconds as u64 * 1_000)
     }
 }
 
