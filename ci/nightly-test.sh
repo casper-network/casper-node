@@ -10,6 +10,7 @@ fi
 DRONE_ROOT_DIR="/drone/src"
 SCENARIOS_DIR="$DRONE_ROOT_DIR/utils/nctl/sh/scenarios"
 SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
+SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 LAUNCHER_DIR="/drone"
 
 # NCTL requires casper-node-launcher
@@ -25,11 +26,16 @@ nctl-compile
 function start_run_teardown() {
     local RUN_CMD=$1
     local RUN_CHAINSPEC=$2
-    echo "Setting up network: $RUN_CMD $RUN_CHAINSPEC"
-    if [ -z "$RUN_CHAINSPEC" ]; then
+    local RUN_ACCOUNTS=$3
+    echo "Setting up network: $RUN_CMD $RUN_CHAINSPEC $RUN_ACCOUNTS"
+    if [ -z "$RUN_CHAINSPEC" ] && [ -z "$RUN_ACCOUNTS" ]; then
         nctl-assets-setup
-    else
+    elif [ ! -z "$RUN_CHAINSPEC" ] && [ -z "$RUN_ACCOUNTS" ]; then
         nctl-assets-setup chainspec_path="$SCENARIOS_CHAINSPEC_DIR/$RUN_CHAINSPEC"
+    elif [ -z "$RUN_CHAINSPEC" ] && [ ! -z "$RUN_ACCOUNTS" ]; then
+        nctl-assets-setup accounts_path="$SCENARIOS_ACCOUNTS_DIR/$RUN_ACCOUNTS"
+    else
+        nctl-assets-setup chainspec_path="$SCENARIOS_CHAINSPEC_DIR/$RUN_CHAINSPEC" accounts_path="$SCENARIOS_ACCOUNTS_DIR/$RUN_ACCOUNTS"
     fi
     sleep 1
     nctl-start
@@ -37,7 +43,7 @@ function start_run_teardown() {
     sleep 90
     pushd $SCENARIOS_DIR
     # Don't qoute the cmd
-    echo "Starting scenario: $RUN_CMD $RUN_CHAINSPEC"
+    echo "Starting scenario: $RUN_CMD $RUN_CHAINSPEC $RUN_ACCOUNTS"
     source $RUN_CMD
     popd
     nctl-assets-teardown
@@ -50,7 +56,7 @@ start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
 start_run_teardown "itst11.sh"
 start_run_teardown "itst13.sh" "itst13.chainspec.toml.in"
-start_run_teardown "itst14.sh" "itst14.chainspec.toml.in"
+start_run_teardown "itst14.sh" "itst14.chainspec.toml.in" "itst14.accounts.toml"
 
 # Clean up cloned repo
 popd

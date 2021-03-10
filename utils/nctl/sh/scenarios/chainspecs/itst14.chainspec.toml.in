@@ -21,7 +21,7 @@ name = 'casper-example'
 
 [core]
 # Era duration.
-era_duration = '300seconds'
+era_duration = '300s'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
 minimum_era_height = 10
@@ -55,7 +55,7 @@ minimum_round_exponent = 12
 # Integer between 0 and 255.  Must be greater than `minimum_round_exponent`.  The power of two that is the number of
 # milliseconds in the maximum round length, and therefore the maximum delay between a block and its child.  E.g. 19
 # means 2^19 milliseconds, i.e. about 8.7 minutes.
-maximum_round_exponent = 19
+maximum_round_exponent = 14
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
@@ -72,7 +72,7 @@ max_block_size = 10_485_760
 # The maximum number of non-transfer deploys permitted in a single block.
 block_max_deploy_count = 100
 # The maximum number of wasm-less transfer deploys permitted in a single block.
-block_max_transfer_count = 1000
+block_max_transfer_count = 1
 # The upper limit of total gas of all deploys in a block.
 block_gas_limit = 10_000_000_000_000
 # The limit of length of serialized payment code arguments.
@@ -114,7 +114,7 @@ global = 390
 # Control flow operations multiplier.
 control_flow = 440
 # Integer operations multiplier.
-integer_comparsion = 250
+integer_comparison = 250
 # Conversion operations multiplier.
 conversion = 420
 # Unreachable operation multiplier.

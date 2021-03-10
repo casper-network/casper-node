@@ -53,7 +53,7 @@ function do_stop_node() {
 
 function check_network_sync() {
     local WAIT_TIME_SEC=0
-    log_step "check all nodes are in sync"
+    log_step "check all node's LFBs are in sync"
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
         if [ "$(do_read_lfb_hash '5')" = "$(do_read_lfb_hash '1')" ] && \
 		[ "$(do_read_lfb_hash '4')" = "$(do_read_lfb_hash '1')" ] && \
@@ -79,7 +79,16 @@ function do_await_era_change() {
 }
 
 function check_current_era {
-    echo $(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+    local ERA="null"
+    while true; do
+        ERA=$(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+        if [ "$ERA" = "null" ] || [ "$ERA" = "N/A" ]; then
+            sleep 1
+        else
+            break
+        fi
+    done
+    echo "$ERA"
 }
 
 function check_faulty() {
@@ -87,4 +96,25 @@ function check_faulty() {
     local NODE_PATH=$(get_path_to_node $NODE_ID)
     grep -q 'this validator is faulty' "$NODE_PATH/logs/stdout.log"
     return $?
+}
+
+# Captures the public key in hex of a node minus the '01' prefix.
+# This is because the logs don't include the '01' prefix when
+# searching in them for the public key in hex. See itst14 for
+# use case.
+function get_node_public_key_hex() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
+    echo "${PUBLIC_KEY_HEX:2}"
+}
+
+# Same as get_node_public_key_hex but includes the '01' prefix.
+# When parsing the state with jq, the '01' prefix is included.
+# See itst13 for use case.
+function get_node_public_key_hex_extended() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
+    echo "$PUBLIC_KEY_HEX"
 }

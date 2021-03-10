@@ -19,24 +19,29 @@ function main() {
 
     # 0a. Verify all nodes are in sync
     check_network_sync
+    log "Sleeping 10s"
+    sleep 10
+    check_network_sync
     # 0b. Get era
     STOPPED_ERA=$(check_current_era)
     # 1. Stop node
     do_stop_node "5"
     # 2. Let the node go down
-    log_step "Sleeping for 5s"
-    sleep 5
+    log_step "Sleeping for 10s"
+    sleep 10
     # 3. Restart Node
     do_read_lfb_hash 1
     do_start_node "5" "$LFB_HASH"
     # 4. Verify all nodes are in sync
     check_network_sync
     # 5. Verify network chain height sync
-    assert_chainheight_network_sync
+    log "Sleeping 10s"
+    sleep 10
+    check_network_sync
     # 6. Send deploy to stopped node
-    send_single_native_transfer '5'
-    # 7. Verify deploy is finalized
-    assert_finalized_deploy "$DEPLOY_HASH"
+    send_transfers '100'
+    # 7. Verify network finalized deploy
+    assert_node_proposed '5'
     # 8. Check we are in the same era
     assert_same_era "$STOPPED_ERA"
     # 9. Wait an era
@@ -62,31 +67,23 @@ function assert_same_era() {
     fi
 }
 
-function send_single_native_transfer() {
-    unset DEPLOY_HASH
+function assert_node_proposed() {
     local NODE_ID=${1}
-    log_step "sending 1 native transfer to $NODE_ID"
-    local TRANSFER_OUT=$(nctl-transfer-native node="$NODE_ID" ammount=2500000000 transfers=1 user=1 | grep '#1')
-    DEPLOY_HASH=$(echo $TRANSFER_OUT | awk -F':: ' '{print $4}')
-    echo $DEPLOY_HASH
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
+    log_step "Waiting for a node-$NODE_ID to produce a block..."
+    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    log "node-$NODE_ID created a block!"
+    log "$OUTPUT"
 }
 
-function assert_finalized_deploy() {
-    local DEPLOY_HASH=${1}
-    local WAIT_TIME_SEC=0
-    log_step "Checking all validators for finalized deploy: $DEPLOY_HASH"
-    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        local NETWORK_FINALIZED=$(cat "$NCTL"/assets/net-1/nodes/node-*/logs/stdout.log | grep 'finalized_block' | grep "DeployHash($DEPLOY_HASH)" | wc -l)
-        if [ "$NETWORK_FINALIZED" = '5' ]; then
-            log "All validators finalized deploy: $DEPLOY_HASH"
-            break
-        fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Failed to confirm network sync"
-            exit 1
-        fi
-        sleep 1
+function send_transfers() {
+    local NUM_T=${1:-1}
+    local NUM_RUNNING_NODES=$(nctl-status | grep -i 'running' | wc -l)
+    log_step "sending $NUM_T native transfers to $NUM_RUNNING_NODES running nodes..."
+    for ((i=0; i<=$NUM_RUNNING_NODES; i++)); do
+        log "node-$i: $NUM_T transfers sent."
+        local TRANSFER_OUT=$(nctl-transfer-native node=$i ammount=2500000000 transfers="$NUM_T" user=1)
     done
 }
 
@@ -101,36 +98,13 @@ function check_node_equivocated() {
     fi
 }
 
-# Normally I'd just wait an era and re-check with check_network_sync
-# but we need to remain in the era. This will verify we caught up
-# prior to firing deploys.
-function assert_chainheight_network_sync() {
-    log_step "Checking network chain height in sync..."
-    local WAIT_TIME_SEC=0
-    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        if [ "$(get_chain_height '5')" = "$(get_chain_height '1')" ] && \
-                [ "$(get_chain_height '4')" = "$(get_chain_height '1')" ] && \
-                [ "$(get_chain_height '3')" = "$(get_chain_height '1')" ] && \
-                [ "$(get_chain_height '2')" = "$(get_chain_height '1')" ]; then
-            log "Network chain height in sync, proceeding..."
-            break
-        fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Failed to confirm chain height in sync"
-            exit 1
-        fi
-        sleep 1
-    done
-}
-
 # ----------------------------------------------------------------
 # ENTRY POINT
 # ----------------------------------------------------------------
 
 unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
-unset DEPLOY_HASH
+unset PUBLIC_KEY_HEX
 STEP=0
 
 for ARGUMENT in "$@"; do
