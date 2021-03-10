@@ -44,7 +44,7 @@ version-sync = "0.9"
 serde_test = "1.0.117"
 
 [features]
-default = ["base16/alloc", "serde/alloc", "serde_json/alloc", "displaydoc"]
+default = ["base16/alloc", "hex/alloc", "serde/alloc", "serde_json/alloc", "displaydoc"]
 std = [
     "base16/std",
     "base64/std",

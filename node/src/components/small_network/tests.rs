@@ -242,7 +242,7 @@ fn network_is_complete(
     if nodes.len() == 1 {
         let nodes = &nodes.values().collect::<Vec<_>>();
         let net = &nodes[0].reactor().inner().net;
-        if net.is_isolated() {
+        if net.is_not_connected_to_any_known_address() {
             return true;
         }
     }
