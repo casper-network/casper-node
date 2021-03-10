@@ -6,7 +6,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
         AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-        StorageProvider, SystemProvider,
+        StorageProvider, SystemProvider, UnbondingPurse,
     },
     CLTyped, CLValue, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
@@ -71,6 +71,32 @@ where
     fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error> {
         self.context
             .metered_write_gs_unsafe(Key::Bid(account_hash), StoredValue::Bid(Box::new(bid)))
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
+        match self.context.read_gs(&Key::Withdraw(*account_hash)) {
+            Ok(Some(StoredValue::Withdraw(unbonding_purses))) => Ok(unbonding_purses),
+            Ok(Some(_)) => Err(Error::Storage),
+            Ok(None) => Ok(Vec::new()),
+            Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
+            // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
+            // also [`Runtime::reverter`] and [`to_auction_error`]
+            Err(execution::Error::GasLimit) => Err(Error::GasLimit),
+            Err(_) => Err(Error::Storage),
+        }
+    }
+
+    fn write_withdraw(
+        &mut self,
+        account_hash: AccountHash,
+        unbonding_purses: Vec<UnbondingPurse>,
+    ) -> Result<(), Error> {
+        self.context
+            .metered_write_gs_unsafe(
+                Key::Withdraw(account_hash),
+                StoredValue::Withdraw(unbonding_purses),
+            )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 }

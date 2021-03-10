@@ -19,7 +19,7 @@ use casper_types::{
     system::{
         auction::{
             Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH, UNBONDING_PURSES_KEY,
+            ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -114,7 +114,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         U512::from(VALIDATOR_1_STAKE),
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -162,11 +162,11 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(withdraw_bid_request).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .cloned()
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 2); // two entries in order: undelegate, and withdraw bid
@@ -190,7 +190,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     assert_eq!(unbond_list[1].amount(), &unbond_amount);
 
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
         "should not be part of unbonds"
     );
 
@@ -206,7 +206,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(slash_request_1).expect_success().commit();
 
-    let unbond_purses_noop: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_noop: UnbondingPurses = builder.get_withdraws();
     assert_eq!(
         unbond_purses, unbond_purses_noop,
         "slashing default validator should be noop because no unbonding was done"
@@ -234,18 +234,12 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert_eq!(unbond_purses.len(), 0);
+    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    assert_eq!(unbond_purses.len(), 1);
 
-    assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
-        "delegator should not be part of unbond list after slashing validator"
-    );
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
-    assert!(
-        !unbond_purses.contains_key(&VALIDATOR_1),
-        "should not be a part of unbond list because delegator was slashed"
-    );
+    assert!(unbond_purses.get(&VALIDATOR_1_ADDR).unwrap().is_empty());
 
     let bids: Bids = builder.get_bids();
     let validator_1_bid = bids.get(&VALIDATOR_1).unwrap();

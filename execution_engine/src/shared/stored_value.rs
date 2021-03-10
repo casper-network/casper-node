@@ -6,7 +6,7 @@ use serde_bytes::ByteBuf;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    system::auction::{Bid, EraInfo},
+    system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
@@ -23,6 +23,7 @@ enum Tag {
     DeployInfo = 6,
     EraInfo = 7,
     Bid = 8,
+    Withdraw = 9,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -36,6 +37,7 @@ pub enum StoredValue {
     DeployInfo(DeployInfo),
     EraInfo(EraInfo),
     Bid(Box<Bid>),
+    Withdraw(Vec<UnbondingPurse>),
 }
 
 impl StoredValue {
@@ -95,6 +97,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_withdraw(&self) -> Option<&Vec<UnbondingPurse>> {
+        match self {
+            StoredValue::Withdraw(unbonding_purses) => Some(unbonding_purses),
+            _ => None,
+        }
+    }
+
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -106,6 +115,7 @@ impl StoredValue {
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
             StoredValue::Bid(_) => "Bid".to_string(),
+            StoredValue::Withdraw(_) => "Withdraw".to_string(),
         }
     }
 }
@@ -264,6 +274,9 @@ impl ToBytes for StoredValue {
             StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
             StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
             StoredValue::Bid(bid) => (Tag::Bid, bid.to_bytes()?),
+            StoredValue::Withdraw(unbonding_purses) => {
+                (Tag::Withdraw, unbonding_purses.to_bytes()?)
+            }
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -284,6 +297,7 @@ impl ToBytes for StoredValue {
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
                 StoredValue::Bid(bid) => bid.serialized_length(),
+                StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
             }
     }
 }
@@ -316,6 +330,11 @@ impl FromBytes for StoredValue {
                 .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
             tag if tag == Tag::Bid as u8 => Bid::from_bytes(remainder)
                 .map(|(bid, remainder)| (StoredValue::Bid(Box::new(bid)), remainder)),
+            tag if tag == Tag::Withdraw as u8 => {
+                Vec::<UnbondingPurse>::from_bytes(remainder).map(|(unbonding_purses, remainder)| {
+                    (StoredValue::Withdraw(unbonding_purses), remainder)
+                })
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

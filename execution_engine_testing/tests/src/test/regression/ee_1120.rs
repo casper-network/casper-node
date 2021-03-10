@@ -16,7 +16,7 @@ use casper_types::{
     runtime_args,
     system::auction::{
         Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
-        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -44,6 +44,7 @@ static DELEGATOR_1: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
 
 static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]));
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
@@ -164,7 +165,7 @@ fn should_run_ee_1120_slash_delegators() {
         BTreeSet::from_iter(vec![*VALIDATOR_2, *VALIDATOR_1])
     );
 
-    let initial_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let initial_unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(initial_unbond_purses.len(), 0);
 
     // DELEGATOR_1 partially unbonds from VALIDATOR_1
@@ -209,11 +210,11 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check unbonding purses before slashing
 
-    let unbond_purses_before: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_before: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses_before.len(), 2);
 
     let validator_1_unbond_list_before = unbond_purses_before
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .cloned()
         .expect("should have unbond");
     assert_eq!(validator_1_unbond_list_before.len(), 2); // two entries in order: undelegate, and withdraw bid
@@ -247,7 +248,7 @@ fn should_run_ee_1120_slash_delegators() {
     );
 
     let validator_2_unbond_list = unbond_purses_before
-        .get(&*VALIDATOR_2)
+        .get(&*VALIDATOR_2_ADDR)
         .cloned()
         .expect("should have unbond");
 
@@ -304,11 +305,11 @@ fn should_run_ee_1120_slash_delegators() {
         .delegators()
         .contains_key(&DELEGATOR_1));
 
-    let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
     assert_ne!(unbond_purses_before, unbond_purses_after);
 
     let validator_1_unbond_list_after = unbond_purses_after
-        .get(&VALIDATOR_1)
+        .get(&VALIDATOR_1_ADDR)
         .expect("should have validator 1 entry");
     assert_eq!(validator_1_unbond_list_after.len(), 2);
     assert_eq!(
@@ -348,6 +349,13 @@ fn should_run_ee_1120_slash_delegators() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert!(unbond_purses_after.is_empty());
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
+    assert!(unbond_purses_after
+        .get(&VALIDATOR_1_ADDR)
+        .unwrap()
+        .is_empty());
+    assert!(unbond_purses_after
+        .get(&VALIDATOR_2_ADDR)
+        .unwrap()
+        .is_empty());
 }

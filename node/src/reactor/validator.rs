@@ -18,6 +18,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
@@ -47,8 +48,8 @@ use crate::{
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            NetworkAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -160,6 +161,9 @@ pub enum Event {
     StateStoreRequest(StateStoreRequest),
 
     // Announcements
+    /// Control announcement.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
     /// Network announcement.
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
@@ -187,6 +191,16 @@ pub enum Event {
     /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<RpcRequest<NodeId>> for Event {
@@ -267,6 +281,7 @@ impl Display for Event {
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
             Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
+            Event::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
             Event::RpcServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
             Event::DeployAcceptorAnnouncement(ann) => {
@@ -658,6 +673,9 @@ impl reactor::Reactor for Reactor {
             }
 
             // Announcements:
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
                 payload,

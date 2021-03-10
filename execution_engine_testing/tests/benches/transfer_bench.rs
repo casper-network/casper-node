@@ -5,9 +5,12 @@ use criterion::{
 };
 use tempfile::TempDir;
 
-use casper_engine_test_support::internal::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+use casper_engine_test_support::{
+    internal::{
+        DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    },
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
@@ -252,9 +255,11 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     let mut builder = bootstrap(
         data_dir.path(),
         bootstrap_accounts.clone(),
-        *DEFAULT_PAYMENT * 100,
+        U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
     );
-    let purses = create_purses(&mut builder, target_account, 1, U512::one());
+
+    let purse_amount = U512::one();
+    let purses = create_purses(&mut builder, target_account, 1, purse_amount);
 
     group.bench_function(
         format!(
@@ -271,7 +276,11 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     );
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = bootstrap(data_dir.path(), bootstrap_accounts, *DEFAULT_PAYMENT * 10);
+    let mut builder = bootstrap(
+        data_dir.path(),
+        bootstrap_accounts,
+        U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) * 10,
+    );
     let purses = create_purses(&mut builder, TARGET_ADDR, 1, U512::one());
 
     group.bench_function(
