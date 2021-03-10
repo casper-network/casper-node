@@ -877,15 +877,16 @@ where
 
     /// Returns whether or not this node has been disconnected from all known nodes.
     fn is_not_connected_to_any_known_address(&self) -> bool {
-        for addr in self.pending.keys() {
-            if self.known_addresses.contains(addr) {
-                // We have at least one pending connection to a known node, exit early.
+        for &known_address in &self.known_addresses {
+            if self.pending.contains_key(&known_address) {
                 return false;
             }
-        }
 
-        for outgoing in self.outgoing.values() {
-            if self.known_addresses.contains(&outgoing.peer_address) {
+            if self
+                .outgoing
+                .values()
+                .any(|outgoing_connection| outgoing_connection.peer_address == known_address)
+            {
                 return false;
             }
         }
