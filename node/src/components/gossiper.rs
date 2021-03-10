@@ -179,6 +179,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item_id: T::Id,
         source: Source<NodeId>,
     ) -> Effects<Event<T>> {
+        debug!(item=%item_id, %source, "received new gossip item");
         if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
             self.metrics.items_received.inc();
             self.gossip(
@@ -225,10 +226,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             self.metrics.times_ran_out_of_peers.inc();
 
             self.table.pause(&item_id);
-            debug!(
-                "paused gossiping {} since no more peers to gossip to",
-                item_id
-            );
+            debug!(item=%item_id, "paused gossiping since no more peers to gossip to");
             return Effects::new();
         }
 
@@ -338,6 +336,8 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             self.table.new_partial_data(&item_id, sender.clone())
         };
 
+        debug!(item=%item_id, %sender, %action, "received gossip request");
+
         match action {
             GossipAction::ShouldGossip(should_gossip) => {
                 self.metrics.items_received.inc();
@@ -351,6 +351,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
                 // If this is a new complete item to us, announce it.
                 if T::ID_IS_COMPLETE_ITEM && !should_gossip.is_already_held {
+                    debug!(item=%item_id, "announcing new complete gossip item received");
                     effects.extend(
                         effect_builder
                             .announce_complete_item_received_via_gossip(item_id)

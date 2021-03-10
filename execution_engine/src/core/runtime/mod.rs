@@ -97,6 +97,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::EraInfo(_) => None,
         Key::Balance(_) => None,
         Key::Bid(_) => None,
+        Key::Withdraw(_) => None,
     }
 }
 

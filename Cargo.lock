@@ -661,7 +661,7 @@ dependencies = [
  "hyper",
  "jsonrpc-lite",
  "once_cell",
- "rand 0.7.3",
+ "rand 0.8.3",
  "reqwest",
  "semver 0.11.0",
  "serde",
@@ -720,7 +720,7 @@ dependencies = [
  "num-rational 0.3.2",
  "num-traits",
  "once_cell",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "rand 0.7.3",
  "serde_json",
  "tempfile",
@@ -753,11 +753,11 @@ dependencies = [
  "num-rational 0.3.2",
  "num-traits",
  "once_cell",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "proptest",
- "pwasm-utils 0.12.0",
- "rand 0.7.3",
- "rand_chacha 0.2.2",
+ "pwasm-utils",
+ "rand 0.8.3",
+ "rand_chacha 0.3.0",
  "schemars",
  "serde",
  "serde_bytes",
@@ -789,7 +789,6 @@ dependencies = [
  "datasize",
  "derive_more",
  "derp",
- "directories",
  "ed25519-dalek",
  "either",
  "enum-iterator",
@@ -820,18 +819,16 @@ dependencies = [
  "num-traits",
  "once_cell",
  "openssl",
- "parity-wasm 0.42.1",
  "parking_lot 0.11.1",
  "pem",
  "pnet",
  "prometheus",
  "proptest",
- "pwasm-utils 0.16.0",
  "quanta",
- "rand 0.7.3",
- "rand_chacha 0.2.2",
+ "rand 0.8.3",
+ "rand_chacha 0.3.0",
  "rand_core 0.6.2",
- "rand_pcg",
+ "rand_pcg 0.3.0",
  "regex",
  "reqwest",
  "schemars",
@@ -865,7 +862,6 @@ dependencies = [
  "vergen",
  "warp",
  "warp-json-rpc",
- "wasmi",
  "wheelbuf",
 ]
 
@@ -903,7 +899,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "proptest",
- "rand 0.7.3",
+ "rand 0.8.3",
  "schemars",
  "serde",
  "serde_json",
@@ -1555,26 +1551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "directories"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8fed639d60b58d0f53498ab13d26f621fd77569cc6edb031f4cc36a2ad9da0f"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e93d7f5705de3e49895a2b5e0b8855a1c27f080192ae9c32a6432d50741a57a"
-dependencies = [
- "libc",
- "redox_users",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "displaydoc"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1632,6 +1608,12 @@ name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
+
+[[package]]
+name = "downcast-rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "dtoa"
@@ -2435,9 +2417,9 @@ dependencies = [
 
 [[package]]
 name = "hex"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 dependencies = [
  "serde",
 ]
@@ -3794,12 +3776,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
 
 [[package]]
-name = "parity-wasm"
-version = "0.42.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d17797de36b94bc5f73edad736fd0a77ce5ab64dd622f809c1eead8c91fa6564"
-
-[[package]]
 name = "parking"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4338,24 +4314,13 @@ dependencies = [
 
 [[package]]
 name = "pwasm-utils"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f7a12f176deee919f4ba55326ee17491c8b707d0987aed822682c821b660192"
-dependencies = [
- "byteorder",
- "log 0.4.14",
- "parity-wasm 0.41.0",
-]
-
-[[package]]
-name = "pwasm-utils"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c8ac87af529432d3a4f0e2b3bbf08af49f28f09cc73ed7e551161bdaef5f78d"
 dependencies = [
  "byteorder",
  "log 0.4.14",
- "parity-wasm 0.41.0",
+ "parity-wasm",
 ]
 
 [[package]]
@@ -4405,7 +4370,7 @@ dependencies = [
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "rand_hc 0.2.0",
- "rand_pcg",
+ "rand_pcg 0.2.1",
 ]
 
 [[package]]
@@ -4486,6 +4451,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_pcg"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7de198537002b913568a3847e53535ace266f93526caf5c360ec41d72c5787f0"
+dependencies = [
+ "rand_core 0.6.2",
+]
+
+[[package]]
 name = "rand_xorshift"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4541,17 +4515,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94341e4e44e24f6b591b59e47a8a027df12e008d73fd5672dbea9cc22f4507d9"
 dependencies = [
  "bitflags 1.2.1",
-]
-
-[[package]]
-name = "redox_users"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de0737333e7a9502c789a36d7c7fa6092a49895d4faa31ca5df163857ded2e9d"
-dependencies = [
- "getrandom 0.1.16",
- "redox_syscall 0.1.57",
- "rust-argon2",
 ]
 
 [[package]]
@@ -4685,18 +4648,6 @@ dependencies = [
  "byteorder",
  "rmp",
  "serde",
-]
-
-[[package]]
-name = "rust-argon2"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b18820d944b33caa75a71378964ac46f58517c92b6ae5f762636247c09e78fb"
-dependencies = [
- "base64 0.13.0",
- "blake2b_simd",
- "constant_time_eq",
- "crossbeam-utils 0.8.1",
 ]
 
 [[package]]
@@ -6329,15 +6280,16 @@ dependencies = [
 
 [[package]]
 name = "wasmi"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf617d864d25af3587aa745529f7aaa541066c876d57e050c0d0c85c61c92aff"
+checksum = "4bb6825d9b2147105789adb4c2d84b9b568719713f3ac39618b637b4dafc86c4"
 dependencies = [
+ "downcast-rs",
  "libc",
  "memory_units 0.3.0",
  "num-rational 0.2.4",
  "num-traits",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "wasmi-validation",
 ]
 
@@ -6347,7 +6299,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea78c597064ba73596099281e2f4cfc019075122a65cdda3205af94f0b264d93"
 dependencies = [
- "parity-wasm 0.41.0",
+ "parity-wasm",
 ]
 
 [[package]]

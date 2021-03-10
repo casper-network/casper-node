@@ -256,6 +256,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Withdraw(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -579,6 +583,7 @@ where
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
             StoredValue::Bid(_) => Ok(()),
+            StoredValue::Withdraw(_) => Ok(()),
         }
     }
 
@@ -667,6 +672,7 @@ where
             Key::EraInfo(_) => true,
             Key::Balance(_) => false,
             Key::Bid(_) => true,
+            Key::Withdraw(_) => true,
         }
     }
 
@@ -680,6 +686,7 @@ where
             Key::EraInfo(_) => false,
             Key::Balance(_) => false,
             Key::Bid(_) => false,
+            Key::Withdraw(_) => false,
         }
     }
 
@@ -693,6 +700,7 @@ where
             Key::EraInfo(_) => false,
             Key::Balance(_) => false,
             Key::Bid(_) => false,
+            Key::Withdraw(_) => false,
         }
     }
 
