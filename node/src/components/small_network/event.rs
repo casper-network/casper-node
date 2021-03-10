@@ -59,6 +59,8 @@ pub enum Event<P> {
         peer_address: Box<SocketAddr>,
         error: Box<Option<Error>>,
     },
+    /// Triggers the sweep of the pending addresses.
+    SweepPending,
 
     /// Incoming network request.
     #[from]
@@ -137,6 +139,7 @@ impl<P: Display> Display for Event<P> {
                     error.is_some()
                 ),
             },
+            Event::SweepPending => write!(f, "sweep pending"),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
             Event::GossipOurAddress => write!(f, "gossip our address"),
