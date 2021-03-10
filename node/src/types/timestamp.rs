@@ -77,7 +77,7 @@ impl Timestamp {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        Timestamp(1_596_763_000_000 + rng.gen_range(200_000, 1_000_000))
+        Timestamp(1_596_763_000_000 + rng.gen_range(200_000..1_000_000))
     }
 }
 

@@ -606,7 +606,7 @@ impl reactor::Reactor for Reactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Client,
+                    source: Source::<NodeId>::Ourself,
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
@@ -869,17 +869,17 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block_hash,
-                block,
-            }) => reactor::wrap_effects(
-                Event::EventStreamServer,
-                self.event_stream_server.handle_event(
-                    effect_builder,
-                    rng,
-                    event_stream_server::Event::BlockAdded { block_hash, block },
-                ),
-            ),
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                let block_hash = *block.hash();
+                reactor::wrap_effects(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::BlockAdded { block_hash, block },
+                    ),
+                )
+            }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));

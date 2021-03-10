@@ -2,7 +2,7 @@
 use std::time::Instant;
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Display,
+    fmt::{self, Display, Formatter},
     hash::Hash,
     time::Duration,
 };
@@ -10,12 +10,12 @@ use std::{
 use datasize::DataSize;
 #[cfg(test)]
 use fake_instant::FakeClock as Instant;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use super::Config;
 #[cfg(test)]
 use super::Error;
-use crate::types::NodeId;
+use crate::{types::NodeId, utils::DisplayIter};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum GossipAction {
@@ -33,6 +33,19 @@ pub(crate) enum GossipAction {
     Noop,
 }
 
+impl Display for GossipAction {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
+        match self {
+            GossipAction::GetRemainder { holder } => {
+                write!(formatter, "should get remainder from {}", holder)
+            }
+            GossipAction::AwaitingRemainder => write!(formatter, "awaiting remainder"),
+            GossipAction::ShouldGossip(should_gossip) => Display::fmt(should_gossip, formatter),
+            GossipAction::Noop => write!(formatter, "should do nothing"),
+        }
+    }
+}
+
 /// Used as a return type from API methods to indicate that the caller should continue to gossip the
 /// given data.
 #[derive(Debug, PartialEq, Eq)]
@@ -43,6 +56,28 @@ pub(crate) struct ShouldGossip {
     pub(crate) exclude_peers: HashSet<NodeId>,
     /// Whether we already held the full data or not.
     pub(crate) is_already_held: bool,
+}
+
+impl Display for ShouldGossip {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(formatter, "should gossip to {} peer(s) ", self.count)?;
+        if !self.exclude_peers.is_empty() {
+            write!(
+                formatter,
+                "excluding {} ",
+                DisplayIter::new(&self.exclude_peers)
+            )?;
+        }
+        write!(
+            formatter,
+            "(we {} the item)",
+            if self.is_already_held {
+                "previously held"
+            } else {
+                "didn't previously hold"
+            }
+        )
+    }
 }
 
 #[derive(DataSize, Debug, Default)]
@@ -204,6 +239,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
+            debug!(item=%data_id, "no further action: item already finished");
             return GossipAction::Noop;
         }
 
@@ -212,10 +248,12 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         };
 
         if let Some(action) = self.update_current(data_id, update) {
+            debug!(item=%data_id, %action, "item is currently being gossiped");
             return action;
         }
 
         if let Some(action) = self.update_paused(data_id, update) {
+            debug!(item=%data_id, %action, "gossiping item is paused");
             return action;
         }
 
@@ -225,6 +263,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         let is_new = true;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
         let _ = self.current.insert(*data_id, state);
+        debug!(item=%data_id, %action, "gossiping new item should begin");
         action
     }
 
@@ -233,7 +272,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// node, `maybe_holder` should be `None`.
     ///
     /// This should only be called once we hold everything locally we need to be able to gossip it
-    /// onwards.  If we aren't able to gossip this data yet, call `new_data_id` instead.
+    /// onwards.  If we aren't able to gossip this data yet, call `new_partial_data` instead.
     ///
     /// Returns whether we should gossip it, and a list of peers to exclude.
     pub(crate) fn new_complete_data(
@@ -244,6 +283,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
+            debug!(item=%data_id, "no further action: item already finished");
             return None;
         }
 
@@ -262,10 +302,12 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         };
 
         if let Some(action) = self.update_current(data_id, update) {
+            debug!(item=%data_id, %action, "item is currently being gossiped");
             return convert_action(action);
         }
 
         if let Some(action) = self.update_paused(data_id, update) {
+            debug!(item=%data_id, %action, "gossiping item is paused");
             return convert_action(action);
         }
 
@@ -275,6 +317,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         let is_new = true;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
         let _ = self.current.insert(*data_id, state);
+        debug!(item=%data_id, %action, "gossiping new item should begin");
         convert_action(action)
     }
 
@@ -304,7 +347,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         let update = |state: &mut State| {
             if !state.held_by_us {
                 warn!(
-                    %data_id,
+                    item=%data_id,
                     %peer, "shouldn't have received a gossip response for partial data"
                 );
                 return;
@@ -333,6 +376,11 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     pub(crate) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) {
         if let Some(state) = self.current.get_mut(data_id) {
             state.in_flight_count = state.in_flight_count.saturating_sub(reduce_by);
+            debug!(
+                item=%data_id,
+                in_flight_count=%state.in_flight_count,
+                "reduced in-flight count for item"
+            );
         }
     }
 
@@ -348,7 +396,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
             );
             if !state.held_by_us {
                 error!(
-                    %data_id,
+                    item=%data_id,
                     %peer, "shouldn't check timeout for a gossip response for partial data"
                 );
                 return;
@@ -382,20 +430,24 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         if let Some(mut state) = self.current.remove(data_id) {
             if !state.held_by_us {
                 let _ = state.holders.remove(&peer);
+                debug!(item=%data_id, %peer, "removed peer as a holder of the item");
                 if state.holders.is_empty() {
                     // We don't hold the full data, and we don't know any holders - pause the entry
+                    debug!(item=%data_id, "no further action: item now paused as no holders");
                     return GossipAction::Noop;
                 }
             }
             let is_new = !state.held_by_us;
             let action = state.action(self.infection_target, self.holders_limit, is_new);
             let _ = self.current.insert(*data_id, state);
+            debug!(item=%data_id, %action, "assuming peer response did not timeout");
             return action;
         }
 
         if let Some(state) = self.paused.get_mut(data_id) {
             if !state.held_by_us {
                 let _ = state.holders.remove(&peer);
+                debug!(item=%data_id, %peer, "removed peer as a holder of the item");
             }
         }
 

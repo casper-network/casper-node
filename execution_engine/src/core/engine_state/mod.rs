@@ -1686,19 +1686,6 @@ where
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
-    ) -> Result<Vec<Blake2bHash>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        self.state
-            .missing_trie_keys(correlation_id, vec![trie_key])
-            .map_err(Error::from)
-    }
-
-    pub fn trie_integrity_check(
-        &self,
-        correlation_id: CorrelationId,
         trie_keys: Vec<Blake2bHash>,
     ) -> Result<Vec<Blake2bHash>, Error>
     where
