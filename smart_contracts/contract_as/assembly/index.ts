@@ -129,19 +129,37 @@ export function readHostBuffer(count: u32): Uint8Array {
 /**
  * Returns an [[URef]] for a given system contract
  *
+ * @internal
  * @param system_contract System contract variant
  * @returns A valid [[URef]] that points at system contract, otherwise null.
  */
-export function getSystemContract(systemContract: SystemContract): Uint8Array {
+function getSystemContract(systemContract: SystemContract): Uint8Array {
   let data = new Uint8Array(32);
-  let ret = externals.get_system_contract(<u32>systemContract, data.dataStart, data.length);
-  const error = Error.fromResult(ret);
-  if (error !== null) {
-    error.revert();
-    return <Uint8Array>unreachable();
-  }
+  data[31] = <u8>systemContract + 1;
   return data;
 }
+
+/// Returns a read-only pointer to the Mint contract.
+export function getMint(): Uint8Array {
+  return getSystemContract(SystemContract.Mint);
+}
+
+/// Returns a read-only pointer to the Handle Payment contract.
+export function getHandlePayment(): Uint8Array {
+  return getSystemContract(SystemContract.HandlePayment);
+}
+
+/// Returns a read-only pointer to the Standard Payment contract.
+export function getStandardPayment(): Uint8Array {
+  return getSystemContract(SystemContract.StandardPayment);
+}
+
+/// Returns a read-only pointer to the Auction contract.
+export function getAuction(): Uint8Array {
+  return getSystemContract(SystemContract.Auction);
+}
+
+
 
 /**
  * Calls the given stored contract, passing the given arguments to it.

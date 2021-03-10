@@ -441,12 +441,6 @@ extern "C" {
     /// * `dest_ptr` - pointer to position in wasm memory to write the result
     pub fn casper_get_phase(dest_ptr: *mut u8);
     ///
-    pub fn casper_get_system_contract(
-        system_contract_index: u32,
-        dest_ptr: *mut u8,
-        dest_size: usize,
-    ) -> i32;
-    ///
     #[doc(hidden)]
     pub fn casper_get_main_purse(dest_ptr: *mut u8);
     /// This function copies the contents of the current runtime buffer into the

@@ -30,7 +30,6 @@ use casper_types::{
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
-        SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase, ProtocolVersion,
@@ -2707,20 +2706,6 @@ where
         self.context.protocol_data().handle_payment()
     }
 
-    /// Looks up the public standard payment contract key in the context's protocol data.
-    ///
-    /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract(&self) -> ContractHash {
-        self.context.protocol_data().standard_payment()
-    }
-
-    /// Looks up the public auction contract key in the context's protocol data.
-    ///
-    /// Returned URef is already attenuated depending on the calling account.
-    fn get_auction_contract(&self) -> ContractHash {
-        self.context.protocol_data().auction()
-    }
-
     /// Calls the `read_base_round_reward` method on the mint contract at the given mint
     /// contract key
     fn mint_read_base_round_reward(
@@ -3025,27 +3010,6 @@ where
         }
 
         Ok(Ok(()))
-    }
-
-    fn get_system_contract(
-        &mut self,
-        system_contract_index: u32,
-        dest_ptr: u32,
-        _dest_size: u32,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
-        {
-            Ok(SystemContractType::Mint) => self.get_mint_contract(),
-            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract(),
-            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract(),
-            Ok(SystemContractType::Auction) => self.get_auction_contract(),
-            Err(error) => return Ok(Err(error)),
-        };
-
-        match self.memory.set(dest_ptr, contract_hash.as_ref()) {
-            Ok(_) => Ok(Ok(())),
-            Err(error) => Err(Error::Interpreter(error.into()).into()),
-        }
     }
 
     /// If host_buffer set, clears the host_buffer and returns value, else None

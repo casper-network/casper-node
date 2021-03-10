@@ -12,7 +12,7 @@ const ARG_UNBOND_PURSE = "unbond_purse";
 const METHOD_WITHDRAW_BID = "withdraw_bid";
 
 export function call(): void {
-    let auction = CL.getSystemContract(CL.SystemContract.Auction);
+    let auction = CL.getAuction();
 
     let publicKeyBytes = CL.getNamedArg(ARG_PUBLIC_KEY);
     if (publicKeyBytes === null) {

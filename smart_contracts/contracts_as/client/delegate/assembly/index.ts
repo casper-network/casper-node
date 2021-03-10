@@ -12,7 +12,7 @@ const ARG_AMOUNT = "amount";
 const METHOD_DELEGATE = "delegate";
 
 export function call(): void {
-    let auction = CL.getSystemContract(CL.SystemContract.Auction);
+    let auction = CL.getAuction();
 
     let delegatorBytes = CL.getNamedArg(ARG_DELEGATOR);
     if (delegatorBytes === null) {

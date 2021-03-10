@@ -15,7 +15,7 @@ const ARG_DELEGATION_RATE = "delegation_rate";
 const METHOD_ADD_BID = "add_bid";
 
 export function call(): void {
-    let auction = CL.getSystemContract(CL.SystemContract.Auction);
+    let auction = CL.getAuction();
     let mainPurse = getMainPurse();
 
     let publicKeyBytes = CL.getNamedArg(ARG_PUBLIC_KEY);

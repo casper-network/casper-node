@@ -10,8 +10,7 @@ use casper_types::{
         auction::{self, EraId, EraInfo},
         SystemContractType,
     },
-    ApiError, ContractHash, HashAddr, TransferResult, TransferredTo, URef, U512,
-    UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, TransferResult, TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -20,54 +19,26 @@ use crate::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
-    let system_contract_index = system_contract.into();
-    let contract_hash: ContractHash = {
-        let result = {
-            let mut hash_data_raw: HashAddr = ContractHash::default().value();
-            let value = unsafe {
-                ext_ffi::casper_get_system_contract(
-                    system_contract_index,
-                    hash_data_raw.as_mut_ptr(),
-                    hash_data_raw.len(),
-                )
-            };
-            api_error::result_from(value).map(|_| hash_data_raw)
-        };
-        // Revert for any possible error that happened on host side
-        let contract_hash_bytes = result.unwrap_or_else(|e| runtime::revert(e));
-        // Deserializes a valid URef passed from the host side
-        bytesrepr::deserialize(contract_hash_bytes.to_vec()).unwrap_or_revert()
-    };
-    contract_hash
-}
-
 /// Returns a read-only pointer to the Mint contract.
-///
-/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_mint() -> ContractHash {
-    get_system_contract(SystemContractType::Mint)
+    SystemContractType::Mint.into_contract_hash()
 }
 
 /// Returns a read-only pointer to the Handle Payment contract.
-///
-/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_handle_payment() -> ContractHash {
-    get_system_contract(SystemContractType::HandlePayment)
+    SystemContractType::HandlePayment.into_contract_hash()
 }
 
 /// Returns a read-only pointer to the Standard Payment contract.
-///
-/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_standard_payment() -> ContractHash {
-    get_system_contract(SystemContractType::StandardPayment)
+    SystemContractType::StandardPayment.into_contract_hash()
 }
 
 /// Returns a read-only pointer to the Auction contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with appropriate [`ApiError`].
 pub fn get_auction() -> ContractHash {
-    get_system_contract(SystemContractType::Auction)
+    SystemContractType::Auction.into_contract_hash()
 }
 
 /// Creates a new empty purse and returns its [`URef`].

@@ -488,19 +488,6 @@ where
                 Ok(None)
             }
 
-            FunctionIndex::GetSystemContractIndex => {
-                // args(0) = system contract index
-                // args(1) = dest pointer for storing serialized result
-                // args(2) = dest pointer size
-                let (system_contract_index, dest_ptr, dest_size) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.get_system_contract,
-                    [system_contract_index, dest_ptr, dest_size],
-                )?;
-                let ret = self.get_system_contract(system_contract_index, dest_ptr, dest_size)?;
-                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
-            }
-
             FunctionIndex::GetMainPurseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
                 let dest_ptr = Args::parse(args)?;

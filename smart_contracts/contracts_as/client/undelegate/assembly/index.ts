@@ -12,7 +12,7 @@ const ARG_VALIDATOR = "validator";
 const METHOD_UNDELEGATE = "undelegate";
 
 export function call(): void {
-    let auction = CL.getSystemContract(CL.SystemContract.Auction);
+    let auction = CL.getAuction();
 
     let delegatorBytes = CL.getNamedArg(ARG_DELEGATOR);
     if (delegatorBytes === null) {

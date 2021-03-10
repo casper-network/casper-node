@@ -58,7 +58,7 @@ export function call(): void {
   }
   let amount = amountResult.value;
 
-  let handlePayment = CL.getSystemContract(CL.SystemContract.HandlePayment);
+  let handlePayment = CL.getHandlePayment();
 
   // Get Payment Purse
   let paymentPurseOutput = CL.callContract(handlePayment, GET_PAYMENT_PURSE, new RuntimeArgs());

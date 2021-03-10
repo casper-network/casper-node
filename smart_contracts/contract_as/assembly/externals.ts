@@ -139,9 +139,6 @@ export declare function upgrade_contract_at_uref(
     key_size: u32
 ): i32;
 /** @hidden */
-@external("env", "casper_get_system_contract")
-export declare function get_system_contract(system_contract_index: u32, dest_ptr: usize, dest_size: u32): i32;
-/** @hidden */
 @external("env", "casper_get_main_purse")
 export declare function get_main_purse(dest_ptr: usize): void;
 /** @hidden */

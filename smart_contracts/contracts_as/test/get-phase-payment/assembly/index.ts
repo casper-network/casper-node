@@ -12,7 +12,7 @@ const ARG_AMOUNT = "amount";
 const HANDLE_PAYMENT_ACTION = "get_payment_purse";
 
 function standardPayment(amount: U512): void {
-  let handlePayment = CL.getSystemContract(CL.SystemContract.HandlePayment);
+  let handlePayment = CL.getHandlePayment();
 
   let mainPurse = getMainPurse();
 

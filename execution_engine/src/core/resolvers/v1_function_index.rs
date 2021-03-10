@@ -32,7 +32,6 @@ pub enum FunctionIndex {
     TransferFromPurseToPurseIndex,
     GetBalanceIndex,
     GetPhaseIndex,
-    GetSystemContractIndex,
     GetMainPurseIndex,
     ReadHostBufferIndex,
     CreateContractPackageAtHash,
