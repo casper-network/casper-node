@@ -524,7 +524,6 @@ where
                 }
             }
             Event::IsBonded(Some(mut signatures), fs, true) => {
-                info!("FINSIG bonded {:?} {}", fs, signatures.proofs.len());
                 // Known block and signature from a bonded validator.
                 // Check if we had already seen this signature before.
                 let signature_known = signatures
@@ -559,14 +558,12 @@ where
                 }
             }
             Event::IsBonded(None, fs, true) => {
-                info!("FINSIG bonded, block unknown {:?}", fs);
                 // Unknown block but validator is bonded.
                 // We should finalize the same block eventually. Either in this or in the
                 // next era.
                 Effects::new()
             }
             Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
-                info!("FINSIG not bonded {:?}", fs);
                 self.remove_from_pending_fs(&fs);
                 // Unknown validator.
                 let FinalitySignature {

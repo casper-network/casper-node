@@ -1490,6 +1490,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Checks whether the given validator is bonded in the given era.
+    /// Returns `None` if a relevant block or global state hash couldn't be found.
     pub(crate) async fn is_bonded_validator(
         self,
         validator: &PublicKey,
