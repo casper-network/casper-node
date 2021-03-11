@@ -143,15 +143,13 @@ pub fn get_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let era_keys = provider.get_keys(&KeyTag::EraValidators)?;
+    let current_era_id = get_era_id(provider)?;
+
+    let auction_delay = get_auction_delay(provider)?;
 
     let mut ret = BTreeMap::new();
 
-    for key in era_keys {
-        let era_id = match key {
-            Key::EraValidators(era_id) => era_id,
-            _ => return Err(Error::InvalidKeyVariant),
-        };
+    for era_id in current_era_id..=(current_era_id + auction_delay) {
         let recipient = match provider.read_era_validators(era_id)? {
             Some(recipient) => recipient,
             None => return Err(Error::ValidatorNotFound),
@@ -162,7 +160,7 @@ where
     Ok(ret)
 }
 
-pub fn set_seigniorage_recipients_snapshot<P>(
+pub fn _set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
     snapshot: SeigniorageRecipientsSnapshot,
 ) -> Result<(), Error>

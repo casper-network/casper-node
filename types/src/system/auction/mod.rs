@@ -363,7 +363,6 @@ pub trait Auction:
 
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let snapshot_size = auction_delay as usize + 1;
         let mut era_id = detail::get_era_id(self)?;
         let mut bids = detail::get_bids(self)?;
 
@@ -424,8 +423,6 @@ pub trait Auction:
 
         // Update seigniorage recipients for current era
         {
-            let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-
             let mut recipients = SeigniorageRecipients::new();
 
             for era_validator in winners.keys() {
@@ -436,11 +433,7 @@ pub trait Auction:
                 recipients.insert(*era_validator, seigniorage_recipient);
             }
 
-            let previous_recipients = snapshot.insert(delayed_era, recipients);
-            assert!(previous_recipients.is_none());
-
-            let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
-            detail::set_seigniorage_recipients_snapshot(self, snapshot)?;
+            self.write_era_validators(delayed_era, recipients)?;
         }
 
         detail::set_era_id(self, era_id)?;

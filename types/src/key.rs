@@ -58,7 +58,7 @@ const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADD
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_ERA_VALIDATORS_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
+    KEY_ID_SERIALIZED_LENGTH + PaddedEraId::SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -474,7 +474,7 @@ impl ToBytes for Key {
                 result.append(&mut account_hash.to_bytes()?);
             }
             Key::EraValidators(era_id) => {
-                result.append(&mut era_id.to_bytes()?);
+                result.append(&mut PaddedEraId(*era_id).to_bytes()?);
             }
         }
         Ok(result)
@@ -539,8 +539,8 @@ impl FromBytes for Key {
                 Ok((Key::Withdraw(account_hash), rem))
             }
             tag if tag == KeyTag::EraValidators as u8 => {
-                let (era_id, rem) = u64::from_bytes(remainder)?;
-                Ok((Key::EraValidators(era_id), rem))
+                let (era_id, rem) = PaddedEraId::from_bytes(remainder)?;
+                Ok((Key::EraValidators(era_id.into_inner()), rem))
             }
             _ => Err(Error::Formatting),
         }

@@ -112,10 +112,7 @@ where
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
             Err(execution::Error::GasLimit) => Err(Error::GasLimit),
-            Err(_) => {
-                println!("Word 2");
-                Err(Error::Storage)
-            }
+            Err(_) => Err(Error::Storage),
         }
     }
 

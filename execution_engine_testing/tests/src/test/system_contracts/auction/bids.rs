@@ -517,6 +517,16 @@ fn should_calculate_era_validators() {
     assert!(post_era_id > 0);
     let consensus_next_era_id: EraId = DEFAULT_AUCTION_DELAY + 1 + post_era_id;
 
+    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+
+    assert_eq!(
+        era_validators.len(),
+        snapshot_size,
+        "era_id={} {:?}",
+        consensus_next_era_id,
+        era_validators
+    ); // eraindex==1 - ran once
+
     let lookup_era_id = consensus_next_era_id - 1;
 
     let validator_weights = era_validators
@@ -621,6 +631,9 @@ fn should_get_first_seigniorage_recipients() {
     );
 
     let mut era_validators: EraValidators = builder.get_era_validators();
+    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+
+    assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators);
 
     assert!(era_validators.contains_key(&(DEFAULT_AUCTION_DELAY as u64 + 1)));
 
