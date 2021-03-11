@@ -16,8 +16,7 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::{
-            execution_effect::ExecutionEffect, execution_result::ExecutionResult,
-            system_contract_cache::SystemContractCache, EngineConfig,
+            execution_effect::ExecutionEffect, execution_result::ExecutionResult, EngineConfig,
         },
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
@@ -102,7 +101,6 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         protocol_data: ProtocolData,
-        system_contract_cache: SystemContractCache,
         contract_package: &ContractPackage,
     ) -> ExecutionResult
     where
@@ -166,7 +164,7 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(self.config, system_contract_cache, memory, module, context);
+        let mut runtime = Runtime::new(self.config, memory, module, context);
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -282,7 +280,6 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         protocol_data: ProtocolData,
-        system_contract_cache: SystemContractCache,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -322,7 +319,6 @@ impl Executor {
             Rc::clone(&tracking_copy),
             phase,
             protocol_data,
-            system_contract_cache,
         ) {
             Ok((_instance, runtime)) => runtime,
             Err(error) => {
@@ -370,7 +366,6 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         protocol_data: ProtocolData,
-        system_contract_cache: SystemContractCache,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -455,7 +450,6 @@ impl Executor {
             tracking_copy,
             phase,
             protocol_data,
-            system_contract_cache,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
@@ -502,7 +496,6 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         protocol_data: ProtocolData,
-        system_contract_cache: SystemContractCache,
     ) -> Result<T, Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -532,7 +525,6 @@ impl Executor {
             tracking_copy,
             phase,
             protocol_data,
-            system_contract_cache,
         )?;
 
         let error: wasmi::Error = match instance.invoke_export(entry_point_name, &[], &mut runtime)
@@ -589,7 +581,6 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         protocol_data: ProtocolData,
-        system_contract_cache: SystemContractCache,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -633,13 +624,7 @@ impl Executor {
             protocol_data.wasm_config(),
         )?;
 
-        let runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            runtime_context,
-        );
+        let runtime = Runtime::new(self.config, memory, module, runtime_context);
 
         Ok((instance, runtime))
     }

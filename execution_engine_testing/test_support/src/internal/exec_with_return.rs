@@ -152,7 +152,7 @@ where
         runtime::instance_and_memory(module.clone(), protocol_version, &wasm_config)
             .expect("should be able to make wasm instance from module");
 
-    let mut runtime = Runtime::new(config, Default::default(), memory, module, context);
+    let mut runtime = Runtime::new(config, memory, module, context);
 
     match instance.invoke_export(entry_point_name, &[], &mut runtime) {
         Ok(_) => None,

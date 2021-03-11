@@ -1223,7 +1223,6 @@ where
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
                 self.protocol_data,
-                Default::default(),
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 

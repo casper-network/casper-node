@@ -38,7 +38,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
+        engine_state::EngineConfig,
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
         runtime::scoped_instrumenter::ScopedInstrumenter,
@@ -56,7 +56,6 @@ use crate::{
 };
 
 pub struct Runtime<'a, R> {
-    system_contract_cache: SystemContractCache,
     config: EngineConfig,
     memory: MemoryRef,
     module: Module,
@@ -966,14 +965,12 @@ where
 {
     pub fn new(
         config: EngineConfig,
-        system_contract_cache: SystemContractCache,
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
     ) -> Self {
         Runtime {
             config,
-            system_contract_cache,
             memory,
             module,
             host_buffer: None,
@@ -1349,7 +1346,6 @@ where
 
         let mut mint_runtime = Runtime::new(
             self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
             self.memory.clone(),
             self.module.clone(),
             mint_context,
@@ -1494,7 +1490,6 @@ where
 
         let mut runtime = Runtime::new(
             self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
@@ -1621,7 +1616,6 @@ where
 
         let mut runtime = Runtime::new(
             self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
@@ -1985,10 +1979,7 @@ where
             extra_keys
         };
 
-        let module = {
-            let maybe_module = key
-                .into_hash()
-                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr.into()));
+        let module: Module = {
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
@@ -2001,10 +1992,8 @@ where
                 }
                 None => return Err(Error::KeyNotFound(key)),
             };
-            match maybe_module {
-                Some(module) => module,
-                None => parity_wasm::deserialize_buffer(contract_wasm.bytes())?,
-            }
+
+            parity_wasm::deserialize_buffer(contract_wasm.bytes())?
         };
 
         let entry_point_name = entry_point.name();
@@ -2022,8 +2011,6 @@ where
             keys.push(self.get_handle_payment_contract().into());
             extract_access_rights_from_keys(keys)
         };
-
-        let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
         let config = self.config;
 
@@ -2053,7 +2040,6 @@ where
         );
 
         let mut runtime = Runtime {
-            system_contract_cache,
             config,
             memory,
             module,

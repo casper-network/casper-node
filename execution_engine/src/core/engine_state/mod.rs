@@ -12,7 +12,6 @@ pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
-pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
@@ -58,7 +57,6 @@ pub use self::{
     genesis::{ExecConfig, GenesisAccount, GenesisResult},
     query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepRequest, StepResult},
-    system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeResult},
 };
@@ -100,7 +98,6 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
-    system_contract_cache: SystemContractCache,
     state: S,
 }
 
@@ -110,12 +107,7 @@ where
     S::Error: Into<execution::Error>,
 {
     pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
-        let system_contract_cache = Default::default();
-        EngineState {
-            config,
-            system_contract_cache,
-            state,
-        }
+        EngineState { config, state }
     }
 
     pub fn config(&self) -> &EngineConfig {
@@ -717,7 +709,6 @@ where
                             Rc::clone(&tracking_copy),
                             Phase::Session,
                             protocol_data,
-                            SystemContractCache::clone(&self.system_contract_cache),
                         );
                     match maybe_uref {
                         Some(main_purse) => {
@@ -807,7 +798,6 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     protocol_data,
-                    SystemContractCache::clone(&self.system_contract_cache),
                 );
 
             let payment_uref = match payment_uref {
@@ -852,7 +842,6 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     protocol_data,
-                    SystemContractCache::clone(&self.system_contract_cache),
                 );
 
             if let Some(error) = payment_result.as_error().cloned() {
@@ -939,7 +928,6 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 protocol_data,
-                SystemContractCache::clone(&self.system_contract_cache),
             );
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
@@ -1002,7 +990,6 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     protocol_data,
-                    SystemContractCache::clone(&self.system_contract_cache),
                 );
 
             finalize_result
@@ -1091,10 +1078,6 @@ where
                 }
             }
         };
-
-        // vestigial system_contract_cache
-        self.system_contract_cache
-            .initialize_with_protocol_data(&protocol_data, &system_module);
 
         let base_key = Key::Account(deploy_item.address);
 
@@ -1274,7 +1257,6 @@ where
             };
 
             let payment_args = payment.args().clone();
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             if is_standard_payment {
                 executor.exec_standard_payment(
@@ -1292,7 +1274,6 @@ where
                     Rc::clone(&tracking_copy),
                     phase,
                     protocol_data,
-                    system_contract_cache,
                 )
             } else {
                 executor.exec(
@@ -1311,7 +1292,6 @@ where
                     Rc::clone(&tracking_copy),
                     phase,
                     protocol_data,
-                    system_contract_cache,
                     &payment_package,
                 )
             }
@@ -1505,7 +1485,6 @@ where
                         ))
                     }
                 };
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
                 session_module,
@@ -1523,7 +1502,6 @@ where
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
                 protocol_data,
-                system_contract_cache,
                 &session_package,
             )
         };
@@ -1599,7 +1577,6 @@ where
             let mut handle_payment_keys = handle_payment_contract.named_keys().to_owned();
 
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
@@ -1619,7 +1596,6 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     protocol_data,
-                    system_contract_cache,
                 );
 
             finalize_result
@@ -1768,7 +1744,6 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 protocol_data,
-                SystemContractCache::clone(&self.system_contract_cache),
             );
 
         if let Some(error) = execution_result.take_error() {
@@ -1855,9 +1830,6 @@ where
             }
         };
 
-        self.system_contract_cache
-            .initialize_with_protocol_data(&protocol_data, &system_module);
-
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
@@ -1918,7 +1890,6 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -1961,7 +1932,6 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -2010,7 +1980,6 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Session,
                     protocol_data,
-                    SystemContractCache::clone(&self.system_contract_cache),
                 );
 
             if let Some(exec_error) = execution_result.take_error() {
