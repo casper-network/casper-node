@@ -304,7 +304,7 @@ impl BlockExecutor {
         let execute_request = ExecuteRequest::new(
             state.state_root_hash.into(),
             state.finalized_block.timestamp().millis(),
-            vec![Ok(deploy_item)],
+            vec![deploy_item],
             self.protocol_version,
             state.finalized_block.proposer(),
         );

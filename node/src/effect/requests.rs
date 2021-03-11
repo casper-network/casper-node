@@ -692,7 +692,7 @@ pub enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         execute_request: Box<ExecuteRequest>,
         /// Responder to call with the execution result.
-        responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
+        responder: Responder<Result<ExecutionResults, engine_state::Error>>,
     },
     /// A request to commit existing execution transforms.
     Commit {

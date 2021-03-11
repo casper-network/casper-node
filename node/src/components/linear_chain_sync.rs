@@ -279,7 +279,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             } if highest_block_seen != block_height => {
                 match latest_block.as_ref() {
                     Some(expected) if expected != &block => {
-                        error!(?expected, got=?block, "block execution result doesn't match received block");
+                        error!(
+                            ?expected, got=?block,
+                            "block execution result doesn't match received block"
+                        );
                         return fatal!(effect_builder, "unexpected block execution result")
                             .ignore();
                     }
@@ -304,7 +307,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
                     Some(expected) if expected != &block => {
-                        error!(?expected, got=?block, "block execution result doesn't match received block");
+                        error!(
+                            ?expected, got=?block,
+                            "block execution result doesn't match received block"
+                        );
                         return fatal!(effect_builder, "unexpected block execution result")
                             .ignore();
                     }
@@ -327,7 +333,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ..
             } => {
                 if latest_block.as_ref() != &block {
-                    error!(expected=?*latest_block, got=?block, "block execution result doesn't match received block");
+                    error!(
+                        expected=?*latest_block, got=?block,
+                        "block execution result doesn't match received block"
+                    );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
                 if self.is_recent_block(&block) {
@@ -546,14 +555,20 @@ where
                 match fetch_result {
                     BlockByHeightResult::Absent(peer) => {
                         self.metrics.observe_get_block_by_height();
-                        trace!(%block_height, %peer, "failed to download block by height. Trying next peer");
+                        trace!(
+                            %block_height, %peer,
+                            "failed to download block by height. Trying next peer"
+                        );
                         self.peers.failure(&peer);
                         match self.peers.random() {
                             None => {
                                 // `block_height` not found on any of the peers.
                                 // We have synchronized all, currently existing, descendants of
                                 // trusted hash.
-                                info!("finished synchronizing descendants of the trusted hash. cleaning state.");
+                                info!(
+                                    "finished synchronizing descendants of the trusted hash. \
+                                    cleaning state."
+                                );
                                 self.mark_done();
                                 Effects::new()
                             }
@@ -606,16 +621,25 @@ where
                 match fetch_result {
                     BlockByHashResult::Absent(peer) => {
                         self.metrics.observe_get_block_by_hash();
-                        trace!(%block_hash, %peer, "failed to download block by hash. Trying next peer");
+                        trace!(
+                            %block_hash, %peer,
+                            "failed to download block by hash. Trying next peer"
+                        );
                         self.peers.failure(&peer);
                         match self.peers.random() {
                             None if self.started_syncing => {
-                                error!(%block_hash, "could not download linear block from any of the peers.");
+                                error!(
+                                    %block_hash,
+                                    "could not download linear block from any of the peers."
+                                );
                                 fatal!(effect_builder, "failed to synchronize linear chain")
                                     .ignore()
                             }
                             None => {
-                                warn!("run out of peers before managed to start syncing. Resetting peers' list and continuing");
+                                warn!(
+                                    "run out of peers before managed to start syncing. \
+                                    Resetting peers' list and continuing"
+                                );
                                 self.peers.reset(rng);
                                 self.metrics.reset_start_time();
                                 fetch_block_by_hash(effect_builder, peer, block_hash)
@@ -682,12 +706,17 @@ where
                     }
                     event::DeploysResult::NotFound(block, peer) => {
                         let block_hash = block.hash();
-                        trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
+                        trace!(
+                            %block_hash, %peer,
+                            "deploy for linear chain block not found. Trying next peer"
+                        );
                         self.peers.failure(&peer);
                         match self.peers.random() {
                             None => {
-                                error!(%block_hash,
-                                "could not download deploys from linear chain block.");
+                                error!(
+                                    %block_hash,
+                                    "could not download deploys from linear chain block."
+                                );
                                 fatal!(effect_builder, "failed to download linear chain deploys")
                                     .ignore()
                             }

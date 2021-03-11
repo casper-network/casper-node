@@ -62,14 +62,14 @@ impl TestChain {
         );
         let first_node_secret_key_with_stake = SecretKeyWithStake {
             secret_key: SecretKey::random(rng),
-            stake: rng.gen_range(100, 999),
+            stake: rng.gen_range(100..999),
         };
         let other_secret_keys_with_stakes = {
             let mut other_secret_keys_with_stakes = Vec::new();
             for _ in 1..size {
                 let staked_secret_key = SecretKeyWithStake {
                     secret_key: SecretKey::random(rng),
-                    stake: rng.gen_range(100, 999),
+                    stake: rng.gen_range(100..999),
                 };
                 other_secret_keys_with_stakes.push(staked_secret_key)
             }
@@ -106,7 +106,7 @@ impl TestChain {
                 );
                 AccountConfig::new(
                     public_key,
-                    Motes::new(U512::from(rng.gen_range(10000, 99999999))),
+                    Motes::new(U512::from(rng.gen_range(10000..99999999))),
                     Some(validator_config),
                 )
             })
