@@ -91,7 +91,7 @@ function do_get_another_node() {
 
 function do_background_wasm_transfers() {
     nohup bash "$NCTL"/sh/contracts-transfers/do_dispatch_wasm.sh \
-        transfers=100 \
+        transfers=1000 \
         amount=2500000000 \
         node="$NODE_ID" \
         >/dev/null 2>&1 \
@@ -103,32 +103,31 @@ function do_background_wasm_transfers() {
 
 function num_pending() {
     ENDPOINT="$(get_node_address_rest "$NODE_ID")"/metrics
-    NUM_PENDING=""
-    while [ -z "$NUM_PENDING" ]
+    unset NUM_PENDING
+    while [[ -z "$NUM_PENDING" ]]
     do
         NUM_PENDING="$(curl -s --location --request GET "$ENDPOINT" \
             | grep "pending_deploy" \
             | tail -n 1 \
             | sed -r 's/.*pending_deploy ([0-9]+)/\1/g')"
-        sleep 1
+
+        log "number of pending deploys: ${NUM_PENDING}"
+        sleep 2.0
     done
-    # echo "Num pending: $NUM_PENDING"
 }
 
 function do_verify_deploys_drain() {
     log_step "waiting for pending deploys to drain"
     num_pending
 
-    while [[ "$NUM_PENDING" > "0" ]]
+    while [[ "$NUM_PENDING" -gt "0" ]]
     do
-        PREV_NUM_PENDING=$NUM_PENDING
+        # PREV_NUM_PENDING=$NUM_PENDING
         num_pending
-        if [[ $PREV_NUM_PENDING < $NUM_PENDING ]]
-        then
-            exit 1
-        fi
-
-        sleep 3
+        # if [[ $PREV_NUM_PENDING < $NUM_PENDING ]]
+        # then
+        #     exit 1
+        # fi
     done
 }
 

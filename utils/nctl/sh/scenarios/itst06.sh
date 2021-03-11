@@ -114,7 +114,6 @@ function num_pending() {
         log "number of pending deploys: ${NUM_PENDING}"
         sleep 2.0
     done
-    # echo "Num pending: $NUM_PENDING"
 }
 
 function do_verify_deploys_drain() {
