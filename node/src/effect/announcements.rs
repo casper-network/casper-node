@@ -161,8 +161,8 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 pub enum ConsensusAnnouncement<I> {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
-    /// A linear chain block has been handled.
-    Handled(Box<Block>),
+    /// A finality signature was created.
+    CreatedFinalitySignature(Box<FinalitySignature>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -185,12 +185,9 @@ where
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(block) => write!(
-                formatter,
-                "Linear chain block has been handled by consensus, height={}, hash={}",
-                block.height(),
-                block.hash()
-            ),
+            ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                write!(formatter, "signed an executed block: {}", fs)
+            }
             ConsensusAnnouncement::Fault {
                 era_id,
                 public_key,
@@ -212,6 +209,8 @@ where
 pub enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
     LinearChainBlock(Box<LinearChainBlock>),
+    /// A block was requested to be executed, but it had been executed before.
+    BlockAlreadyExecuted(Box<Block>),
 }
 
 impl ContractRuntimeAnnouncement {
@@ -224,6 +223,10 @@ impl ContractRuntimeAnnouncement {
             block,
             execution_results,
         }))
+    }
+    /// Create a ContractRuntimeAnnouncement::BlockAlreadyExecuted from a Block.
+    pub fn block_already_executed(block: Block) -> Self {
+        Self::BlockAlreadyExecuted(Box::new(block))
     }
 }
 
@@ -245,6 +248,9 @@ impl Display for ContractRuntimeAnnouncement {
                     "created linear chain block {}",
                     linear_chain_block.block.hash()
                 )
+            }
+            ContractRuntimeAnnouncement::BlockAlreadyExecuted(block) => {
+                write!(f, "block had been executed before: {}", block.hash())
             }
         }
     }

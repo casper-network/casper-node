@@ -666,6 +666,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce that a block had been executed before.
+    pub(crate) async fn announce_block_already_executed(self, block: Block)
+    where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ContractRuntimeAnnouncement::block_already_executed(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Announce upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
@@ -1112,13 +1125,16 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled<I>(self, block: Block)
-    where
+    /// Announces that a finality signature has been created.
+    pub(crate) async fn announce_created_finality_signature<I>(
+        self,
+        finality_signature: FinalitySignature,
+    ) where
         REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Handled(Box::new(block)),
+                ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
                 QueueKind::Regular,
             )
             .await
@@ -1421,18 +1437,6 @@ impl<REv> EffectBuilder<REv> {
                 step_request,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block: Block) -> Option<FinalitySignature>
-    where
-        REv: From<ConsensusRequest>,
-    {
-        self.make_request(
-            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
             QueueKind::Regular,
         )
         .await

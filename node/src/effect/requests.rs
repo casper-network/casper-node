@@ -46,8 +46,8 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
+        NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -928,8 +928,6 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<Block>, Responder<Option<FinalitySignature>>),
     /// Check whether validator identifying with the public key is bonded.
     IsBondedValidator(EraId, PublicKey, Responder<bool>),
     /// Request for our public key, and if we're a validator, the next round length.

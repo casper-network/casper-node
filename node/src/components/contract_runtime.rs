@@ -570,9 +570,9 @@ where
                     }
                 }
             }
-            Event::BlockAlreadyExists(block) => {
-                effect_builder.handle_linear_chain_block(*block).ignore()
-            }
+            Event::BlockAlreadyExists(block) => effect_builder
+                .announce_block_already_executed(*block)
+                .ignore(),
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => {
