@@ -1489,16 +1489,51 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Check if validator is bonded in the era.
-    pub(crate) async fn is_bonded_validator(self, era_id: EraId, public_key: PublicKey) -> bool
+    /// Checks whether the given validator is bonded in the given era.
+    pub(crate) async fn is_bonded_validator(
+        self,
+        validator: &PublicKey,
+        era_id: EraId,
+        activation_era_id: EraId,
+        initial_state_root_hash: Digest,
+        protocol_version: ProtocolVersion,
+    ) -> Option<bool>
     where
-        REv: From<ConsensusRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        self.make_request(
-            |responder| ConsensusRequest::IsBondedValidator(era_id, public_key, responder),
-            QueueKind::Regular,
-        )
-        .await
+        if era_id == activation_era_id {
+            // in the activation era, we read the validators from the global state; we use the
+            // global state hash of the first block in the era, if it exists - if we can't get it,
+            // we use the initial_state_root_hash passed from the chainspec loader
+            let maybe_key_block = self.get_key_block_for_era_id_from_storage(era_id).await;
+            let root_hash = match maybe_key_block {
+                None => initial_state_root_hash,
+                Some(key_block) => self
+                    .get_block_at_height_from_storage(key_block.height() + 1)
+                    .await
+                    .map(|block| *block.state_root_hash())
+                    .unwrap_or(initial_state_root_hash),
+            };
+            let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
+            self.get_era_validators(req)
+                .await
+                .ok()
+                .and_then(|era_validators| {
+                    era_validators
+                        .get(&era_id.0)
+                        .map(|validators| validators.contains_key(validator))
+                })
+        } else {
+            // in other eras, we just use the validators from the key block
+            self.get_key_block_for_era_id_from_storage(era_id)
+                .await
+                .and_then(|key_block| {
+                    key_block
+                        .header()
+                        .next_era_validator_weights()
+                        .map(|validators| validators.contains_key(validator))
+                })
+        }
     }
 
     /// Get our public key from consensus, and if we're a validator, the next round length.

@@ -1243,21 +1243,6 @@ where
         Effects::new()
     }
 
-    /// Returns whether validator is bonded in an era.
-    pub(super) fn is_bonded_validator(
-        &self,
-        era_id: EraId,
-        vid: PublicKey,
-        responder: Responder<bool>,
-    ) -> Effects<Event<I>> {
-        let is_bonded = self
-            .era_supervisor
-            .active_eras
-            .get(&era_id)
-            .map_or(false, |cp| cp.is_bonded_validator(&vid));
-        responder.respond(is_bonded).ignore()
-    }
-
     pub(super) fn status(
         &self,
         responder: Responder<(PublicKey, Option<TimeDiff>)>,
