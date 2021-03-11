@@ -822,7 +822,7 @@ where
             trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
-        if block.header().is_switch_block() {
+        if block.header().is_switch_block() && !self.should_upgrade_after(&era_id) {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
