@@ -160,19 +160,6 @@ where
     Ok(ret)
 }
 
-pub fn _set_seigniorage_recipients_snapshot<P>(
-    provider: &mut P,
-    snapshot: SeigniorageRecipientsSnapshot,
-) -> Result<(), Error>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    for (era_id, recipients) in snapshot.into_iter() {
-        provider.write_era_validators(era_id, recipients)?;
-    }
-    Ok(())
-}
-
 pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
