@@ -875,7 +875,12 @@ where
                 error,
             } => {
                 warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
-
+                if !self.pending.remove(&peer_address) {
+                    warn!(
+                        %peer_address,
+                        "bootstrap failed, but it was not in the set of pending connections"
+                    );
+                }
                 self.terminate_if_isolated(effect_builder)
             }
             Event::IncomingNew {
