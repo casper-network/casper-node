@@ -12,14 +12,13 @@ The NCTL library can be used to compile the node's binary set, i.e. node, client
 
 Compiles casper node, node launcher, client + client contracts using `make` + `cargo`.  
 
-
 ### nctl-compile-node
 
 Compiles casper node using `make` + `cargo`.  
 
 ### nctl-compile-node-launcher
 
-Compiles casper node lanucher using `cargo`.  
+Compiles casper node launcher using `cargo`.  
 
 ### nctl-compile-client
 
@@ -31,10 +30,13 @@ Compiles casper client + client contracts using `make` + `cargo`.
 
 List previously created network assets.
 
+### nctl-assets-setup net={V:-1} nodes={W:-5} delay={X:-30} accounts_path={Y:-""} chainspec_path={Z:-"casper-node/resources/local/chainspec.toml.in"}
 
-### nctl-assets-setup net={X:-1} nodes={Y:-5} delay={Z:-30}
+Sets up assets required to run a local network - this includes binaries, chainspec, config, faucet, keys ... etc.  NCTL creates assets for 2 nodesets: genesis & non-genesis - this permits testing nodeset rotation scenarios (see `nctl-rotate`).  Thus if nodes=5, then assets for 10 nodes are generated in total.  
 
-Sets up assets required to run a local network - this includes binaries, chainspec, config, faucet, keys ... etc.  NCTL creates assets for 2 nodesets: genesis & non-genesis - this permits testing nodeset rotation scenarios (see `nctl-rotate`). 
+If `accounts_path` points to a valid custom accounts.toml template file, then the template is copied, & parsed.  The parsing process injects faucet, validator and user public keys into the copied template file.  An example custom accounts.toml can be inspected [here](example-custom-accounts.toml). 
+
+If `chainspec_path` points to a valid custom chainspec.toml, then the template is copied across to the test network asset set.
 
 ```
 nctl-assets-setup

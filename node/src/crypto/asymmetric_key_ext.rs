@@ -103,7 +103,7 @@ impl AsymmetricKeyExt for SecretKey {
     }
 
     fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), Error> {
-        utils::write_file(file, self.to_pem()?).map_err(Error::SecretKeySave)
+        utils::write_private_file(file, self.to_pem()?).map_err(Error::SecretKeySave)
     }
 
     fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, Error> {

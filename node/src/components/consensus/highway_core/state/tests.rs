@@ -851,7 +851,7 @@ fn test_leader_prng() {
 
     // Repeat a few times to make it likely that the inner loop runs more than once.
     for _ in 0..10 {
-        let upper = rng.gen_range(1, u64::MAX);
+        let upper = rng.gen_range(1..u64::MAX);
         let seed = rng.next_u64();
 
         // This tests that the rand crate's gen_range implementation, which is used in

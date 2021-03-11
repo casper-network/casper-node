@@ -191,6 +191,11 @@ steps:
   commands:
     - "./ci/build_update_package.sh"
 
+- name: dry-run-publish
+  image: casperlabs/node-build-u1804
+  commands:
+    - "cd types && cargo publish --dry-run"
+
 - name: upload-to-s3-genesis
   image: plugins/s3
   settings:

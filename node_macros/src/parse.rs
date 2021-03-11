@@ -5,7 +5,7 @@
 //! methods in this representation.
 
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Formatter},
 };
 
@@ -16,7 +16,7 @@ use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
     punctuated::Punctuated,
-    Expr, Ident, ItemType, Path, Token,
+    Expr, Ident, ItemType, Path, Token, Type,
 };
 
 use crate::{rust_type::RustType, util::to_ident};
@@ -111,6 +111,19 @@ impl ReactorDefinition {
         };
 
         quote!(crate::components::#module_ident::#event_ident)
+    }
+
+    /// Update a parsed reactor to include control announcements.
+    pub fn inject_control_announcements(&mut self) {
+        // For now, we allow no manual control announcements implementation.
+        let ty: Type = syn::parse_str("crate::effect::announcements::ControlAnnouncement")
+            .expect("Hardcoded ControlAnnouncement type could not be parsed");
+        self.announcements.push(AnnouncementDefinition {
+            announcement_type: ty
+                .try_into()
+                .expect("could not convert hardcoded `ControlAnnouncement` to `RustType`"),
+            targets: vec![Target::Panic],
+        })
     }
 }
 

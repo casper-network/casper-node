@@ -21,7 +21,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     account::{self, AccountHash, AccountHashBytes, TryFromSliceForAccountHashError},
-    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    bytesrepr::{self, Error, FromBytes, ToBytes},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     system::auction::EraId,
@@ -34,6 +34,7 @@ const DEPLOY_INFO_PREFIX: &str = "deploy-";
 const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
 const BID_PREFIX: &str = "bid-";
+const WITHDRAW_PREFIX: &str = "withdraw-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -50,9 +51,11 @@ const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LE
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
-const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
+const KEY_ERA_INFO_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + PaddedEraId::SERIALIZED_LENGTH;
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -75,6 +78,7 @@ pub enum KeyTag {
     EraInfo = 5,
     Balance = 6,
     Bid = 7,
+    Withdraw = 8,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -99,6 +103,8 @@ pub enum Key {
     Balance(URefAddr),
     /// A `Key` under which we store bid information
     Bid(AccountHash),
+    /// A `Key` under which we store unbond information.
+    Withdraw(AccountHash),
 }
 
 #[derive(Debug)]
@@ -177,6 +183,7 @@ impl Key {
             Key::EraInfo(_) => String::from("Key::EraInfo"),
             Key::Balance(_) => String::from("Key::Balance"),
             Key::Bid(_) => String::from("Key::Bid"),
+            Key::Withdraw(_) => String::from("Key::Unbond"),
         }
     }
 
@@ -218,6 +225,9 @@ impl Key {
             Key::Bid(account_hash) => {
                 format!("{}{}", BID_PREFIX, base16::encode_lower(&account_hash))
             }
+            Key::Withdraw(account_hash) => {
+                format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
+            }
         }
     }
 
@@ -245,6 +255,10 @@ impl Key {
             )?))
         } else if let Some(hex) = input.strip_prefix(BID_PREFIX) {
             Ok(Key::Bid(AccountHash::new(AccountHashBytes::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?)))
+        } else if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
+            Ok(Key::Withdraw(AccountHash::new(AccountHashBytes::try_from(
                 base16::decode(hex)?.as_ref(),
             )?)))
         } else {
@@ -306,6 +320,7 @@ impl Display for Key {
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
             Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
+            Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
         }
     }
 }
@@ -327,6 +342,7 @@ impl Tagged<KeyTag> for Key {
             Key::EraInfo(_) => KeyTag::EraInfo,
             Key::Balance(_) => KeyTag::Balance,
             Key::Bid(_) => KeyTag::Bid,
+            Key::Withdraw(_) => KeyTag::Withdraw,
         }
     }
 }
@@ -374,6 +390,43 @@ impl From<ContractPackageHash> for Key {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct PaddedEraId(u64);
+
+impl PaddedEraId {
+    const SERIALIZED_LENGTH: usize = 32;
+
+    const U64_LE_BYTES_LENGTH: usize = 8;
+
+    const ZEROES_LENGTH: usize = Self::SERIALIZED_LENGTH - Self::U64_LE_BYTES_LENGTH;
+
+    const fn into_inner(self) -> u64 {
+        self.0
+    }
+}
+
+impl ToBytes for PaddedEraId {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buff = Vec::new();
+        buff.extend_from_slice(&[0u8; Self::ZEROES_LENGTH]);
+        buff.extend_from_slice(&self.0.to_le_bytes());
+        Ok(buff)
+    }
+
+    fn serialized_length(&self) -> usize {
+        Self::SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for PaddedEraId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut le_bytes = [0u8; Self::U64_LE_BYTES_LENGTH];
+        let (bytes, remainder) = bytesrepr::safe_split_at(bytes, Self::SERIALIZED_LENGTH)?;
+        le_bytes.copy_from_slice(&bytes[Self::ZEROES_LENGTH..]);
+        Ok((PaddedEraId(<u64>::from_le_bytes(le_bytes)), remainder))
+    }
+}
+
 impl ToBytes for Key {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
@@ -395,12 +448,15 @@ impl ToBytes for Key {
                 result.append(&mut addr.to_bytes()?);
             }
             Key::EraInfo(era_id) => {
-                result.append(&mut era_id.to_bytes()?);
+                result.append(&mut PaddedEraId(*era_id).to_bytes()?);
             }
             Key::Balance(uref_addr) => {
                 result.append(&mut uref_addr.to_bytes()?);
             }
             Key::Bid(account_hash) => {
+                result.append(&mut account_hash.to_bytes()?);
+            }
+            Key::Withdraw(account_hash) => {
                 result.append(&mut account_hash.to_bytes()?);
             }
         }
@@ -419,6 +475,7 @@ impl ToBytes for Key {
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
+            Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
         }
     }
 }
@@ -448,8 +505,8 @@ impl FromBytes for Key {
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
             tag if tag == KeyTag::EraInfo as u8 => {
-                let (era_id, rem) = FromBytes::from_bytes(remainder)?;
-                Ok((Key::EraInfo(era_id), rem))
+                let (era_id, rem) = PaddedEraId::from_bytes(remainder)?;
+                Ok((Key::EraInfo(era_id.into_inner()), rem))
             }
             tag if tag == KeyTag::Balance as u8 => {
                 let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
@@ -459,6 +516,10 @@ impl FromBytes for Key {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Bid(account_hash), rem))
             }
+            tag if tag == KeyTag::Withdraw as u8 => {
+                let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
+                Ok((Key::Withdraw(account_hash), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -466,7 +527,7 @@ impl FromBytes for Key {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0, 6) {
+        match rng.gen_range(0..8) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -475,6 +536,7 @@ impl Distribution<Key> for Standard {
             5 => Key::EraInfo(rng.gen()),
             6 => Key::Balance(rng.gen()),
             7 => Key::Bid(rng.gen()),
+            8 => Key::Withdraw(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -493,6 +555,7 @@ mod serde_helpers {
         EraInfo(String),
         Balance(String),
         Bid(String),
+        Withdraw(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -507,6 +570,7 @@ mod serde_helpers {
                 Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
                 Key::Balance(_) => HumanReadable::Balance(formatted_string),
                 Key::Bid(_) => HumanReadable::Bid(formatted_string),
+                Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
             }
         }
     }
@@ -523,7 +587,8 @@ mod serde_helpers {
                 | HumanReadable::DeployInfo(formatted_string)
                 | HumanReadable::EraInfo(formatted_string)
                 | HumanReadable::Balance(formatted_string)
-                | HumanReadable::Bid(formatted_string) => {
+                | HumanReadable::Bid(formatted_string)
+                | HumanReadable::Withdraw(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -540,6 +605,7 @@ mod serde_helpers {
         EraInfo(&'a u64),
         Balance(&'a URefAddr),
         Bid(&'a AccountHash),
+        Withdraw(&'a AccountHash),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -553,6 +619,7 @@ mod serde_helpers {
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
+                Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
             }
         }
     }
@@ -567,6 +634,7 @@ mod serde_helpers {
         EraInfo(EraId),
         Balance(URefAddr),
         Bid(AccountHash),
+        Withdraw(AccountHash),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -580,6 +648,7 @@ mod serde_helpers {
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
+                BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
             }
         }
     }
@@ -609,6 +678,8 @@ impl<'de> Deserialize<'de> for Key {
 
 #[cfg(test)]
 mod tests {
+    use proptest::proptest;
+
     use super::*;
     use crate::{
         bytesrepr::{Error, FromBytes},
@@ -848,6 +919,7 @@ mod tests {
         round_trip(&Key::EraInfo(42));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(array)));
+        round_trip(&Key::Withdraw(AccountHash::new(array)));
     }
 
     #[test]
@@ -867,7 +939,7 @@ mod tests {
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
         round_trip(&Key::EraInfo(42));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
-        round_trip(&Key::Bid(AccountHash::new(array)));
+        round_trip(&Key::Withdraw(AccountHash::new(array)));
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
 
@@ -879,5 +951,13 @@ mod tests {
         round_trip(&Key::EraInfo(42));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));
+        round_trip(&Key::Withdraw(AccountHash::new(zeros)));
+    }
+
+    proptest! {
+        #[test]
+        fn padded_era_id_serialization_roundtrip(era_id: u64) {
+            bytesrepr::test_serialization_roundtrip(&PaddedEraId(era_id))
+        }
     }
 }

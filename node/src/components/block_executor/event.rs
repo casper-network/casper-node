@@ -8,7 +8,7 @@ use derive_more::From;
 use casper_execution_engine::{
     core::{
         engine_state,
-        engine_state::{step::StepResult, ExecutionResults, RootNotFound},
+        engine_state::{step::StepResult, ExecutionResults},
     },
     storage::global_state::CommitResult,
 };
@@ -55,7 +55,7 @@ pub enum Event {
         /// The header of the deploy currently being executed.
         deploy_header: DeployHeader,
         /// Result of deploy execution.
-        result: Result<ExecutionResults, RootNotFound>,
+        result: Result<ExecutionResults, engine_state::Error>,
     },
     /// The result of committing a single set of transforms after executing a single deploy.
     CommitExecutionEffects {
