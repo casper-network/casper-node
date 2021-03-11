@@ -514,8 +514,9 @@ impl reactor::Reactor for Reactor {
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
-        let linear_chain_sync = LinearChainSync::new::<Error>(
+        let (linear_chain_sync, init_sync_effects) = LinearChainSync::new::<Event, Error>(
             registry,
+            effect_builder,
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
@@ -524,11 +525,16 @@ impl reactor::Reactor for Reactor {
             maybe_next_activation_point,
         )?;
 
+        effects.extend(reactor::wrap_effects(
+            Event::LinearChainSync,
+            init_sync_effects,
+        ));
+
         // Used to decide whether era should be activated.
-        let timestamp = Timestamp::now();
+        let now = Timestamp::now();
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            timestamp,
+            now,
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
@@ -600,7 +606,7 @@ impl reactor::Reactor for Reactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Client,
+                    source: Source::<NodeId>::Ourself,
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
@@ -863,17 +869,17 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block_hash,
-                block,
-            }) => reactor::wrap_effects(
-                Event::EventStreamServer,
-                self.event_stream_server.handle_event(
-                    effect_builder,
-                    rng,
-                    event_stream_server::Event::BlockAdded { block_hash, block },
-                ),
-            ),
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                let block_hash = *block.hash();
+                reactor::wrap_effects(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::BlockAdded { block_hash, block },
+                    ),
+                )
+            }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));

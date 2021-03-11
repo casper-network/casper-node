@@ -19,8 +19,7 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
-        Item, Timestamp,
+        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
     },
     utils::Source,
 };
@@ -249,12 +248,7 @@ impl<T: Item> Display for GossiperAnnouncement<T> {
 #[derive(Debug)]
 pub enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
-    BlockAdded {
-        /// Block hash.
-        block_hash: BlockHash,
-        /// Block.
-        block: Box<Block>,
-    },
+    BlockAdded(Box<Block>),
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -262,8 +256,8 @@ pub enum LinearChainAnnouncement {
 impl Display for LinearChainAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinearChainAnnouncement::BlockAdded { block_hash, .. } => {
-                write!(f, "block added {}", block_hash)
+            LinearChainAnnouncement::BlockAdded(block) => {
+                write!(f, "block added {}", block.hash())
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)

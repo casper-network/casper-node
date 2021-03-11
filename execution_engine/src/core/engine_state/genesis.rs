@@ -514,7 +514,7 @@ impl GenesisConfig {
 
 impl Distribution<GenesisConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisConfig {
-        let count = rng.gen_range(1, 1000);
+        let count = rng.gen_range(1..1000);
         let name = iter::repeat(())
             .map(|_| rng.gen::<char>())
             .take(count)
@@ -631,7 +631,7 @@ impl ExecConfig {
 
 impl Distribution<ExecConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecConfig {
-        let count = rng.gen_range(1, 10);
+        let count = rng.gen_range(1..10);
 
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
@@ -646,8 +646,8 @@ impl Distribution<ExecConfig> for Standard {
         let locked_funds_period_millis = rng.gen();
 
         let round_seigniorage_rate = Ratio::new(
-            rng.gen_range(1, 1_000_000_000),
-            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1..1_000_000_000),
+            rng.gen_range(1..1_000_000_000),
         );
 
         let unbonding_delay = rng.gen();

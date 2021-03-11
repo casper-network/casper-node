@@ -34,15 +34,15 @@ pub struct CoreConfig {
 impl CoreConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let era_duration = TimeDiff::from(rng.gen_range(600_000, 604_800_000));
-        let minimum_era_height = rng.gen_range(5, 100);
+        let era_duration = TimeDiff::from(rng.gen_range(600_000..604_800_000));
+        let minimum_era_height = rng.gen_range(5..100);
         let validator_slots = rng.gen();
         let auction_delay = rng.gen::<u32>() as u64;
-        let locked_funds_period = TimeDiff::from(rng.gen_range(600_000, 604_800_000));
-        let unbonding_delay = rng.gen_range(1, 1_000_000_000);
+        let locked_funds_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
+        let unbonding_delay = rng.gen_range(1..1_000_000_000);
         let round_seigniorage_rate = Ratio::new(
-            rng.gen_range(1, 1_000_000_000),
-            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1..1_000_000_000),
+            rng.gen_range(1..1_000_000_000),
         );
 
         CoreConfig {

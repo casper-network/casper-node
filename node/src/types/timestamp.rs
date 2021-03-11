@@ -77,7 +77,7 @@ impl Timestamp {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        Timestamp(1_596_763_000_000 + rng.gen_range(200_000, 1_000_000))
+        Timestamp(1_596_763_000_000 + rng.gen_range(200_000..1_000_000))
     }
 }
 
@@ -238,9 +238,14 @@ impl FromStr for TimeDiff {
 }
 
 impl TimeDiff {
-    /// Returns the timestamp as the number of milliseconds since the Unix epoch
+    /// Returns the time difference as the number of milliseconds since the Unix epoch
     pub fn millis(&self) -> u64 {
         self.0
+    }
+
+    /// Creates a new time difference from seconds.
+    pub const fn from_seconds(seconds: u32) -> Self {
+        TimeDiff(seconds as u64 * 1_000)
     }
 }
 

@@ -2,14 +2,14 @@ use std::mem;
 
 use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
-use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
+use super::deploy_item::DeployItem;
 use crate::shared::newtypes::Blake2bHash;
 
 #[derive(Debug)]
 pub struct ExecuteRequest {
     pub parent_state_hash: Blake2bHash,
     pub block_time: u64,
-    pub deploys: Vec<Result<DeployItem, ExecutionResult>>,
+    pub deploys: Vec<DeployItem>,
     pub protocol_version: ProtocolVersion,
     pub proposer: PublicKey,
 }
@@ -18,7 +18,7 @@ impl ExecuteRequest {
     pub fn new(
         parent_state_hash: Blake2bHash,
         block_time: u64,
-        deploys: Vec<Result<DeployItem, ExecutionResult>>,
+        deploys: Vec<DeployItem>,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
     ) -> Self {
@@ -31,11 +31,11 @@ impl ExecuteRequest {
         }
     }
 
-    pub fn take_deploys(&mut self) -> Vec<Result<DeployItem, ExecutionResult>> {
+    pub fn take_deploys(&mut self) -> Vec<DeployItem> {
         mem::replace(&mut self.deploys, vec![])
     }
 
-    pub fn deploys(&self) -> &Vec<Result<DeployItem, ExecutionResult>> {
+    pub fn deploys(&self) -> &Vec<DeployItem> {
         &self.deploys
     }
 }

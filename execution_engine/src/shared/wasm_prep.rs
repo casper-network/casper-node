@@ -6,6 +6,8 @@ use thiserror::Error;
 
 use super::wasm_config::WasmConfig;
 
+const DEFAULT_GAS_MODULE_NAME: &str = "env";
+
 #[derive(Debug, Clone, Error)]
 pub enum PreprocessingError {
     Deserialize(String),
@@ -60,9 +62,12 @@ impl Preprocessor {
         }
 
         let module = pwasm_utils::externalize_mem(module, None, self.wasm_config.max_memory);
-        let module =
-            pwasm_utils::inject_gas_counter(module, &self.wasm_config.opcode_costs().to_set())
-                .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
+        let module = pwasm_utils::inject_gas_counter(
+            module,
+            &self.wasm_config.opcode_costs().to_set(),
+            DEFAULT_GAS_MODULE_NAME,
+        )
+        .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
         let module = stack_height::inject_limiter(module, self.wasm_config.max_stack_height)
             .map_err(|_| PreprocessingError::StackLimiter)?;
         Ok(module)

@@ -619,19 +619,22 @@ impl Debug for ExecutableDeployItem {
 impl Distribution<ExecutableDeployItem> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutableDeployItem {
         fn random_bytes<R: Rng + ?Sized>(rng: &mut R) -> Vec<u8> {
-            let mut bytes = vec![0u8; rng.gen_range(0, 100)];
+            let mut bytes = vec![0u8; rng.gen_range(0..100)];
             rng.fill_bytes(bytes.as_mut());
             bytes
         }
 
         fn random_string<R: Rng + ?Sized>(rng: &mut R) -> String {
-            rng.sample_iter(&Alphanumeric).take(20).collect()
+            rng.sample_iter(&Alphanumeric)
+                .take(20)
+                .map(char::from)
+                .collect()
         }
 
         let mut args = RuntimeArgs::new();
         let _ = args.insert(random_string(rng), Bytes::from(random_bytes(rng)));
 
-        match rng.gen_range(0, 5) {
+        match rng.gen_range(0..5) {
             0 => ExecutableDeployItem::ModuleBytes {
                 module_bytes: random_bytes(rng).into(),
                 args,
@@ -659,7 +662,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 args,
             },
             5 => {
-                let amount = rng.gen_range(MAX_PAYMENT_AMOUNT, 1_000_000_000_000_000);
+                let amount = rng.gen_range(MAX_PAYMENT_AMOUNT..1_000_000_000_000_000);
                 let mut transfer_args = RuntimeArgs::new();
                 transfer_args.insert_cl_value(
                     ARG_AMOUNT,

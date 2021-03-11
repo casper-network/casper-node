@@ -421,8 +421,8 @@ impl FinalizedBlock {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0, 5);
-        let height = era * 10 + rng.gen_range(0, 10);
+        let era = rng.gen_range(0..5);
+        let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
         FinalizedBlock::random_with_specifics(rng, EraId(era), height, is_switch)
@@ -436,7 +436,7 @@ impl FinalizedBlock {
         height: u64,
         is_switch: bool,
     ) -> Self {
-        let deploy_count = rng.gen_range(0, 11);
+        let deploy_count = rng.gen_range(0..11);
         let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(deploy_count)
             .collect();
@@ -446,16 +446,16 @@ impl FinalizedBlock {
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
         let era_report = if is_switch {
-            let equivocators_count = rng.gen_range(0, 5);
-            let rewards_count = rng.gen_range(0, 5);
-            let inactive_count = rng.gen_range(0, 5);
+            let equivocators_count = rng.gen_range(0..5);
+            let rewards_count = rng.gen_range(0..5);
+            let inactive_count = rng.gen_range(0..5);
             Some(EraReport {
                 equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
                     .take(equivocators_count)
                     .collect(),
                 rewards: iter::repeat_with(|| {
                     let pub_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
-                    let reward = rng.gen_range(1, BLOCK_REWARD + 1);
+                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
                     (pub_key, reward)
                 })
                 .take(rewards_count)
@@ -711,11 +711,6 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// The timestamp from when the proto block was proposed.
-    pub fn timestamp(&self) -> Timestamp {
-        self.timestamp
-    }
-
     /// Returns reward and slashing information if this is the era's last block.
     pub fn era_end(&self) -> Option<&EraReport> {
         match &self.era_end {
@@ -724,9 +719,9 @@ impl BlockHeader {
         }
     }
 
-    /// Returns `true` if this block is the last one in the current era.
-    pub fn is_switch_block(&self) -> bool {
-        self.era_end.is_some()
+    /// The timestamp from when the proto block was proposed.
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Era ID in which this block was created.
@@ -737,6 +732,16 @@ impl BlockHeader {
     /// Returns the height of this block, i.e. the number of ancestors.
     pub fn height(&self) -> u64 {
         self.height
+    }
+
+    /// Returns the protocol version of the network from when this block was created.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    /// Returns `true` if this block is the last one in the current era.
+    pub fn is_switch_block(&self) -> bool {
+        self.era_end.is_some()
     }
 
     /// The validators for the upcoming era and their respective weights.
@@ -750,6 +755,13 @@ impl BlockHeader {
         }
     }
 
+    /// Hash of the block header.
+    pub fn hash(&self) -> BlockHash {
+        let serialized_header = Self::serialize(&self)
+            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+        BlockHash::new(hash::hash(&serialized_header))
+    }
+
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
@@ -759,13 +771,6 @@ impl BlockHeader {
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()
-    }
-
-    /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(hash::hash(&serialized_header))
     }
 }
 
@@ -1153,8 +1158,8 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0, 5);
-        let height = era * 10 + rng.gen_range(0, 10);
+        let era = rng.gen_range(0..5);
+        let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
         Block::random_with_specifics(rng, EraId(era), height, is_switch)

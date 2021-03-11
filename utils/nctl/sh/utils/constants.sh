@@ -23,12 +23,12 @@ export NCTL_BASE_PORT_NETWORK=34452
 
 # Set of chain system contracts.
 export NCTL_CONTRACTS_CLIENT=(
-    add_bid.wasm
-    delegate.wasm
-    transfer_to_account_u512.wasm
-    transfer_to_account_u512_stored.wasm
-    undelegate.wasm
-    withdraw_bid.wasm
+    "add_bid.wasm"
+    "delegate.wasm"
+    "transfer_to_account_u512.wasm"
+    "transfer_to_account_u512_stored.wasm"
+    "undelegate.wasm"
+    "withdraw_bid.wasm"
 )
 
 # Default amount used when delegating.
@@ -53,7 +53,7 @@ export NCTL_INITIAL_BALANCE_USER=1000000000000000000000000000000000   # (1e33)
 export NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
 
 # Intitial delegation amount of a user account.
-export NCTL_INITIAL_DELEGATION_AMOUNT=1000000000   # (1e9)
+export NCTL_INITIAL_DELEGATION_AMOUNT=1000000000000000   # (1e15)
 
 # Base weight applied to a validator at genesis.
 export NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000   # (1e15)
