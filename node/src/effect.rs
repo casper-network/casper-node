@@ -681,7 +681,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::BlockAlreadyExecuted { block },
+                BlockExecutorAnnouncement::BlockAlreadyExecuted(block),
                 QueueKind::Regular,
             )
             .await

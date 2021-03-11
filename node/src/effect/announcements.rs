@@ -215,10 +215,7 @@ pub enum BlockExecutorAnnouncement {
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     },
     /// A block was requested to be executed, but it had been executed before.
-    BlockAlreadyExecuted {
-        /// The block.
-        block: Block,
-    },
+    BlockAlreadyExecuted(Block),
 }
 
 impl Display for BlockExecutorAnnouncement {
@@ -227,7 +224,7 @@ impl Display for BlockExecutorAnnouncement {
             BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
                 write!(f, "created linear chain block {}", block.hash())
             }
-            BlockExecutorAnnouncement::BlockAlreadyExecuted { block } => {
+            BlockExecutorAnnouncement::BlockAlreadyExecuted(block) => {
                 write!(f, "block had been executed before: {}", block.hash())
             }
         }

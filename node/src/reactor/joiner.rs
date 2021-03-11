@@ -799,9 +799,9 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted {
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted(
                 block,
-            }) => {
+            )) => {
                 let mut effects = self.dispatch_event(
                     effect_builder,
                     rng,
@@ -882,16 +882,12 @@ impl reactor::Reactor for Reactor {
             }
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let block_hash = *block.hash();
                 let mut effects = reactor::wrap_effects(
                     Event::EventStreamServer,
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::BlockAdded {
-                            block_hash,
-                            block: block.clone(),
-                        },
+                        event_stream_server::Event::BlockAdded(block.clone()),
                     ),
                 );
                 let reactor_event =

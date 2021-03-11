@@ -930,9 +930,9 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
-            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted {
-                block: _,
-            }) => {
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted(
+                _,
+            )) => {
                 debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
                 Effects::new()
             }
@@ -947,12 +947,8 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let block_hash = *block.hash();
                 let reactor_event =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded {
-                        block_hash,
-                        block: block.clone(),
-                    });
+                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
                 let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
