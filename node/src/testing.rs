@@ -40,16 +40,26 @@ pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T
 
 /// Create an unused port on localhost.
 pub(crate) fn unused_port_on_localhost() -> u16 {
-    // Unfortunately a random port has still a chance to hit the occasional duplicate every once in
-    // a while, or hit an already bound port. For this reason, we ask the OS for an unused port
-    // instead and hope that no one binds to it in the meantime.
+    // Unfortunately a randomly generated port by a random number generator still has a chance to
+    // hit the occasional duplicate or an already bound port once in a while, due to the small port
+    // space. For this reason, we ask the OS for an unused port instead and hope that no one binds
+    // to it in the meantime.
 
     // For a collision to occur, it is now required that after running this function, but before
     // rebinding the port, an unrelated program or a parallel running test must manage to bind to
     // precisely this port, hitting the same port randomly.
 
     // This is slightly better than a strictly random port, since it takes already bound ports
-    // across the entire interface into account.
+    // across the entire interface into account, but it does rely on the OS providing random ports
+    // when asked for a _unused_ one.
+
+    // An alternative approach is to create a bound port with `SO_REUSEPORT`, which would close the
+    // gap between calling this function and binding again, never calling listening on the instance
+    // created by this function, but still blocking it from being reassigned by accident. This
+    // approach requires the networking component to either accept arbitrary incoming sockets to be
+    // passed in or bind with `SO_REUSEPORT` as well, both are undesirable options. See
+    // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ for
+    // a detailed description on port reuse flags.
 
     let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0))
         .expect("could not bind new random port on localhost");
