@@ -41,7 +41,11 @@ use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
-const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
+const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10_000;
+/// The number of milliseconds after which an alert is raised if no progress was made.
+const STANDSTILL_ALERT_MILLIS: u64 = 5 * 60_000;
+/// How often validator participation gets logged
+const LOG_PARTICIPATION_MILLIS: u64 = 60_000;
 
 /// The timer for creating new units, as a validator actively participating in consensus.
 const TIMER_ID_ACTIVE_VALIDATOR: TimerId = TimerId(0);
@@ -51,6 +55,8 @@ const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
 const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 /// The timer for logging inactive validators.
 const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
+/// The timer for an alert no progress was made in a long time.
+const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -69,6 +75,9 @@ where
     round_success_meter: RoundSuccessMeter<C>,
     synchronizer: Synchronizer<I, C>,
     evidence_only: bool,
+    /// The panorama snapshot. This is updated periodically, and if it does not change for too
+    /// long, an alert is raised.
+    last_panorama: Panorama<C>,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -145,16 +154,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let mut outcomes = vec![
-            ProtocolOutcome::ScheduleTimer(
-                now + config.pending_vertex_timeout,
-                TIMER_ID_PURGE_VERTICES,
-            ),
-            ProtocolOutcome::ScheduleTimer(
-                now + TimeDiff::from(60_000),
-                TIMER_ID_LOG_PARTICIPATION,
-            ),
-        ];
+        let mut outcomes = ProtocolOutcomes::new();
 
         // If there's a chance that we start after the era is finished…
         if now > (params.start_timestamp() + params.min_era_length()) {
@@ -178,14 +178,19 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .unwrap_or_else(|| {
                 RoundSuccessMeter::new(round_exp, min_round_exp, max_round_exp, start_timestamp)
             });
+        let highway = Highway::new(instance_id, validators, params);
+        let last_panorama = highway.state().panorama().clone();
         let hw_proto = Box::new(HighwayProtocol {
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
-            highway: Highway::new(instance_id, validators, params),
+            highway,
             round_success_meter,
             synchronizer: Synchronizer::new(config.pending_vertex_timeout),
             evidence_only: false,
+            last_panorama,
         });
+
+        outcomes.extend(hw_proto.recreate_timers());
         (hw_proto, outcomes)
     }
 
@@ -404,6 +409,22 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .last_finalized()
             .map_or(false, is_switch)
     }
+
+    /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
+    fn handle_standstill_alert_timer(&mut self) -> ProtocolOutcomes<I, C> {
+        if self.evidence_only || self.finalized_switch_block() {
+            return vec![]; // Era has ended. No further progress is expected.
+        }
+        if self.last_panorama == *self.highway.state().panorama() {
+            return vec![ProtocolOutcome::StandstillAlert]; // No progress within the timeout.
+        }
+        // Record the current panorama and schedule the next standstill check.
+        self.last_panorama = self.highway.state().panorama().clone();
+        vec![ProtocolOutcome::ScheduleTimer(
+            Timestamp::now() + TimeDiff::from(STANDSTILL_ALERT_MILLIS),
+            TIMER_ID_STANDSTILL_ALERT,
+        )]
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -600,13 +621,14 @@ where
             }
             TIMER_ID_LOG_PARTICIPATION => {
                 self.log_participation();
-                if !self.finalized_switch_block() {
-                    let next_time = Timestamp::now() + TimeDiff::from(60_000);
+                if !self.evidence_only && !self.finalized_switch_block() {
+                    let next_time = Timestamp::now() + TimeDiff::from(LOG_PARTICIPATION_MILLIS);
                     vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
                 } else {
                     vec![]
                 }
             }
+            TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(),
             _ => unreachable!("unexpected timer ID"),
         }
     }
@@ -754,12 +776,17 @@ where
 
     fn recreate_timers(&self) -> Vec<ProtocolOutcome<I, C>> {
         let now = Timestamp::now();
+        let era_start_time = self.highway.state().params().start_timestamp();
 
         let mut outcomes = vec![
             ProtocolOutcome::ScheduleTimer(now, TIMER_ID_PURGE_VERTICES),
             ProtocolOutcome::ScheduleTimer(
-                now + TimeDiff::from(60_000),
+                now.max(era_start_time) + TimeDiff::from(LOG_PARTICIPATION_MILLIS),
                 TIMER_ID_LOG_PARTICIPATION,
+            ),
+            ProtocolOutcome::ScheduleTimer(
+                now.max(era_start_time) + TimeDiff::from(STANDSTILL_ALERT_MILLIS),
+                TIMER_ID_STANDSTILL_ALERT,
             ),
         ];
 

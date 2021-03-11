@@ -114,6 +114,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// Too many faulty validators. The protocol's fault tolerance threshold has been exceeded and
     /// consensus cannot continue.
     FttExceeded,
+    /// No progress has been made recently.
+    StandstillAlert,
     /// We want to disconnect from a sender of invalid data.
     Disconnect(I),
 }

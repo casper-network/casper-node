@@ -1205,6 +1205,14 @@ where
                     .then(move |_| fatal!(eb, "too many faulty validators"))
                     .ignore()
             }
+            ProtocolOutcome::StandstillAlert => {
+                if era_id == self.era_supervisor.current_era {
+                    warn!(era = %era_id.0, "current era is stalled; shutting down");
+                    fatal!(self.effect_builder, "current era is stalled; please retry").ignore()
+                } else {
+                    Effects::new()
+                }
+            }
         }
     }
 
