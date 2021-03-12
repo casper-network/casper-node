@@ -23,7 +23,7 @@ use casper_node::{
     setup_signal_hooks,
     types::ExitCode,
     utils::{
-        pid_file::{PidFile, PidfileOutcome},
+        pid_file::{PidFile, PidFileOutcome},
         WithDir,
     },
 };
@@ -166,18 +166,18 @@ impl Cli {
                 // Instantiating `pidfile` guarantees that it will be dropped _after_ any reactor,
                 // which is what we want.
                 let (_pidfile, crashed) = match pidfile_outcome {
-                    PidfileOutcome::AnotherNodeRunning(_) => {
+                    PidFileOutcome::AnotherNodeRunning(_) => {
                         anyhow::bail!("another node instance is running (pidfile is locked)");
                     }
-                    PidfileOutcome::Crashed(pidfile) => {
+                    PidFileOutcome::Crashed(pidfile) => {
                         warn!("previous node instance seems to have crashed, integrity checks may be run");
                         (pidfile, true)
                     }
-                    PidfileOutcome::Clean(pidfile) => {
+                    PidFileOutcome::Clean(pidfile) => {
                         info!("no previous crash detected");
                         (pidfile, false)
                     }
-                    PidfileOutcome::PidfileError(err) => {
+                    PidFileOutcome::PidFileError(err) => {
                         return Err(anyhow::anyhow!(err));
                     }
                 };

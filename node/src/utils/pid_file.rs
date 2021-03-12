@@ -1,6 +1,6 @@
-//! Pidfile utility type.
+//! PidFile utility type.
 //!
-//! Pidfiles are used to gate access to a resource, as well as detect unclean shutdowns.
+//! PidFiles are used to gate access to a resource, as well as detect unclean shutdowns.
 
 use std::{
     fs::{self, File},
@@ -24,7 +24,7 @@ use tracing::warn;
 pub struct PidFile {
     /// The pidfile.
     ///
-    /// The file will be locked for the lifetime of `Pidfile`.
+    /// The file will be locked for the lifetime of `PidFile`.
     pidfile: File,
     /// The pidfile location.
     path: PathBuf,
@@ -57,12 +57,12 @@ pub enum PidFileError {
     DuplicatedPid,
 }
 
-/// Pidfile outcome.
+/// PidFile outcome.
 ///
 /// High-level description of the outcome of opening and locking the PIDfile.
 #[must_use]
 #[derive(Debug)]
-pub enum PidfileOutcome {
+pub enum PidFileOutcome {
     /// Another instance of the node is likely running, or an attempt was made to reuse a pidfile.
     ///
     /// **Recommendation**: Exit to avoid resource conflicts.
@@ -70,42 +70,42 @@ pub enum PidfileOutcome {
     /// The node crashed previously and could potentially have been corrupted.
     ///
     /// **Recommendation**: Run an integrity check, then potentially continue with initialization.
-    ///                     **Store the `Pidfile`**.
+    ///                     **Store the `PidFile`**.
     Crashed(PidFile),
     /// Clean start, pidfile lock acquired.
     ///
-    /// **Recommendation**: Continue with intialization, but **store the `Pidfile`**.
+    /// **Recommendation**: Continue with intialization, but **store the `PidFile`**.
     Clean(PidFile),
     /// There was an error managing the pidfile, not sure if we have crashed or not.
     ///
     /// **Recommendation**: Exit, as it will not be possible to determine a crash at the next
     /// start.
-    PidfileError(PidFileError),
+    PidFileError(PidFileError),
 }
 
 impl PidFile {
-    /// Acquire a `Pidfile` and give an actionable outcome.
+    /// Acquire a `PidFile` and give an actionable outcome.
     ///
     /// **Important**: This function should be called **before** opening whatever resources it is
     /// protecting.
-    pub fn acquire<P: AsRef<Path>>(path: P) -> PidfileOutcome {
+    pub fn acquire<P: AsRef<Path>>(path: P) -> PidFileOutcome {
         match PidFile::new(path) {
             Ok(pidfile) => {
                 if pidfile.unclean_shutdown() {
-                    PidfileOutcome::Crashed(pidfile)
+                    PidFileOutcome::Crashed(pidfile)
                 } else {
-                    PidfileOutcome::Clean(pidfile)
+                    PidFileOutcome::Clean(pidfile)
                 }
             }
-            Err(err @ PidFileError::LockFailed(_)) => PidfileOutcome::AnotherNodeRunning(err),
-            Err(err) => PidfileOutcome::PidfileError(err),
+            Err(err @ PidFileError::LockFailed(_)) => PidFileOutcome::AnotherNodeRunning(err),
+            Err(err) => PidFileOutcome::PidFileError(err),
         }
     }
 
     /// Creates a new pidfile.
     ///
     /// The error-behavior of this function is important and can be used to distinguish between
-    /// different conditions described in [`PidFileError`]. If the `Pidfile` is instantiated before
+    /// different conditions described in [`PidFileError`]. If the `PidFile` is instantiated before
     /// the resource it is supposed to protect, the following actions are recommended:
     fn new<P: AsRef<Path>>(path: P) -> Result<PidFile, PidFileError> {
         // First we try to open the pidfile, without disturbing it.
@@ -118,7 +118,7 @@ impl PidFile {
             .map_err(PidFileError::CouldNotOpen)?;
 
         // Now try to acquire an exclusive lock. This will fail if another process or another
-        // instance of `Pidfile` is holding a lock onto the same pidfile.
+        // instance of `PidFile` is holding a lock onto the same pidfile.
         pidfile
             .try_lock_exclusive()
             .map_err(PidFileError::LockFailed)?;
@@ -163,7 +163,7 @@ impl PidFile {
         })
     }
 
-    /// Whether or not the Pidfile indicated a previously unclean shutdown.
+    /// Whether or not the PidFile indicated a previously unclean shutdown.
     fn unclean_shutdown(&self) -> bool {
         // If there are any previous contents, we crashed. We check for our own PID already before.
         self.previous.is_some()
@@ -186,7 +186,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{PidFile, PidfileOutcome};
+    use super::{PidFile, PidFileOutcome};
 
     #[test]
     fn pidfile_creates_file_and_cleans_it_up() {
@@ -196,7 +196,7 @@ mod tests {
         let outcome = PidFile::acquire(&pidfile_path);
 
         match outcome {
-            PidfileOutcome::Clean(pidfile) => {
+            PidFileOutcome::Clean(pidfile) => {
                 // Check the pidfile exists, then verify it gets removed after dropping the pidfile.
                 assert!(pidfile_path.exists());
                 drop(pidfile);
@@ -217,7 +217,7 @@ mod tests {
         let outcome = PidFile::acquire(&pidfile_path);
 
         match outcome {
-            PidfileOutcome::Crashed(pidfile) => {
+            PidFileOutcome::Crashed(pidfile) => {
                 // Now check if the written pid matches our PID.
                 assert_eq!(pidfile.previous, Some(12345));
 
@@ -238,9 +238,9 @@ mod tests {
         let outcome = PidFile::acquire(&pidfile_path);
 
         match outcome {
-            PidfileOutcome::Clean(_pidfile) => {
+            PidFileOutcome::Clean(_pidfile) => {
                 match PidFile::acquire(&pidfile_path) {
-                    PidfileOutcome::AnotherNodeRunning(_) => {
+                    PidFileOutcome::AnotherNodeRunning(_) => {
                         // All good, this is what we expected.
                     }
                     other => panic!(
