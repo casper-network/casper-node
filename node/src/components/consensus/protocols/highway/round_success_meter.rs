@@ -61,7 +61,10 @@ impl<C: Context> RoundSuccessMeter<C> {
         let total_w = state.total_weight();
 
         let finality_detector = FinalityDetector::<C>::new(max(
-            total_w / *self.config.acceleration_ftt.denom() * *self.config.acceleration_ftt.numer(),
+            Weight(
+                (u128::from(total_w) * *self.config.acceleration_ftt.numer() as u128
+                    / *self.config.acceleration_ftt.denom() as u128) as u64,
+            ),
             Weight(1),
         ));
 

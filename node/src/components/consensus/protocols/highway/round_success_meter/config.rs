@@ -23,8 +23,6 @@ pub(crate) const THRESHOLD: u64 = 1;
 
 #[cfg(test)]
 pub(crate) const MAX_FAILED_ROUNDS: usize = NUM_ROUNDS_TO_CONSIDER - NUM_ROUNDS_SLOWDOWN - 1;
-#[allow(unused)]
-pub(crate) const MAX_FAILURES_FOR_ACCELERATION: usize = NUM_ROUNDS_TO_CONSIDER - NUM_ROUNDS_SPEEDUP;
 
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Config {
