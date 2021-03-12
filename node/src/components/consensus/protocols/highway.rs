@@ -158,17 +158,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             ),
         ];
 
-        // If there's a chance that we start after the era is finished…
-        if now > (params.start_timestamp() + params.min_era_length()) {
-            // … request the latest state from peers on startup, in case we joined the era
-            // late and we wouldn't get any consensus units otherwise.
-            let latest_state_request =
-                HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
+        // Request the latest state from peers on startup.
+        // We will catch up with the consensus state and also sync our own unit in case we
+        // restarted. Nodes might have gone into "sleep mode" so we won't get the panorama
+        // in a different way.
+        let latest_state_request =
+            HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
 
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
-                (&latest_state_request).serialize(),
-            ));
-        }
+        outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+            (&latest_state_request).serialize(),
+        ));
 
         let min_round_exp = params.min_round_exp();
         let max_round_exp = params.max_round_exp();
