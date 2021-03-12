@@ -69,7 +69,7 @@ pub enum PidFileOutcome {
     Crashed(PidFile),
     /// Clean start, pidfile lock acquired.
     ///
-    /// **Recommendation**: Continue with intialization, but **store the `PidFile`**.
+    /// **Recommendation**: Continue with initialization, but **store the `PidFile`**.
     Clean(PidFile),
     /// There was an error managing the pidfile, not sure if we have crashed or not.
     ///

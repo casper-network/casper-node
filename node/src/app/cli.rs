@@ -155,7 +155,7 @@ impl Cli {
                     let storage_config = validator_config.map_ref(|cfg| cfg.storage.clone());
                     let root = storage_config.with_dir(storage_config.value().path.clone());
 
-                    // Create directory if it does not exit, similar to how the storage component
+                    // Create directory if it does not exist, similar to how the storage component
                     // would do it.
                     if !root.exists() {
                         fs::create_dir_all(&root).context("create storage directory")?;
