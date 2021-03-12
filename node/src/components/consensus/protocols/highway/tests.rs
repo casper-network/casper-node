@@ -18,7 +18,7 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
+        protocols::highway::{config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX},
         tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
@@ -69,9 +69,12 @@ where
     let chainspec = new_test_chainspec(weights.clone());
     let config = Config {
         secret_key_path: Default::default(),
-        unit_hashes_folder: Default::default(),
-        pending_vertex_timeout: "1min".parse().unwrap(),
-        max_execution_delay: 3,
+        highway: HighwayConfig {
+            unit_hashes_folder: Default::default(),
+            pending_vertex_timeout: "1min".parse().unwrap(),
+            max_execution_delay: 3,
+            round_success_meter: Default::default(),
+        },
     };
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
