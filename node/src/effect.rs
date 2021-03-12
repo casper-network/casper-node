@@ -674,6 +674,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce that a block had been executed before.
+    pub(crate) async fn announce_block_already_executed(self, block: Block)
+    where
+        REv: From<BlockExecutorAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockExecutorAnnouncement::BlockAlreadyExecuted(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Announce upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
@@ -1120,13 +1133,16 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled<I>(self, block: Block)
-    where
+    /// Announces that a finality signature has been created.
+    pub(crate) async fn announce_created_finality_signature<I>(
+        self,
+        finality_signature: FinalitySignature,
+    ) where
         REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Handled(Box::new(block)),
+                ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
                 QueueKind::Regular,
             )
             .await
@@ -1167,13 +1183,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block: Box<Block>)
+    pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                LinearChainAnnouncement::BlockAdded { block_hash, block },
+                LinearChainAnnouncement::BlockAdded(block),
                 QueueKind::Regular,
             )
             .await
@@ -1304,7 +1320,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    ) -> Result<ExecutionResults, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1468,18 +1484,6 @@ impl<REv> EffectBuilder<REv> {
                 step_request,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block: Block) -> Option<FinalitySignature>
-    where
-        REv: From<ConsensusRequest>,
-    {
-        self.make_request(
-            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
             QueueKind::Regular,
         )
         .await

@@ -108,7 +108,7 @@ impl DeployAcceptor {
 
         // skip account verification if deploy not received from client or node is configured to
         // not verify accounts
-        if !source.from_client() || !self.verify_accounts {
+        if !source.from_peer() || !self.verify_accounts {
             return effect_builder
                 .immediately()
                 .event(move |_| Event::AccountVerificationResult {

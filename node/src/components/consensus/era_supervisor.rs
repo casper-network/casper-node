@@ -48,10 +48,7 @@ use crate::{
         contract_runtime::EraValidatorsRequest,
     },
     crypto::hash::Digest,
-    effect::{
-        requests::{ConsensusRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
-    },
+    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
@@ -124,7 +121,7 @@ pub struct EraSupervisor<I> {
     /// component.
     is_initialized: bool,
     /// TODO: Remove once the era supervisor is removed from the Joiner reactor.
-    pub(crate) enqueued_requests: VecDeque<ConsensusRequest>,
+    pub(crate) enqueued_events: VecDeque<Event<I>>,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -190,7 +187,7 @@ where
             stop_for_upgrade: false,
             next_executed_height: 0,
             is_initialized: false,
-            enqueued_requests: Default::default(),
+            enqueued_events: Default::default(),
         };
 
         let bonded_eras = era_supervisor.bonded_eras();
@@ -795,38 +792,37 @@ where
         })
     }
 
-    pub(super) fn handle_linear_chain_block(
-        &mut self,
-        block: Block,
-        responder: Responder<Option<FinalitySignature>>,
-    ) -> Effects<Event<I>> {
+    pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
         // TODO: Delete once `EraSupervisor` gets removed from the joiner reactor.
         if !self.era_supervisor.is_initialized() {
             // enqueue
             self.era_supervisor
-                .enqueued_requests
-                .push_back(ConsensusRequest::HandleLinearBlock(
-                    Box::new(block),
-                    responder,
-                ));
+                .enqueued_events
+                .push_back(Event::BlockAdded(Box::new(block)));
             return Effects::new();
         }
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
         self.era_supervisor.executed_block(block.header());
-        let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
+        let mut effects = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block.hash();
-            Some(FinalitySignature::new(*block_hash, era_id, &our_sk, our_pk))
+            self.effect_builder
+                .announce_created_finality_signature(FinalitySignature::new(
+                    *block_hash,
+                    era_id,
+                    &our_sk,
+                    our_pk,
+                ))
+                .ignore()
         } else {
-            None
+            Effects::new()
         };
-        let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
-        if block.header().is_switch_block() {
+        if block.header().is_switch_block() && !self.should_upgrade_after(&era_id) {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
@@ -841,9 +837,6 @@ where
                 booking_block_hash: Ok(booking_block_hash),
             });
             effects.extend(effect);
-        } else {
-            // if it's not a switch block, we can already declare it handled
-            effects.extend(self.effect_builder.announce_block_handled(block).ignore());
         }
         effects
     }
@@ -952,13 +945,7 @@ where
             switch_block.header().timestamp(),
             switch_block.height() + 1,
         );
-        let mut effects = self.handle_consensus_outcomes(era_id, outcomes);
-        effects.extend(
-            self.effect_builder
-                .announce_block_handled(switch_block)
-                .ignore(),
-        );
-        effects
+        self.handle_consensus_outcomes(era_id, outcomes)
     }
 
     pub(super) fn resolve_validity(

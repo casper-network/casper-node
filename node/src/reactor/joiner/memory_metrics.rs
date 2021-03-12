@@ -122,6 +122,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_block_executor.clone()))?;
         registry.register(Box::new(mem_linear_chain.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
+        registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
 
         Ok(MemoryMetrics {
             mem_total,

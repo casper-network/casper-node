@@ -547,7 +547,7 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let result = engine_state.missing_trie_keys(correlation_id, trie_key);
+                        let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
                         metrics.read_trie.observe(start.elapsed().as_secs_f64());
                         result
                     })
@@ -634,7 +634,7 @@ impl ContractRuntime {
         let correlation_id = CorrelationId::new();
         match self
             .engine_state
-            .trie_integrity_check(correlation_id, trie_keys)
+            .missing_trie_keys(correlation_id, trie_keys)
         {
             Ok(keys) => keys,
             Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
