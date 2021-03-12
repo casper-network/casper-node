@@ -73,8 +73,10 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
+use tokio::sync::Semaphore;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
@@ -128,6 +130,9 @@ use requests::{
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
     NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
+
+/// A resource that will never be available, thus trying to acquire it will wait forever.
+static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -401,14 +406,20 @@ impl<REv> EffectBuilder<REv> {
         let request_event = f(responder).into();
         self.0.schedule(request_event, queue_kind).await;
 
-        receiver.await.unwrap_or_else(|err| {
-            // The channel should never be closed, ever.
-            error!(%err, ?queue_kind, "request for {} channel closed, this is a serious bug --- \
-                   a component will likely be stuck from now on ", type_name::<T>());
+        match receiver.await {
+            Ok(value) => value,
+            Err(err) => {
+                // The channel should never be closed, ever. If it is, we pretend nothing happened
+                // though, instead of crashing.
+                error!(%err, ?queue_kind, "request for {} channel closed, this may be a bug? \
+                       check if a component is stuck from now on ", type_name::<T>());
 
-            // We cannot produce any value to satisfy the request, so all that's left is panicking.
-            panic!("request not answerable");
-        })
+                // We cannot produce any value to satisfy the request, so we just abandon this task
+                // by waiting on a resource we can never acquire.
+                let _ = UNOBTAINIUM.acquire().await;
+                panic!("should never obtain unobtainium semaphore");
+            }
+        }
     }
 
     /// Run and end effect immediately.
