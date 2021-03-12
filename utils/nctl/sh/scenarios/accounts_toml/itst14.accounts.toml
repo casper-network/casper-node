@@ -78,35 +78,35 @@ balance = "1000000000000000000000000000000000"
 validator_public_key = "PBK_V1"
 delegator_public_key = "PBK_U1"
 balance = "1000000000000000000000000000000000"
-delegated_amount = "1000000000000001"
+delegated_amount = "0"
 
 # USER 2.
 [[delegators]]
 validator_public_key = "PBK_V2"
 delegator_public_key = "PBK_U2"
 balance = "1000000000000000000000000000000000"
-delegated_amount = "1000000000000002"
+delegated_amount = "0"
 
 # USER 3.
 [[delegators]]
 validator_public_key = "PBK_V3"
 delegator_public_key = "PBK_U3"
 balance = "1000000000000000000000000000000000"
-delegated_amount = "1000000000000003"
+delegated_amount = "0"
 
 # USER 4.
 [[delegators]]
 validator_public_key = "PBK_V4"
 delegator_public_key = "PBK_U4"
 balance = "1000000000000000000000000000000000"
-delegated_amount = "1000000000000004"
+delegated_amount = "0"
 
 # USER 5.
 [[delegators]]
 validator_public_key = "PBK_V5"
 delegator_public_key = "PBK_U5"
 balance = "1000000000000000000000000000000000"
-delegated_amount = "1000000000000005"
+delegated_amount = "0"
 
 # USER 6.
 [[accounts]]

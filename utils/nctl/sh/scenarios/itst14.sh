@@ -21,6 +21,7 @@ function main() {
     do_await_n_blocks "5"
     # 1. Verify network is in sync
     check_network_sync
+    assert_node_proposed '5' '180'
     # 2a. Get era
     STOPPED_ERA=$(check_current_era)
     # 2b. Stop node
@@ -38,7 +39,7 @@ function main() {
     # 7. Verify all nodes are in sync
     check_network_sync
     # 8. Verify node proposed a block
-    assert_node_proposed '5'
+    assert_node_proposed '5' '180'
     # 9. Verify we are in the same era
     assert_same_era "$STOPPED_ERA"
     # 10. Wait an era
@@ -68,10 +69,16 @@ function assert_node_proposed() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node $NODE_ID)
     local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
+    local TIMEOUT=${2:-300}
     log_step "Waiting for a node-$NODE_ID to produce a block..."
-    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
-    log "node-$NODE_ID created a block!"
-    log "$OUTPUT"
+    local OUTPUT=$(timeout $TIMEOUT tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    if ( echo "$OUTPUT" | grep -q "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)" ); then
+        log "Node-$NODE_ID created a block!"
+        log "$OUTPUT"
+    else
+        log "ERROR: Node-$NODE_ID didn't create a block within timeout=$TIMEOUT"
+        exit 1
+    fi
 }
 
 function assert_no_equivocation() {
