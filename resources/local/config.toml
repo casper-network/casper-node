@@ -31,6 +31,10 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = 'secret_key.pem'
 
+# ===========================================
+# Configuration options for Highway consensus
+# ===========================================
+[consnsus.highway]
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "../node-storage"
 
@@ -41,9 +45,6 @@ pending_vertex_timeout = '30min'
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
 
-# ===========================================
-# Configuration options for Highway consensus
-# ===========================================
 [consensus.highway.round_success_meter]
 # The number of most recent rounds we will be keeping track of.
 num_rounds_to_consider = 40

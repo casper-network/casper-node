@@ -112,7 +112,7 @@ impl TestChain {
 
         // Additionally set up storage in a temporary directory.
         let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
-        cfg.consensus.unit_hashes_folder = temp_dir.path().to_path_buf();
+        cfg.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 

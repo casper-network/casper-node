@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use datasize::DataSize;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -20,13 +18,6 @@ use crate::{
 pub struct Config {
     /// Path to secret key file.
     pub secret_key_path: External<SecretKey>,
-    /// Path to the folder where unit hash files will be stored.
-    pub unit_hashes_folder: PathBuf,
-    /// The duration for which incoming vertices with missing dependencies are kept in a queue.
-    pub pending_vertex_timeout: TimeDiff,
-    /// The maximum number of blocks by which execution is allowed to lag behind finalization.
-    /// If it is more than that, consensus will pause, and resume once the executor has caught up.
-    pub max_execution_delay: u64,
     /// Highway-specific node configuration.
     pub highway: HighwayConfig,
 }
@@ -35,10 +26,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             secret_key_path: External::Missing,
-            unit_hashes_folder: Default::default(),
-            pending_vertex_timeout: "10sec".parse().unwrap(),
-            max_execution_delay: 3,
-            highway_config: HighwayConfig::default(),
+            highway: HighwayConfig::default(),
         }
     }
 }

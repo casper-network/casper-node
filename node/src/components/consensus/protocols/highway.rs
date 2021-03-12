@@ -149,7 +149,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let mut outcomes = vec![
             ProtocolOutcome::ScheduleTimer(
-                now + config.pending_vertex_timeout,
+                now + config.highway.pending_vertex_timeout,
                 TIMER_ID_PURGE_VERTICES,
             ),
             ProtocolOutcome::ScheduleTimer(
@@ -191,7 +191,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             round_success_meter,
-            synchronizer: Synchronizer::new(config.pending_vertex_timeout),
+            synchronizer: Synchronizer::new(config.highway.pending_vertex_timeout),
             evidence_only: false,
         });
         (hw_proto, outcomes)
