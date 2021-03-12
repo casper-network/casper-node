@@ -22,18 +22,15 @@ function main() {
     check_network_sync
     # 3. Submit bid for node 6
     do_submit_auction_bids "6"
-    # 4. wait auction_delay + 1
-    do_await_era_change "1"
-    # 5. Start node 6
     do_read_lfb_hash "5"
     do_start_node "6" "$LFB_HASH"
-    # 6. Allow for the chain to progress further.
-    do_await_era_change "2"
+    # 4. wait auction_delay + 1
+    do_await_era_change "4"
     # 7. Assert that the validator is bonded in.
     assert_new_bonded_validator "6"
     log "The new node has bonded in."
     # 8. Assert that the new bonded validator is producing blocks.
-    assert_node_proposed "1"
+    assert_node_proposed "6"
 
 
     log "------------------------------------------------------------"
@@ -48,7 +45,7 @@ function do_submit_auction_bids()
     log_step "submitting POS auction bids:"
     log "----- ----- ----- ----- ----- -----"
     BID_AMOUNT=$(get_node_staking_weight "$NODE_ID")
-    BID_DELEGATION_RATE=2
+    BID_DELEGATION_RATE=6
 
     source "$NCTL"/sh/contracts-auction/do_bid.sh \
             node="$NODE_ID" \
@@ -67,7 +64,7 @@ function get_node_public_key_hex() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node $NODE_ID)
     local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    echo "$PUBLIC_KEY_HEX"
+    echo "${PUBLIC_KEY_HEX:2}"
 }
 
 
@@ -83,7 +80,6 @@ function assert_new_bonded_validator() {
 function assert_node_proposed() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node $NODE_ID)
-    echo "$NODE_PATH"
     local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
     log_step "Waiting for node-$NODE_ID to produce a block..."
     local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
