@@ -7,7 +7,6 @@ pub mod arglang;
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process,
     str::FromStr,
 };
 
@@ -139,7 +138,7 @@ impl FromStr for ConfigExt {
 
 impl Cli {
     /// Executes selected CLI command.
-    pub async fn run(self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<i32> {
         match self {
             Cli::Validator { config, config_ext } => {
                 // Setup UNIX signal hooks.
@@ -173,8 +172,7 @@ impl Cli {
                 // initializer2_runner.run(&mut rng).await;
 
                 match initializer_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(ExitCode::Success) => return Ok(()),
-                    ReactorExit::ProcessShouldExit(exit_code) => process::exit(exit_code as i32),
+                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
                     ReactorExit::ProcessShouldContinue => info!("finished initialization"),
                 }
 
@@ -190,8 +188,7 @@ impl Cli {
                 )
                 .await?;
                 match joiner_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(ExitCode::Success) => return Ok(()),
-                    ReactorExit::ProcessShouldExit(exit_code) => process::exit(exit_code as i32),
+                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
                     ReactorExit::ProcessShouldContinue => info!("finished joining"),
                 }
 
@@ -200,13 +197,11 @@ impl Cli {
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
 
                 match validator_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(ExitCode::Success) => (),
-                    ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigInt)
-                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigQuit)
-                    | ReactorExit::ProcessShouldExit(exit_code @ ExitCode::SigTerm) => {
-                        process::exit(exit_code as i32)
+                    ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
+                    reactor_exit => {
+                        error!("validator should not exit with {:?}", reactor_exit);
+                        Ok(ExitCode::Abort as i32)
                     }
-                    reactor_exit => error!("validator should not exit with {:?}", reactor_exit),
                 }
             }
             Cli::MigrateConfig {
@@ -226,6 +221,7 @@ impl Cli {
 
                 info!(version = %env!("CARGO_PKG_VERSION"), "migrating config");
                 casper_node::migrate_config(WithDir::new(old_root, old_config), new_config)?;
+                Ok(ExitCode::Success as i32)
             }
             Cli::MigrateData {
                 old_config,
@@ -244,10 +240,9 @@ impl Cli {
 
                 info!(version = %env!("CARGO_PKG_VERSION"), "migrating data");
                 casper_node::migrate_data(WithDir::new(old_root, old_config), new_config)?;
+                Ok(ExitCode::Success as i32)
             }
         }
-
-        Ok(())
     }
 
     /// Parses the config file for the current version of casper-node, and initializes logging.
