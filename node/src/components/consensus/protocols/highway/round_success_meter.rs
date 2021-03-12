@@ -11,7 +11,7 @@ use crate::{
     types::Timestamp,
 };
 
-mod config;
+pub(crate) mod config;
 use config::*;
 
 #[derive(DataSize, Debug, Clone)]
@@ -27,23 +27,31 @@ where
     min_round_exp: u8,
     max_round_exp: u8,
     current_round_exp: u8,
+    config: Config,
 }
 
 impl<C: Context> RoundSuccessMeter<C> {
-    pub fn new(round_exp: u8, min_round_exp: u8, max_round_exp: u8, timestamp: Timestamp) -> Self {
+    pub fn new(
+        round_exp: u8,
+        min_round_exp: u8,
+        max_round_exp: u8,
+        timestamp: Timestamp,
+        config: Config,
+    ) -> Self {
         let current_round_id = round_id(timestamp, round_exp).millis();
         Self {
-            rounds: VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER),
+            rounds: VecDeque::with_capacity(config.num_rounds_to_consider as usize),
             current_round_id,
             proposals: Vec::new(),
             min_round_exp,
             max_round_exp,
             current_round_exp: round_exp,
+            config,
         }
     }
 
     fn change_exponent(&mut self, new_exp: u8, timestamp: Timestamp) {
-        self.rounds = VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER);
+        self.rounds = VecDeque::with_capacity(self.config.num_rounds_to_consider as usize);
         self.current_round_exp = new_exp;
         self.current_round_id = round_id(timestamp, new_exp).millis();
         self.proposals = Vec::new();
@@ -52,8 +60,10 @@ impl<C: Context> RoundSuccessMeter<C> {
     fn check_proposals_success(&self, state: &State<C>, proposal_h: &C::Hash) -> bool {
         let total_w = state.total_weight();
 
-        let finality_detector =
-            FinalityDetector::<C>::new(max(total_w / 100 * THRESHOLD, Weight(1)));
+        let finality_detector = FinalityDetector::<C>::new(max(
+            total_w / *self.config.acceleration_ftt.denom() * *self.config.acceleration_ftt.numer(),
+            Weight(1),
+        ));
 
         // check for the existence of a level-1 summit
         finality_detector.find_summit(1, proposal_h, state) == 1
@@ -149,11 +159,12 @@ impl<C: Context> RoundSuccessMeter<C> {
             min_round_exp: self.min_round_exp,
             max_round_exp: self.max_round_exp,
             current_round_exp: self.current_round_exp,
+            config: self.config,
         }
     }
 
     fn clean_old_rounds(&mut self) {
-        while self.rounds.len() > NUM_ROUNDS_TO_CONSIDER {
+        while self.rounds.len() as u64 > self.config.num_rounds_to_consider {
             self.rounds.pop_back();
         }
     }
@@ -164,14 +175,16 @@ impl<C: Context> RoundSuccessMeter<C> {
 
     fn new_exponent(&self) -> u8 {
         let current_round_index = self.current_round_id >> self.current_round_exp;
-        let num_failures = self.count_failures();
-        if num_failures > MAX_FAILED_ROUNDS && self.current_round_exp < self.max_round_exp {
+        let num_failures = self.count_failures() as u64;
+        if num_failures > self.config.max_failed_rounds()
+            && self.current_round_exp < self.max_round_exp
+        {
             self.current_round_exp + 1
-        } else if current_round_index % ACCELERATION_PARAMETER == 0
+        } else if current_round_index % self.config.acceleration_parameter == 0
             && self.current_round_exp > self.min_round_exp
             // we will only accelerate if we collected data about enough rounds
-            && self.rounds.len() == NUM_ROUNDS_TO_CONSIDER
-            && num_failures < MAX_FAILURES_FOR_ACCELERATION
+            && self.rounds.len() as u64 == self.config.num_rounds_to_consider
+            && num_failures < self.config.max_failures_for_acceleration()
         {
             self.current_round_exp - 1
         } else {
@@ -182,11 +195,10 @@ impl<C: Context> RoundSuccessMeter<C> {
 
 #[cfg(test)]
 mod tests {
+    use config::{Config, ACCELERATION_PARAMETER, MAX_FAILED_ROUNDS, NUM_ROUNDS_TO_CONSIDER};
+
     use crate::components::consensus::{
-        cl_context::ClContext,
-        protocols::highway::round_success_meter::{
-            ACCELERATION_PARAMETER, MAX_FAILED_ROUNDS, NUM_ROUNDS_TO_CONSIDER,
-        },
+        cl_context::ClContext, protocols::highway::round_success_meter::config,
     };
 
     const TEST_ROUND_EXP: u8 = 13;
@@ -201,6 +213,7 @@ mod tests {
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
                 crate::types::Timestamp::now(),
+                Config::default(),
             );
         assert_eq!(round_success_meter.new_exponent(), TEST_ROUND_EXP);
     }
@@ -213,6 +226,7 @@ mod tests {
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
                 crate::types::Timestamp::now(),
+                Config::default(),
             );
         // If there have been more rounds of failure than MAX_FAILED_ROUNDS, slow down
         round_success_meter.rounds = vec![false; MAX_FAILED_ROUNDS + 1].into();
@@ -228,6 +242,7 @@ mod tests {
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
                 crate::types::Timestamp::now(),
+                Config::default(),
             );
         // If there have been more rounds of failure than MAX_FAILED_ROUNDS, slow down -- but can't
         // slow down because of ceiling
@@ -244,6 +259,7 @@ mod tests {
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
                 crate::types::Timestamp::now(),
+                Config::default(),
             );
         round_success_meter.rounds = vec![true; NUM_ROUNDS_TO_CONSIDER].into();
         // Increase our round index until we are at an acceleration round
@@ -268,6 +284,7 @@ mod tests {
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
                 crate::types::Timestamp::now(),
+                Config::default(),
             );
         round_success_meter.rounds = vec![true; NUM_ROUNDS_TO_CONSIDER].into();
         // Increase our round index until we are at an acceleration round

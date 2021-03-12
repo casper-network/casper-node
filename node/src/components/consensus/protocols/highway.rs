@@ -1,3 +1,4 @@
+pub(crate) mod config;
 mod participation;
 mod round_success_meter;
 mod synchronizer;
@@ -37,6 +38,7 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 
+pub use self::config::Config as HighwayConfig;
 use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
@@ -176,7 +178,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
             .map(|highway_proto| highway_proto.next_era_round_succ_meter(start_timestamp))
             .unwrap_or_else(|| {
-                RoundSuccessMeter::new(round_exp, min_round_exp, max_round_exp, start_timestamp)
+                RoundSuccessMeter::new(
+                    round_exp,
+                    min_round_exp,
+                    max_round_exp,
+                    start_timestamp,
+                    config.into(),
+                )
             });
         let hw_proto = Box::new(HighwayProtocol {
             pending_values: HashMap::new(),
