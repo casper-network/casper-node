@@ -156,7 +156,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let mut outcomes = ProtocolOutcomes::new();
+        let mut outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
         // Request the latest state from peers on startup.
         // We will catch up with the consensus state and also sync our own unit in case we
@@ -199,8 +199,28 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             log_participation_interval: config.highway.log_participation_interval,
         });
 
-        outcomes.extend(hw_proto.recreate_timers(now));
         (hw_proto, outcomes)
+    }
+
+    fn initialize_timers(
+        now: Timestamp,
+        era_start_time: Timestamp,
+        highway_config: &HighwayConfig,
+    ) -> ProtocolOutcomes<I, C> {
+        vec![
+            ProtocolOutcome::ScheduleTimer(
+                now + highway_config.pending_vertex_timeout,
+                TIMER_ID_PURGE_VERTICES,
+            ),
+            ProtocolOutcome::ScheduleTimer(
+                now.max(era_start_time) + highway_config.log_participation_interval,
+                TIMER_ID_LOG_PARTICIPATION,
+            ),
+            ProtocolOutcome::ScheduleTimer(
+                now.max(era_start_time) + highway_config.standstill_timeout,
+                TIMER_ID_STANDSTILL_ALERT,
+            ),
+        ]
     }
 
     fn process_av_effects<E>(&mut self, av_effects: E, now: Timestamp) -> ProtocolOutcomes<I, C>
@@ -784,40 +804,6 @@ where
 
     fn instance_id(&self) -> &C::InstanceId {
         self.highway.instance_id()
-    }
-
-    fn recreate_timers(&self, now: Timestamp) -> Vec<ProtocolOutcome<I, C>> {
-        let era_start_time = self.highway.state().params().start_timestamp();
-
-        let mut outcomes = vec![
-            ProtocolOutcome::ScheduleTimer(now, TIMER_ID_PURGE_VERTICES),
-            ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + self.log_participation_interval,
-                TIMER_ID_LOG_PARTICIPATION,
-            ),
-            ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + self.standstill_timeout,
-                TIMER_ID_STANDSTILL_ALERT,
-            ),
-        ];
-
-        if self.highway.is_active() {
-            outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now,
-                TIMER_ID_ACTIVE_VALIDATOR,
-            ));
-        }
-
-        outcomes.extend(
-            self.synchronizer
-                .timestamps_to_add_vertices()
-                .into_iter()
-                .map(|timestamp| {
-                    ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP)
-                }),
-        );
-
-        outcomes
     }
 
     fn next_round_length(&self) -> Option<TimeDiff> {

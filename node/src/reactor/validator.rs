@@ -11,6 +11,7 @@ mod tests;
 use std::{
     env,
     fmt::{self, Debug, Display, Formatter},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -29,7 +30,7 @@ use crate::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraSupervisor},
+        consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -60,8 +61,8 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
-    utils::Source,
+    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag},
+    utils::{Source, WithDir},
     NodeRng,
 };
 pub use config::Config;
@@ -306,11 +307,11 @@ impl Display for Event {
 
 /// The configuration needed to initialize a Validator reactor
 pub struct ValidatorInitConfig {
+    pub(super) root: PathBuf,
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
-    pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
@@ -319,10 +320,6 @@ pub struct ValidatorInitConfig {
 
 #[cfg(test)]
 impl ValidatorInitConfig {
-    /// Inspect consensus.
-    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
-        &self.consensus
-    }
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
@@ -390,14 +387,14 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
+            root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
-            mut consensus,
             latest_block,
             event_stream_server,
             small_network_identity,
@@ -463,6 +460,11 @@ impl reactor::Reactor for Reactor {
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
         )?;
+
+        let initial_era = latest_block
+            .as_ref()
+            .map(|block| block.header().next_block_era_id())
+            .unwrap_or_else(|| chainspec_loader.initial_era());
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         let block_executor = BlockExecutor::new(
             chainspec_loader.initial_state_root_hash(),
@@ -488,20 +490,23 @@ impl reactor::Reactor for Reactor {
             Event::SmallNetwork,
             small_network_effects,
         ));
-        // This is a workaround for dropping the Era Supervisor's timer event when transitioning
-        // from the joiner.
-        // TODO: Remove this once the consensus component is removed from the Joiner reactor.
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            consensus.recreate_timers(effect_builder, rng),
-        ));
 
-        let now = Timestamp::now();
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
+        let (consensus, init_consensus_effects) = EraSupervisor::new(
+            initial_era,
+            WithDir::new(root, config.consensus),
+            effect_builder,
+            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
+            maybe_next_activation_point,
+            registry,
+            Box::new(HighwayProtocol::new_boxed),
+        )?;
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
-            effect_builder
-                .immediately()
-                .event(move |_| consensus::Event::FinishedJoining(now)),
+            init_consensus_effects,
         ));
 
         Ok((

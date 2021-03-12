@@ -103,8 +103,6 @@ pub struct EraSupervisor<I> {
     next_executed_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
-    // TODO: discuss this quick fix
-    finished_joining: bool,
     /// The path to the folder where unit hash files will be stored.
     unit_hashes_folder: PathBuf,
     /// The next upgrade activation point. When the era immediately before the activation point is
@@ -179,7 +177,6 @@ where
             node_start_time: Timestamp::now(),
             next_block_height: 0,
             metrics,
-            finished_joining: false,
             unit_hashes_folder,
             next_upgrade_activation_point,
             stop_for_upgrade: false,
@@ -325,9 +322,6 @@ where
         let should_activate = if !validators.contains_key(&our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
-        } else if !self.finished_joining {
-            info!(era = era_id.0, %our_id, "not voting; still joining");
-            false
         } else {
             info!(era = era_id.0, %our_id, "start voting");
             true
@@ -406,31 +400,6 @@ where
         self.current_era
     }
 
-    /// To be called when we transition from the joiner to the validator reactor.
-    pub(crate) fn finished_joining(&mut self, now: Timestamp) -> ProtocolOutcomes<I, ClContext> {
-        self.finished_joining = true;
-        let secret = Keypair::new(self.secret_signing_key.clone(), self.public_signing_key);
-        let public_key = self.public_signing_key;
-        let unit_hashes_folder = self.unit_hashes_folder.clone();
-        self.active_eras
-            .get_mut(&self.current_era)
-            .map(|era| {
-                if era.validators().contains_key(&public_key) {
-                    let instance_id = *era.consensus.instance_id();
-                    let unit_hash_file = unit_hashes_folder.join(format!(
-                        "unit_hash_{:?}_{}.dat",
-                        instance_id,
-                        public_key.to_hex()
-                    ));
-                    era.consensus
-                        .activate_validator(public_key, secret, now, Some(unit_hash_file))
-                } else {
-                    Vec::new()
-                }
-            })
-            .unwrap_or_default()
-    }
-
     pub(crate) fn stop_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
     }
@@ -453,20 +422,6 @@ where
             Some(era) => era.set_paused(paused),
             None => error!(era = self.current_era.0, "current era not initialized"),
         }
-    }
-
-    pub(crate) fn recreate_timers<'a, REv: ReactorEventT<I>>(
-        &'a mut self,
-        effect_builder: EffectBuilder<REv>,
-        rng: &'a mut NodeRng,
-    ) -> Effects<Event<I>> {
-        let current_era = self.current_era;
-        trace!(?current_era, "recreating timers");
-        let outcomes = self.active_eras[&current_era]
-            .consensus
-            .recreate_timers(Timestamp::now());
-        self.handling_wrapper(effect_builder, rng)
-            .handle_consensus_outcomes(current_era, outcomes)
     }
 
     /// Returns true if initialization of the first eras is finished.
@@ -1183,11 +1138,6 @@ where
         }
     }
 
-    pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
-        let outcomes = self.era_supervisor.finished_joining(now);
-        self.handle_consensus_outcomes(self.era_supervisor.current_era, outcomes)
-    }
-
     /// Handles registering an upgrade activation point.
     pub(super) fn got_upgrade_activation_point(
         &mut self,
@@ -1200,7 +1150,7 @@ where
 
     pub(super) fn status(
         &self,
-        responder: Responder<(PublicKey, Option<TimeDiff>)>,
+        responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
     ) -> Effects<Event<I>> {
         let public_key = self.era_supervisor.public_signing_key;
         let round_length = self
@@ -1208,7 +1158,7 @@ where
             .active_eras
             .get(&self.era_supervisor.current_era)
             .and_then(|era| era.consensus.next_round_length());
-        responder.respond((public_key, round_length)).ignore()
+        responder.respond(Some((public_key, round_length))).ignore()
     }
 
     fn disconnect(&self, sender: I) -> Effects<Event<I>> {

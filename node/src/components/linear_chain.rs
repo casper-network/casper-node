@@ -18,10 +18,7 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::LinearChainAnnouncement,
-        requests::{
-            ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            StorageRequest,
-        },
+        requests::{ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
@@ -225,7 +222,6 @@ impl<I> LinearChain<I> {
     ) -> (BlockSignatures, Effects<Event<I>>)
     where
         REv: From<StorageRequest>
-            + From<ConsensusRequest>
             + From<NetworkRequest<I, Message>>
             + From<LinearChainAnnouncement>
             + Send,
@@ -300,7 +296,6 @@ impl<I> LinearChain<I> {
 impl<I, REv> Component<REv> for LinearChain<I>
 where
     REv: From<StorageRequest>
-        + From<ConsensusRequest>
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>

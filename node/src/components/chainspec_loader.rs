@@ -285,11 +285,9 @@ impl ChainspecLoader {
         // We want to start the Era Supervisor at the era right after the highest block we
         // have. If the block is a switch block, that will be the era that comes next. If
         // it's not, we continue the era the highest block belongs to.
-        match self.initial_block_header() {
-            Some(header) if header.is_switch_block() => header.era_id().successor(),
-            Some(header) => header.era_id(),
-            None => EraId(0),
-        }
+        self.initial_block_header()
+            .map(BlockHeader::next_block_era_id)
+            .unwrap_or(EraId(0))
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
