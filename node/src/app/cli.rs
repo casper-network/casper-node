@@ -150,13 +150,15 @@ impl Cli {
                 let validator_config = Self::init(&config, config_ext)?;
                 info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
 
-                // Determine storage directory to store pidfile in.
                 let pidfile_outcome = {
+                    // Determine storage directory to store pidfile in.
                     let storage_config = validator_config.map_ref(|cfg| cfg.storage.clone());
                     let root = storage_config.with_dir(storage_config.value().path.clone());
 
+                    // Create directory if it does not exit, similar to how the storage component
+                    // would do it.
                     if !root.exists() {
-                        anyhow::bail!("could not create storage directory to store pidfile in");
+                        fs::create_dir_all(&root).context("create storage directory")?;
                     }
 
                     PidFile::acquire(root.join("initializer.pid"))
