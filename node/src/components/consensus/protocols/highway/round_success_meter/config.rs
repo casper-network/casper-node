@@ -49,7 +49,7 @@ impl Default for Config {
 }
 
 impl Config {
-    /// The maximum number of failures allowed among NUM_ROUNDS_TO_CONSIDER latest rounds, with
+    /// The maximum number of failures allowed among `num_rounds_to_consider` latest rounds, with
     /// which we won't increase our round length. Exceeding this threshold will mean that we
     /// should slow down.
     pub(crate) fn max_failed_rounds(&self) -> u64 {

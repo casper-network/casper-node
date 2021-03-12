@@ -49,7 +49,7 @@ max_execution_delay = 3
 num_rounds_to_consider = 40
 
 # The number of successful rounds that triggers us to slow down: With this many or fewer
-# successes per `NUM_ROUNDS_TO_CONSIDER`, we increase our round exponent.
+# successes per `num_rounds_to_consider`, we increase our round exponent.
 num_rounds_slowdown = 10
 
 # The number of successful rounds that triggers us to speed up: With this many or more successes
