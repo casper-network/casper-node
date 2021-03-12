@@ -25,7 +25,7 @@ function main() {
     do_read_lfb_hash "5"
     do_start_node "6" "$LFB_HASH"
     # 4. wait auction_delay + 1
-    do_await_era_change "4"
+    do_await_era_change "3"
     # 5. Assert that the validator is bonded in.
     assert_new_bonded_validator "6"
     log "The new node has bonded in."
