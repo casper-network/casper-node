@@ -66,9 +66,9 @@ impl TestChain {
         // Override accounts with those generated from the keys.
         let accounts = stakes
             .into_iter()
-            .map(|(public_key, bounded_amount)| {
+            .map(|(public_key, bonded_amount)| {
                 let validator_config =
-                    ValidatorConfig::new(Motes::new(bounded_amount), DelegationRate::zero());
+                    ValidatorConfig::new(Motes::new(bonded_amount), DelegationRate::zero());
                 AccountConfig::new(
                     public_key,
                     Motes::new(U512::from(rng.gen_range(10000..99999999))),
