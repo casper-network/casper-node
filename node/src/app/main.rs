@@ -42,17 +42,20 @@ fn panic_hook(info: &PanicInfo) {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut runtime = Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .max_threads(MAX_THREAD_COUNT)
-        .build()
-        .unwrap();
+    let exit_code = {
+        let mut runtime = Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .max_threads(MAX_THREAD_COUNT)
+            .build()
+            .unwrap();
 
-    panic::set_hook(Box::new(panic_hook));
+        panic::set_hook(Box::new(panic_hook));
 
-    // Parse CLI args and run selected subcommand.
-    let opts = Cli::from_args();
+        // Parse CLI args and run selected subcommand.
+        let opts = Cli::from_args();
 
-    runtime.block_on(async { opts.run().await })
+        runtime.block_on(async { opts.run().await })?
+    };
+    process::exit(exit_code);
 }
