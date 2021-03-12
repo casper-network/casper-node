@@ -6,7 +6,7 @@ pub mod standard_payment;
 
 pub use error::Error;
 pub use system_contract_type::{
-    SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+    SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, RESERVED_SYSTEM_CONTRACTS, STANDARD_PAYMENT,
 };
 
 mod error {
@@ -56,24 +56,37 @@ mod system_contract_type {
         convert::TryFrom,
         fmt::{self, Display, Formatter},
     };
+    use std::convert::TryInto;
 
-    use crate::{ApiError, ContractHash, HashAddr};
+    use crate::{ApiError, ContractHash, HashAddr, Key, U256};
+
+    pub const MINT_CONTRACT_RESERVED_ID: u8 = 1;
+    pub const HANDLE_PAYMENT_CONTRACT_RESERVED_ID: u8 = 2;
+    pub const STANDARD_PAYMENT_CONTRACT_RESERVED_ID: u8 = 3;
+    pub const AUCTION_CONTRACT_RESERVED_ID: u8 = 4;
 
     /// System contract types.
     ///
-    /// Represents a specific system contract and allows easy conversion into a [`ContractHash`].
+    /// Represents a system contract and allows easy conversion from and into a [`ContractHash`].
     #[derive(Debug, Copy, Clone, PartialEq)]
-    #[repr(u8)]
     pub enum SystemContractType {
         /// Mint contract.
-        Mint = 0,
+        Mint,
         /// Handle Payment contract.
-        HandlePayment = 1,
+        HandlePayment,
         /// Standard Payment contract.
-        StandardPayment = 2,
+        StandardPayment,
         /// Auction contract.
-        Auction = 3,
+        Auction,
     }
+
+    /// List of the reserved system contracts.
+    pub const RESERVED_SYSTEM_CONTRACTS: [SystemContractType; 4] = [
+        SystemContractType::Mint,
+        SystemContractType::HandlePayment,
+        SystemContractType::StandardPayment,
+        SystemContractType::Auction,
+    ];
 
     /// Name of mint system contract
     pub const MINT: &str = "mint";
@@ -85,44 +98,80 @@ mod system_contract_type {
     pub const AUCTION: &str = "auction";
 
     impl SystemContractType {
-        /// Returns a fixed [`ContractHash`] value for given contract type.
+        fn reserved_id(&self) -> u8 {
+            match self {
+                SystemContractType::Mint => MINT_CONTRACT_RESERVED_ID,
+                SystemContractType::HandlePayment => HANDLE_PAYMENT_CONTRACT_RESERVED_ID,
+                SystemContractType::StandardPayment => STANDARD_PAYMENT_CONTRACT_RESERVED_ID,
+                SystemContractType::Auction => AUCTION_CONTRACT_RESERVED_ID,
+            }
+        }
+
+        fn into_address(self) -> HashAddr {
+            let reserved_value = U256::from(self.reserved_id());
+            let mut address = HashAddr::default();
+            reserved_value.to_big_endian(&mut address);
+            address
+        }
+
+        /// Creates a [`SystemContractType`] from an address.
+        pub fn from_address(address: HashAddr) -> Option<SystemContractType> {
+            // Treats a contract hash that contains as single left padded u8 value as a number.
+            let address_value = U256::from_big_endian(&address);
+
+            // Value of 0 is currently considered a special address that is not used for contract
+            // storage.
+            if address_value.is_zero() {
+                return None;
+            }
+
+            // Limits the address space to a maximum of 255 reserved contracts.
+            let contract_index: u8 = address_value.try_into().ok()?;
+
+            match contract_index {
+                MINT_CONTRACT_RESERVED_ID => Some(SystemContractType::Mint),
+                HANDLE_PAYMENT_CONTRACT_RESERVED_ID => Some(SystemContractType::HandlePayment),
+                STANDARD_PAYMENT_CONTRACT_RESERVED_ID => Some(SystemContractType::StandardPayment),
+                AUCTION_CONTRACT_RESERVED_ID => Some(SystemContractType::Auction),
+                _ => None,
+            }
+        }
+
+        /// Returns a [`Key::Hash`] variant using that contains a reserved system contract hash.
+        pub fn into_key(self) -> Key {
+            Key::Hash(self.into_address())
+        }
+
+        /// Returns a reserved [`ContractHash`] value for given contract type.
+        ///
+        /// Reserved system contract hashes are in range of [1..255] and are left padded with zeros.
         pub fn into_contract_hash(self) -> ContractHash {
-            let value = self as u8 + 1;
-            let mut address: HashAddr = Default::default();
-            address[address.len() - 1] = value;
+            let address = self.into_address();
             ContractHash::new(address)
         }
-    }
 
-    impl From<SystemContractType> for u32 {
-        fn from(system_contract_type: SystemContractType) -> u32 {
-            system_contract_type as u32
+        /// Returns a name.
+        pub fn name(&self) -> &str {
+            match self {
+                SystemContractType::Mint => MINT,
+                SystemContractType::HandlePayment => HANDLE_PAYMENT,
+                SystemContractType::StandardPayment => STANDARD_PAYMENT,
+                SystemContractType::Auction => AUCTION,
+            }
         }
     }
 
-    // This conversion is not intended to be used by third party crates.
-    #[doc(hidden)]
-    impl TryFrom<u32> for SystemContractType {
+    impl TryFrom<ContractHash> for SystemContractType {
         type Error = ApiError;
-        fn try_from(value: u32) -> Result<SystemContractType, Self::Error> {
-            match value {
-                0 => Ok(SystemContractType::Mint),
-                1 => Ok(SystemContractType::HandlePayment),
-                2 => Ok(SystemContractType::StandardPayment),
-                3 => Ok(SystemContractType::Auction),
-                _ => Err(ApiError::InvalidSystemContract),
-            }
+        fn try_from(contract_hash: ContractHash) -> Result<SystemContractType, Self::Error> {
+            SystemContractType::from_address(contract_hash.value())
+                .ok_or(ApiError::InvalidSystemContract)
         }
     }
 
     impl Display for SystemContractType {
         fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-            match *self {
-                SystemContractType::Mint => write!(f, "{}", MINT),
-                SystemContractType::HandlePayment => write!(f, "{}", HANDLE_PAYMENT),
-                SystemContractType::StandardPayment => write!(f, "{}", STANDARD_PAYMENT),
-                SystemContractType::Auction => write!(f, "{}", AUCTION),
-            }
+            write!(f, "{}", self.name())
         }
     }
 
@@ -133,33 +182,155 @@ mod system_contract_type {
         use super::*;
 
         const MINT_CONTRACT_HASH: ContractHash = ContractHash::new([
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            MINT_CONTRACT_RESERVED_ID,
         ]);
         const HANDLE_PAYMENT_CONTRACT_HASH: ContractHash = ContractHash::new([
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            HANDLE_PAYMENT_CONTRACT_RESERVED_ID,
         ]);
         const STANDARD_PAYMENT_CONTRACT_HASH: ContractHash = ContractHash::new([
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            STANDARD_PAYMENT_CONTRACT_RESERVED_ID,
         ]);
         const AUCTION_CONTRACT_HASH: ContractHash = ContractHash::new([
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            AUCTION_CONTRACT_RESERVED_ID,
         ]);
 
+        fn contract_hash_from_number(value: U256) -> ContractHash {
+            let mut addr: HashAddr = Default::default();
+            value.to_big_endian(&mut addr);
+            ContractHash::new(addr)
+        }
+
         #[test]
-        fn get_index_of_mint_contract() {
-            let index: u32 = SystemContractType::Mint.into();
-            assert_eq!(index, 0u32);
+        fn get_name_of_mint_contract() {
             assert_eq!(SystemContractType::Mint.to_string(), MINT);
         }
 
         #[test]
-        fn get_index_of_handle_payment_contract() {
-            let index: u32 = SystemContractType::HandlePayment.into();
-            assert_eq!(index, 1u32);
+        fn get_name_of_handle_payment_contract() {
             assert_eq!(
                 SystemContractType::HandlePayment.to_string(),
                 HANDLE_PAYMENT
@@ -167,9 +338,7 @@ mod system_contract_type {
         }
 
         #[test]
-        fn get_index_of_standard_payment_contract() {
-            let index: u32 = SystemContractType::StandardPayment.into();
-            assert_eq!(index, 2u32);
+        fn get_name_of_standard_payment_contract() {
             assert_eq!(
                 SystemContractType::StandardPayment.to_string(),
                 STANDARD_PAYMENT
@@ -177,42 +346,64 @@ mod system_contract_type {
         }
 
         #[test]
-        fn get_index_of_auction_contract() {
-            let index: u32 = SystemContractType::Auction.into();
-            assert_eq!(index, 3u32);
+        fn get_name_of_auction_contract() {
             assert_eq!(SystemContractType::Auction.to_string(), AUCTION);
         }
 
         #[test]
+        fn create_invalid_system_contract_type() {
+            assert_eq!(
+                SystemContractType::try_from(ContractHash::new([0xff; 32])),
+                Err(ApiError::InvalidSystemContract)
+            );
+        }
+
+        #[test]
         fn create_mint_variant_from_int() {
-            let mint = SystemContractType::try_from(0).ok().unwrap();
+            let mint = SystemContractType::try_from(MINT_CONTRACT_HASH)
+                .ok()
+                .unwrap();
             assert_eq!(mint, SystemContractType::Mint);
         }
 
         #[test]
         fn create_handle_payment_variant_from_int() {
-            let handle_payment = SystemContractType::try_from(1).ok().unwrap();
+            let handle_payment = SystemContractType::try_from(HANDLE_PAYMENT_CONTRACT_HASH)
+                .ok()
+                .unwrap();
             assert_eq!(handle_payment, SystemContractType::HandlePayment);
         }
 
         #[test]
         fn create_standard_payment_variant_from_int() {
-            let handle_payment = SystemContractType::try_from(2).ok().unwrap();
+            let handle_payment = SystemContractType::try_from(STANDARD_PAYMENT_CONTRACT_HASH)
+                .ok()
+                .unwrap();
             assert_eq!(handle_payment, SystemContractType::StandardPayment);
         }
 
         #[test]
         fn create_auction_variant_from_int() {
-            let auction = SystemContractType::try_from(3).ok().unwrap();
+            let auction = SystemContractType::try_from(AUCTION_CONTRACT_HASH)
+                .ok()
+                .unwrap();
             assert_eq!(auction, SystemContractType::Auction);
         }
 
         #[test]
         fn create_unknown_system_contract_variant() {
-            assert!(SystemContractType::try_from(4).is_err());
-            assert!(SystemContractType::try_from(5).is_err());
-            assert!(SystemContractType::try_from(10).is_err());
-            assert!(SystemContractType::try_from(u32::max_value()).is_err());
+            assert!(SystemContractType::try_from(contract_hash_from_number(0.into())).is_err());
+            assert!(SystemContractType::try_from(contract_hash_from_number(5.into())).is_err());
+            assert!(SystemContractType::try_from(contract_hash_from_number(6.into())).is_err());
+            assert!(SystemContractType::try_from(contract_hash_from_number(11.into())).is_err());
+            assert!(SystemContractType::try_from(contract_hash_from_number(
+                (u8::max_value() as u16 + 1).into()
+            ))
+            .is_err());
+            assert!(SystemContractType::try_from(contract_hash_from_number(
+                u32::max_value().into()
+            ))
+            .is_err());
         }
 
         #[test]
@@ -232,6 +423,26 @@ mod system_contract_type {
             assert_eq!(
                 SystemContractType::StandardPayment.into_contract_hash(),
                 STANDARD_PAYMENT_CONTRACT_HASH
+            );
+        }
+
+        #[test]
+        fn create_hash_key_from() {
+            assert_eq!(
+                SystemContractType::Auction.into_key(),
+                Key::Hash(AUCTION_CONTRACT_HASH.value()),
+            );
+            assert_eq!(
+                SystemContractType::HandlePayment.into_key(),
+                Key::Hash(HANDLE_PAYMENT_CONTRACT_HASH.value()),
+            );
+            assert_eq!(
+                SystemContractType::Mint.into_key(),
+                Key::Hash(MINT_CONTRACT_HASH.value()),
+            );
+            assert_eq!(
+                SystemContractType::StandardPayment.into_key(),
+                Key::Hash(STANDARD_PAYMENT_CONTRACT_HASH.value()),
             );
         }
     }

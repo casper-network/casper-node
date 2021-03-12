@@ -843,8 +843,6 @@ where
             entry_points,
         );
 
-        self.protocol_data = ProtocolData::partial_with_mint(contract_hash);
-
         Ok(contract_hash)
     }
 
@@ -1184,7 +1182,7 @@ where
             ARG_AMOUNT => amount,
         };
 
-        let base_key = Key::Hash(self.protocol_data.mint().value());
+        let base_key = SystemContractType::Mint.into_key();
         let mint = {
             if let StoredValue::Contract(contract) = self
                 .tracking_copy
@@ -1227,7 +1225,11 @@ where
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 
         let purse_uref = runtime
-            .call_contract(self.protocol_data.mint(), METHOD_MINT, args)
+            .call_contract(
+                SystemContractType::Mint.into_contract_hash(),
+                METHOD_MINT,
+                args,
+            )
             .map_err(GenesisError::ExecutionError)?
             .into_t::<Result<URef, mint::Error>>()
             .map_err(|cl_value_error| GenesisError::CLValue(cl_value_error.to_string()))?

@@ -85,20 +85,7 @@ where
         ret
     };
 
-    let protocol_data = {
-        let mint = builder.get_mint_contract_hash();
-        let handle_payment = builder.get_mint_contract_hash();
-        let standard_payment = builder.get_standard_payment_contract_hash();
-        let auction = builder.get_auction_contract_hash();
-        ProtocolData::new(
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            mint,
-            handle_payment,
-            standard_payment,
-            auction,
-        )
-    };
+    let protocol_data = { ProtocolData::new(*DEFAULT_WASM_CONFIG, *DEFAULT_SYSTEM_CONFIG) };
 
     let transfers = Vec::default();
 
@@ -141,7 +128,6 @@ where
             correlation_id,
             &preprocessor,
             &protocol_version,
-            &protocol_data,
             phase,
         )
         .expect("should get wasm module");

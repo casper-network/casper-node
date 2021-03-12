@@ -5,8 +5,8 @@ use thiserror::Error;
 
 use casper_types::{
     bytesrepr,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    ContractHash, Key, ProtocolVersion,
+    system::{SystemContractType, RESERVED_SYSTEM_CONTRACTS},
+    Key, ProtocolVersion,
 };
 
 use crate::{
@@ -18,10 +18,7 @@ use crate::{
         wasm_config::WasmConfig,
         TypeMismatch,
     },
-    storage::{
-        global_state::{CommitResult, StateProvider},
-        protocol_data::ProtocolData,
-    },
+    storage::global_state::{CommitResult, StateProvider},
 };
 
 pub type ActivationPoint = u64;
@@ -192,7 +189,6 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
-    protocol_data: ProtocolData,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -202,12 +198,10 @@ where
 {
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
-        protocol_data: ProtocolData,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
-            protocol_data,
             tracking_copy,
         }
     }
@@ -217,44 +211,38 @@ where
         &self,
         correlation_id: CorrelationId,
     ) -> Result<(), ProtocolUpgradeError> {
-        self.store_contract(correlation_id, self.protocol_data.mint(), MINT)?;
-        self.store_contract(correlation_id, self.protocol_data.auction(), AUCTION)?;
-        self.store_contract(
-            correlation_id,
-            self.protocol_data.handle_payment(),
-            HANDLE_PAYMENT,
-        )?;
-        self.store_contract(
-            correlation_id,
-            self.protocol_data.standard_payment(),
-            STANDARD_PAYMENT,
-        )?;
-
+        for system_contract in &RESERVED_SYSTEM_CONTRACTS {
+            self.store_system_contract(correlation_id, *system_contract)?;
+        }
         Ok(())
     }
 
-    fn store_contract(
+    fn store_system_contract(
         &self,
         correlation_id: CorrelationId,
-        contract_hash: ContractHash,
-        contract_name: &str,
+        system_contract_type: SystemContractType,
     ) -> Result<(), ProtocolUpgradeError> {
-        let contract_key = Key::Hash(contract_hash.value());
+        let contract_key = system_contract_type.into_key();
+        let contract_hash = system_contract_type.into_contract_hash();
 
         let mut contract = if let StoredValue::Contract(contract) = self
             .tracking_copy
             .borrow_mut()
             .read(correlation_id, &contract_key)
             .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                )
             })?
             .ok_or_else(|| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                )
             })? {
             contract
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                contract_name.to_string(),
+                system_contract_type.to_string(),
             ));
         };
 
@@ -266,25 +254,27 @@ where
             .read(correlation_id, &contract_package_key)
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                    contract_name.to_string(),
+                    system_contract_type.to_string(),
                 )
             })?
             .ok_or_else(|| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                    contract_name.to_string(),
+                    system_contract_type.to_string(),
                 )
             })? {
             contract_package
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                contract_name.to_string(),
+                system_contract_type.to_string(),
             ));
         };
 
         contract_package
             .disable_contract_version(contract_hash)
             .map_err(|_| {
-                ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
+                ProtocolUpgradeError::FailedToDisablePreviousVersion(
+                    system_contract_type.to_string(),
+                )
             })?;
         contract.set_protocol_version(self.new_protocol_version);
         contract_package

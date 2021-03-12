@@ -59,6 +59,7 @@ use casper_types::{
             METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
+        SystemContractType,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
     DeployHash, DeployInfo, Key, KeyTag, PublicKey, RuntimeArgs, Transfer, TransferAddr, URef,
@@ -101,14 +102,6 @@ pub struct WasmTestBuilder<S> {
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
-    /// Mint contract key
-    mint_contract_hash: Option<ContractHash>,
-    /// Handle payment contract key
-    handle_payment_contract_hash: Option<ContractHash>,
-    /// Standard payment contract key
-    standard_payment_hash: Option<ContractHash>,
-    /// Auction contract key
-    auction_contract_hash: Option<ContractHash>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -135,10 +128,6 @@ impl Default for InMemoryWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
         }
     }
 }
@@ -156,10 +145,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             transforms: self.transforms.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
-            mint_contract_hash: self.mint_contract_hash,
-            handle_payment_contract_hash: self.handle_payment_contract_hash,
-            standard_payment_hash: self.standard_payment_hash,
-            auction_contract_hash: self.auction_contract_hash,
         }
     }
 }
@@ -228,10 +213,6 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
         }
     }
 
@@ -251,8 +232,6 @@ impl LmdbWasmTestBuilder {
         // Applies existing properties from gi
         builder.genesis_hash = result.0.genesis_hash;
         builder.post_state_hash = result.0.post_state_hash;
-        builder.mint_contract_hash = result.0.mint_contract_hash;
-        builder.handle_payment_contract_hash = result.0.handle_payment_contract_hash;
         builder
     }
 
@@ -292,10 +271,6 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
         }
     }
 
@@ -327,10 +302,6 @@ where
             post_state_hash: result.0.post_state_hash,
             transforms: Vec::new(),
             genesis_account: result.0.genesis_account,
-            mint_contract_hash: result.0.mint_contract_hash,
-            handle_payment_contract_hash: result.0.handle_payment_contract_hash,
-            standard_payment_hash: result.0.standard_payment_hash,
-            auction_contract_hash: result.0.auction_contract_hash,
             genesis_transforms: result.0.genesis_transforms,
         }
     }
@@ -364,14 +335,14 @@ where
                 .engine_state
                 .get_protocol_data(run_genesis_request.protocol_version())
                 .expect("should read protocol data");
-            let protocol_data = maybe_protocol_data.expect("should have protocol data stored");
+
+            assert!(
+                maybe_protocol_data.is_some(),
+                "should have protocol data stored"
+            );
 
             self.genesis_hash = Some(state_root_hash);
             self.post_state_hash = Some(state_root_hash);
-            self.mint_contract_hash = Some(protocol_data.mint());
-            self.handle_payment_contract_hash = Some(protocol_data.handle_payment());
-            self.standard_payment_hash = Some(protocol_data.standard_payment());
-            self.auction_contract_hash = Some(protocol_data.auction());
             self.genesis_account = Some(genesis_account);
             self.genesis_transforms = Some(transforms);
             return self;
@@ -431,10 +402,7 @@ where
     }
 
     pub fn total_supply(&self, maybe_post_state: Option<Blake2bHash>) -> U512 {
-        let mint_key: Key = self
-            .mint_contract_hash
-            .expect("should have mint_contract_hash")
-            .into();
+        let mint_key: Key = SystemContractType::Mint.into_key();
 
         let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
 
@@ -626,23 +594,19 @@ where
     }
 
     pub fn get_mint_contract_hash(&self) -> ContractHash {
-        self.mint_contract_hash
-            .expect("Unable to obtain mint contract. Please run genesis first.")
+        SystemContractType::Mint.into_contract_hash()
     }
 
     pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
-        self.handle_payment_contract_hash
-            .expect("Unable to obtain handle payment contract. Please run genesis first.")
+        SystemContractType::HandlePayment.into_contract_hash()
     }
 
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
-        self.standard_payment_hash
-            .expect("Unable to obtain standard payment contract. Please run genesis first.")
+        SystemContractType::StandardPayment.into_contract_hash()
     }
 
     pub fn get_auction_contract_hash(&self) -> ContractHash {
-        self.auction_contract_hash
-            .expect("Unable to obtain auction contract. Please run genesis first.")
+        SystemContractType::Auction.into_contract_hash()
     }
 
     pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {
@@ -705,10 +669,7 @@ where
     }
 
     pub fn get_handle_payment_contract(&self) -> Contract {
-        let handle_payment_contract: Key = self
-            .handle_payment_contract_hash
-            .expect("should have handle payment contract uref")
-            .into();
+        let handle_payment_contract: Key = SystemContractType::HandlePayment.into_key();
         self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
             .expect("should find handle payment URef")

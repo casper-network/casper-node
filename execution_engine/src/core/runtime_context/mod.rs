@@ -14,7 +14,7 @@ use casper_types::{
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    system::auction::EraInfo,
+    system::{auction::EraInfo, RESERVED_SYSTEM_CONTRACTS},
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
     DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
     RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
@@ -731,13 +731,9 @@ where
 
     /// Checks if we are calling a system contract.
     pub(crate) fn is_system_contract(&self) -> bool {
-        if let Some(hash) = self.base_key().into_hash() {
-            let system_contracts = self.protocol_data().system_contracts();
-            if system_contracts.contains(&hash.into()) {
-                return true;
-            }
-        }
-        false
+        RESERVED_SYSTEM_CONTRACTS
+            .iter()
+            .any(|contract| contract.into_key() == self.base_key())
     }
 
     /// Charges gas for specified amount of bytes used.

@@ -3,6 +3,7 @@
 
 use std::{
     cell::RefCell,
+    convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     rc::Rc,
 };
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    system::mint::ARG_AMOUNT,
+    system::{mint::ARG_AMOUNT, SystemContractType},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
     EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, U512,
 };
@@ -37,7 +38,7 @@ use crate::{
         account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm_prep,
         wasm_prep::Preprocessor,
     },
-    storage::{global_state::StateReader, protocol_data::ProtocolData},
+    storage::global_state::StateReader,
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -148,7 +149,6 @@ impl ExecutableDeployItem {
         correlation_id: CorrelationId,
         preprocessor: &Preprocessor,
         protocol_version: &ProtocolVersion,
-        protocol_data: &ProtocolData,
         phase: Phase,
     ) -> Result<DeployMetadata, Error>
     where
@@ -182,11 +182,12 @@ impl ExecutableDeployItem {
 
                 let contract_hash = stored_contract_key
                     .into_hash()
+                    .map(ContractHash::new)
                     .ok_or(Error::InvalidKeyVariant)?;
 
                 let contract = tracking_copy
                     .borrow_mut()
-                    .get_contract(correlation_id, contract_hash.into())?;
+                    .get_contract(correlation_id, contract_hash)?;
 
                 if !contract.is_compatible_protocol_version(*protocol_version) {
                     let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
@@ -250,7 +251,7 @@ impl ExecutableDeployItem {
                 (
                     contract_package,
                     contract,
-                    contract_hash.value(),
+                    contract_hash,
                     contract_package_key,
                 )
             }
@@ -270,10 +271,7 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        if protocol_data
-            .system_contracts()
-            .contains(&contract_hash.into())
-        {
+        if SystemContractType::try_from(contract_hash).is_ok() {
             return Ok(DeployMetadata::System {
                 base_key,
                 contract,

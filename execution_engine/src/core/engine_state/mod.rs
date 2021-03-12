@@ -39,6 +39,7 @@ use casper_types::{
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
+        SystemContractType,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, KeyTag,
     Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
@@ -162,30 +163,23 @@ where
         );
 
         // Create mint
-        let mint_hash = genesis_installer.create_mint()?;
+        genesis_installer.create_mint()?;
 
         // Create accounts
         genesis_installer.create_accounts()?;
 
         // Create handle payment
-        let handle_payment_hash = genesis_installer.create_handle_payment()?;
+        genesis_installer.create_handle_payment()?;
 
         // Create auction
-        let auction_hash = genesis_installer.create_auction()?;
+        genesis_installer.create_auction()?;
 
         // Create standard payment
-        let standard_payment_hash = genesis_installer.create_standard_payment();
+        genesis_installer.create_standard_payment();
 
         // Associate given CostTable with given ProtocolVersion.
         {
-            let protocol_data = ProtocolData::new(
-                *wasm_config,
-                *system_config,
-                mint_hash,
-                handle_payment_hash,
-                standard_payment_hash,
-                auction_hash,
-            );
+            let protocol_data = ProtocolData::new(*wasm_config, *system_config);
 
             self.state
                 .put_protocol_data(protocol_version, &protocol_data)
@@ -251,11 +245,8 @@ where
 
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {
-            let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
-                new_protocol_version,
-                current_protocol_data,
-                tracking_copy.clone(),
-            );
+            let system_upgrader: SystemUpgrader<S> =
+                SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
 
             system_upgrader
                 .upgrade_system_contracts_major_version(correlation_id)
@@ -274,14 +265,7 @@ where
         };
 
         // 3.1.2.2 persist wasm CostTable
-        let new_protocol_data = ProtocolData::new(
-            *new_wasm_config,
-            *new_system_config,
-            current_protocol_data.mint(),
-            current_protocol_data.handle_payment(),
-            current_protocol_data.standard_payment(),
-            current_protocol_data.auction(),
-        );
+        let new_protocol_data = ProtocolData::new(*new_wasm_config, *new_system_config);
 
         self.state
             .put_protocol_data(new_protocol_version, &new_protocol_data)
@@ -290,9 +274,10 @@ where
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::Auction.into_contract_hash(),
+            )?;
 
             let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
             let value = StoredValue::CLValue(
@@ -303,9 +288,10 @@ where
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::Auction.into_contract_hash(),
+            )?;
 
             let auction_delay_key = auction_contract.named_keys()[AUCTION_DELAY_KEY];
             let value = StoredValue::CLValue(
@@ -316,9 +302,10 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::Auction.into_contract_hash(),
+            )?;
 
             let locked_funds_period_key = auction_contract.named_keys()[LOCKED_FUNDS_PERIOD_KEY];
             let value = StoredValue::CLValue(
@@ -331,9 +318,10 @@ where
         }
 
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::Auction.into_contract_hash(),
+            )?;
 
             let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
             let value = StoredValue::CLValue(
@@ -349,9 +337,10 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.mint())?;
+            let mint_contract = tracking_copy.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::Mint.into_contract_hash(),
+            )?;
 
             let locked_funds_period_key = mint_contract.named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
             let value = StoredValue::CLValue(
@@ -579,10 +568,10 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
 
-        let mint_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, protocol_data.mint())
-        {
+        let mint_contract = match tracking_copy.borrow_mut().get_contract(
+            correlation_id,
+            SystemContractType::Mint.into_contract_hash(),
+        ) {
             Ok(contract) => contract,
             Err(error) => {
                 return Ok(ExecutionResult::precondition_failure(error.into()));
@@ -591,12 +580,12 @@ where
 
         let mut mint_named_keys = mint_contract.named_keys().to_owned();
         let mut mint_extra_keys: Vec<Key> = vec![];
-        let mint_base_key = Key::from(protocol_data.mint());
+        let mint_base_key = SystemContractType::Mint.into_key();
 
-        let handle_payment_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, protocol_data.handle_payment())
-        {
+        let handle_payment_contract = match tracking_copy.borrow_mut().get_contract(
+            correlation_id,
+            SystemContractType::HandlePayment.into_contract_hash(),
+        ) {
             Ok(contract) => contract,
             Err(error) => {
                 return Ok(ExecutionResult::precondition_failure(error.into()));
@@ -605,7 +594,7 @@ where
 
         let mut handle_payment_named_keys = handle_payment_contract.named_keys().to_owned();
         let handle_payment_extra_keys: Vec<Key> = vec![];
-        let handle_payment_base_key = Key::from(protocol_data.handle_payment());
+        let handle_payment_base_key = SystemContractType::HandlePayment.into_key();
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -979,7 +968,7 @@ where
                     handle_payment_args,
                     &mut handle_payment_named_keys,
                     Default::default(),
-                    Key::from(protocol_data.handle_payment()),
+                    SystemContractType::HandlePayment.into_key(),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1119,7 +1108,6 @@ where
             correlation_id,
             &preprocessor,
             &protocol_version,
-            &protocol_data,
             Phase::Session,
         ) {
             Ok(metadata) => metadata,
@@ -1198,7 +1186,6 @@ where
                 correlation_id,
                 &preprocessor,
                 &protocol_version,
-                &protocol_data,
                 phase,
             ) {
                 Ok(metadata) => metadata,
@@ -1305,10 +1292,10 @@ where
         let payment_purse_balance: Motes = {
             // Get handle payment system contract details
             // payment_code_spec_6: system contract validity
-            let handle_payment_contract = match tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, protocol_data.handle_payment())
-            {
+            let handle_payment_contract = match tracking_copy.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::HandlePayment.into_contract_hash(),
+            ) {
                 Ok(contract) => contract,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(error.into()));
@@ -1566,10 +1553,10 @@ where
 
             // The Handle Payment keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let handle_payment_contract = match finalization_tc
-                .borrow_mut()
-                .get_contract(correlation_id, protocol_data.handle_payment())
-            {
+            let handle_payment_contract = match finalization_tc.borrow_mut().get_contract(
+                correlation_id,
+                SystemContractType::HandlePayment.into_contract_hash(),
+            ) {
                 Ok(info) => info,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
@@ -1585,7 +1572,7 @@ where
                     handle_payment_args,
                     &mut handle_payment_keys,
                     Default::default(),
-                    Key::from(protocol_data.handle_payment()),
+                    SystemContractType::HandlePayment.into_key(),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1693,7 +1680,10 @@ where
 
         let auction_contract: Contract = tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, protocol_data.auction())
+            .get_contract(
+                correlation_id,
+                SystemContractType::Auction.into_contract_hash(),
+            )
             .map_err(Error::from)?;
 
         let system_module = {
@@ -1706,7 +1696,7 @@ where
         let executor = Executor::new(self.config);
 
         let mut named_keys = auction_contract.named_keys().to_owned();
-        let base_key = Key::from(protocol_data.auction());
+        let base_key = SystemContractType::Auction.into_key();
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
@@ -1811,7 +1801,7 @@ where
             Preprocessor::new(*wasm_config)
         };
 
-        let auction_hash = protocol_data.auction();
+        let auction_hash = SystemContractType::Auction.into_contract_hash();
 
         let auction_contract = match tracking_copy
             .borrow_mut()
@@ -1848,7 +1838,7 @@ where
             DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
-        let base_key = Key::from(protocol_data.auction());
+        let base_key = SystemContractType::Auction.into_key();
 
         let reward_factors = match step_request.reward_factors() {
             Ok(reward_factors) => reward_factors,

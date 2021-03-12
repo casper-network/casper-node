@@ -8,7 +8,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    system::{auction, handle_payment, mint},
+    system::{auction, handle_payment, mint, SystemContractType},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
     Phase, ProtocolVersion, RuntimeArgs,
 };
@@ -177,81 +177,44 @@ impl Executor {
             |uref| runtime_context::uref_has_access_rights(uref, &accounts_access_rights)
         ));
 
-        if runtime.is_mint(base_key) {
-            match runtime.call_host_mint(
+        let maybe_system_contract = base_key
+            .into_hash()
+            .and_then(SystemContractType::from_address);
+
+        let host_call_result = match maybe_system_contract {
+            Some(SystemContractType::Mint) => runtime.call_host_mint(
                 protocol_version,
                 entry_point.name(),
                 &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-            ) {
-                Ok(_value) => {
-                    return ExecutionResult::Success {
-                        effect: runtime.context().effect(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-                Err(error) => {
-                    return ExecutionResult::Failure {
-                        error: error.into(),
-                        effect: effects_snapshot,
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-            }
-        } else if runtime.is_handle_payment(base_key) {
-            match runtime.call_host_handle_payment(
+            ),
+            Some(SystemContractType::HandlePayment) => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point.name(),
                 &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-            ) {
-                Ok(_value) => {
-                    return ExecutionResult::Success {
-                        effect: runtime.context().effect(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-                Err(error) => {
-                    return ExecutionResult::Failure {
-                        error: error.into(),
-                        effect: effects_snapshot,
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-            }
-        } else if runtime.is_auction(base_key) {
-            match runtime.call_host_auction(
+            ),
+            Some(SystemContractType::Auction) => runtime.call_host_auction(
                 protocol_version,
                 entry_point.name(),
                 &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-            ) {
-                Ok(_value) => {
-                    return ExecutionResult::Success {
-                        effect: runtime.context().effect(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    }
-                }
-                Err(error) => {
-                    return ExecutionResult::Failure {
-                        error: error.into(),
-                        effect: effects_snapshot,
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    }
-                }
+            ),
+            None | Some(SystemContractType::StandardPayment) => {
+                // Invokes WASM entry point with an explicit conversion of return value into an
+                // unit.
+                instance
+                    .invoke_export(entry_point_name, &[], &mut runtime)
+                    .map(|_| CLValue::unit())
+                    .map_err(Error::from)
             }
-        }
+        };
+
         on_fail_charge!(
-            instance.invoke_export(entry_point_name, &[], &mut runtime),
+            host_call_result,
             runtime.context().gas_counter(),
             effects_snapshot,
             runtime.context().transfers().to_owned()
@@ -376,7 +339,7 @@ impl Executor {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
-                if Some(protocol_data.auction().value()) != base_key.into_hash() {
+                if SystemContractType::Auction.into_key() != base_key {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -385,7 +348,7 @@ impl Executor {
             }
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse => {
-                if Some(protocol_data.handle_payment().value()) != base_key.into_hash() {
+                if SystemContractType::HandlePayment.into_key() != base_key {
                     panic!(
                         "{} should only be called with the handle payment contract",
                         direct_system_contract_call.entry_point_name()
@@ -393,7 +356,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
-                if Some(protocol_data.mint().value()) != base_key.into_hash() {
+                if SystemContractType::Mint.into_key() != base_key {
                     panic!(
                         "{} should only be called with the mint contract",
                         direct_system_contract_call.entry_point_name()
@@ -401,7 +364,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::GetEraValidators => {
-                if Some(protocol_data.auction().value()) != base_key.into_hash() {
+                if SystemContractType::Auction.into_key() != base_key {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
