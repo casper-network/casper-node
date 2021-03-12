@@ -14,14 +14,14 @@ use fs2::FileExt;
 use thiserror::Error;
 use tracing::warn;
 
-/// A PID file.
+/// A PID (process ID) file.
 ///
 /// Records the current process' PID, removes it on exit. Can be used to determine whether or not
 /// an application was shut down cleanly.
 ///
 /// The pidfile is held open with an exclusive but advisory lock.
 #[derive(Debug)]
-pub struct Pidfile {
+pub struct PidFile {
     /// The pidfile.
     ///
     /// The file will be locked for the lifetime of `Pidfile`.
@@ -34,7 +34,7 @@ pub struct Pidfile {
 
 /// An error acquiring a pidfile.
 #[derive(Debug, Error)]
-pub enum PidfileError {
+pub enum PidFileError {
     /// The pidfile could not be opened at all.
     #[error("could not pidfile: {0}")]
     CouldNotOpen(#[source] io::Error),
@@ -66,30 +66,30 @@ pub enum PidfileOutcome {
     /// Another instance of the node is likely running, or an attempt was made to reuse a pidfile.
     ///
     /// **Recommendation**: Exit to avoid resource conflicts.
-    AnotherNodeRunning(PidfileError),
+    AnotherNodeRunning(PidFileError),
     /// The node crashed previously and could potentially have been corrupted.
     ///
-    /// **Recommendation**: Run an integrity check, then potentially continue with intialization.
+    /// **Recommendation**: Run an integrity check, then potentially continue with initialization.
     ///                     **Store the `Pidfile`**.
-    Crashed(Pidfile),
+    Crashed(PidFile),
     /// Clean start, pidfile lock acquired.
     ///
     /// **Recommendation**: Continue with intialization, but **store the `Pidfile`**.
-    Clean(Pidfile),
+    Clean(PidFile),
     /// There was an error managing the pidfile, not sure if we have crashed or not.
     ///
     /// **Recommendation**: Exit, as it will not be possible to determine a crash at the next
     /// start.
-    PidfileError(PidfileError),
+    PidfileError(PidFileError),
 }
 
-impl Pidfile {
+impl PidFile {
     /// Acquire a `Pidfile` and give an actionable outcome.
     ///
     /// **Important**: This function should be called **before** opening whatever resources it is
     /// protecting.
     pub fn acquire<P: AsRef<Path>>(path: P) -> PidfileOutcome {
-        match Pidfile::new(path) {
+        match PidFile::new(path) {
             Ok(pidfile) => {
                 if pidfile.unclean_shutdown() {
                     PidfileOutcome::Crashed(pidfile)
@@ -97,7 +97,7 @@ impl Pidfile {
                     PidfileOutcome::Clean(pidfile)
                 }
             }
-            Err(err @ PidfileError::LockFailed(_)) => PidfileOutcome::AnotherNodeRunning(err),
+            Err(err @ PidFileError::LockFailed(_)) => PidfileOutcome::AnotherNodeRunning(err),
             Err(err) => PidfileOutcome::PidfileError(err),
         }
     }
@@ -107,7 +107,7 @@ impl Pidfile {
     /// The error-behavior of this function is important and can be used to distinguish between
     /// different conditions according to the table below. If the `Pidfile` is instantiated before
     /// the resource it is supposed to protect, the following actions are recommended:
-    fn new<P: AsRef<Path>>(path: P) -> Result<Pidfile, PidfileError> {
+    fn new<P: AsRef<Path>>(path: P) -> Result<PidFile, PidFileError> {
         // First we try to open the pidfile, without disturbing it.
         let mut pidfile = fs::OpenOptions::new()
             .truncate(false)
@@ -115,48 +115,48 @@ impl Pidfile {
             .read(true)
             .write(true)
             .open(path.as_ref())
-            .map_err(PidfileError::CouldNotOpen)?;
+            .map_err(PidFileError::CouldNotOpen)?;
 
         // Now try to acquire an exclusive lock. This will fail if another process or another
         // instance of `Pidfile` is holding a lock onto the same pidfile.
         pidfile
             .try_lock_exclusive()
-            .map_err(PidfileError::LockFailed)?;
+            .map_err(PidFileError::LockFailed)?;
 
         // At this point, we're the exclusive users of the file and can read its contents.
         let mut raw_contents = String::new();
         pidfile
             .read_to_string(&mut raw_contents)
-            .map_err(PidfileError::ReadFailed)?;
+            .map_err(PidFileError::ReadFailed)?;
 
         // Note: We cannot distinguish an empty file from a non-existing file, unfortunately.
-        let previous = if raw_contents == "" {
+        let previous = if raw_contents.is_empty() {
             None
         } else {
-            Some(raw_contents.parse().map_err(PidfileError::Corrupted)?)
+            Some(raw_contents.parse().map_err(PidFileError::Corrupted)?)
         };
 
         let pid = process::id();
 
         // If we encounter our own PID, we got extremely unlucky, or something went really wrong.
         if previous == Some(pid) {
-            return Err(PidfileError::DuplicatedPid);
+            return Err(PidFileError::DuplicatedPid);
         }
 
         // Truncate and rewind.
-        pidfile.set_len(0).map_err(PidfileError::WriteFailed)?;
+        pidfile.set_len(0).map_err(PidFileError::WriteFailed)?;
         pidfile
             .seek(SeekFrom::Start(0))
-            .map_err(PidfileError::WriteFailed)?;
+            .map_err(PidFileError::WriteFailed)?;
 
         // Do our best to ensure that we always have some contents in the file immediately.
         pidfile
             .write_all(pid.to_string().as_bytes())
-            .map_err(PidfileError::WriteFailed)?;
+            .map_err(PidFileError::WriteFailed)?;
 
-        pidfile.flush().map_err(PidfileError::WriteFailed)?;
+        pidfile.flush().map_err(PidFileError::WriteFailed)?;
 
-        Ok(Pidfile {
+        Ok(PidFile {
             pidfile,
             path: path.as_ref().to_owned(),
             previous,
@@ -170,7 +170,7 @@ impl Pidfile {
     }
 }
 
-impl Drop for Pidfile {
+impl Drop for PidFile {
     fn drop(&mut self) {
         // When dropping the pidfile, we delete its file. We are still keeping the logs and the
         // opened file handle, which will get cleaned up naturally.
@@ -186,18 +186,18 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{Pidfile, PidfileOutcome};
+    use super::{PidFile, PidfileOutcome};
 
     #[test]
     fn pidfile_creates_file_and_cleans_it_up() {
         let tmp_dir = TempDir::new().expect("could not create tmp_dir");
         let pidfile_path = tmp_dir.path().join("create_and_cleanup.pid");
 
-        let outcome = Pidfile::acquire(&pidfile_path);
+        let outcome = PidFile::acquire(&pidfile_path);
 
         match outcome {
             PidfileOutcome::Clean(pidfile) => {
-                // Check the pidfile exists, the verify it gets removed after dropping the pidfile.
+                // Check the pidfile exists, then verify it gets removed after dropping the pidfile.
                 assert!(pidfile_path.exists());
                 drop(pidfile);
                 assert!(!pidfile_path.exists());
@@ -214,7 +214,7 @@ mod tests {
         // We create a garbage pidfile to simulate an unclean shutdown.
         fs::write(&pidfile_path, b"12345").expect("could not write garbage pid file");
 
-        let outcome = Pidfile::acquire(&pidfile_path);
+        let outcome = PidFile::acquire(&pidfile_path);
 
         match outcome {
             PidfileOutcome::Crashed(pidfile) => {
@@ -235,13 +235,13 @@ mod tests {
         let tmp_dir = TempDir::new().expect("could not create tmp_dir");
         let pidfile_path = tmp_dir.path().join("create_and_cleanup.pid");
 
-        let outcome = Pidfile::acquire(&pidfile_path);
+        let outcome = PidFile::acquire(&pidfile_path);
 
         match outcome {
             PidfileOutcome::Clean(_pidfile) => {
-                match Pidfile::acquire(&pidfile_path) {
+                match PidFile::acquire(&pidfile_path) {
                     PidfileOutcome::AnotherNodeRunning(_) => {
-                        // All good, lets ensure the loaded pid matches our current pid.
+                        // All good, this is what we expected.
                     }
                     other => panic!(
                         "expected detection of duplicate pidfile access, instead got: {:?}",

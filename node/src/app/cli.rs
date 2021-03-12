@@ -23,7 +23,7 @@ use casper_node::{
     setup_signal_hooks,
     types::ExitCode,
     utils::{
-        pidfile::{Pidfile, PidfileOutcome},
+        pid_file::{PidFile, PidfileOutcome},
         WithDir,
     },
 };
@@ -159,7 +159,7 @@ impl Cli {
                         anyhow::bail!("could not create storage directory to store pidfile in");
                     }
 
-                    Pidfile::acquire(root.join("initializer.pid"))
+                    PidFile::acquire(root.join("initializer.pid"))
                 };
 
                 // Note: Do not change `_pidfile` to `_`, or it will be dropped prematurely.

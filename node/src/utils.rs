@@ -6,7 +6,7 @@ pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
-pub mod pidfile;
+pub mod pid_file;
 pub(crate) mod rlimit;
 mod round_robin;
 
