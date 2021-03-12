@@ -14,6 +14,7 @@ use std::{
 use backtrace::Backtrace;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
+use tracing::info;
 
 use casper_node::MAX_THREAD_COUNT;
 
@@ -57,5 +58,6 @@ fn main() -> anyhow::Result<()> {
 
         runtime.block_on(async { opts.run().await })?
     };
+    info!(%exit_code, "exiting casper-node");
     process::exit(exit_code);
 }
