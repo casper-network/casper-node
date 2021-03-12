@@ -1210,26 +1210,6 @@ where
         }
     }
 
-    /// Emits a fatal error if the consensus state is still empty.
-    pub(super) fn shutdown_if_necessary(&self) -> Effects<Event<I>> {
-        let should_emit_error = self
-            .era_supervisor
-            .active_eras
-            .iter()
-            .all(|(_, era)| !era.consensus.has_received_messages());
-        if should_emit_error {
-            fatal!(
-                self.effect_builder,
-                "Consensus shutting down due to inability to participate in the network; \
-                inactive era = {}",
-                self.era_supervisor.current_era
-            )
-            .ignore()
-        } else {
-            Default::default()
-        }
-    }
-
     pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
         let outcomes = self.era_supervisor.finished_joining(now);
         self.handle_consensus_outcomes(self.era_supervisor.current_era, outcomes)
