@@ -132,7 +132,7 @@ use requests::{
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
-const UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
+static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
