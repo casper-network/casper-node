@@ -421,8 +421,8 @@ impl FinalizedBlock {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0, 5);
-        let height = era * 10 + rng.gen_range(0, 10);
+        let era = rng.gen_range(0..5);
+        let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
         FinalizedBlock::random_with_specifics(rng, EraId(era), height, is_switch)
@@ -436,7 +436,7 @@ impl FinalizedBlock {
         height: u64,
         is_switch: bool,
     ) -> Self {
-        let deploy_count = rng.gen_range(0, 11);
+        let deploy_count = rng.gen_range(0..11);
         let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(deploy_count)
             .collect();
@@ -446,16 +446,16 @@ impl FinalizedBlock {
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
         let era_report = if is_switch {
-            let equivocators_count = rng.gen_range(0, 5);
-            let rewards_count = rng.gen_range(0, 5);
-            let inactive_count = rng.gen_range(0, 5);
+            let equivocators_count = rng.gen_range(0..5);
+            let rewards_count = rng.gen_range(0..5);
+            let inactive_count = rng.gen_range(0..5);
             Some(EraReport {
                 equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
                     .take(equivocators_count)
                     .collect(),
                 rewards: iter::repeat_with(|| {
                     let pub_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
-                    let reward = rng.gen_range(1, BLOCK_REWARD + 1);
+                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
                     (pub_key, reward)
                 })
                 .take(rewards_count)
@@ -1158,8 +1158,8 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0, 5);
-        let height = era * 10 + rng.gen_range(0, 10);
+        let era = rng.gen_range(0..5);
+        let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
         Block::random_with_specifics(rng, EraId(era), height, is_switch)

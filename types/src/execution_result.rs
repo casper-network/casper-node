@@ -144,7 +144,7 @@ impl ExecutionResult {
 
 impl Distribution<ExecutionResult> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResult {
-        let op_count = rng.gen_range(0, 6);
+        let op_count = rng.gen_range(0..6);
         let mut operations = Vec::new();
         for _ in 0..op_count {
             let op = [OpKind::Read, OpKind::Add, OpKind::NoOp, OpKind::Write]
@@ -156,7 +156,7 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let transform_count = rng.gen_range(0, 6);
+        let transform_count = rng.gen_range(0..6);
         let mut transforms = Vec::new();
         for _ in 0..transform_count {
             transforms.push(TransformEntry {
@@ -170,7 +170,7 @@ impl Distribution<ExecutionResult> for Standard {
             transforms,
         };
 
-        let transfer_count = rng.gen_range(0, 6);
+        let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
         for _ in 0..transfer_count {
             transfers.push(TransferAddr::new(rng.gen()))
@@ -626,7 +626,7 @@ impl FromBytes for Transform {
 impl Distribution<Transform> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
         // TODO - include WriteDeployInfo and WriteTransfer as options
-        match rng.gen_range(0, 13) {
+        match rng.gen_range(0..13) {
             0 => Transform::Identity,
             1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
             2 => Transform::WriteAccount(AccountHash::new(rng.gen())),
@@ -640,7 +640,7 @@ impl Distribution<Transform> for Standard {
             10 => Transform::AddUInt512(rng.gen::<u64>().into()),
             11 => {
                 let mut named_keys = Vec::new();
-                for _ in 0..rng.gen_range(1, 6) {
+                for _ in 0..rng.gen_range(1..6) {
                     let _ = named_keys.push(NamedKey {
                         name: rng.gen::<u64>().to_string(),
                         key: rng.gen::<u64>().to_string(),
@@ -661,7 +661,7 @@ mod tests {
     use super::*;
 
     fn get_rng() -> SmallRng {
-        let mut seed = [0u8; 16];
+        let mut seed = [0u8; 32];
         getrandom::getrandom(seed.as_mut()).unwrap();
         SmallRng::from_seed(seed)
     }

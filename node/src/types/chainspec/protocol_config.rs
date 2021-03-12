@@ -32,7 +32,7 @@ impl ProtocolConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let protocol_version = Version::new(
-            rng.gen_range(0, 10),
+            rng.gen_range(0..10),
             rng.gen::<u8>() as u64,
             rng.gen::<u8>() as u64,
         );

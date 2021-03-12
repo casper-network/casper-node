@@ -50,7 +50,7 @@ pub use self::{
     deploy_item::DeployItem,
     engine_config::EngineConfig,
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
-    error::{Error, RootNotFound},
+    error::Error,
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
@@ -424,35 +424,32 @@ where
         &self,
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, RootNotFound> {
+    ) -> Result<ExecutionResults, Error> {
         let executor = Executor::new(self.config);
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
 
         for deploy_item in deploys {
-            let result = match deploy_item {
-                Err(exec_result) => Ok(exec_result),
-                Ok(deploy_item) => match deploy_item.session {
-                    ExecutableDeployItem::Transfer { .. } => self.transfer(
-                        correlation_id,
-                        &executor,
-                        exec_request.protocol_version,
-                        exec_request.parent_state_hash,
-                        BlockTime::new(exec_request.block_time),
-                        deploy_item,
-                        exec_request.proposer,
-                    ),
-                    _ => self.deploy(
-                        correlation_id,
-                        &executor,
-                        exec_request.protocol_version,
-                        exec_request.parent_state_hash,
-                        BlockTime::new(exec_request.block_time),
-                        deploy_item,
-                        exec_request.proposer,
-                    ),
-                },
+            let result = match deploy_item.session {
+                ExecutableDeployItem::Transfer { .. } => self.transfer(
+                    correlation_id,
+                    &executor,
+                    exec_request.protocol_version,
+                    exec_request.parent_state_hash,
+                    BlockTime::new(exec_request.block_time),
+                    deploy_item,
+                    exec_request.proposer,
+                ),
+                _ => self.deploy(
+                    correlation_id,
+                    &executor,
+                    exec_request.protocol_version,
+                    exec_request.parent_state_hash,
+                    BlockTime::new(exec_request.block_time),
+                    deploy_item,
+                    exec_request.proposer,
+                ),
             };
             match result {
                 Ok(result) => results.push_back(result),
@@ -524,7 +521,7 @@ where
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
-    ) -> Result<ExecutionResult, RootNotFound> {
+    ) -> Result<ExecutionResult, Error> {
         let protocol_data = match self.state.get_protocol_data(protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
             Ok(None) => {
@@ -540,7 +537,7 @@ where
 
         let tracking_copy = match self.tracking_copy(prestate_hash) {
             Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            Ok(None) => return Err(RootNotFound::new(prestate_hash)),
+            Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
@@ -1054,7 +1051,7 @@ where
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
-    ) -> Result<ExecutionResult, RootNotFound> {
+    ) -> Result<ExecutionResult, Error> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
         // Obtain current protocol data for given version
@@ -1082,7 +1079,7 @@ where
         // do this second; as there is no reason to proceed if the prestate hash is invalid
         let tracking_copy = match self.tracking_copy(prestate_hash) {
             Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            Ok(None) => return Err(RootNotFound::new(prestate_hash)),
+            Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
@@ -1684,19 +1681,6 @@ where
     }
 
     pub fn missing_trie_keys(
-        &self,
-        correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
-    ) -> Result<Vec<Blake2bHash>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        self.state
-            .missing_trie_keys(correlation_id, vec![trie_key])
-            .map_err(Error::from)
-    }
-
-    pub fn trie_integrity_check(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Blake2bHash>,
