@@ -41,7 +41,10 @@ fn panic_hook(info: &PanicInfo) {
     process::abort()
 }
 
-fn main() -> anyhow::Result<()> {
+/// Actual main function.
+///
+/// Starts a runtime and launches whatever function was requested via CLI.
+fn run_main() -> anyhow::Result<i32> {
     let mut runtime = Builder::new()
         .threaded_scheduler()
         .enable_all()
@@ -54,6 +57,14 @@ fn main() -> anyhow::Result<()> {
     // Parse CLI args and run selected subcommand.
     let opts = Cli::from_args();
 
-    let exit_code = runtime.block_on(async { opts.run().await })?;
+    runtime.block_on(async { opts.run().await })
+}
+
+/// Main wrapper.
+///
+/// Does not nothing but call `run_main` and exit with its `exit_code`, ensuring that all acquired
+/// resources are dropped before doing so.
+fn main() -> anyhow::Result<()> {
+    let exit_code = run_main()?;
     process::exit(exit_code)
 }
