@@ -100,6 +100,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
+        current_time: Timestamp,
         start_time: Timestamp,
         state: &State<C>,
         unit_hash_file: Option<PathBuf>,
@@ -129,7 +130,8 @@ impl<C: Context> ActiveValidator<C> {
             target_ftt,
             paused: false,
         };
-        let effects = av.schedule_timer(start_time, state);
+        let mut effects = av.schedule_timer(start_time, state);
+        effects.push(av.send_ping(current_time));
         (av, effects)
     }
 
@@ -217,10 +219,15 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping if necessary, to show that we're online.
         if !state.has_ping(self.vidx, timestamp) {
             warn!(%timestamp, "too many validators offline, sending ping");
-            let ping = Ping::new(self.vidx, timestamp, &self.secret);
-            effects.push(Effect::NewVertex(ValidVertex(Vertex::Ping(ping))));
+            effects.push(self.send_ping(timestamp));
         }
         effects
+    }
+
+    /// Creates a Ping vertex.
+    pub(crate) fn send_ping(&self, timestamp: Timestamp) -> Effect<C> {
+        let ping = Ping::new(self.vidx, timestamp, &self.secret);
+        Effect::NewVertex(ValidVertex(Vertex::Ping(ping)))
     }
 
     /// Returns whether enough validators are online to finalize values with the target fault
@@ -669,8 +676,9 @@ mod tests {
                 .into_iter()
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
-                    let (av, effects) =
-                        ActiveValidator::new(vidx, secret, start_time, &state, None, target_ftt);
+                    let (av, effects) = ActiveValidator::new(
+                        vidx, secret, start_time, start_time, &state, None, target_ftt,
+                    );
                     let timestamp = unwrap_single(&effects).unwrap_timer();
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(

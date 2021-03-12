@@ -203,6 +203,7 @@ impl<C: Context> Highway<C> {
         let (av, effects) = ActiveValidator::new(
             idx,
             secret,
+            current_time,
             start_time,
             &self.state,
             unit_hash_file,
