@@ -17,39 +17,36 @@ function main() {
     log "Starting Scenario: itst14"
     log "------------------------------------------------------------"
 
-    # 0a. Verify all nodes are in sync
+    # 0. Verify network is creating blocks
+    do_await_n_blocks "5"
+    # 1. Verify network is in sync
     check_network_sync
-    log "Sleeping 10s"
-    sleep 10
-    check_network_sync
-    # 0b. Get era
+    # 2a. Get era
     STOPPED_ERA=$(check_current_era)
-    # 1. Stop node
+    # 2b. Stop node
     do_stop_node "5"
-    # 2. Let the node go down
-    log_step "Sleeping for 10s"
+    # 3. Let the node go down
+    log_step "Sleeping for 10s before bringing node back online..."
     sleep 10
-    # 3. Restart Node
+    # 4. Restart Node
     do_read_lfb_hash 1
     do_start_node "5" "$LFB_HASH"
-    # 4. Verify all nodes are in sync
+    # 5. Verify all nodes are in sync
     check_network_sync
-    # 5. Verify network chain height sync
-    log "Sleeping 10s"
-    sleep 10
+    # 6. Verify network is creating blocks post-restart
+    do_await_n_blocks "5"
+    # 7. Verify all nodes are in sync
     check_network_sync
-    # 6. Send deploy to stopped node
-    send_transfers '100'
-    # 7. Verify network finalized deploy
+    # 8. Verify node proposed a block
     assert_node_proposed '5'
-    # 8. Check we are in the same era
+    # 9. Verify we are in the same era
     assert_same_era "$STOPPED_ERA"
-    # 9. Wait an era
+    # 10. Wait an era
     do_await_era_change
-    # 10. Verify all nodes are in sync
+    # 11. Verify all nodes are in sync
     check_network_sync
-    # 11. Check for equivication
-    check_node_equivocated '5'
+    # 12. Check for equivication
+    assert_no_equivocation '5'
 
     log "------------------------------------------------------------"
     log "Scenario itst14 complete"
@@ -77,17 +74,7 @@ function assert_node_proposed() {
     log "$OUTPUT"
 }
 
-function send_transfers() {
-    local NUM_T=${1:-1}
-    local NUM_RUNNING_NODES=$(nctl-status | grep -i 'running' | wc -l)
-    log_step "sending $NUM_T native transfers to $NUM_RUNNING_NODES running nodes..."
-    for ((i=0; i<=$NUM_RUNNING_NODES; i++)); do
-        log "node-$i: $NUM_T transfers sent."
-        local TRANSFER_OUT=$(nctl-transfer-native node=$i ammount=2500000000 transfers="$NUM_T" user=1)
-    done
-}
-
-function check_node_equivocated() {
+function assert_no_equivocation() {
     local NODE_ID=${1}
     log_step "Checking to see if node-$NODE_ID equivocated..."
     if ( check_faulty "$NODE_ID" ); then

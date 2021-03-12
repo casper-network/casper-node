@@ -118,3 +118,9 @@ function get_node_public_key_hex_extended() {
     local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
     echo "$PUBLIC_KEY_HEX"
 }
+
+function do_await_n_blocks() {
+    local BLOCK_COUNT=${1:-1}
+    log_step "Waiting $BLOCK_COUNT blocks..."
+    nctl-await-n-blocks offset="$BLOCK_COUNT"
+}
