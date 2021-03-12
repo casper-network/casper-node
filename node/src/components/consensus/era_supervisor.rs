@@ -154,7 +154,7 @@ where
                 current_era, protocol_config.last_activation_point
             );
         }
-        let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
+        let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
         let secret_signing_key = Arc::new(config.secret_key_path.clone().load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
@@ -475,7 +475,7 @@ where
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
-            > self.config.max_execution_delay;
+            > self.config.highway.max_execution_delay;
         match self.active_eras.get_mut(&self.current_era) {
             Some(era) => era.set_paused(paused),
             None => error!(era = self.current_era.0, "current era not initialized"),

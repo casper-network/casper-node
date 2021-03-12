@@ -1,3 +1,4 @@
+pub(crate) mod config;
 mod participation;
 mod round_success_meter;
 mod synchronizer;
@@ -37,6 +38,7 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 
+pub use self::config::Config as HighwayConfig;
 use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
@@ -177,7 +179,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
             .map(|highway_proto| highway_proto.next_era_round_succ_meter(start_timestamp))
             .unwrap_or_else(|| {
-                RoundSuccessMeter::new(round_exp, min_round_exp, max_round_exp, start_timestamp)
+                RoundSuccessMeter::new(
+                    round_exp,
+                    min_round_exp,
+                    max_round_exp,
+                    start_timestamp,
+                    config.into(),
+                )
             });
         let highway = Highway::new(instance_id, validators, params);
         let last_panorama = highway.state().panorama().clone();
@@ -186,11 +194,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(config.pending_vertex_timeout),
+            synchronizer: Synchronizer::new(config.highway.pending_vertex_timeout),
             evidence_only: false,
             last_panorama,
-            standstill_timeout: config.standstill_timeout,
-            log_participation_interval: config.log_participation_interval,
+            standstill_timeout: config.highway.standstill_timeout,
+            log_participation_interval: config.highway.log_participation_interval,
         });
 
         outcomes.extend(hw_proto.recreate_timers(now));

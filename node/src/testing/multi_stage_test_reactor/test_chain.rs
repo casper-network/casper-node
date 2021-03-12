@@ -181,7 +181,7 @@ impl TestChain {
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
-        validator_config.consensus.unit_hashes_folder = temp_dir.path().to_path_buf();
+        validator_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         validator_config.storage = storage_config;
 
