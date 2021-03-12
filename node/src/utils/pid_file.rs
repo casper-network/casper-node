@@ -50,11 +50,6 @@ pub enum PidFileError {
     /// The pidfile was corrupted, its contents could not be read.
     #[error("corrupt pidfile")]
     Corrupted(ParseIntError),
-    /// We encountere a previous PID, but it was the same as ours.
-    ///
-    /// This should never happen, as the exclusive lock should prevent it.
-    #[error("read back our own pid from exlusively locked pidfile")]
-    DuplicatedPid,
 }
 
 /// PidFile outcome.
@@ -137,11 +132,6 @@ impl PidFile {
         };
 
         let pid = process::id();
-
-        // If we encounter our own PID, we got extremely unlucky, or something went really wrong.
-        if previous == Some(pid) {
-            return Err(PidFileError::DuplicatedPid);
-        }
 
         // Truncate and rewind.
         pidfile.set_len(0).map_err(PidFileError::WriteFailed)?;
