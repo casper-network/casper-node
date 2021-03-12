@@ -42,10 +42,6 @@ use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
 const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10_000;
-/// The number of milliseconds after which an alert is raised if no progress was made.
-const STANDSTILL_ALERT_MILLIS: u64 = 5 * 60_000;
-/// How often validator participation gets logged
-const LOG_PARTICIPATION_MILLIS: u64 = 60_000;
 
 /// The timer for creating new units, as a validator actively participating in consensus.
 const TIMER_ID_ACTIVE_VALIDATOR: TimerId = TimerId(0);
@@ -78,6 +74,11 @@ where
     /// The panorama snapshot. This is updated periodically, and if it does not change for too
     /// long, an alert is raised.
     last_panorama: Panorama<C>,
+    /// If the current era's protocol state has not progressed for this long, return
+    /// `ProtocolOutcome::StandstillAlert`.
+    standstill_timeout: TimeDiff,
+    /// Log inactive or faulty validators periodically, with this interval.
+    log_participation_interval: TimeDiff,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -188,6 +189,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             synchronizer: Synchronizer::new(config.pending_vertex_timeout),
             evidence_only: false,
             last_panorama,
+            standstill_timeout: config.standstill_timeout,
+            log_participation_interval: config.log_participation_interval,
         });
 
         outcomes.extend(hw_proto.recreate_timers());
@@ -421,7 +424,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // Record the current panorama and schedule the next standstill check.
         self.last_panorama = self.highway.state().panorama().clone();
         vec![ProtocolOutcome::ScheduleTimer(
-            Timestamp::now() + TimeDiff::from(STANDSTILL_ALERT_MILLIS),
+            Timestamp::now() + self.standstill_timeout,
             TIMER_ID_STANDSTILL_ALERT,
         )]
     }
@@ -622,7 +625,7 @@ where
             TIMER_ID_LOG_PARTICIPATION => {
                 self.log_participation();
                 if !self.evidence_only && !self.finalized_switch_block() {
-                    let next_time = Timestamp::now() + TimeDiff::from(LOG_PARTICIPATION_MILLIS);
+                    let next_time = Timestamp::now() + self.log_participation_interval;
                     vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
                 } else {
                     vec![]
@@ -781,11 +784,11 @@ where
         let mut outcomes = vec![
             ProtocolOutcome::ScheduleTimer(now, TIMER_ID_PURGE_VERTICES),
             ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + TimeDiff::from(LOG_PARTICIPATION_MILLIS),
+                now.max(era_start_time) + self.log_participation_interval,
                 TIMER_ID_LOG_PARTICIPATION,
             ),
             ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + TimeDiff::from(STANDSTILL_ALERT_MILLIS),
+                now.max(era_start_time) + self.standstill_timeout,
                 TIMER_ID_STANDSTILL_ALERT,
             ),
         ];
