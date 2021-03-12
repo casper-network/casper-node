@@ -7,7 +7,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::{IntGauge, Registry};
 use tracing::{debug, error, info, warn};
@@ -66,9 +65,6 @@ pub enum Event<I> {
     },
     /// The result of requesting finality signatures from storage to add pending signatures.
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
-    /// Check if validator is bonded in the future era.
-    /// Validator's public key and the block's era are part of the finality signature.
-    IsBondedFutureEra(Option<Box<BlockSignatures>>, Box<FinalitySignature>),
     /// Result of testing if creator of the finality signature is bonded validator.
     IsBonded(Option<Box<BlockSignatures>>, Box<FinalitySignature>, bool),
 }
@@ -99,13 +95,6 @@ impl<I: Display> Display for Event<I> {
                     f,
                     "linear chain is-bonded for era {} validator {}, is_bonded: {}",
                     fs.era_id, fs.public_key, is_bonded
-                )
-            }
-            Event::IsBondedFutureEra(_block, fs) => {
-                write!(
-                    f,
-                    "linear chain is-bonded for future era {} validator {}",
-                    fs.era_id, fs.public_key
                 )
             }
         }
@@ -465,63 +454,26 @@ where
                 let protocol_version = self.protocol_version;
                 let initial_state_root_hash = self.initial_state_root_hash;
                 let activation_era_id = self.activation_era_id;
-                async move {
-                    match effect_builder
-                        .is_bonded_validator(
-                            &fs.public_key,
-                            fs.era_id,
-                            activation_era_id,
-                            initial_state_root_hash,
-                            protocol_version,
-                        )
-                        .await
-                    {
-                        Some(is_bonded) => Ok((maybe_signatures, fs, is_bonded)),
-                        None => Err((maybe_signatures, fs)),
-                    }
-                }
-                .result(
-                    |(maybe_signatures, fs, is_bonded)| {
-                        Event::IsBonded(maybe_signatures, fs, is_bonded)
-                    },
-                    |(maybe_signatures, fs)| Event::IsBondedFutureEra(maybe_signatures, fs),
-                )
-            }
-            Event::IsBondedFutureEra(maybe_signatures, fs) => {
-                match self.latest_block.as_ref() {
-                    // If we don't have any block yet, we cannot determine who is bonded or not.
-                    None => effect_builder
-                        .immediately()
-                        .event(move |_| Event::IsBonded(maybe_signatures, fs, false)),
-                    Some(block) => {
-                        let latest_header = block.header();
-                        let state_root_hash = latest_header.state_root_hash();
-                        effect_builder
-                            .is_bonded_in_future_era(
-                                *state_root_hash,
-                                fs.era_id,
-                                // TODO: Use protocol version that is valid for the block's height.
-                                self.protocol_version,
-                                fs.public_key,
-                            )
-                            .map(|res| {
-                                match res {
-                                    // Promote this error to a non-error case.
-                                    // It's not an error that we can't find the era that this
-                                    // FinalitySignature is for.
-                                    Err(error) if error.is_era_validators_missing() => Ok(false),
-                                    _ => res,
-                                }
-                            })
-                            .result(
-                                |is_bonded| Event::IsBonded(maybe_signatures, fs, is_bonded),
-                                |error| {
-                                    error!(%error, "is_bonded_in_future_era returned an error.");
-                                    panic!("couldn't check if validator is bonded")
-                                },
-                            )
-                    }
-                }
+                let latest_state_root_hash = self
+                    .latest_block
+                    .as_ref()
+                    .map(|block| *block.header().state_root_hash());
+                effect_builder
+                    .is_bonded_validator(
+                        fs.public_key,
+                        fs.era_id,
+                        activation_era_id,
+                        initial_state_root_hash,
+                        latest_state_root_hash,
+                        protocol_version,
+                    )
+                    .result(
+                        |is_bonded| Event::IsBonded(maybe_signatures, fs, is_bonded),
+                        |error| {
+                            error!(%error, "checking in future eras returned an error.");
+                            panic!("couldn't check if validator is bonded")
+                        },
+                    )
             }
             Event::IsBonded(Some(mut signatures), fs, true) => {
                 // Known block and signature from a bonded validator.

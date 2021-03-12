@@ -1490,19 +1490,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Checks whether the given validator is bonded in the given era.
-    /// Returns `None` if a relevant block or global state hash couldn't be found.
     pub(crate) async fn is_bonded_validator(
         self,
-        validator: &PublicKey,
+        validator: PublicKey,
         era_id: EraId,
         activation_era_id: EraId,
         initial_state_root_hash: Digest,
+        latest_state_root_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-    ) -> Option<bool>
+    ) -> Result<bool, GetEraValidatorsError>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        if era_id == activation_era_id {
+        let maybe_is_currently_bonded = if era_id == activation_era_id {
             // in the activation era, we read the validators from the global state; we use the
             // global state hash of the first block in the era, if it exists - if we can't get it,
             // we use the initial_state_root_hash passed from the chainspec loader
@@ -1522,7 +1522,7 @@ impl<REv> EffectBuilder<REv> {
                 .and_then(|era_validators| {
                     era_validators
                         .get(&era_id.0)
-                        .map(|validators| validators.contains_key(validator))
+                        .map(|validators| validators.contains_key(&validator))
                 })
         } else {
             // in other eras, we just use the validators from the key block
@@ -1532,8 +1532,40 @@ impl<REv> EffectBuilder<REv> {
                     key_block
                         .header()
                         .next_era_validator_weights()
-                        .map(|validators| validators.contains_key(validator))
+                        .map(|validators| validators.contains_key(&validator))
                 })
+        };
+
+        match maybe_is_currently_bonded {
+            // if we know whether the validator is bonded, just return that
+            Some(is_bonded) => Ok(is_bonded),
+            // if not, try checking future eras with the latest state root hash
+            None => match latest_state_root_hash {
+                // no root hash later than initial -> we just assume the validator is not bonded
+                None => Ok(false),
+                // otherwise, check with contract runtime
+                Some(state_root_hash) => self
+                    .make_request(
+                        |responder| ContractRuntimeRequest::IsBonded {
+                            state_root_hash,
+                            era_id,
+                            protocol_version,
+                            public_key: validator,
+                            responder,
+                        },
+                        QueueKind::Regular,
+                    )
+                    .await
+                    .or_else(|error| {
+                        // Promote this error to a non-error case.
+                        // It's not an error that we can't find the era that was requested.
+                        if error.is_era_validators_missing() {
+                            Ok(false)
+                        } else {
+                            Err(error)
+                        }
+                    }),
+            },
         }
     }
 
@@ -1544,32 +1576,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ConsensusRequest::Status, QueueKind::Regular)
             .await
-    }
-
-    /// Check if validator is bonded in the future era (`era_id`).
-    /// This information is known only by the Contract Runtime since consensus component
-    /// knows only about currently active eras.
-    pub(crate) async fn is_bonded_in_future_era(
-        self,
-        state_root_hash: Digest,
-        era_id: EraId,
-        protocol_version: ProtocolVersion,
-        public_key: PublicKey,
-    ) -> Result<bool, GetEraValidatorsError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::IsBonded {
-                state_root_hash,
-                era_id,
-                protocol_version,
-                public_key,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Collects the key blocks for the eras identified by provided era IDs. Returns
