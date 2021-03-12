@@ -41,7 +41,7 @@
 //! Some effects can be further classified into either announcements or requests, although these
 //! properties are not reflected in the type system.
 //!
-//! **Announcements** are events emitted by components that are essentially "fire-and-forget"; the
+//! **Announcements** are effects emitted by components that are essentially "fire-and-forget"; the
 //! component will never expect an answer for these and does not rely on them being handled. It is
 //! also conceivable that they are being cloned and dispatched to multiple components by the
 //! reactor.
@@ -120,8 +120,8 @@ use crate::{
 };
 use announcements::{
     BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
-    RpcServerAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
+    NetworkAnnouncement, RpcServerAnnouncement,
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -429,10 +429,16 @@ impl<REv> EffectBuilder<REv> {
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
     // inference seems to not work in all cases otherwise.
-    pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
-        panic!("fatal error [{}:{}]: {}", file, line, msg);
-        #[allow(unreachable_code)]
-        async {} // The compiler will complain about an incorrect return value otherwise.
+    pub async fn fatal(self, file: &'static str, line: u32, msg: String)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ControlAnnouncement::FatalError { file, line, msg },
+                QueueKind::Control,
+            )
+            .await
     }
 
     /// Sets a timeout.
@@ -663,6 +669,19 @@ impl<REv> EffectBuilder<REv> {
                     block,
                     execution_results,
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce that a block had been executed before.
+    pub(crate) async fn announce_block_already_executed(self, block: Block)
+    where
+        REv: From<BlockExecutorAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockExecutorAnnouncement::BlockAlreadyExecuted(block),
                 QueueKind::Regular,
             )
             .await
@@ -1114,13 +1133,16 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled<I>(self, block: Block)
-    where
+    /// Announces that a finality signature has been created.
+    pub(crate) async fn announce_created_finality_signature<I>(
+        self,
+        finality_signature: FinalitySignature,
+    ) where
         REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Handled(Box::new(block)),
+                ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
                 QueueKind::Regular,
             )
             .await
@@ -1161,13 +1183,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The linear chain has stored a newly-created block.
-    pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block: Box<Block>)
+    pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
         REv: From<LinearChainAnnouncement>,
     {
         self.0
             .schedule(
-                LinearChainAnnouncement::BlockAdded { block_hash, block },
+                LinearChainAnnouncement::BlockAdded(block),
                 QueueKind::Regular,
             )
             .await
@@ -1298,7 +1320,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    ) -> Result<ExecutionResults, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1462,18 +1484,6 @@ impl<REv> EffectBuilder<REv> {
                 step_request,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block: Block) -> Option<FinalitySignature>
-    where
-        REv: From<ConsensusRequest>,
-    {
-        self.make_request(
-            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
             QueueKind::Regular,
         )
         .await

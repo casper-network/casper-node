@@ -22,7 +22,6 @@ use hex_fmt::{HexFmt, HexList};
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
-use rand::SeedableRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -45,7 +44,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, JsonBlock, NodeRng},
+    types::{Deploy, DeployHash, JsonBlock},
     utils::DisplayIter,
 };
 
@@ -148,8 +147,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let mut rng = NodeRng::seed_from_u64(0);
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, block_signature)
@@ -423,8 +421,8 @@ impl FinalizedBlock {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0, 5);
-        let height = era * 10 + rng.gen_range(0, 10);
+        let era = rng.gen_range(0..5);
+        let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
         FinalizedBlock::random_with_specifics(rng, EraId(era), height, is_switch)
@@ -438,7 +436,7 @@ impl FinalizedBlock {
         height: u64,
         is_switch: bool,
     ) -> Self {
-        let deploy_count = rng.gen_range(0, 11);
+        let deploy_count = rng.gen_range(0..11);
         let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
             .take(deploy_count)
             .collect();
@@ -448,16 +446,16 @@ impl FinalizedBlock {
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
         let era_report = if is_switch {
-            let equivocators_count = rng.gen_range(0, 5);
-            let rewards_count = rng.gen_range(0, 5);
-            let inactive_count = rng.gen_range(0, 5);
+            let equivocators_count = rng.gen_range(0..5);
+            let rewards_count = rng.gen_range(0..5);
+            let inactive_count = rng.gen_range(0..5);
             Some(EraReport {
                 equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
                     .take(equivocators_count)
                     .collect(),
                 rewards: iter::repeat_with(|| {
                     let pub_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
-                    let reward = rng.gen_range(1, BLOCK_REWARD + 1);
+                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
                     (pub_key, reward)
                 })
                 .take(rewards_count)
@@ -540,6 +538,7 @@ impl Display for FinalizedBlock {
     Copy,
     Clone,
     DataSize,
+    Default,
     Ord,
     PartialOrd,
     Eq,
@@ -712,11 +711,6 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// The timestamp from when the proto block was proposed.
-    pub fn timestamp(&self) -> Timestamp {
-        self.timestamp
-    }
-
     /// Returns reward and slashing information if this is the era's last block.
     pub fn era_end(&self) -> Option<&EraReport> {
         match &self.era_end {
@@ -725,9 +719,9 @@ impl BlockHeader {
         }
     }
 
-    /// Returns `true` if this block is the last one in the current era.
-    pub fn is_switch_block(&self) -> bool {
-        self.era_end.is_some()
+    /// The timestamp from when the proto block was proposed.
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Era ID in which this block was created.
@@ -738,6 +732,16 @@ impl BlockHeader {
     /// Returns the height of this block, i.e. the number of ancestors.
     pub fn height(&self) -> u64 {
         self.height
+    }
+
+    /// Returns the protocol version of the network from when this block was created.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    /// Returns `true` if this block is the last one in the current era.
+    pub fn is_switch_block(&self) -> bool {
+        self.era_end.is_some()
     }
 
     /// The validators for the upcoming era and their respective weights.
@@ -751,6 +755,13 @@ impl BlockHeader {
         }
     }
 
+    /// Hash of the block header.
+    pub fn hash(&self) -> BlockHash {
+        let serialized_header = Self::serialize(&self)
+            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+        BlockHash::new(hash::hash(&serialized_header))
+    }
+
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
@@ -760,13 +771,6 @@ impl BlockHeader {
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()
-    }
-
-    /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(hash::hash(&serialized_header))
     }
 }
 
@@ -845,6 +849,18 @@ impl FromBytes for BlockHeader {
             protocol_version,
         };
         Ok((block_header, remainder))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlockHeaderWithMetadata {
+    pub block_header: BlockHeader,
+    pub block_signatures: BlockSignatures,
+}
+
+impl Display for BlockHeaderWithMetadata {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} and {}", self.block_header, self.block_signatures)
     }
 }
 
@@ -967,7 +983,7 @@ impl From<bytesrepr::Error> for BlockValidationError {
 }
 
 /// A storage representation of finality signatures with the associated block hash.
-#[derive(Debug, Serialize, Deserialize, Clone, DataSize)]
+#[derive(Debug, Serialize, Deserialize, Clone, DataSize, PartialEq)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
     pub(crate) block_hash: BlockHash,
@@ -1154,8 +1170,8 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0, 5);
-        let height = era * 10 + rng.gen_range(0, 10);
+        let era = rng.gen_range(0..5);
+        let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
         Block::random_with_specifics(rng, EraId(era), height, is_switch)
@@ -1595,11 +1611,10 @@ impl FinalitySignature {
         era_id: EraId,
         secret_key: &SecretKey,
         public_key: PublicKey,
-        rng: &mut NodeRng,
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.0.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key, rng);
+        let signature = crypto::sign(bytes, &secret_key, &public_key);
         FinalitySignature {
             block_hash,
             era_id,
@@ -1750,7 +1765,7 @@ mod tests {
         let (secret_key, public_key) = crypto::generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId(1);
-        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key, &mut rng);
+        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key);
         assert!(fs.verify().is_ok());
         let signature = fs.signature;
         // Verify that signature includes era id.

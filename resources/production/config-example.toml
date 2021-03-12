@@ -77,6 +77,16 @@ gossip_interval = 120_000
 # only in the unit files themselves via `-C=network.systemd_support=true`.
 systemd_support = false
 
+# Minimum amount of time that has to pass before attempting to reconnect after losing all
+# connections to established nodes.
+isolation_reconnect_delay = '2s'
+
+# Initial delay for starting address gossipping after the network starts. This should be slightly
+# more than the expected time required for initial connections to complete.
+initial_gossip_delay = '5s'
+
+# How long a connection is allowed to be stuck as pending before it is abandoned.
+max_addr_pending_time = '1min'
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server

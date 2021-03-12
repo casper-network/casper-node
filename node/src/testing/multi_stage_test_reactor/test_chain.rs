@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use log::info;
 use num::Zero;
@@ -12,12 +12,12 @@ use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 use crate::{
     components::{consensus::EraId, gossiper, small_network, storage, storage::Storage},
     crypto::AsymmetricKeyExt,
-    reactor::{validator, Runner},
+    reactor::validator,
     testing::{
         self,
         multi_stage_test_reactor::{InitializerReactorConfigWithChainspec, CONFIG_DIR},
         network::{Network, Nodes},
-        ConditionCheckReactor, MultiStageTestReactor,
+        MultiStageTestReactor,
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
@@ -62,14 +62,14 @@ impl TestChain {
         );
         let first_node_secret_key_with_stake = SecretKeyWithStake {
             secret_key: SecretKey::random(rng),
-            stake: rng.gen_range(100, 999),
+            stake: rng.gen_range(100..999),
         };
         let other_secret_keys_with_stakes = {
             let mut other_secret_keys_with_stakes = Vec::new();
             for _ in 1..size {
                 let staked_secret_key = SecretKeyWithStake {
                     secret_key: SecretKey::random(rng),
-                    stake: rng.gen_range(100, 999),
+                    stake: rng.gen_range(100..999),
                 };
                 other_secret_keys_with_stakes.push(staked_secret_key)
             }
@@ -106,7 +106,7 @@ impl TestChain {
                 );
                 AccountConfig::new(
                     public_key,
-                    Motes::new(U512::from(rng.gen_range(10000, 99999999))),
+                    Motes::new(U512::from(rng.gen_range(10000..99999999))),
                     Some(validator_config),
                 )
             })
@@ -122,6 +122,8 @@ impl TestChain {
         chainspec.core_config.minimum_era_height = 4;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
         chainspec.core_config.era_duration = 10.into();
+        chainspec.core_config.auction_delay = 1;
+        chainspec.core_config.unbonding_delay = 3;
 
         // Assign a port for the first node (TODO: this has a race condition)
         let first_node_port = testing::unused_port_on_localhost();
@@ -198,34 +200,17 @@ impl TestChain {
     }
 }
 
-/// Get the set of era IDs from a runner.
-fn era_ids(runner: &Runner<ConditionCheckReactor<MultiStageTestReactor>>) -> HashSet<EraId> {
-    if let Some(consensus) = runner.reactor().inner().consensus() {
-        consensus.active_eras().keys().cloned().collect()
-    } else {
-        HashSet::new()
-    }
-}
-
-/// Given an era number, return a predicate to check if all of the nodes are in that specified era.
-fn is_in_era(era_num: usize) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
+/// Given an era number, returns a predicate to check if all of the nodes are in the specified era.
+fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
     move |nodes: &Nodes<MultiStageTestReactor>| {
-        // check ee's era_validators against consensus' validators
-        let first_node = nodes.values().next().expect("need at least one node");
-
-        // Get a list of eras from the first node.
-        let expected_eras = era_ids(&first_node);
-
-        // Return if not in expected era yet.
-        if expected_eras.len() <= era_num {
-            return false;
-        }
-
-        // Ensure eras are all the same for all other nodes.
-        nodes
-            .values()
-            .map(era_ids)
-            .all(|eras| eras == expected_eras)
+        let era_id = EraId(era_num);
+        nodes.values().all(|runner| {
+            runner
+                .reactor()
+                .inner()
+                .consensus()
+                .map_or(false, |consensus| consensus.current_era() == era_id)
+        })
     }
 }
 
@@ -285,7 +270,7 @@ async fn run_equivocator_network() {
 }
 
 async fn get_switch_block_hash(
-    switch_block_era_num: usize,
+    switch_block_era_num: u64,
     net: &mut Network<MultiStageTestReactor>,
     rng: &mut NodeRng,
 ) -> BlockHash {
@@ -314,7 +299,7 @@ async fn get_switch_block_hash(
         .storage()
         .expect("Can not access storage of first node");
     let switch_block = storage
-        .transactional_get_switch_block_by_era_id(switch_block_era_num as u64)
+        .transactional_get_switch_block_by_era_id(switch_block_era_num)
         .expect("Could not find block for era num");
     let switch_block_hash = switch_block.hash();
     info!(
@@ -324,6 +309,7 @@ async fn get_switch_block_hash(
     *switch_block_hash
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_joiner() {
     testing::init_logging();

@@ -30,7 +30,7 @@ impl ExecuteRequestBuilder {
     }
 
     pub fn push_deploy(mut self, deploy: DeployItem) -> Self {
-        self.execute_request.deploys.push(Ok(deploy));
+        self.execute_request.deploys.push(deploy);
         self
     }
 

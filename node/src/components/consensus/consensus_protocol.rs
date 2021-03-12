@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
     types::{TimeDiff, Timestamp},
-    NodeRng,
 };
 
 /// Information about the context in which a new block is created.
@@ -127,33 +126,22 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn as_any(&self) -> &dyn Any;
 
     /// Handles an incoming message (like NewUnit, RequestDependency).
-    fn handle_message(
-        &mut self,
-        sender: I,
-        msg: Vec<u8>,
-        rng: &mut NodeRng,
-    ) -> ProtocolOutcomes<I, C>;
+    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> ProtocolOutcomes<I, C>;
 
     /// Handles new connection to a peer.
     fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(
-        &mut self,
-        timestamp: Timestamp,
-        timer_id: TimerId,
-        rng: &mut NodeRng,
-    ) -> ProtocolOutcomes<I, C>;
+    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;
 
     /// Triggers a queued action.
-    fn handle_action(&mut self, action_id: ActionId, rng: &mut NodeRng) -> ProtocolOutcomes<I, C>;
+    fn handle_action(&mut self, action_id: ActionId) -> ProtocolOutcomes<I, C>;
 
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
@@ -162,7 +150,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-        rng: &mut NodeRng,
     ) -> ProtocolOutcomes<I, C>;
 
     /// Turns this instance into an active validator, that participates in the consensus protocol.

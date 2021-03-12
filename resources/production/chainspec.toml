@@ -114,7 +114,7 @@ global = 390
 # Control flow operations multiplier.
 control_flow = 440
 # Integer operations multiplier.
-integer_comparsion = 250
+integer_comparison = 250
 # Conversion operations multiplier.
 conversion = 420
 # Unreachable operation multiplier.

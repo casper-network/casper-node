@@ -10,30 +10,33 @@ mod test_rng;
 
 use std::{
     any::type_name,
-    collections::HashSet,
     fmt::Debug,
     marker::PhantomData,
-    sync::atomic::{AtomicU16, Ordering},
+    net::{Ipv4Addr, TcpListener},
+    time,
 };
 
+use anyhow::Context;
+use derive_more::From;
 use futures::channel::oneshot;
 use serde::{de::DeserializeOwned, Serialize};
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
+use tracing::{debug, info, warn};
 
 use crate::{
     components::Component,
-    effect::{EffectBuilder, Effects, Responder},
+    effect::{announcements::ControlAnnouncement, EffectBuilder, Effects, Responder},
     logging,
-    reactor::{EventQueueHandle, QueueKind, Scheduler},
+    reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
 };
-use anyhow::Context;
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 pub(crate) use test_rng::TestRng;
 
-// Lower bound for the port, below there's a high chance of hitting a system service.
-const PORT_LOWER_BOUND: u16 = 10_000;
+/// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
+/// problem.
+const FATAL_GRACE_TIME: time::Duration = time::Duration::from_secs(3);
 
 pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T) {
     let serialized = bincode::serialize(value).unwrap();
@@ -42,34 +45,39 @@ pub fn bincode_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: &T
 }
 
 /// Create an unused port on localhost.
-#[allow(clippy::assertions_on_constants)]
 pub(crate) fn unused_port_on_localhost() -> u16 {
-    // Prime used for the LCG.
-    const PRIME: u16 = 54101;
-    // Generating member of prime group.
-    const GENERATOR: u16 = 35892;
+    // Unfortunately a randomly generated port by a random number generator still has a chance to
+    // hit the occasional duplicate or an already bound port once in a while, due to the small port
+    // space. For this reason, we ask the OS for an unused port instead and hope that no one binds
+    // to it in the meantime.
 
-    // This assertion can never fail, but the compiler should output a warning if the constants
-    // combined exceed the valid values of `u16`.
-    assert!(PORT_LOWER_BOUND + PRIME + 10 < u16::MAX);
+    // For a collision to occur, it is now required that after running this function, but before
+    // rebinding the port, an unrelated program or a parallel running test must manage to bind to
+    // precisely this port, hitting the same port randomly.
 
-    // Poor man's linear congurential random number generator:
-    static RNG_STATE: AtomicU16 = AtomicU16::new(GENERATOR);
+    // This is slightly better than a strictly random port, since it takes already bound ports
+    // across the entire interface into account, but it does rely on the OS providing random ports
+    // when asked for a _unused_ one.
 
-    // Attempt 10k times to swap the atomic with the next generator value.
-    for _ in 0..10_000 {
-        if let Ok(fresh_port) =
-            RNG_STATE.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |state| {
-                let new_value = (state as u32 + GENERATOR as u32) % (PRIME as u32);
-                Some(new_value as u16 + PORT_LOWER_BOUND)
-            })
-        {
-            return fresh_port;
-        }
-    }
+    // An alternative approach is to create a bound port with `SO_REUSEPORT`, which would close the
+    // gap between calling this function and binding again, never calling listening on the instance
+    // created by this function, but still blocking it from being reassigned by accident. This
+    // approach requires the networking component to either accept arbitrary incoming sockets to be
+    // passed in or bind with `SO_REUSEPORT` as well, both are undesirable options. See
+    // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ for
+    // a detailed description on port reuse flags.
 
-    // Give up - likely we're in a very tight, oscillatory race with another thread.
-    panic!("could not generate random new port after 10_000 tries");
+    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0))
+        .expect("could not bind new random port on localhost");
+    let local_addr = listener
+        .local_addr()
+        .expect("local listener has no address?");
+
+    let port = local_addr.port();
+    info!(%port, "OS generated random localhost port");
+
+    // Once we drop the listener, the port should be closed.
+    port
 }
 
 /// Sets up logging for testing.
@@ -200,6 +208,7 @@ impl<REv: 'static> ComponentHarness<REv> {
         <C as Component<REv>>::Event: Send + 'static,
         T: Send + 'static,
         F: FnOnce(Responder<T>) -> C::Event,
+        REv: ReactorEvent,
     {
         // Prepare a channel.
         let (sender, receiver) = oneshot::channel();
@@ -214,18 +223,60 @@ impl<REv: 'static> ComponentHarness<REv> {
         let returned_effects = self.send_event(component, request_event);
 
         // Execute the effects on our dedicated runtime, hopefully creating the responses.
+        let mut join_handles = Vec::new();
         for effect in returned_effects {
-            self.runtime.spawn(effect);
+            join_handles.push(self.runtime.spawn(effect));
         }
 
         // Wait for a response to arrive.
         self.runtime.block_on(receiver).unwrap_or_else(|err| {
-            // The channel should never be closed, ever.
+            // A channel was closed and this is usually an error. However, we consider all pending
+            // events, in case we did get a control announcement requiring us to fatal error instead
+            // before panicking on the basis of the missing response.
+
+            // We give each of them a little time to produce the desired event. Note that `join_all`
+            // should be safe to cancel, since we are only awaiting join handles.
+            let join_all = async {
+                for handle in join_handles {
+                    if let Err(err) = handle.await {
+                        warn!("Join error while waiting for an effect to finish: {}", err);
+                    };
+                }
+            };
+
+            if let Err(_timeout) = self.runtime.block_on(async move {
+                // Note: timeout can only be called from within a running running, this is why
+                // we use an extra `async` block here.
+                tokio::time::timeout(FATAL_GRACE_TIME, join_all).await
+            }) {
+                warn!(grace_time=?FATAL_GRACE_TIME, "while a responder was dropped in a unit test, \
+                I waited for all other pending effects to complete in case the output of a \
+                `fatal!` was among them but none of them completed");
+            }
+
+            // Iterate over all events that currently are inside the queue and fish out any fatal.
+            for _ in 0..(self.scheduler.item_count()) {
+                let (ev, _queue_kind) = self.runtime.block_on(self.scheduler.pop());
+
+                if let Some(ctrl_ann) = ev.as_control() {
+                    match ctrl_ann {
+                        fatal @ ControlAnnouncement::FatalError { .. } => {
+                            panic!(
+                                "a control announcement requesting a fatal error was received: {}",
+                                fatal
+                            )
+                        }
+                    }
+                } else {
+                    debug!(?ev, "ignoring event while looking for a fatal")
+                }
+            }
+
+            // Barring a `fatal`, the channel should never be closed, ever.
             panic!(
-                "request for {} channel closed with error \"{}\", this is a serious bug --- \
-                 a component will likely be stuck from now on",
+                "request for {} channel closed with return value \"{}\" in unit test harness",
+                type_name::<T>(),
                 err,
-                type_name::<T>()
             );
         })
     }
@@ -246,21 +297,28 @@ impl<REv: 'static> Default for ComponentHarness<REv> {
     }
 }
 
-/// Test that the random port generator produce at least 40k values without duplicates.
-#[test]
-fn test_random_port_gen() {
-    const NUM_ROUNDS: usize = 40_000;
-
-    let values: HashSet<_> = (0..NUM_ROUNDS)
-        .map(|_| {
-            let port = unused_port_on_localhost();
-            assert!(port >= PORT_LOWER_BOUND);
-            port
-        })
-        .collect();
-
-    assert_eq!(values.len(), NUM_ROUNDS);
+/// A special event for unit tests.
+///
+/// Essentially discards all event (they are not even processed by the unit testing hardness),
+/// except for control announcements, which are preserved.
+#[derive(Debug, From)]
+pub enum UnitTestEvent {
+    /// A preserved control announcement.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    /// A different event.
+    Other,
 }
+
+impl ReactorEvent for UnitTestEvent {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        match self {
+            UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            UnitTestEvent::Other => None,
+        }
+    }
+}
+
 #[test]
 fn default_works_without_panicking_for_component_harness() {
     let _harness = ComponentHarness::<()>::default();
