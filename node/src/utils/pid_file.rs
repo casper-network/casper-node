@@ -105,7 +105,7 @@ impl PidFile {
     /// Creates a new pidfile.
     ///
     /// The error-behavior of this function is important and can be used to distinguish between
-    /// different conditions according to the table below. If the `Pidfile` is instantiated before
+    /// different conditions described in [`PidFileError`]. If the `Pidfile` is instantiated before
     /// the resource it is supposed to protect, the following actions are recommended:
     fn new<P: AsRef<Path>>(path: P) -> Result<PidFile, PidFileError> {
         // First we try to open the pidfile, without disturbing it.
