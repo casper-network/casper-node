@@ -36,19 +36,19 @@ export const enum SystemContract {
   /**
    * Mint contract.
    */
-  Mint = 0,
+  Mint = 1,
   /**
    * Handle Payment contract.
    */
-  HandlePayment = 1,
+  HandlePayment = 2,
   /**
    * Standard Payment contract.
    */
-  StandardPayment = 2,
+  StandardPayment = 3,
   /**
    * Auction contract.
    */
-  Auction = 3,
+  Auction = 4,
 }
 
 /**
@@ -135,7 +135,7 @@ export function readHostBuffer(count: u32): Uint8Array {
  */
 function getSystemContract(systemContract: SystemContract): Uint8Array {
   let data = new Uint8Array(32);
-  data[31] = <u8>systemContract + 1;
+  data[31] = <u8>systemContract;
   return data;
 }
 
