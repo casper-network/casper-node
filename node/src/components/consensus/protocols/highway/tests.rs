@@ -233,10 +233,11 @@ fn send_a_valid_wire_unit() {
     // If after another timeout, the state has not changed, an alert is raised.
     now += standstill_timeout;
     let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT);
-    match &*outcomes {
-        [ProtocolOutcome::StandstillAlert] => (),
-        _ => panic!("Unexpected outcomes: {:?}", outcomes),
-    }
+    assert!(
+        matches!(&*outcomes, [ProtocolOutcome::StandstillAlert]),
+        "Unexpected outcomes: {:?}",
+        outcomes
+    );
 }
 
 #[test]
