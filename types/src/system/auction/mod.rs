@@ -80,12 +80,10 @@ pub trait Auction:
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
-        let mut seigniorage_recipients_snapshot =
-            detail::get_seigniorage_recipients_snapshot(self)?;
-        let seigniorage_recipients = seigniorage_recipients_snapshot
-            .remove(&era_index)
-            .ok_or(Error::MissingSeigniorageRecipients)?;
-        Ok(seigniorage_recipients)
+        match self.read_era_validators(era_index)? {
+            Some(seigniorage_recipients) => Ok(seigniorage_recipients),
+            None => Err(Error::MissingSeigniorageRecipients),
+        }
     }
 
     /// For a non-founder validator, this adds, or modifies, an entry in the `bids` collection and
