@@ -73,8 +73,10 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
+use tokio::sync::Semaphore;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
@@ -129,10 +131,8 @@ use requests::{
     NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
-/// Timeout that essentially is "forever".
-///
-/// Used to "park" tasks that should never return.
-const A_VERY_LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 10_000);
+/// A resource that will never be available, thus trying to acquire it will wait forever.
+const UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -414,11 +414,10 @@ impl<REv> EffectBuilder<REv> {
                 error!(%err, ?queue_kind, "request for {} channel closed, this may be a bug? \
                        check if a component is stuck from now on ", type_name::<T>());
 
-                // We cannot produce any value to satisfy the request, so we just abandon this task.
-                loop {
-                    tokio::time::delay_for(A_VERY_LONG_TIME).await;
-                    error!("if you are seeing this message, a very long time has passed...");
-                }
+                // We cannot produce any value to satisfy the request, so we just abandon this task
+                // by waiting on a resource we can never acquire.
+                let _ = UNOBTAINIUM.acquire().await;
+                panic!("should never obtain unobtainium semaphore");
             }
         }
     }
