@@ -36,7 +36,7 @@ pub struct PidFile {
 #[derive(Debug, Error)]
 pub enum PidFileError {
     /// The pidfile could not be opened at all.
-    #[error("could not pidfile: {0}")]
+    #[error("could not open pidfile: {0}")]
     CouldNotOpen(#[source] io::Error),
     /// The pidfile could not be locked.
     #[error("could not lock pidfile: {0}")]
