@@ -18,12 +18,12 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
+        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX, TIMER_ID_STANDSTILL_ALERT},
         tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
     },
-    types::{ProtoBlock, Timestamp},
+    types::{ProtoBlock, TimeDiff, Timestamp},
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
@@ -52,6 +52,7 @@ where
 }
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
+const STANDSTILL_TIMEOUT: &str = "1min";
 
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
@@ -71,7 +72,7 @@ where
         secret_key_path: Default::default(),
         unit_hashes_folder: Default::default(),
         pending_vertex_timeout: "1min".parse().unwrap(),
-        standstill_timeout: "30sec".parse().unwrap(),
+        standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
         log_participation_interval: "10sec".parse().unwrap(),
         max_execution_delay: 3,
     };
@@ -177,12 +178,13 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
 
 #[test]
 fn send_a_valid_wire_unit() {
+    let standstill_timeout: TimeDiff = STANDSTILL_TIMEOUT.parse().unwrap();
     let creator: ValidatorIndex = ValidatorIndex(0);
     let validators = vec![(*ALICE_PUBLIC_KEY, 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
-    let now = Timestamp::zero();
+    let mut now = Timestamp::zero();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
@@ -201,6 +203,7 @@ fn send_a_valid_wire_unit() {
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
+
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
@@ -214,6 +217,25 @@ fn send_a_valid_wire_unit() {
             }
             outcome => panic!("Unexpected outcome: {:?}", outcome),
         }
+    }
+
+    // Our protocol state has changed since initialization, so there is no alert.
+    now += standstill_timeout;
+    let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT);
+    match &*outcomes {
+        [ProtocolOutcome::ScheduleTimer(timestamp, timer_id)] => {
+            assert_eq!(*timestamp, now + standstill_timeout);
+            assert_eq!(*timer_id, TIMER_ID_STANDSTILL_ALERT);
+        }
+        _ => panic!("Unexpected outcomes: {:?}", outcomes),
+    }
+
+    // If after another timeout, the state has not changed, an alert is raised.
+    now += standstill_timeout;
+    let outcomes = highway_protocol.handle_timer(now, TIMER_ID_STANDSTILL_ALERT);
+    match &*outcomes {
+        [ProtocolOutcome::StandstillAlert] => (),
+        _ => panic!("Unexpected outcomes: {:?}", outcomes),
     }
 }
 
