@@ -53,10 +53,9 @@ mod system_contract_type {
     //! Home of system contract type enum.
 
     use core::{
-        convert::TryFrom,
+        convert::{TryFrom, TryInto},
         fmt::{self, Display, Formatter},
     };
-    use std::convert::TryInto;
 
     use crate::{ApiError, ContractHash, HashAddr, Key, U256};
 
