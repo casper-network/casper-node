@@ -64,7 +64,7 @@ acceleration_parameter = 40
 # we will use for looking for a summit in order to determine a proposal's finality.
 # The required quorum in a summit we will look for to check if a round was successful is
 # determined by this FTT.
-acceleration_ftt = 1
+acceleration_ftt = [1, 100]
 
 # ====================================
 # Configuration options for networking
