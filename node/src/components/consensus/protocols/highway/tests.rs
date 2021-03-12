@@ -99,10 +99,11 @@ fn test_highway_protocol_handle_message_parse_error() {
     let mut highway_protocol: Box<dyn ConsensusProtocol<NodeId, ClContext>> =
         new_test_highway_protocol(vec![(*ALICE_PUBLIC_KEY, 100)], vec![]);
 
+    let now = Timestamp::zero();
     let sender = NodeId(123);
     let msg = vec![];
     let mut effects: Vec<ProtocolOutcome<NodeId, ClContext>> =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned());
+        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), now);
 
     assert_eq!(effects.len(), 1);
 
@@ -130,13 +131,14 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
+    let now = Timestamp::zero();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: None,
         seq_number,
-        timestamp: 0.into(),
+        timestamp: now,
         round_exp: 0,
         endorsed: BTreeSet::new(),
     };
@@ -147,7 +149,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
-    let mut outcomes = highway_protocol.handle_message(sender.to_owned(), msg.to_owned());
+    let mut outcomes = highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), now);
     assert_eq!(outcomes.len(), 1);
 
     let maybe_protocol_outcome = outcomes.pop();
@@ -180,18 +182,18 @@ fn send_a_valid_wire_unit() {
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
-    let timestamp = 0.into();
+    let now = Timestamp::zero();
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: Some(CandidateBlock::new(
             ProtoBlock::new(vec![], vec![], false),
-            timestamp,
+            now,
             vec![],
         )),
         seq_number,
-        timestamp,
+        timestamp: now,
         round_exp: 14,
         endorsed: BTreeSet::new(),
     };
@@ -203,12 +205,12 @@ fn send_a_valid_wire_unit() {
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
 
-    let mut outcomes = highway_protocol.handle_message(sender, msg);
+    let mut outcomes = highway_protocol.handle_message(sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
             ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
-                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX))
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, now))
             }
             outcome => panic!("Unexpected outcome: {:?}", outcome),
         }
@@ -224,15 +226,15 @@ fn detect_doppelganger() {
     let seq_number = panorama.next_seq_num(&state, creator);
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
-    let timestamp = 0.into();
-    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), timestamp, vec![]);
+    let now = Timestamp::zero();
+    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), now, vec![]);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
         instance_id,
         value: Some(value),
         seq_number,
-        timestamp,
+        timestamp: now,
         round_exp,
         endorsed: BTreeSet::new(),
     };
@@ -242,24 +244,19 @@ fn detect_doppelganger() {
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
-    let _ = highway_protocol.activate_validator(
-        *ALICE_PUBLIC_KEY,
-        alice_keypair,
-        Timestamp::zero(),
-        None,
-    );
+    let _ = highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, now, None);
     assert_eq!(highway_protocol.is_active(), true);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let mut outcomes = highway_protocol.handle_message(sender, msg);
+    let mut outcomes = highway_protocol.handle_message(sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::DoppelgangerDetected => return,
             ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
-                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX))
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, now))
             }
             _ => (),
         }

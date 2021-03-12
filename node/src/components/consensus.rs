@@ -130,7 +130,6 @@ pub enum Event<I> {
         /// This is empty except if the activation era still needs to be instantiated: Its
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
-        timestamp: Timestamp,
     },
     /// An event instructing us to shutdown if the latest era received no votes.
     Shutdown,
@@ -349,14 +348,9 @@ where
                 key_blocks,
                 booking_blocks,
                 validators,
-                timestamp,
             } => {
-                let mut effects = handling_es.handle_initialize_eras(
-                    key_blocks,
-                    booking_blocks,
-                    validators,
-                    timestamp,
-                );
+                let mut effects =
+                    handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators);
 
                 // TODO: remove that when possible
                 // This is needed because we want to make sure that we only try to handle linear
