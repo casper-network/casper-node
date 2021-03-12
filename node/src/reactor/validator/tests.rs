@@ -43,7 +43,11 @@ impl TestChain {
         let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
         let stakes = keys
             .iter()
-            .map(|secret_key| (PublicKey::from(secret_key), rng.gen_range(100..999)))
+            .map(|secret_key| {
+                // We use very large stakes so we would catch overflow issues.
+                let stake = U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX);
+                (PublicKey::from(secret_key), stake)
+            })
             .collect();
         Self::new_with_keys(rng, keys, stakes)
     }
@@ -54,21 +58,19 @@ impl TestChain {
     fn new_with_keys(
         rng: &mut TestRng,
         keys: Vec<SecretKey>,
-        stakes: BTreeMap<PublicKey, u64>,
+        stakes: BTreeMap<PublicKey, U512>,
     ) -> Self {
         // Load the `local` chainspec.
         let mut chainspec = Chainspec::from_resources("local");
 
         // Override accounts with those generated from the keys.
         let accounts = stakes
-            .iter()
-            .map(|(public_key, bounded_amounts_u64)| {
-                let validator_config = ValidatorConfig::new(
-                    Motes::new(U512::from(*bounded_amounts_u64)),
-                    DelegationRate::zero(),
-                );
+            .into_iter()
+            .map(|(public_key, bounded_amount)| {
+                let validator_config =
+                    ValidatorConfig::new(Motes::new(bounded_amount), DelegationRate::zero());
                 AccountConfig::new(
-                    *public_key,
+                    public_key,
                     Motes::new(U512::from(rng.gen_range(10000..99999999))),
                     Some(validator_config),
                 )
@@ -203,11 +205,11 @@ async fn run_equivocator_network() {
     let alice_sk = SecretKey::random(&mut rng);
     let size: usize = 2;
     let mut keys: Vec<SecretKey> = (1..size).map(|_| SecretKey::random(&mut rng)).collect();
-    let mut stakes: BTreeMap<PublicKey, u64> = keys
+    let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(secret_key), 100))
+        .map(|secret_key| (PublicKey::from(secret_key), U512::from(100)))
         .collect();
-    stakes.insert(PublicKey::from(&alice_sk), 1);
+    stakes.insert(PublicKey::from(&alice_sk), U512::from(1));
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
