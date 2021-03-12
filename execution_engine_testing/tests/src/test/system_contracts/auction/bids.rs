@@ -518,6 +518,7 @@ fn should_calculate_era_validators() {
     let consensus_next_era_id: EraId = DEFAULT_AUCTION_DELAY + 1 + post_era_id;
 
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+
     assert_eq!(
         era_validators.len(),
         snapshot_size,
