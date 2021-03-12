@@ -61,7 +61,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
+    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
     utils::Source,
     NodeRng,
 };
@@ -762,6 +762,86 @@ impl reactor::Reactor for Reactor {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();
                         }
+                        Tag::BlockHeaderByHash => {
+                            let block_hash: BlockHash = match bincode::deserialize(&serialized_id) {
+                                Ok(block_hash) => block_hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+
+                            match self.storage.read_block_header_by_hash(&block_hash) {
+                                Ok(Some(block_header)) => {
+                                    match Message::new_get_response(&block_header) {
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                    };
+                                }
+                                Ok(None) => {
+                                    debug!("failed to get {} for {}", block_hash, sender);
+                                    return Effects::new();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to get {} for {}: {}",
+                                        block_hash, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            }
+                        }
+                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                            let block_height = match bincode::deserialize(&serialized_id) {
+                                Ok(block_height) => block_height,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            match self
+                                .storage
+                                .read_block_header_and_finality_signatures_by_height(block_height)
+                            {
+                                Ok(Some(block_header)) => {
+                                    match Message::new_get_response(&block_header) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                Ok(None) => {
+                                    debug!("failed to get {} for {}", block_height, sender);
+                                    return Effects::new();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to get {} for {}: {}",
+                                        block_height, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            }
+                        }
                     },
                     Message::GetResponse {
                         tag,
@@ -781,10 +861,40 @@ impl reactor::Reactor for Reactor {
                                 responder: None,
                             })
                         }
-                        Tag::Block => todo!("Handle GET block response"),
-                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
+                        Tag::Block => {
+                            error!(
+                                "cannot handle get response for block-by-hash from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockByHeight => {
+                            error!(
+                                "cannot handle get response for block-by-height from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
                         Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
+                            error!(
+                                "cannot handle get response for gossiped-address from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockHeaderByHash => {
+                            error!(
+                                "cannot handle get response for block-header-by-hash from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                            error!(
+                                "cannot handle get response for \
+                                 block-header-and-finality-signatures-by-height from {}",
+                                sender
+                            );
                             return Effects::new();
                         }
                     },

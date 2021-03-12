@@ -852,6 +852,18 @@ impl FromBytes for BlockHeader {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlockHeaderWithMetadata {
+    pub block_header: BlockHeader,
+    pub block_signatures: BlockSignatures,
+}
+
+impl Display for BlockHeaderWithMetadata {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} and {}", self.block_header, self.block_signatures)
+    }
+}
+
 /// The body portion of a block.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
@@ -971,7 +983,7 @@ impl From<bytesrepr::Error> for BlockValidationError {
 }
 
 /// A storage representation of finality signatures with the associated block hash.
-#[derive(Debug, Serialize, Deserialize, Clone, DataSize)]
+#[derive(Debug, Serialize, Deserialize, Clone, DataSize, PartialEq)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
     pub(crate) block_hash: BlockHash,
