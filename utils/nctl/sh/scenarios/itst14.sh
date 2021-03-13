@@ -21,7 +21,6 @@ function main() {
     do_await_n_blocks "5"
     # 1. Verify network is in sync
     check_network_sync
-    assert_node_proposed '5' '180'
     # 2a. Get era
     STOPPED_ERA=$(check_current_era)
     # 2b. Stop node
