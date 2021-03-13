@@ -135,7 +135,7 @@ impl TestChain {
 
             // We create an initializer reactor here and run it to completion.
             let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
-                WithDir::new(root.clone(), cfg),
+                (false, WithDir::new(root.clone(), cfg)),
                 Arc::clone(&self.chainspec),
             )
             .await?;

@@ -14,7 +14,7 @@ use anyhow::{self, Context};
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 use crate::config;
 use casper_node::{
@@ -22,7 +22,10 @@ use casper_node::{
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
     setup_signal_hooks,
     types::ExitCode,
-    utils::WithDir,
+    utils::{
+        pid_file::{PidFile, PidFileOutcome},
+        WithDir,
+    },
 };
 use prometheus::Registry;
 
@@ -147,6 +150,40 @@ impl Cli {
                 let validator_config = Self::init(&config, config_ext)?;
                 info!(version = %casper_node::VERSION_STRING.as_str(), "node starting up");
 
+                let pidfile_outcome = {
+                    // Determine storage directory to store pidfile in.
+                    let storage_config = validator_config.map_ref(|cfg| cfg.storage.clone());
+                    let root = storage_config.with_dir(storage_config.value().path.clone());
+
+                    // Create directory if it does not exist, similar to how the storage component
+                    // would do it.
+                    if !root.exists() {
+                        fs::create_dir_all(&root).context("create storage directory")?;
+                    }
+
+                    PidFile::acquire(root.join("initializer.pid"))
+                };
+
+                // Note: Do not change `_pidfile` to `_`, or it will be dropped prematurely.
+                // Instantiating `pidfile` guarantees that it will be dropped _after_ any reactor,
+                // which is what we want.
+                let (_pidfile, crashed) = match pidfile_outcome {
+                    PidFileOutcome::AnotherNodeRunning(_) => {
+                        anyhow::bail!("another node instance is running (pidfile is locked)");
+                    }
+                    PidFileOutcome::Crashed(pidfile) => {
+                        warn!("previous node instance seems to have crashed, integrity checks may be run");
+                        (pidfile, true)
+                    }
+                    PidFileOutcome::Clean(pidfile) => {
+                        info!("no previous crash detected");
+                        (pidfile, false)
+                    }
+                    PidFileOutcome::PidFileError(err) => {
+                        return Err(anyhow::anyhow!(err));
+                    }
+                };
+
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
                 // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
@@ -157,7 +194,7 @@ impl Cli {
                 let registry = Registry::new();
 
                 let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
-                    validator_config,
+                    (crashed, validator_config),
                     &mut rng,
                     &registry,
                 )
