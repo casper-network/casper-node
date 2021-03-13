@@ -226,6 +226,7 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns whether enough validators are online to finalize values with the target fault
     /// tolerance threshold, always counting this validator as online.
     fn enough_validators_online(&self, state: &State<C>, now: Timestamp) -> bool {
+        // We divide before adding, because  total_weight + target_fft  could overflow u64.
         let target_quorum = state.total_weight() / 2 + self.target_ftt / 2;
         let online_weight: Weight = state
             .weights()

@@ -14,6 +14,7 @@ use std::{
 use backtrace::Backtrace;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
+use tracing::info;
 
 use casper_node::MAX_THREAD_COUNT;
 
@@ -41,30 +42,26 @@ fn panic_hook(info: &PanicInfo) {
     process::abort()
 }
 
-/// Actual main function.
-///
-/// Starts a runtime and launches whatever function was requested via CLI.
-fn run_main() -> anyhow::Result<i32> {
-    let mut runtime = Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .max_threads(MAX_THREAD_COUNT)
-        .build()
-        .unwrap();
-
-    panic::set_hook(Box::new(panic_hook));
-
-    // Parse CLI args and run selected subcommand.
-    let opts = Cli::from_args();
-
-    runtime.block_on(async { opts.run().await })
-}
-
-/// Main wrapper.
-///
-/// Does not nothing but call `run_main` and exit with its `exit_code`, ensuring that all acquired
-/// resources are dropped before doing so.
+/// Main function.
 fn main() -> anyhow::Result<()> {
-    let exit_code = run_main()?;
+    // The exit code is determined in a block to ensure that all acquired resources are dropped
+    // before exiting with the given exit code.
+    let exit_code = {
+        let mut runtime = Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .max_threads(MAX_THREAD_COUNT)
+            .build()
+            .unwrap();
+
+        panic::set_hook(Box::new(panic_hook));
+
+        // Parse CLI args and run selected subcommand.
+        let opts = Cli::from_args();
+
+        runtime.block_on(async { opts.run().await })?
+    };
+
+    info!(%exit_code, "exiting casper-node");
     process::exit(exit_code)
 }

@@ -281,7 +281,7 @@ function _set_nodes()
             "import toml;"
             "cfg=toml.load('$PATH_TO_FILE');"
             "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
-            "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
+            "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
             "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
             "cfg['network']['bind_address']='$(get_network_bind_address "$IDX")';"
             "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
