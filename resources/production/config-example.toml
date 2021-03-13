@@ -138,14 +138,14 @@ qps_limit = 10
 address = '0.0.0.0:9999'
 
 # The number of event stream events to buffer.
-event_stream_buffer_length = 10
+event_stream_buffer_length = 100
 
 # The capacity of the broadcast channel size.
 broadcast_channel_size = 100
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 100
+qps_limit = 10
 
 
 # ===============================================
