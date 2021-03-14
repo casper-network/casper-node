@@ -710,7 +710,13 @@ mod tests {
                     let (av, effects) = ActiveValidator::new(
                         vidx, secret, start_time, start_time, &state, None, target_ftt,
                     );
-                    let timestamp = unwrap_single(&effects).unwrap_timer();
+
+                    // The second effect is the `Ping` effect.
+                    // We don't need it here and it will panic in `unwrap_single`.
+                    let timer_effect: Vec<Effect<TestContext>> =
+                        effects.into_iter().take(1).collect();
+
+                    let timestamp = unwrap_single(&timer_effect).unwrap_timer();
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(
                             timestamp, earliest_round_start,
