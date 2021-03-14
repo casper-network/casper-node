@@ -74,9 +74,9 @@ where
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
     /// The path to the file storing the hash of our latest known unit (if any).
-    unit_hash_file: Option<PathBuf>,
-    /// The hash of the last known unit created by us.
-    own_last_unit: Option<C::Hash>,
+    unit_file: Option<PathBuf>,
+    /// The last known unit created by us.
+    own_last_unit: Option<SignedWireUnit<C>>,
     /// The target fault tolerance threshold. The validator pauses (i.e. doesn't create new units)
     /// if not enough validators are online to finalize values at this FTT.
     target_ftt: Weight,
@@ -103,19 +103,16 @@ impl<C: Context> ActiveValidator<C> {
         current_time: Timestamp,
         start_time: Timestamp,
         state: &State<C>,
-        unit_hash_file: Option<PathBuf>,
+        unit_file: Option<PathBuf>,
         target_ftt: Weight,
     ) -> (Self, Vec<Effect<C>>) {
-        let own_last_unit = unit_hash_file
+        let own_last_unit = unit_file
             .as_ref()
             .map(Self::read_last_unit)
             .transpose()
             .map_err(|err| match err.kind() {
                 io::ErrorKind::NotFound => (),
-                _ => panic!(
-                    "got an error reading unit hash file {:?}: {:?}",
-                    unit_hash_file, err
-                ),
+                _ => panic!("got an error reading unit file {:?}: {:?}", unit_file, err),
             })
             .ok()
             .flatten();
@@ -125,48 +122,58 @@ impl<C: Context> ActiveValidator<C> {
             next_round_exp: state.params().init_round_exp(),
             next_timer: state.params().start_timestamp(),
             next_proposal: None,
-            unit_hash_file,
+            unit_file,
             own_last_unit,
             target_ftt,
             paused: false,
         };
         let mut effects = av.schedule_timer(start_time, state);
         effects.push(av.send_ping(current_time));
+        effects.extend(
+            av.own_last_unit
+                .as_ref()
+                .map(|unit| Effect::NewVertex(ValidVertex(Vertex::Unit(unit.clone()))))
+                .into_iter(),
+        );
         (av, effects)
     }
 
-    fn read_last_unit<P: AsRef<Path>>(path: P) -> io::Result<C::Hash> {
+    fn read_last_unit<P: AsRef<Path>>(path: P) -> io::Result<SignedWireUnit<C>> {
         let mut file = File::open(path)?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
         Ok(serde_json::from_slice(&bytes)?)
     }
 
-    fn write_last_unit(&mut self, hash: C::Hash) -> io::Result<()> {
-        // If there is no unit_hash_file set, do not write to it
-        let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
+    fn write_last_unit(&mut self, swunit: SignedWireUnit<C>) -> io::Result<()> {
+        // If there is no unit_file set, do not write to it
+        let unit_file = if let Some(file) = self.unit_file.as_ref() {
             file
         } else {
             return Ok(());
         };
 
-        // Otherwise, set own_last_unit to the specified hash
-        self.own_last_unit = Some(hash);
-
         // Create the file (and its parents) as necessary
-        if let Some(parent_directory) = unit_hash_file.parent() {
+        if let Some(parent_directory) = unit_file.parent() {
             fs::create_dir_all(parent_directory)?;
         }
-        let mut file = File::create(unit_hash_file)?;
+        let mut file = File::create(unit_file)?;
 
         // Finally, write the data to file we created
-        let bytes = serde_json::to_vec(&hash)?;
+        let bytes = serde_json::to_vec(&swunit)?;
+
         file.write_all(&bytes)
     }
 
     fn can_vote(&self, state: &State<C>) -> bool {
-        self.own_last_unit
-            .map_or(true, |ref hash| state.has_unit(hash))
+        self.own_last_unit.as_ref().map_or(true, |swunit| {
+            state.has_unit(&swunit.hash())
+                && swunit
+                    .wire_unit()
+                    .panorama
+                    .iter_correct_hashes()
+                    .all(|hash| state.has_unit(hash))
+        })
     }
 
     /// Sets the next round exponent to the new value.
@@ -460,13 +467,14 @@ impl<C: Context> ActiveValidator<C> {
             endorsed,
         }
         .into_hashed();
-        self.write_last_unit(hwunit.hash()).unwrap_or_else(|err| {
+        let swunit = SignedWireUnit::new(hwunit, &self.secret);
+        self.write_last_unit(swunit.clone()).unwrap_or_else(|err| {
             panic!(
                 "should successfully write unit's hash to {:?}, got {:?}",
-                self.unit_hash_file, err
+                self.unit_file, err
             )
         });
-        Some(SignedWireUnit::new(hwunit, &self.secret))
+        Some(swunit)
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
@@ -589,7 +597,7 @@ impl<C: Context> ActiveValidator<C> {
             Vertex::Unit(swunit) => {
                 // If we already have the unit in our local state,
                 // we must have had created it ourselves earlier and it is now gossiped back to us.
-                !state.has_unit(&swunit.hash()) && self.is_our_unit(swunit.wire_unit())
+                self.is_our_unit(swunit.wire_unit()) && !state.has_unit(&swunit.hash())
             }
             Vertex::Endorsements(endorsements) => {
                 if state::TODO_ENDORSEMENT_EVIDENCE_DISABLED {
