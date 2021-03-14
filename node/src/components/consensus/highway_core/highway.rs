@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use datasize::DataSize;
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     components::consensus::{
@@ -215,7 +215,15 @@ impl<C: Context> Highway<C> {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
-        self.active_validator = None;
+        if let Some(av) = self.active_validator.take() {
+            match av.cleanup() {
+                Ok(_) => {}
+                Err(err) => warn!(
+                    ?err,
+                    "error occurred when cleaning up active validator state"
+                ),
+            }
+        }
     }
 
     /// Switches the active validator to a new round exponent.

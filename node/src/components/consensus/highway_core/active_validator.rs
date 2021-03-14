@@ -165,6 +165,18 @@ impl<C: Context> ActiveValidator<C> {
         file.write_all(&bytes)
     }
 
+    /// Cleans up the validator disk state.
+    /// Deletes all unit files.
+    pub(crate) fn cleanup(&self) -> io::Result<()> {
+        let unit_file = if let Some(file) = self.unit_file.as_ref() {
+            file
+        } else {
+            return Ok(());
+        };
+
+        fs::remove_file(unit_file)
+    }
+
     fn can_vote(&self, state: &State<C>) -> bool {
         self.own_last_unit.as_ref().map_or(true, |swunit| {
             state.has_unit(&swunit.hash())
