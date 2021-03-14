@@ -129,12 +129,6 @@ impl<C: Context> ActiveValidator<C> {
         };
         let mut effects = av.schedule_timer(start_time, state);
         effects.push(av.send_ping(current_time));
-        effects.extend(
-            av.own_last_unit
-                .as_ref()
-                .map(|unit| Effect::NewVertex(ValidVertex(Vertex::Unit(unit.clone()))))
-                .into_iter(),
-        );
         (av, effects)
     }
 
@@ -165,6 +159,34 @@ impl<C: Context> ActiveValidator<C> {
         file.write_all(&bytes)
     }
 
+    /// Returns whether validator's protocol state is fully synchronized and it's safe to start
+    /// creating units.
+    ///
+    /// If validator restarted within an era, it most likely had created units before that event. It
+    /// cannot start creating new units until its state is fully synchronized, otherwise it will
+    /// most likely equivocate.
+    fn can_vote(&self, state: &State<C>) -> bool {
+        self.own_last_unit
+            .as_ref()
+            .map_or(true, |swunit| state.has_unit(&swunit.hash()))
+    }
+
+    /// Returns whether validator's protocol state is synchronized up until the panorama of its own
+    /// last unit.
+    pub(crate) fn is_own_last_unit_panorama_sync(&self, state: &State<C>) -> bool {
+        self.own_last_unit.as_ref().map_or(true, |swunit| {
+            swunit
+                .wire_unit()
+                .panorama
+                .iter_correct_hashes()
+                .all(|hash| state.has_unit(hash))
+        })
+    }
+
+    pub(crate) fn take_own_last_unit(&mut self) -> Option<SignedWireUnit<C>> {
+        self.own_last_unit.take()
+    }
+
     /// Cleans up the validator disk state.
     /// Deletes all unit files.
     pub(crate) fn cleanup(&self) -> io::Result<()> {
@@ -175,17 +197,6 @@ impl<C: Context> ActiveValidator<C> {
         };
 
         fs::remove_file(unit_file)
-    }
-
-    fn can_vote(&self, state: &State<C>) -> bool {
-        self.own_last_unit.as_ref().map_or(true, |swunit| {
-            state.has_unit(&swunit.hash())
-                && swunit
-                    .wire_unit()
-                    .panorama
-                    .iter_correct_hashes()
-                    .all(|hash| state.has_unit(hash))
-        })
     }
 
     /// Sets the next round exponent to the new value.

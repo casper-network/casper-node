@@ -598,7 +598,28 @@ impl<C: Context> Highway<C> {
             })
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_unit(&unit_hash, now));
+        evidence_effects.extend(self.add_own_last_unit(now));
         evidence_effects
+    }
+
+    /// If validator's protocol state is synchronized, adds its own last unit (if any) to the
+    /// protocol state
+    fn add_own_last_unit(&mut self, now: Timestamp) -> Vec<Effect<C>> {
+        self.map_active_validator(
+            |av, state| {
+                if av.is_own_last_unit_panorama_sync(state) {
+                    if let Some(own_last_unit) = av.take_own_last_unit() {
+                        vec![Effect::NewVertex(ValidVertex(Vertex::Unit(own_last_unit)))]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            },
+            now,
+        )
+        .unwrap_or_default()
     }
 
     /// Adds endorsements to the state. If there are conflicting endorsements, `NewVertex` effects
