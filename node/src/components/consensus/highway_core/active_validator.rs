@@ -108,7 +108,7 @@ impl<C: Context> ActiveValidator<C> {
     ) -> (Self, Vec<Effect<C>>) {
         let own_last_unit = unit_file
             .as_ref()
-            .map(Self::read_last_unit)
+            .map(read_last_unit)
             .transpose()
             .map_err(|err| match err.kind() {
                 io::ErrorKind::NotFound => (),
@@ -130,33 +130,6 @@ impl<C: Context> ActiveValidator<C> {
         let mut effects = av.schedule_timer(start_time, state);
         effects.push(av.send_ping(current_time));
         (av, effects)
-    }
-
-    fn read_last_unit<P: AsRef<Path>>(path: P) -> io::Result<SignedWireUnit<C>> {
-        let mut file = File::open(path)?;
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)?;
-        Ok(serde_json::from_slice(&bytes)?)
-    }
-
-    fn write_last_unit(&mut self, swunit: SignedWireUnit<C>) -> io::Result<()> {
-        // If there is no unit_file set, do not write to it
-        let unit_file = if let Some(file) = self.unit_file.as_ref() {
-            file
-        } else {
-            return Ok(());
-        };
-
-        // Create the file (and its parents) as necessary
-        if let Some(parent_directory) = unit_file.parent() {
-            fs::create_dir_all(parent_directory)?;
-        }
-        let mut file = File::create(unit_file)?;
-
-        // Finally, write the data to file we created
-        let bytes = serde_json::to_vec(&swunit)?;
-
-        file.write_all(&bytes)
     }
 
     /// Returns whether validator's protocol state is fully synchronized and it's safe to start
@@ -491,7 +464,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         .into_hashed();
         let swunit = SignedWireUnit::new(hwunit, &self.secret);
-        self.write_last_unit(swunit.clone()).unwrap_or_else(|err| {
+        write_last_unit(&self.unit_file, swunit.clone()).unwrap_or_else(|err| {
             panic!(
                 "should successfully write unit's hash to {:?}, got {:?}",
                 self.unit_file, err
@@ -645,16 +618,55 @@ impl<C: Context> ActiveValidator<C> {
     }
 }
 
+pub(crate) fn read_last_unit<C, P>(path: P) -> io::Result<SignedWireUnit<C>>
+where
+    C: Context,
+    P: AsRef<Path>,
+{
+    let mut file = File::open(path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+pub(crate) fn write_last_unit<C: Context>(
+    unit_file: &Option<PathBuf>,
+    swunit: SignedWireUnit<C>,
+) -> io::Result<()> {
+    // If there is no unit_file set, do not write to it
+    let unit_file = if let Some(file) = unit_file.as_ref() {
+        file
+    } else {
+        return Ok(());
+    };
+
+    // Create the file (and its parents) as necessary
+    if let Some(parent_directory) = unit_file.parent() {
+        fs::create_dir_all(parent_directory)?;
+    }
+    let mut file = File::create(unit_file)?;
+
+    // Finally, write the data to file we created
+    let bytes = serde_json::to_vec(&swunit)?;
+
+    file.write_all(&bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
+    use tempfile::tempdir;
 
-    use crate::components::consensus::highway_core::validators::ValidatorMap;
+    use crate::{
+        components::consensus::highway_core::{
+            highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
+        },
+    };
 
     use super::{
         super::{
             finality_detector::FinalityDetector,
-            state::{tests::*, Weight},
+            state::{tests::*, State, Weight},
         },
         Vertex, *,
     };
@@ -674,7 +686,7 @@ mod tests {
             if let Eff::ScheduleTimer(timestamp) = self {
                 timestamp
             } else {
-                panic!("Unexpected effect: {:?}", self);
+                panic!("expected `ScheduleTimer`, got: {:?}", self)
             }
         }
     }
@@ -711,12 +723,13 @@ mod tests {
                         vidx, secret, start_time, start_time, &state, None, target_ftt,
                     );
 
-                    // The second effect is the `Ping` effect.
-                    // We don't need it here and it will panic in `unwrap_single`.
-                    let timer_effect: Vec<Effect<TestContext>> =
-                        effects.into_iter().take(1).collect();
+                    let timestamp = match &*effects {
+                        [Effect::ScheduleTimer(timer), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))] => {
+                            *timer
+                        }
+                        other => panic!("expected timer and ping effects, got={:?}", other),
+                    };
 
-                    let timestamp = unwrap_single(&timer_effect).unwrap_timer();
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(
                             timestamp, earliest_round_start,
@@ -890,7 +903,7 @@ mod tests {
             [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
                 block_context: bctx,
                 ..
-            }] if *timestamp == 426.into() => bctx.clone(),
+            }] if *timestamp == 426.into() => *bctx,
             effects => panic!("unexpected effects {:?}", effects),
         };
         assert_eq!(
@@ -929,5 +942,137 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(Some(&new_unit.hash()), test.next_finalized());
+    }
+
+    #[test]
+    fn ping_on_startup() {
+        let state = State::new_test(&[Weight(3)], 0);
+        let (_alice, init_effects) = ActiveValidator::new(
+            ALICE,
+            TestSecret(ALICE.0),
+            410.into(),
+            410.into(),
+            &state,
+            None,
+            Weight(2),
+        );
+
+        match &*init_effects {
+            &[Effect::ScheduleTimer(_), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))] => {}
+            other => panic!(
+                "expected two effects on startup: timer and ping. Got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn waits_until_synchronized() -> Result<(), AddUnitError<TestContext>> {
+        let instance_id = TEST_INSTANCE_ID;
+        let mut state = State::new_test(&[Weight(3)], 0);
+        let a0 = {
+            let a0 = add_unit!(state, ALICE, 0xB0; N)?;
+            state.wire_unit(&a0, instance_id).unwrap()
+        };
+        let a1 = {
+            let a1 = add_unit!(state, ALICE, None; a0.hash())?;
+            state.wire_unit(&a1, instance_id).unwrap()
+        };
+        let a2 = {
+            let a2 = add_unit!(state, ALICE, None; a1.hash())?;
+            state.wire_unit(&a2, instance_id).unwrap()
+        };
+        // Clean state. We want Alice to synchronize first.
+        state.retain_evidence_only();
+
+        let unit_file = {
+            let tmp_dir = tempdir().unwrap();
+            let unit_hashes_folder = tmp_dir.path().to_path_buf();
+            Some(unit_hashes_folder.join(format!("unit_hash_{:?}.dat", instance_id)))
+        };
+
+        // Store `a2` unit as the Alice's last unit.
+        write_last_unit(&unit_file, a2.clone()).expect("storing unit should succeed");
+
+        // Alice's last unit is `a2` but `State` is empty. She must synchronize first.
+        let (mut alice, alice_init_effects) = ActiveValidator::new(
+            ALICE,
+            TestSecret(ALICE.0),
+            410.into(),
+            410.into(),
+            &state,
+            unit_file,
+            Weight(2),
+        );
+
+        let mut next_proposal_timer = match &*alice_init_effects {
+            &[Effect::ScheduleTimer(timestamp), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))]
+                if timestamp == 416.into() =>
+            {
+                timestamp
+            }
+            other => panic!("unexpected effects {:?}", other),
+        };
+
+        // Alice has to synchronize up until `a2` (including) before she starts proposing.
+        for unit in vec![a0, a1, a2.clone()] {
+            next_proposal_timer =
+                assert_no_proposal(&mut alice, &state, instance_id, next_proposal_timer);
+            state.add_unit(unit)?;
+        }
+
+        // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a
+        // new block.
+        let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id) {
+            [Eff::ScheduleTimer(_), Eff::RequestNewBlock {
+                block_context: bctx,
+                ..
+            }] => *bctx,
+            effects => panic!("unexpected effects {:?}", effects),
+        };
+
+        let proposal_wunit =
+            unwrap_single(&alice.propose(0xC0FFEE, bctx, &state, instance_id)).unwrap_unit();
+        assert_eq!(
+            proposal_wunit.wire_unit().seq_number,
+            a2.wire_unit().seq_number + 1,
+            "new unit should have correct seq_number"
+        );
+        assert_eq!(
+            proposal_wunit.wire_unit().panorama,
+            panorama!(a2.hash()),
+            "new unit should cite the latest unit"
+        );
+
+        Ok(())
+    }
+
+    // Triggers new proposal by `validator` and verifies that it's empty – no block was proposed.
+    // Captuers the next witness timer and calls the `validator` with that to return the timer for
+    // the next proposal.
+    fn assert_no_proposal(
+        validator: &mut ActiveValidator<TestContext>,
+        state: &State<TestContext>,
+        instance_id: u64,
+        proposal_timer: Timestamp,
+    ) -> Timestamp {
+        let (witness_timestamp, bctx) =
+            match &*validator.handle_timer(proposal_timer, &state, instance_id) {
+                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock {
+                    block_context: bctx,
+                    ..
+                }] => (*witness_timestamp, *bctx),
+                effects => panic!("unexpected effects {:?}", effects),
+            };
+
+        let effects = validator.propose(0xC0FFEE, bctx, state, instance_id);
+        assert!(
+            effects.is_empty(),
+            "should not propose blocks until its dependencies are synchronized: {:?}",
+            effects
+        );
+
+        unwrap_single(&validator.handle_timer(witness_timestamp, &state, instance_id))
+            .unwrap_timer()
     }
 }
