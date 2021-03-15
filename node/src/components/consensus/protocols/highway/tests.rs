@@ -97,7 +97,7 @@ where
     );
     // We expect only the vertex purge timer, participation log timer and `Ping` outcomes.
     // If there are more, the tests might need to handle them.
-    assert_eq!(3, outcomes.len());
+    assert_eq!(4, outcomes.len());
     hw_proto
 }
 
