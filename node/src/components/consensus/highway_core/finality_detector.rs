@@ -125,17 +125,20 @@ impl<C: Context> FinalityDetector<C> {
     }
 
     /// Returns the quorum required by a summit with the specified level and the required FTT.
+    #[allow(clippy::integer_arithmetic)] // See comments.
     fn quorum_for_lvl(&self, lvl: usize, total_w: Weight) -> Weight {
         // A level-lvl summit with quorum  total_w/2 + t  has relative FTT  2t(1 − 1/2^lvl). So:
         // quorum = total_w / 2 + ftt / 2 / (1 - 1/2^lvl)
         //        = total_w / 2 + 2^lvl * ftt / 2 / (2^lvl - 1)
         //        = ((2^lvl - 1) total_w + 2^lvl ftt) / (2 * 2^lvl - 2))
-        assert!(lvl < 64, "lvl must be less than 64");
-        let pow_lvl = 1u128 << lvl;
+        // Levels higher than 63 have negligible effect. With 63, this can't overflow.
+        let pow_lvl = 1u128 << lvl.min(63);
         // Since  pow_lvl <= 2^63,  we have  numerator < (2^64 - 1) * 2^64.
+        // It is safe to subtract because  pow_lvl > 0.
         let numerator = (pow_lvl - 1) * u128::from(total_w) + pow_lvl * u128::from(self.ftt);
         // And  denominator < 2^64,  so  numerator + denominator < 2^128.
         let denominator = 2 * pow_lvl - 2;
+        // The numerator is positive because  ftt > 0.
         // Since this is a lower bound for the quorum, we round up when dividing.
         Weight(((numerator + denominator - 1) / denominator) as u64)
     }
@@ -149,6 +152,8 @@ impl<C: Context> FinalityDetector<C> {
 
     /// Returns the height of the next block that will be finalized.
     fn next_height(&self, state: &State<C>) -> u64 {
+        // In a trillion years, we need to make block height u128.
+        #[allow(clippy::integer_arithmetic)]
         let height_plus_1 = |bhash| state.block(bhash).height + 1;
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }

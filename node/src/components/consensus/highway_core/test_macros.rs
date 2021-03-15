@@ -54,6 +54,7 @@ macro_rules! add_unit {
             .unwrap_or($state.params().start_timestamp());
         // If this is a block: Find the next time we're a leader.
         if value.is_some() {
+            #[allow(clippy::integer_arithmetic)]
             let r_len = TimeDiff::from(1 << round_exp);
             timestamp = state::round_id(timestamp + r_len - TimeDiff::from(1), round_exp);
             while $state.leader(timestamp) != creator {

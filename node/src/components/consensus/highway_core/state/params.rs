@@ -95,6 +95,11 @@ impl Params {
         self.max_round_exp
     }
 
+    /// Returns the minimum round length, corresponding to the minimum round exponent.
+    pub(crate) fn min_round_length(&self) -> TimeDiff {
+        round_len(self.min_round_exp)
+    }
+
     /// Returns the maximum round length, corresponding to the maximum round exponent.
     pub(crate) fn max_round_length(&self) -> TimeDiff {
         round_len(self.max_round_exp)
@@ -127,10 +132,11 @@ impl Params {
         self.endorsement_evidence_limit
     }
 
-    /// Returns the minimum lenght of the era.
+    /// Returns the minimum length of the era.
     pub(crate) fn min_era_length(&self) -> TimeDiff {
-        (TimeDiff::from(1 << self.min_round_exp) * self.end_height)
-            .max(self.end_timestamp - self.start_timestamp)
+        self.min_round_length()
+            .saturating_mul(self.end_height)
+            .max(self.end_timestamp.saturating_diff(self.start_timestamp))
     }
 }
 
