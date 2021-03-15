@@ -764,6 +764,8 @@ impl Runner<InitializerReactor> {
             reactor,
             event_count: 0,
             metrics: RunnerMetrics::new(&registry)?,
+            // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
+            // cause the runner to collect metrics at the first opportunity.
             last_metrics: now.checked_sub(event_metrics_min_delay).unwrap_or(now),
             event_metrics_min_delay,
             event_metrics_threshold: 1000,
