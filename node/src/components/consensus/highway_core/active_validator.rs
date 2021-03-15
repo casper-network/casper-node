@@ -657,10 +657,8 @@ mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
     use tempfile::tempdir;
 
-    use crate::{
-        components::consensus::highway_core::{
-            highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
-        },
+    use crate::components::consensus::highway_core::{
+        highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
     };
 
     use super::{

@@ -12,6 +12,7 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::info;
 
 #[cfg(test)]
 use crate::{
@@ -167,7 +168,7 @@ impl Reactor {
     }
 
     fn new_with_chainspec_loader(
-        config: <Self as reactor::Reactor>::Config,
+        (crashed, config): <Self as reactor::Reactor>::Config,
         registry: &Registry,
         chainspec_loader: ChainspecLoader,
         chainspec_effects: Effects<chainspec_loader::Event>,
@@ -180,14 +181,24 @@ impl Reactor {
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
 
-        if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
-            if !missing_trie_keys.is_empty() {
-                panic!(
-                    "Fatal error! Trie-Key store is not empty.\n {:?}\n \
-                    Wipe the DB to ensure operations.\n Present state_roots: {:?}",
-                    missing_trie_keys, state_roots
-                )
+        // TODO: This integrity check is misplaced, it should be part of the components
+        // `handle_event` function. Ideally it would be in the constructor, but since a query to
+        // storage needs to be made, this is not possible.
+        //
+        // Refactoring this has been postponed for now, since it is unclear whether time-consuming
+        // integrity checks are even a good idea, as they can block the node for one or more hours
+        // on restarts (online checks are an alternative).
+        if crashed {
+            info!("running trie-store integrity check, this may take a while");
+            if let Some(state_roots) = storage.get_state_root_hashes_for_trie_check() {
+                let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone());
+                if !missing_trie_keys.is_empty() {
+                    panic!(
+                        "Fatal error! Trie-Key store is not empty.\n {:?}\n \
+                        Wipe the DB to ensure operations.\n Present state_roots: {:?}",
+                        missing_trie_keys, state_roots
+                    )
+                }
             }
         }
 
@@ -219,7 +230,7 @@ impl Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = WithDir<validator::Config>;
+    type Config = (bool, WithDir<validator::Config>);
     type Error = Error;
 
     fn new(
@@ -232,7 +243,7 @@ impl reactor::Reactor for Reactor {
 
         // Construct the `ChainspecLoader` first so we fail fast if the chainspec is invalid.
         let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(config.dir(), effect_builder)?;
+            ChainspecLoader::new(config.1.dir(), effect_builder)?;
         Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
     }
 

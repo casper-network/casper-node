@@ -546,11 +546,7 @@ impl reactor::Reactor for Reactor {
             init_sync_effects,
         ));
 
-        // Used to decide whether era should be activated.
-        let now = Timestamp::now();
-
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            now,
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
