@@ -453,9 +453,8 @@ where
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
-        let span = debug_span!("process initial effects");
         process_effects(scheduler, initial_effects)
-            .instrument(span)
+            .instrument(debug_span!("process initial effects"))
             .await;
 
         info!("reactor main loop is ready");
@@ -485,9 +484,11 @@ where
 
         let effects = create_effects(effect_builder);
 
-        let effect_span = debug_span!("process injected effects", ev = self.event_count);
         process_effects(self.scheduler, effects)
-            .instrument(effect_span)
+            .instrument(debug_span!(
+                "process injected effects",
+                ev = self.event_count
+            ))
             .await;
     }
 
