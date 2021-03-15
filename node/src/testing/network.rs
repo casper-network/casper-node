@@ -131,8 +131,12 @@ where
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
-        let span = error_span!("crank", node_id = %node_id);
-        if runner.try_crank(rng).instrument(span).await.is_some() {
+        if runner
+            .try_crank(rng)
+            .instrument(error_span!("crank", node_id = %node_id))
+            .await
+            .is_some()
+        {
             1
         } else {
             0
@@ -188,8 +192,12 @@ where
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            let span = error_span!("crank", node_id = %node_id);
-            event_count += if node.try_crank(rng).instrument(span).await.is_some() {
+            event_count += if node
+                .try_crank(rng)
+                .instrument(error_span!("crank", node_id = %node_id))
+                .await
+                .is_some()
+            {
                 1
             } else {
                 0
@@ -303,10 +311,9 @@ where
     {
         let runner = self.nodes.get_mut(node_id).unwrap();
         let node_id = runner.reactor().node_id();
-        let span = error_span!("inject", node_id = %node_id);
         runner
             .process_injected_effects(create_effects)
-            .instrument(span)
+            .instrument(error_span!("inject", node_id = %node_id))
             .await
     }
 }

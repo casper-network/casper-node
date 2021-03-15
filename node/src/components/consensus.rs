@@ -130,10 +130,7 @@ pub enum Event<I> {
         /// This is empty except if the activation era still needs to be instantiated: Its
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
-        timestamp: Timestamp,
     },
-    /// An event instructing us to shutdown if the latest era received no votes.
-    Shutdown,
     /// An event fired when the joiner reactor transitions into validator.
     FinishedJoining(Timestamp),
     /// Got the result of checking for an upgrade activation point.
@@ -237,7 +234,6 @@ impl<I: Debug> Display for Event<I> {
                 booking_block_hash, block
             ),
             Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
-            Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
             Event::FinishedJoining(timestamp) => {
                 write!(f, "The node finished joining the network at {}", timestamp)
             }
@@ -349,14 +345,9 @@ where
                 key_blocks,
                 booking_blocks,
                 validators,
-                timestamp,
             } => {
-                let mut effects = handling_es.handle_initialize_eras(
-                    key_blocks,
-                    booking_blocks,
-                    validators,
-                    timestamp,
-                );
+                let mut effects =
+                    handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators);
 
                 // TODO: remove that when possible
                 // This is needed because we want to make sure that we only try to handle linear
@@ -373,7 +364,6 @@ where
 
                 effects
             }
-            Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)

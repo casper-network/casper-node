@@ -17,7 +17,7 @@ include = [
 
 [dependencies]
 clap = "2"
-colour = "0.5"
+colour = "0.6"
 once_cell = "1.5.2"
 
 [dev-dependencies]

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use datasize::DataSize;
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     components::consensus::{
@@ -203,6 +203,7 @@ impl<C: Context> Highway<C> {
         let (av, effects) = ActiveValidator::new(
             idx,
             secret,
+            current_time,
             start_time,
             &self.state,
             unit_hash_file,
@@ -214,7 +215,15 @@ impl<C: Context> Highway<C> {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
-        self.active_validator = None;
+        if let Some(av) = self.active_validator.take() {
+            match av.cleanup() {
+                Ok(_) => {}
+                Err(err) => warn!(
+                    ?err,
+                    "error occurred when cleaning up active validator state"
+                ),
+            }
+        }
     }
 
     /// Switches the active validator to a new round exponent.
@@ -589,7 +598,28 @@ impl<C: Context> Highway<C> {
             })
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_unit(&unit_hash, now));
+        evidence_effects.extend(self.add_own_last_unit(now));
         evidence_effects
+    }
+
+    /// If validator's protocol state is synchronized, adds its own last unit (if any) to the
+    /// protocol state
+    fn add_own_last_unit(&mut self, now: Timestamp) -> Vec<Effect<C>> {
+        self.map_active_validator(
+            |av, state| {
+                if av.is_own_last_unit_panorama_sync(state) {
+                    if let Some(own_last_unit) = av.take_own_last_unit() {
+                        vec![Effect::NewVertex(ValidVertex(Vertex::Unit(own_last_unit)))]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            },
+            now,
+        )
+        .unwrap_or_default()
     }
 
     /// Adds endorsements to the state. If there are conflicting endorsements, `NewVertex` effects

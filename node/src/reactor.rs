@@ -52,7 +52,7 @@ use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, instrument, trace, warn};
 use tracing_futures::Instrument;
 
 #[cfg(target_os = "linux")]
@@ -431,6 +431,7 @@ where
 
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
+    #[instrument("runner creation", level = "debug", skip(cfg, rng, registry))]
     pub async fn with_metrics(
         cfg: R::Config,
         rng: &mut NodeRng,
@@ -453,9 +454,8 @@ where
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
-        let span = debug_span!("process initial effects");
         process_effects(scheduler, initial_effects)
-            .instrument(span)
+            .instrument(debug_span!("process initial effects"))
             .await;
 
         info!("reactor main loop is ready");
@@ -485,9 +485,11 @@ where
 
         let effects = create_effects(effect_builder);
 
-        let effect_span = debug_span!("process injected effects", ev = self.event_count);
         process_effects(self.scheduler, effects)
-            .instrument(effect_span)
+            .instrument(debug_span!(
+                "process injected effects",
+                ev = self.event_count
+            ))
             .await;
     }
 
@@ -495,11 +497,8 @@ where
     ///
     /// Returns `false` if processing should stop.
     #[inline]
+    #[instrument("crank", level = "debug", fields(ev = self.event_count), skip(self, rng))]
     pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
-        // Create another span for tracing the processing of one event.
-        let crank_span = debug_span!("crank", ev = self.event_count);
-        let _inner_enter = crank_span.enter();
-
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
@@ -507,14 +506,14 @@ where
 
         // Update metrics like memory usage and event queue sizes.
         if self.event_count % self.event_metrics_threshold == 0 {
-            let now = Instant::now();
-
             // We update metrics on the first very event as well to get a good baseline.
-            if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
-                || self.event_count == 0
-            {
+            if self.last_metrics.elapsed() >= self.event_metrics_min_delay {
                 self.reactor.update_metrics(event_queue);
-                self.last_metrics = now;
+
+                // Use a fresh timestamp. This skews the metrics collection interval a little bit,
+                // but ensures that if metrics collection time explodes, we are guaranteed a full
+                // `event_metrics_min_delay` of event processing.
+                self.last_metrics = Instant::now();
             }
 
             if let Some(AllocatedMem {
@@ -554,53 +553,50 @@ where
 
         // Create another span for tracing the processing of one event.
         let event_span = debug_span!("dispatch events", ev = self.event_count);
-        let inner_enter = event_span.enter();
+        let (effects, keep_going) = event_span.in_scope(|| {
+            // We log events twice, once in display and once in debug mode.
+            let event_as_string = format!("{}", event);
+            debug!(event=%event_as_string, ?q);
+            trace!(?event, ?q);
 
-        // We log events twice, once in display and once in debug mode.
-        let event_as_string = format!("{}", event);
-        debug!(event=%event_as_string, ?q);
-        trace!(?event, ?q);
+            // Dispatch the event, then execute the resulting effect.
+            let start = self.clock.start();
 
-        // Dispatch the event, then execute the resulting effect.
-        let start = self.clock.start();
-
-        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
-            // We've received a control event, which will _not_ be handled by the reactor.
-            match ctrl_ann {
-                ControlAnnouncement::FatalError { file, line, msg } => {
-                    error!(%file, %line, %msg, "fatal error via control announcement");
-                    (Default::default(), false)
+            let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+                // We've received a control event, which will _not_ be handled by the reactor.
+                match ctrl_ann {
+                    ControlAnnouncement::FatalError { file, line, msg } => {
+                        error!(%file, %line, %msg, "fatal error via control announcement");
+                        (Default::default(), false)
+                    }
                 }
+            } else {
+                (
+                    self.reactor.dispatch_event(effect_builder, rng, event),
+                    true,
+                )
+            };
+
+            let end = self.clock.end();
+
+            // Warn if processing took a long time, record to histogram.
+            let delta = self.clock.delta(start, end);
+            if delta > *DISPATCH_EVENT_THRESHOLD {
+                warn!(
+                    ns = delta.into_nanos(),
+                    event = %event_as_string,
+                    "event took very long to dispatch"
+                );
             }
-        } else {
-            (
-                self.reactor.dispatch_event(effect_builder, rng, event),
-                true,
-            )
-        };
+            self.metrics
+                .event_dispatch_duration
+                .observe(delta.into_nanos() as f64);
 
-        let end = self.clock.end();
-
-        // Warn if processing took a long time, record to histogram.
-        let delta = self.clock.delta(start, end);
-        if delta > *DISPATCH_EVENT_THRESHOLD {
-            warn!(
-                ns = delta.into_nanos(),
-                event = %event_as_string,
-                "event took very long to dispatch"
-            );
-        }
-        self.metrics
-            .event_dispatch_duration
-            .observe(delta.into_nanos() as f64);
-
-        drop(inner_enter);
-
-        // We create another span for the effects, but will keep the same ID.
-        let effect_span = debug_span!("process effects", ev = self.event_count);
+            (effects, keep_going)
+        });
 
         process_effects(self.scheduler, effects)
-            .instrument(effect_span)
+            .instrument(debug_span!("process effects", ev = self.event_count))
             .await;
 
         self.event_count += 1;
@@ -761,13 +757,17 @@ impl Runner<InitializerReactor> {
 
         info!("reactor main loop is ready");
 
+        let event_metrics_min_delay = Duration::from_secs(30);
+        let now = Instant::now();
         Ok(Runner {
             scheduler,
             reactor,
             event_count: 0,
             metrics: RunnerMetrics::new(&registry)?,
-            last_metrics: Instant::now(),
-            event_metrics_min_delay: Duration::from_secs(30),
+            // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
+            // cause the runner to collect metrics at the first opportunity.
+            last_metrics: now.checked_sub(event_metrics_min_delay).unwrap_or(now),
+            event_metrics_min_delay,
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
