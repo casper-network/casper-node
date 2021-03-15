@@ -304,6 +304,7 @@ where
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
+        + From<LinearChainRequest<I>>
         + Send,
     I: Display + Send + 'static,
 {

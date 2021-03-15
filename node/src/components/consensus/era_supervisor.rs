@@ -32,20 +32,17 @@ use tracing::{debug, error, info, trace, warn};
 use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{
-        consensus::{
-            candidate_block::CandidateBlock,
-            cl_context::{ClContext, Keypair},
-            config::ProtocolConfig,
-            consensus_protocol::{
-                BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
-                ProtocolOutcome, ProtocolOutcomes,
-            },
-            metrics::ConsensusMetrics,
-            traits::NodeIdT,
-            ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
+    components::consensus::{
+        candidate_block::CandidateBlock,
+        cl_context::{ClContext, Keypair},
+        config::ProtocolConfig,
+        consensus_protocol::{
+            BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
+            ProtocolOutcome, ProtocolOutcomes,
         },
-        contract_runtime::EraValidatorsRequest,
+        metrics::ConsensusMetrics,
+        traits::NodeIdT,
+        ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects, Responder},
@@ -216,40 +213,16 @@ where
                 // All eras can be initialized using the key blocks only.
                 (key_blocks, booking_blocks, Default::default())
             } else {
-                // We need the validator set for the activation era from some protocol state.
-                let state_root_hash = if activation_era_id == current_era {
-                    // The activation era is the current one, so the initial state root hash
-                    // contains its validator set.
-                    initial_state_root_hash
-                } else if activation_era_id.is_genesis() {
-                    // To initialize the first era, we can use the global state of the first block.
-                    *effect_builder
-                        .get_block_at_height_local(0)
-                        .await
-                        .expect("missing block in genesis era")
-                        .state_root_hash()
-                } else {
-                    // The first block in the activation era contains the validator set.
-                    let block_height = if activation_era_id.is_genesis() {
-                        0
-                    } else {
-                        &key_blocks[&activation_era_id].height() + 1
-                    };
-                    *effect_builder
-                        .get_block_at_height_local(block_height)
-                        .await
-                        .expect("missing block in activation era")
-                        .state_root_hash()
-                };
-                let validators_request =
-                    EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
-                let validators = effect_builder
-                    .get_era_validators_from_contract_runtime(validators_request)
+                let activation_era_validators = effect_builder
+                    .get_era_validators(
+                        activation_era_id,
+                        activation_era_id,
+                        initial_state_root_hash,
+                        protocol_version,
+                    )
                     .await
-                    .expect("get validator map from global state")
-                    .remove(&activation_era_id.0)
-                    .expect("get validators for activation era");
-                (key_blocks, booking_blocks, validators)
+                    .unwrap_or_default();
+                (key_blocks, booking_blocks, activation_era_validators)
             }
         }
         .event(

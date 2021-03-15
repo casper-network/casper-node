@@ -1493,7 +1493,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the correct era validators set for the given era.
     /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
     /// and `activation_era_id` parameters.
-    pub(crate) async fn get_era_validators(
+    pub(crate) async fn get_era_validators<I>(
         self,
         era_id: EraId,
         activation_era_id: EraId,
@@ -1501,20 +1501,33 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<LinearChainRequest<I>>,
     {
+        if era_id < activation_era_id {
+            // we don't support getting the validators from before the last upgrade
+            return None;
+        }
         if era_id == activation_era_id {
             // in the activation era, we read the validators from the global state; we use the
             // global state hash of the first block in the era, if it exists - if we can't get it,
             // we use the initial_state_root_hash passed from the chainspec loader
-            let maybe_key_block = self.get_key_block_for_era_id_from_storage(era_id).await;
-            let root_hash = match maybe_key_block {
-                None => initial_state_root_hash,
-                Some(key_block) => self
-                    .get_block_at_height_from_storage(key_block.height() + 1)
-                    .await
-                    .map(|block| *block.state_root_hash())
-                    .unwrap_or(initial_state_root_hash),
+            let root_hash = if era_id.is_genesis() {
+                // genesis era - use block at height 0
+                *self.get_block_at_height_local(0).await?.state_root_hash()
+            } else {
+                // non-genesis - calculate the height based on the key block; if there is no key
+                // block, default to the initial_state_root_hash
+                let maybe_key_block = self.get_key_block_for_era_id_from_storage(era_id).await;
+                match maybe_key_block {
+                    None => initial_state_root_hash,
+                    Some(key_block) => self
+                        .get_block_at_height_from_storage(key_block.height() + 1)
+                        .await
+                        .map(|block| *block.state_root_hash())
+                        // default to the initial_state_root_hash if there is no block above the
+                        // key block for the era
+                        .unwrap_or(initial_state_root_hash),
+                }
             };
             let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
             self.get_era_validators_from_contract_runtime(req)
@@ -1530,7 +1543,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Checks whether the given validator is bonded in the given era.
-    pub(crate) async fn is_bonded_validator(
+    pub(crate) async fn is_bonded_validator<I>(
         self,
         validator: PublicKey,
         era_id: EraId,
@@ -1540,7 +1553,7 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<LinearChainRequest<I>>,
     {
         // try just reading the era validators first
         let maybe_era_validators = self
