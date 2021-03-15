@@ -552,53 +552,50 @@ where
 
         // Create another span for tracing the processing of one event.
         let event_span = debug_span!("dispatch events", ev = self.event_count);
-        let inner_enter = event_span.enter();
+        let (effects, keep_going) = event_span.in_scope(|| {
+            // We log events twice, once in display and once in debug mode.
+            let event_as_string = format!("{}", event);
+            debug!(event=%event_as_string, ?q);
+            trace!(?event, ?q);
 
-        // We log events twice, once in display and once in debug mode.
-        let event_as_string = format!("{}", event);
-        debug!(event=%event_as_string, ?q);
-        trace!(?event, ?q);
+            // Dispatch the event, then execute the resulting effect.
+            let start = self.clock.start();
 
-        // Dispatch the event, then execute the resulting effect.
-        let start = self.clock.start();
-
-        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
-            // We've received a control event, which will _not_ be handled by the reactor.
-            match ctrl_ann {
-                ControlAnnouncement::FatalError { file, line, msg } => {
-                    error!(%file, %line, %msg, "fatal error via control announcement");
-                    (Default::default(), false)
+            let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+                // We've received a control event, which will _not_ be handled by the reactor.
+                match ctrl_ann {
+                    ControlAnnouncement::FatalError { file, line, msg } => {
+                        error!(%file, %line, %msg, "fatal error via control announcement");
+                        (Default::default(), false)
+                    }
                 }
+            } else {
+                (
+                    self.reactor.dispatch_event(effect_builder, rng, event),
+                    true,
+                )
+            };
+
+            let end = self.clock.end();
+
+            // Warn if processing took a long time, record to histogram.
+            let delta = self.clock.delta(start, end);
+            if delta > *DISPATCH_EVENT_THRESHOLD {
+                warn!(
+                    ns = delta.into_nanos(),
+                    event = %event_as_string,
+                    "event took very long to dispatch"
+                );
             }
-        } else {
-            (
-                self.reactor.dispatch_event(effect_builder, rng, event),
-                true,
-            )
-        };
+            self.metrics
+                .event_dispatch_duration
+                .observe(delta.into_nanos() as f64);
 
-        let end = self.clock.end();
-
-        // Warn if processing took a long time, record to histogram.
-        let delta = self.clock.delta(start, end);
-        if delta > *DISPATCH_EVENT_THRESHOLD {
-            warn!(
-                ns = delta.into_nanos(),
-                event = %event_as_string,
-                "event took very long to dispatch"
-            );
-        }
-        self.metrics
-            .event_dispatch_duration
-            .observe(delta.into_nanos() as f64);
-
-        drop(inner_enter);
-
-        // We create another span for the effects, but will keep the same ID.
-        let effect_span = debug_span!("process effects", ev = self.event_count);
+            (effects, keep_going)
+        });
 
         process_effects(self.scheduler, effects)
-            .instrument(effect_span)
+            .instrument(debug_span!("process effects", ev = self.event_count))
             .await;
 
         self.event_count += 1;
