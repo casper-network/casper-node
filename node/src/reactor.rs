@@ -506,14 +506,14 @@ where
 
         // Update metrics like memory usage and event queue sizes.
         if self.event_count % self.event_metrics_threshold == 0 {
-            let now = Instant::now();
-
             // We update metrics on the first very event as well to get a good baseline.
-            if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
-                || self.event_count == 0
-            {
+            if self.last_metrics.elapsed() >= self.event_metrics_min_delay {
                 self.reactor.update_metrics(event_queue);
-                self.last_metrics = now;
+
+                // Use a fresh timestamp. This skews the metrics collection interval a little bit,
+                // but ensures that if metrics collection time explodes, we are guaranteed a full
+                // `event_metrics_min_delay` of event processing.
+                self.last_metrics = Instant::now();
             }
 
             if let Some(AllocatedMem {
@@ -757,13 +757,15 @@ impl Runner<InitializerReactor> {
 
         info!("reactor main loop is ready");
 
+        let event_metrics_min_delay = Duration::from_secs(30);
+        let now = Instant::now();
         Ok(Runner {
             scheduler,
             reactor,
             event_count: 0,
             metrics: RunnerMetrics::new(&registry)?,
-            last_metrics: Instant::now(),
-            event_metrics_min_delay: Duration::from_secs(30),
+            last_metrics: now.checked_sub(event_metrics_min_delay).unwrap_or(now),
+            event_metrics_min_delay,
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
