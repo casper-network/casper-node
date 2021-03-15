@@ -108,15 +108,6 @@ pub enum DeployValidationFailure {
         got: String,
     },
 
-    /// Deploy is too large.
-    #[error("{deploy_size} deploy size exceeds block size limit of {max_block_size}")]
-    ExcessiveSize {
-        /// The block size limit.
-        max_block_size: u32,
-        /// The size of the deploy provided.
-        deploy_size: usize,
-    },
-
     /// Too many dependencies.
     #[error("{got} dependencies exceeds limit of {max_dependencies}")]
     ExcessiveDependencies {
@@ -124,6 +115,15 @@ pub enum DeployValidationFailure {
         max_dependencies: u8,
         /// The actual number of dependencies provided.
         got: usize,
+    },
+
+    /// Deploy is too large.
+    #[error("{deploy_size} deploy size exceeds block size limit of {max_block_size}")]
+    ExcessiveSize {
+        /// The block size limit.
+        max_block_size: u32,
+        /// The size of the deploy provided.
+        deploy_size: usize,
     },
 
     /// Excessive time-to-live.
