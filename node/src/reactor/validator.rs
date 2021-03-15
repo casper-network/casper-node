@@ -9,9 +9,8 @@ mod memory_metrics;
 mod tests;
 
 use std::{
-    cmp, env,
+    env,
     fmt::{self, Debug, Display, Formatter},
-    str::FromStr,
     sync::Arc,
 };
 
@@ -61,7 +60,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
+    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
     utils::Source,
     NodeRng,
 };
@@ -488,26 +487,7 @@ impl reactor::Reactor for Reactor {
             consensus.recreate_timers(effect_builder, rng),
         ));
 
-        // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
         let now = Timestamp::now();
-        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
-        let later_timestamp = cmp::max(
-            now,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .unwrap_or_else(Timestamp::zero),
-        );
-        let timer_duration = later_timestamp + five_minutes - now;
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            effect_builder
-                .set_timeout(timer_duration.into())
-                .event(|_| consensus::Event::Shutdown),
-        ));
-
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             effect_builder

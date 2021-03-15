@@ -114,6 +114,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// Too many faulty validators. The protocol's fault tolerance threshold has been exceeded and
     /// consensus cannot continue.
     FttExceeded,
+    /// No progress has been made recently.
+    StandstillAlert,
     /// We want to disconnect from a sender of invalid data.
     Disconnect(I),
 }
@@ -126,7 +128,8 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn as_any(&self) -> &dyn Any;
 
     /// Handles an incoming message (like NewUnit, RequestDependency).
-    fn handle_message(&mut self, sender: I, msg: Vec<u8>) -> ProtocolOutcomes<I, C>;
+    fn handle_message(&mut self, sender: I, msg: Vec<u8>, now: Timestamp)
+        -> ProtocolOutcomes<I, C>;
 
     /// Handles new connection to a peer.
     fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C>;
@@ -135,13 +138,14 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;
 
     /// Triggers a queued action.
-    fn handle_action(&mut self, action_id: ActionId) -> ProtocolOutcomes<I, C>;
+    fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C>;
 
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
+        now: Timestamp,
     ) -> ProtocolOutcomes<I, C>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
@@ -150,6 +154,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
+        now: Timestamp,
     ) -> ProtocolOutcomes<I, C>;
 
     /// Turns this instance into an active validator, that participates in the consensus protocol.
@@ -193,7 +198,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
 
     /// Returns the protocol outcomes for all the required timers.
     /// TODO: Remove this once the Joiner no longer has a consensus component.
-    fn recreate_timers(&self) -> ProtocolOutcomes<I, C>;
+    fn recreate_timers(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
 
     // TODO: Make this lees Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
