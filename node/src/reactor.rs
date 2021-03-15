@@ -52,7 +52,7 @@ use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, instrument, trace, warn};
 use tracing_futures::Instrument;
 
 #[cfg(target_os = "linux")]
@@ -496,11 +496,8 @@ where
     ///
     /// Returns `false` if processing should stop.
     #[inline]
+    #[instrument("crank", level = "debug", fields(ev = self.event_count), skip(self, rng))]
     pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
-        // Create another span for tracing the processing of one event.
-        let crank_span = debug_span!("crank", ev = self.event_count);
-        let _inner_enter = crank_span.enter();
-
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
