@@ -431,6 +431,7 @@ where
 
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
+    #[instrument("runner creation", level = "debug", skip(cfg, rng, registry))]
     pub async fn with_metrics(
         cfg: R::Config,
         rng: &mut NodeRng,
