@@ -115,7 +115,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             validators.ban(vid);
         }
 
-        // TODO: Apply all upgrades with a height less than or equal to the start height.
         let highway_config = &protocol_config.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
