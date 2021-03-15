@@ -97,6 +97,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    U512,
 };
 
 use crate::{
@@ -1439,7 +1440,7 @@ impl<REv> EffectBuilder<REv> {
     /// Returns a map of validators weights for all eras as known from `root_hash`.
     ///
     /// This operation is read only.
-    pub(crate) async fn get_era_validators(
+    pub(crate) async fn get_era_validators_from_contract_runtime(
         self,
         request: EraValidatorsRequest,
     ) -> Result<EraValidators, GetEraValidatorsError>
@@ -1489,20 +1490,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Checks whether the given validator is bonded in the given era.
-    pub(crate) async fn is_bonded_validator(
+    /// Gets the correct era validators set for the given era.
+    /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
+    /// and `activation_era_id` parameters.
+    pub(crate) async fn get_era_validators(
         self,
-        validator: PublicKey,
         era_id: EraId,
         activation_era_id: EraId,
         initial_state_root_hash: Digest,
-        latest_state_root_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-    ) -> Result<bool, GetEraValidatorsError>
+    ) -> Option<BTreeMap<PublicKey, U512>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        let maybe_is_currently_bonded = if era_id == activation_era_id {
+        if era_id == activation_era_id {
             // in the activation era, we read the validators from the global state; we use the
             // global state hash of the first block in the era, if it exists - if we can't get it,
             // we use the initial_state_root_hash passed from the chainspec loader
@@ -1516,25 +1517,42 @@ impl<REv> EffectBuilder<REv> {
                     .unwrap_or(initial_state_root_hash),
             };
             let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
-            self.get_era_validators(req)
+            self.get_era_validators_from_contract_runtime(req)
                 .await
                 .ok()
-                .and_then(|era_validators| {
-                    era_validators
-                        .get(&era_id.0)
-                        .map(|validators| validators.contains_key(&validator))
-                })
+                .and_then(|era_validators| era_validators.get(&era_id.0).cloned())
         } else {
             // in other eras, we just use the validators from the key block
             self.get_key_block_for_era_id_from_storage(era_id)
                 .await
-                .and_then(|key_block| {
-                    key_block
-                        .header()
-                        .next_era_validator_weights()
-                        .map(|validators| validators.contains_key(&validator))
-                })
-        };
+                .and_then(|key_block| key_block.header().next_era_validator_weights().cloned())
+        }
+    }
+
+    /// Checks whether the given validator is bonded in the given era.
+    pub(crate) async fn is_bonded_validator(
+        self,
+        validator: PublicKey,
+        era_id: EraId,
+        activation_era_id: EraId,
+        initial_state_root_hash: Digest,
+        latest_state_root_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+    ) -> Result<bool, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+    {
+        // try just reading the era validators first
+        let maybe_era_validators = self
+            .get_era_validators(
+                era_id,
+                activation_era_id,
+                initial_state_root_hash,
+                protocol_version,
+            )
+            .await;
+        let maybe_is_currently_bonded =
+            maybe_era_validators.map(|validators| validators.contains_key(&validator));
 
         match maybe_is_currently_bonded {
             // if we know whether the validator is bonded, just return that

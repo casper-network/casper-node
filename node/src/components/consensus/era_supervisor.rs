@@ -244,7 +244,7 @@ where
                 let validators_request =
                     EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
                 let validators = effect_builder
-                    .get_era_validators(validators_request)
+                    .get_era_validators_from_contract_runtime(validators_request)
                     .await
                     .expect("get validator map from global state")
                     .remove(&activation_era_id.0)
