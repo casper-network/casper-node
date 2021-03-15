@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
 pub struct BlockContext {
     timestamp: Timestamp,
     height: u64,
