@@ -60,9 +60,9 @@ mod system_contract_type {
     use crate::{ApiError, ContractHash, HashAddr, Key, U256};
 
     pub const MINT_CONTRACT_RESERVED_ID: u8 = 1;
-    pub const HANDLE_PAYMENT_CONTRACT_RESERVED_ID: u8 = 2;
-    pub const STANDARD_PAYMENT_CONTRACT_RESERVED_ID: u8 = 3;
-    pub const AUCTION_CONTRACT_RESERVED_ID: u8 = 4;
+    pub const AUCTION_CONTRACT_RESERVED_ID: u8 = 2;
+    pub const HANDLE_PAYMENT_CONTRACT_RESERVED_ID: u8 = 3;
+    pub const STANDARD_PAYMENT_CONTRACT_RESERVED_ID: u8 = 4;
 
     /// System contract types.
     ///
@@ -71,38 +71,38 @@ mod system_contract_type {
     pub enum SystemContractType {
         /// Mint contract.
         Mint,
+        /// Auction contract.
+        Auction,
         /// Handle Payment contract.
         HandlePayment,
         /// Standard Payment contract.
         StandardPayment,
-        /// Auction contract.
-        Auction,
     }
 
     /// List of the reserved system contracts.
     pub const RESERVED_SYSTEM_CONTRACTS: [SystemContractType; 4] = [
         SystemContractType::Mint,
+        SystemContractType::Auction,
         SystemContractType::HandlePayment,
         SystemContractType::StandardPayment,
-        SystemContractType::Auction,
     ];
 
     /// Name of mint system contract
     pub const MINT: &str = "mint";
+    /// Name of auction system contract
+    pub const AUCTION: &str = "auction";
     /// Name of handle payment system contract
     pub const HANDLE_PAYMENT: &str = "handle payment";
     /// Name of standard payment system contract
     pub const STANDARD_PAYMENT: &str = "standard payment";
-    /// Name of auction system contract
-    pub const AUCTION: &str = "auction";
 
     impl SystemContractType {
         fn reserved_id(&self) -> u8 {
             match self {
                 SystemContractType::Mint => MINT_CONTRACT_RESERVED_ID,
+                SystemContractType::Auction => AUCTION_CONTRACT_RESERVED_ID,
                 SystemContractType::HandlePayment => HANDLE_PAYMENT_CONTRACT_RESERVED_ID,
                 SystemContractType::StandardPayment => STANDARD_PAYMENT_CONTRACT_RESERVED_ID,
-                SystemContractType::Auction => AUCTION_CONTRACT_RESERVED_ID,
             }
         }
 
@@ -129,9 +129,9 @@ mod system_contract_type {
 
             match contract_index {
                 MINT_CONTRACT_RESERVED_ID => Some(SystemContractType::Mint),
+                AUCTION_CONTRACT_RESERVED_ID => Some(SystemContractType::Auction),
                 HANDLE_PAYMENT_CONTRACT_RESERVED_ID => Some(SystemContractType::HandlePayment),
                 STANDARD_PAYMENT_CONTRACT_RESERVED_ID => Some(SystemContractType::StandardPayment),
-                AUCTION_CONTRACT_RESERVED_ID => Some(SystemContractType::Auction),
                 _ => None,
             }
         }
@@ -153,15 +153,16 @@ mod system_contract_type {
         pub fn name(&self) -> &str {
             match self {
                 SystemContractType::Mint => MINT,
+                SystemContractType::Auction => AUCTION,
                 SystemContractType::HandlePayment => HANDLE_PAYMENT,
                 SystemContractType::StandardPayment => STANDARD_PAYMENT,
-                SystemContractType::Auction => AUCTION,
             }
         }
     }
 
     impl TryFrom<ContractHash> for SystemContractType {
         type Error = ApiError;
+
         fn try_from(contract_hash: ContractHash) -> Result<SystemContractType, Self::Error> {
             SystemContractType::from_address(contract_hash.value())
                 .ok_or(ApiError::InvalidSystemContract)
@@ -213,6 +214,40 @@ mod system_contract_type {
             0,
             0,
             MINT_CONTRACT_RESERVED_ID,
+        ]);
+        const AUCTION_CONTRACT_HASH: ContractHash = ContractHash::new([
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            AUCTION_CONTRACT_RESERVED_ID,
         ]);
         const HANDLE_PAYMENT_CONTRACT_HASH: ContractHash = ContractHash::new([
             0,
@@ -281,40 +316,6 @@ mod system_contract_type {
             0,
             0,
             STANDARD_PAYMENT_CONTRACT_RESERVED_ID,
-        ]);
-        const AUCTION_CONTRACT_HASH: ContractHash = ContractHash::new([
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            AUCTION_CONTRACT_RESERVED_ID,
         ]);
 
         fn contract_hash_from_number(value: U256) -> ContractHash {
