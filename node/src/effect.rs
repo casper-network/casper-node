@@ -1493,7 +1493,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the correct era validators set for the given era.
     /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
     /// and `activation_era_id` parameters.
-    pub(crate) async fn get_era_validators<I>(
+    pub(crate) async fn get_era_validators(
         self,
         era_id: EraId,
         activation_era_id: EraId,
@@ -1501,7 +1501,7 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<LinearChainRequest<I>>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
         if era_id < activation_era_id {
             // we don't support getting the validators from before the last upgrade
@@ -1513,7 +1513,10 @@ impl<REv> EffectBuilder<REv> {
             // we use the initial_state_root_hash passed from the chainspec loader
             let root_hash = if era_id.is_genesis() {
                 // genesis era - use block at height 0
-                *self.get_block_at_height_local(0).await?.state_root_hash()
+                self.get_block_at_height_from_storage(0)
+                    .await
+                    .map(|block| *block.state_root_hash())
+                    .unwrap_or(initial_state_root_hash)
             } else {
                 // non-genesis - calculate the height based on the key block; if there is no key
                 // block, default to the initial_state_root_hash
@@ -1543,7 +1546,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Checks whether the given validator is bonded in the given era.
-    pub(crate) async fn is_bonded_validator<I>(
+    pub(crate) async fn is_bonded_validator(
         self,
         validator: PublicKey,
         era_id: EraId,
@@ -1553,7 +1556,7 @@ impl<REv> EffectBuilder<REv> {
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<LinearChainRequest<I>>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
         // try just reading the era validators first
         let maybe_era_validators = self
