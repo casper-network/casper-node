@@ -68,7 +68,10 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
-    types::{Block, BlockByHeight, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
+        ProtoBlock, Tag, Timestamp,
+    },
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -367,6 +370,8 @@ pub struct Reactor {
     consensus: EraSupervisor<NodeId>,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
+    pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
+    pub(super) block_header_with_metadata_fetcher: Fetcher<BlockHeaderWithMetadata>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -492,6 +497,17 @@ impl reactor::Reactor for Reactor {
 
         let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, &registry)?;
 
+        let block_header_and_finality_signatures_by_height_fetcher: Fetcher<
+            BlockHeaderWithMetadata,
+        > = Fetcher::new(
+            "block_header_and_finality_signatures_by_height",
+            config.fetcher,
+            &registry,
+        )?;
+
+        let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
+            Fetcher::new("block_header_by_hash", config.fetcher, &registry)?;
+
         let deploy_acceptor =
             DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
 
@@ -530,11 +546,7 @@ impl reactor::Reactor for Reactor {
             init_sync_effects,
         ));
 
-        // Used to decide whether era should be activated.
-        let now = Timestamp::now();
-
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            now,
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
@@ -567,6 +579,9 @@ impl reactor::Reactor for Reactor {
                 linear_chain,
                 consensus,
                 block_by_height_fetcher,
+                block_header_by_hash_fetcher,
+                block_header_with_metadata_fetcher:
+                    block_header_and_finality_signatures_by_height_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
@@ -799,6 +814,23 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted(
+                block,
+            )) => {
+                let mut effects = self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(
+                        block.clone(),
+                    ))),
+                );
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::Consensus(consensus::Event::BlockAdded(Box::new(block))),
+                ));
+                effects
+            }
             Event::LinearChain(event) => reactor::wrap_effects(
                 Event::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
@@ -808,20 +840,15 @@ impl reactor::Reactor for Reactor {
                 self.consensus.handle_event(effect_builder, rng, event),
             ),
             Event::ConsensusAnnouncement(announcement) => match announcement {
-                ConsensusAnnouncement::Handled(block) => {
-                    let mut effects = Effects::new();
-                    let reactor_event =
-                        Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
-                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                    let reactor_event =
-                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                    effects
-                }
                 ConsensusAnnouncement::Finalized(_) => {
                     // A block was finalized.
                     Effects::new()
                 }
+                ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs)),
+                ),
                 ConsensusAnnouncement::Fault {
                     era_id,
                     public_key,
@@ -870,15 +897,23 @@ impl reactor::Reactor for Reactor {
             }
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let block_hash = *block.hash();
-                reactor::wrap_effects(
+                let mut effects = reactor::wrap_effects(
                     Event::EventStreamServer,
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::BlockAdded { block_hash, block },
+                        event_stream_server::Event::BlockAdded(block.clone()),
                     ),
-                )
+                );
+                let reactor_event =
+                    Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block.clone()));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event =
+                    Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =

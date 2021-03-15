@@ -73,8 +73,10 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
+use tokio::sync::Semaphore;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
@@ -128,6 +130,9 @@ use requests::{
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
     NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
+
+/// A resource that will never be available, thus trying to acquire it will wait forever.
+static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -401,14 +406,20 @@ impl<REv> EffectBuilder<REv> {
         let request_event = f(responder).into();
         self.0.schedule(request_event, queue_kind).await;
 
-        receiver.await.unwrap_or_else(|err| {
-            // The channel should never be closed, ever.
-            error!(%err, ?queue_kind, "request for {} channel closed, this is a serious bug --- \
-                   a component will likely be stuck from now on ", type_name::<T>());
+        match receiver.await {
+            Ok(value) => value,
+            Err(err) => {
+                // The channel should never be closed, ever. If it is, we pretend nothing happened
+                // though, instead of crashing.
+                error!(%err, ?queue_kind, "request for {} channel closed, this may be a bug? \
+                       check if a component is stuck from now on ", type_name::<T>());
 
-            // We cannot produce any value to satisfy the request, so all that's left is panicking.
-            panic!("request not answerable");
-        })
+                // We cannot produce any value to satisfy the request, so we just abandon this task
+                // by waiting on a resource we can never acquire.
+                let _ = UNOBTAINIUM.acquire().await;
+                panic!("should never obtain unobtainium semaphore");
+            }
+        }
     }
 
     /// Run and end effect immediately.
@@ -669,6 +680,19 @@ impl<REv> EffectBuilder<REv> {
                     block,
                     execution_results,
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce that a block had been executed before.
+    pub(crate) async fn announce_block_already_executed(self, block: Block)
+    where
+        REv: From<BlockExecutorAnnouncement>,
+    {
+        self.0
+            .schedule(
+                BlockExecutorAnnouncement::BlockAlreadyExecuted(block),
                 QueueKind::Regular,
             )
             .await
@@ -1120,13 +1144,16 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled<I>(self, block: Block)
-    where
+    /// Announces that a finality signature has been created.
+    pub(crate) async fn announce_created_finality_signature<I>(
+        self,
+        finality_signature: FinalitySignature,
+    ) where
         REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Handled(Box::new(block)),
+                ConsensusAnnouncement::CreatedFinalitySignature(Box::new(finality_signature)),
                 QueueKind::Regular,
             )
             .await
@@ -1304,7 +1331,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_execute(
         self,
         execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::RootNotFound>
+    ) -> Result<ExecutionResults, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1468,18 +1495,6 @@ impl<REv> EffectBuilder<REv> {
                 step_request,
                 responder,
             },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block: Block) -> Option<FinalitySignature>
-    where
-        REv: From<ConsensusRequest>,
-    {
-        self.make_request(
-            |responder| ConsensusRequest::HandleLinearBlock(Box::new(block), responder),
             QueueKind::Regular,
         )
         .await

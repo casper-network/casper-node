@@ -48,10 +48,7 @@ use crate::{
         contract_runtime::EraValidatorsRequest,
     },
     crypto::hash::Digest,
-    effect::{
-        requests::{ConsensusRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
-    },
+    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
@@ -124,7 +121,7 @@ pub struct EraSupervisor<I> {
     /// component.
     is_initialized: bool,
     /// TODO: Remove once the era supervisor is removed from the Joiner reactor.
-    pub(crate) enqueued_requests: VecDeque<ConsensusRequest>,
+    pub(crate) enqueued_events: VecDeque<Event<I>>,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -141,7 +138,6 @@ where
     /// Creates a new `EraSupervisor`, starting in the indicated current era.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv: ReactorEventT<I>>(
-        timestamp: Timestamp,
         current_era: EraId,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
@@ -158,7 +154,7 @@ where
                 current_era, protocol_config.last_activation_point
             );
         }
-        let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
+        let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
         let secret_signing_key = Arc::new(config.secret_key_path.clone().load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
@@ -181,6 +177,8 @@ where
             protocol_config,
             config,
             new_consensus,
+            // TODO: Find a better way to decide whether to activate validator, or get the
+            // timestamp from when the process started.
             node_start_time: Timestamp::now(),
             next_block_height: 0,
             metrics,
@@ -190,7 +188,7 @@ where
             stop_for_upgrade: false,
             next_executed_height: 0,
             is_initialized: false,
-            enqueued_requests: Default::default(),
+            enqueued_events: Default::default(),
         };
 
         let bonded_eras = era_supervisor.bonded_eras();
@@ -260,7 +258,6 @@ where
                 key_blocks,
                 booking_blocks,
                 validators,
-                timestamp,
             },
         );
 
@@ -324,7 +321,7 @@ where
     fn new_era(
         &mut self,
         era_id: EraId,
-        timestamp: Timestamp,
+        now: Timestamp,
         validators: BTreeMap<PublicKey, U512>,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
@@ -342,7 +339,7 @@ where
         info!(
             ?validators,
             %start_time,
-            %timestamp,
+            %now,
             %start_height,
             %instance_id,
             era = era_id.0,
@@ -376,7 +373,7 @@ where
             prev_era.map(|era| &*era.consensus),
             start_time,
             seed,
-            timestamp,
+            now,
         );
 
         if should_activate {
@@ -386,12 +383,7 @@ where
                 instance_id,
                 self.public_signing_key.to_hex()
             ));
-            outcomes.extend(consensus.activate_validator(
-                our_id,
-                secret,
-                timestamp,
-                Some(unit_hash_file),
-            ))
+            outcomes.extend(consensus.activate_validator(our_id, secret, now, Some(unit_hash_file)))
         }
 
         let era = Era::new(
@@ -483,7 +475,7 @@ where
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
-            > self.config.max_execution_delay;
+            > self.config.highway.max_execution_delay;
         match self.active_eras.get_mut(&self.current_era) {
             Some(era) => era.set_paused(paused),
             None => error!(era = self.current_era.0, "current era not initialized"),
@@ -497,7 +489,9 @@ where
     ) -> Effects<Event<I>> {
         let current_era = self.current_era;
         trace!(?current_era, "recreating timers");
-        let outcomes = self.active_eras[&current_era].consensus.recreate_timers();
+        let outcomes = self.active_eras[&current_era]
+            .consensus
+            .recreate_timers(Timestamp::now());
         self.handling_wrapper(effect_builder, rng)
             .handle_consensus_outcomes(current_era, outcomes)
     }
@@ -512,7 +506,6 @@ where
         key_blocks: HashMap<EraId, BlockHeader>,
         booking_blocks: HashMap<EraId, BlockHash>,
         activation_era_validators: BTreeMap<PublicKey, U512>,
-        timestamp: Timestamp,
     ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
         let mut result_map = HashMap::new();
 
@@ -572,7 +565,7 @@ where
 
             let results = self.new_era(
                 era_id,
-                timestamp,
+                Timestamp::now(),
                 validators,
                 newly_slashed,
                 slashed,
@@ -734,7 +727,9 @@ where
         era_id: EraId,
         action_id: ActionId,
     ) -> Effects<Event<I>> {
-        self.delegate_to_era(era_id, move |consensus| consensus.handle_action(action_id))
+        self.delegate_to_era(era_id, move |consensus| {
+            consensus.handle_action(action_id, Timestamp::now())
+        })
     }
 
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
@@ -744,7 +739,7 @@ where
                 // eras could depend on that.
                 trace!(era = era_id.0, "received a consensus message");
                 self.delegate_to_era(era_id, move |consensus| {
-                    consensus.handle_message(sender, payload)
+                    consensus.handle_message(sender, payload, Timestamp::now())
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
@@ -791,42 +786,41 @@ where
         let candidate_block =
             CandidateBlock::new(proto_block, block_context.timestamp(), accusations);
         self.delegate_to_era(era_id, move |consensus| {
-            consensus.propose(candidate_block, block_context)
+            consensus.propose(candidate_block, block_context, Timestamp::now())
         })
     }
 
-    pub(super) fn handle_linear_chain_block(
-        &mut self,
-        block: Block,
-        responder: Responder<Option<FinalitySignature>>,
-    ) -> Effects<Event<I>> {
+    pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
         // TODO: Delete once `EraSupervisor` gets removed from the joiner reactor.
         if !self.era_supervisor.is_initialized() {
             // enqueue
             self.era_supervisor
-                .enqueued_requests
-                .push_back(ConsensusRequest::HandleLinearBlock(
-                    Box::new(block),
-                    responder,
-                ));
+                .enqueued_events
+                .push_back(Event::BlockAdded(Box::new(block)));
             return Effects::new();
         }
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
         self.era_supervisor.executed_block(block.header());
-        let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
+        let mut effects = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block.hash();
-            Some(FinalitySignature::new(*block_hash, era_id, &our_sk, our_pk))
+            self.effect_builder
+                .announce_created_finality_signature(FinalitySignature::new(
+                    *block_hash,
+                    era_id,
+                    &our_sk,
+                    our_pk,
+                ))
+                .ignore()
         } else {
-            None
+            Effects::new()
         };
-        let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
-        if block.header().is_switch_block() {
+        if block.header().is_switch_block() && !self.should_upgrade_after(&era_id) {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
@@ -841,9 +835,6 @@ where
                 booking_block_hash: Ok(booking_block_hash),
             });
             effects.extend(effect);
-        } else {
-            // if it's not a switch block, we can already declare it handled
-            effects.extend(self.effect_builder.announce_block_handled(block).ignore());
         }
         effects
     }
@@ -885,14 +876,10 @@ where
         key_blocks: HashMap<EraId, BlockHeader>,
         booking_blocks: HashMap<EraId, BlockHash>,
         validators: BTreeMap<PublicKey, U512>,
-        timestamp: Timestamp,
     ) -> Effects<Event<I>> {
-        let result_map = self.era_supervisor.handle_initialize_eras(
-            key_blocks,
-            booking_blocks,
-            validators,
-            timestamp,
-        );
+        let result_map =
+            self.era_supervisor
+                .handle_initialize_eras(key_blocks, booking_blocks, validators);
 
         let effects = result_map
             .into_iter()
@@ -952,13 +939,7 @@ where
             switch_block.header().timestamp(),
             switch_block.height() + 1,
         );
-        let mut effects = self.handle_consensus_outcomes(era_id, outcomes);
-        effects.extend(
-            self.effect_builder
-                .announce_block_handled(switch_block)
-                .ignore(),
-        );
-        effects
+        self.handle_consensus_outcomes(era_id, outcomes)
     }
 
     pub(super) fn resolve_validity(
@@ -986,7 +967,7 @@ where
         };
         for candidate_block in candidate_blocks {
             effects.extend(self.delegate_to_era(era_id, |consensus| {
-                consensus.resolve_validity(&candidate_block, valid)
+                consensus.resolve_validity(&candidate_block, valid, Timestamp::now())
             }));
         }
         effects
@@ -1195,7 +1176,7 @@ where
                         };
                     for candidate_block in candidate_blocks {
                         effects.extend(self.delegate_to_era(e_id, |consensus| {
-                            consensus.resolve_validity(&candidate_block, true)
+                            consensus.resolve_validity(&candidate_block, true, Timestamp::now())
                         }));
                     }
                 }
@@ -1218,26 +1199,14 @@ where
                     .then(move |_| fatal!(eb, "too many faulty validators"))
                     .ignore()
             }
-        }
-    }
-
-    /// Emits a fatal error if the consensus state is still empty.
-    pub(super) fn shutdown_if_necessary(&self) -> Effects<Event<I>> {
-        let should_emit_error = self
-            .era_supervisor
-            .active_eras
-            .iter()
-            .all(|(_, era)| !era.consensus.has_received_messages());
-        if should_emit_error {
-            fatal!(
-                self.effect_builder,
-                "Consensus shutting down due to inability to participate in the network; \
-                inactive era = {}",
-                self.era_supervisor.current_era
-            )
-            .ignore()
-        } else {
-            Default::default()
+            ProtocolOutcome::StandstillAlert => {
+                if era_id == self.era_supervisor.current_era {
+                    warn!(era = %era_id.0, "current era is stalled; shutting down");
+                    fatal!(self.effect_builder, "current era is stalled; please retry").ignore()
+                } else {
+                    Effects::new()
+                }
+            }
         }
     }
 
