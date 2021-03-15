@@ -108,6 +108,15 @@ pub enum DeployValidationFailure {
         got: String,
     },
 
+    /// Deploy is too large.
+    #[error("{deploy_size} deploy size exceeds block size limit of {max_block_size}")]
+    ExcessiveSize {
+        /// The block size limit.
+        max_block_size: u32,
+        /// The size of the deploy provided.
+        deploy_size: usize,
+    },
+
     /// Too many dependencies.
     #[error("{got} dependencies exceeds limit of {max_dependencies}")]
     ExcessiveDependencies {
@@ -626,6 +635,14 @@ impl Deploy {
         chain_name: &str,
         config: &DeployConfig,
     ) -> Result<(), DeployValidationFailure> {
+        let deploy_size = self.serialized_length();
+        if deploy_size > config.max_block_size as usize {
+            return Err(DeployValidationFailure::ExcessiveSize {
+                max_block_size: config.max_block_size,
+                deploy_size,
+            });
+        }
+
         let header = self.header();
         if header.chain_name() != chain_name {
             info!(
