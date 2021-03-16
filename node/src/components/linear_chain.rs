@@ -36,12 +36,6 @@ use crate::{
 /// waiting for their block.
 const MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR: usize = 1000;
 
-impl<I> From<Box<FinalitySignature>> for Event<I> {
-    fn from(fs: Box<FinalitySignature>) -> Self {
-        Event::FinalitySignatureReceived(fs)
-    }
-}
-
 #[derive(Debug, From)]
 pub enum Event<I> {
     /// A linear chain request issued by another node in the network.
@@ -58,7 +52,7 @@ pub enum Event<I> {
     KnownLinearChainBlock(Box<Block>),
     /// Finality signature received.
     /// Not necessarily _new_ finality signature.
-    FinalitySignatureReceived(Box<FinalitySignature>),
+    FinalitySignatureReceived(Box<FinalitySignature>, bool),
     /// The result of putting a block to storage.
     PutBlockResult {
         /// The block.
@@ -82,10 +76,10 @@ impl<I: Display> Display for Event<I> {
             Event::NewLinearChainBlock { block, .. } => {
                 write!(f, "linear chain new block: {}", block.hash())
             }
-            Event::FinalitySignatureReceived(fs) => write!(
+            Event::FinalitySignatureReceived(fs, gossiped) => write!(
                 f,
-                "linear-chain new finality signature for block: {}, from: {}",
-                fs.block_hash, fs.public_key,
+                "linear-chain new finality signature for block: {}, from: {}, external: {}",
+                fs.block_hash, fs.public_key, gossiped
             ),
             Event::PutBlockResult { .. } => write!(f, "linear-chain put-block result"),
             Event::GetStoredFinalitySignaturesResult(finality_signature, maybe_signatures) => {
@@ -175,11 +169,36 @@ impl SignatureCache {
 }
 
 #[derive(DataSize, Debug)]
+enum Signature {
+    Local(Box<FinalitySignature>),
+    External(Box<FinalitySignature>),
+}
+
+impl Signature {
+    fn to_inner(&self) -> &Box<FinalitySignature> {
+        match self {
+            Signature::Local(fs) => fs,
+            Signature::External(fs) => fs,
+        }
+    }
+
+    fn take(self) -> Box<FinalitySignature> {
+        match self {
+            Signature::Local(fs) | Signature::External(fs) => fs,
+        }
+    }
+
+    fn is_local(&self) -> bool {
+        matches!(self, Signature::Local(_))
+    }
+}
+
+#[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// The most recently added block.
     latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
-    pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
+    pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, Signature>>,
     signature_cache: SignatureCache,
     /// Current protocol version of the network.
     protocol_version: ProtocolVersion,
@@ -249,27 +268,40 @@ impl<I> LinearChain<I> {
         let pending_sigs = self
             .pending_finality_signatures
             .values_mut()
-            .filter_map(|sigs| sigs.remove(&block_hash).map(Box::new))
-            .filter(|fs| !known_signatures.proofs.contains_key(&fs.public_key))
+            .filter_map(|sigs| sigs.remove(&block_hash))
+            .filter(|signature| {
+                !known_signatures
+                    .proofs
+                    .contains_key(&signature.to_inner().public_key)
+            })
             .collect_vec();
         self.remove_empty_entries();
         // Add new signatures and send the updated block to storage.
-        for fs in pending_sigs {
-            if fs.era_id != block_era {
+        for signature in pending_sigs {
+            if signature.to_inner().era_id != block_era {
                 // finality signature was created with era id that doesn't match block's era.
                 // TODO: disconnect from the sender.
                 continue;
             }
-            known_signatures.insert_proof(fs.public_key, fs.signature);
-            let message = Message::FinalitySignature(fs.clone());
-            effects.extend(effect_builder.broadcast_message(message).ignore());
-            effects.extend(effect_builder.announce_finality_signature(fs).ignore());
+            known_signatures.insert_proof(
+                signature.to_inner().public_key,
+                signature.to_inner().signature,
+            );
+            if signature.is_local() {
+                let message = Message::FinalitySignature(signature.to_inner().clone());
+                effects.extend(effect_builder.broadcast_message(message).ignore());
+            }
+            effects.extend(
+                effect_builder
+                    .announce_finality_signature(signature.take())
+                    .ignore(),
+            );
         }
         (known_signatures, effects)
     }
 
     /// Adds finality signature to the collection of pending finality signatures.
-    fn add_pending_finality_signature(&mut self, fs: FinalitySignature) {
+    fn add_pending_finality_signature(&mut self, fs: FinalitySignature, gossiped: bool) {
         let FinalitySignature {
             block_hash,
             public_key,
@@ -288,12 +320,18 @@ impl<I> LinearChain<I> {
             );
             return;
         }
+
+        let signature = if gossiped {
+            Signature::External(Box::new(fs))
+        } else {
+            Signature::Local(Box::new(fs))
+        };
         // Add the pending signature.
-        let _ = sigs.insert(block_hash, fs);
+        let _ = sigs.insert(block_hash, signature);
     }
 
     /// Removes finality signature from the pending collection.
-    fn remove_from_pending_fs(&mut self, fs: &FinalitySignature) {
+    fn remove_from_pending_fs(&mut self, fs: &FinalitySignature) -> Option<Signature> {
         let FinalitySignature {
             block_hash,
             era_id: _era_id,
@@ -301,10 +339,14 @@ impl<I> LinearChain<I> {
             public_key,
         } = fs;
         debug!(%block_hash, %public_key, "removing finality signature from pending collection");
-        if let Some(validator_sigs) = self.pending_finality_signatures.get_mut(public_key) {
-            validator_sigs.remove(&block_hash);
-        }
+        let maybe_sig =
+            if let Some(validator_sigs) = self.pending_finality_signatures.get_mut(public_key) {
+                validator_sigs.remove(&block_hash)
+            } else {
+                None
+            };
         self.remove_empty_entries();
+        maybe_sig
     }
 }
 
@@ -412,12 +454,12 @@ where
                 effects.extend(
                     effect_builder
                         .handle_linear_chain_block(*block.clone())
-                        .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
+                        .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs), true)),
                 );
                 effects.extend(effect_builder.announce_block_added(block).ignore());
                 effects
             }
-            Event::FinalitySignatureReceived(fs) => {
+            Event::FinalitySignatureReceived(fs, gossiped) => {
                 let FinalitySignature {
                     block_hash,
                     public_key,
@@ -461,7 +503,7 @@ where
                     warn!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
                 }
-                self.add_pending_finality_signature(*fs.clone());
+                self.add_pending_finality_signature(*fs.clone(), gossiped);
                 match self.signature_cache.get(&block_hash, era_id) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
@@ -553,19 +595,20 @@ where
                     self.remove_from_pending_fs(&*fs);
                     Effects::new()
                 } else {
-                    let message = Message::FinalitySignature(fs.clone());
-                    let mut effects = effect_builder.broadcast_message(message).ignore();
-                    effects.extend(
-                        effect_builder
-                            .announce_finality_signature(fs.clone())
-                            .ignore(),
-                    );
+                    let mut effects = effect_builder
+                        .announce_finality_signature(fs.clone())
+                        .ignore();
+                    if let Some(signature) = self.remove_from_pending_fs(&*fs) {
+                        if signature.is_local() {
+                            let message = Message::FinalitySignature(fs.clone());
+                            effects.extend(effect_builder.broadcast_message(message).ignore());
+                        }
+                    };
                     signatures.insert_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
                     self.signature_cache.insert(*signatures.clone());
                     debug!(hash=%signatures.block_hash, "storing finality signatures");
-                    self.remove_from_pending_fs(&*fs);
                     effects.extend(
                         effect_builder
                             .put_signatures_to_storage(*signatures)
