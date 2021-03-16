@@ -6,6 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -75,6 +76,10 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Drops all pending vertices other than evidence.
     pub(crate) fn retain_evidence_only(&mut self) {
         self.0.retain(|pvv, _| pvv.inner().is_evidence());
+    }
+
+    pub(crate) fn len(&self) -> u64 {
+        self.0.iter().map(|(_, m)| m.len() as u64).sum::<u64>() + self.0.len() as u64
     }
 
     fn is_empty(&self) -> bool {
@@ -172,6 +177,33 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         Self::remove_expired(&mut self.vertex_deps, oldest);
     }
 
+    fn vertices_to_be_added_later_size(&self) -> u64 {
+        (self.vertices_to_be_added_later.len() as u64).saturating_add(
+            self.vertices_to_be_added_later
+                .iter()
+                .map(|(_, pv)| pv.len())
+                .sum(),
+        )
+    }
+
+    fn vertex_deps_size(&self) -> u64 {
+        (self.vertex_deps.len() as u64)
+            .saturating_add(self.vertex_deps.iter().map(|(_, pv)| pv.len()).sum())
+    }
+
+    fn vertices_to_be_added_size(&self) -> u64 {
+        self.vertices_to_be_added.len()
+    }
+
+    fn log_size(&self) {
+        info!(
+            vertices_to_be_added_later = self.vertices_to_be_added_later_size(),
+            vertex_deps = self.vertex_deps_size(),
+            vertices_to_be_added = self.vertices_to_be_added_size(),
+            "synchronizer queue sizes"
+        );
+    }
+
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
     /// to the reactor. The vertex be added using `Self::add_vertices` when that timer goes off.
     pub(crate) fn store_vertex_for_addition_later(
@@ -185,6 +217,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .entry(future_timestamp)
             .or_default()
             .add(sender, pvv, now);
+        self.log_size();
     }
 
     /// Returns the timestamps at which we are supposed to add cached vertices.
@@ -213,6 +246,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 results.extend(self.schedule_add_vertices(vertices_to_add))
             }
         }
+        self.log_size();
         results
     }
 
@@ -224,7 +258,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
         let pv = PendingVertex::new(sender, pvv, now);
-        self.schedule_add_vertices(iter::once(pv))
+        let outcome = self.schedule_add_vertices(iter::once(pv));
+        self.log_size();
+        outcome
     }
 
     /// Moves all vertices whose known missing dependency is now satisfied into the
@@ -240,7 +276,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .into_iter()
             .flat_map(|dep| self.vertex_deps.remove(&dep).unwrap())
             .collect_vec();
-        self.schedule_add_vertices(pvs)
+        let outcome = self.schedule_add_vertices(pvs);
+        self.log_size();
+        outcome
     }
 
     /// Pops and returns the next entry from `vertices_to_be_added` that is not yet in the protocol
@@ -273,12 +311,13 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // There are still vertices in the queue: schedule next call.
                 outcomes.push(ProtocolOutcome::QueueAction(ACTION_ID_VERTEX));
             }
+            self.log_size();
             return (Some(pv), outcomes);
         }
     }
 
     /// Adds a vertex with a known missing dependency to the queue.
-    pub(crate) fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
+    fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
         self.vertex_deps.entry(dep).or_default().push(pv)
     }
 
@@ -312,6 +351,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             vertices = new_vertices;
             senders.extend(new_senders);
         }
+        self.log_size();
         senders
     }
 
