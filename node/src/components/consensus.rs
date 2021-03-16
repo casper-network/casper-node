@@ -368,9 +368,6 @@ where
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }
-            Event::ConsensusRequest(ConsensusRequest::IsBondedValidator(era_id, pk, responder)) => {
-                handling_es.is_bonded_validator(era_id, pk, responder)
-            }
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 handling_es.status(responder)
             }
