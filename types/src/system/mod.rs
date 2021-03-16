@@ -313,27 +313,26 @@ mod system_contract_type {
         }
 
         #[test]
+        fn create_invalid_variant_from_int() {
+            assert!(SystemContractType::try_from(0).is_err());
+        }
+
+        #[test]
         fn create_mint_variant_from_int() {
-            let mint = SystemContractType::try_from(0).ok().unwrap();
+            let mint = SystemContractType::try_from(1).ok().unwrap();
             assert_eq!(mint, SystemContractType::Mint);
         }
 
         #[test]
-        fn create_handle_payment_variant_from_int() {
-            let handle_payment = SystemContractType::try_from(1).ok().unwrap();
-            assert_eq!(handle_payment, SystemContractType::HandlePayment);
-        }
-
-        #[test]
-        fn create_standard_payment_variant_from_int() {
-            let handle_payment = SystemContractType::try_from(2).ok().unwrap();
-            assert_eq!(handle_payment, SystemContractType::StandardPayment);
-        }
-
-        #[test]
         fn create_auction_variant_from_int() {
-            let auction = SystemContractType::try_from(3).ok().unwrap();
+            let auction = SystemContractType::try_from(2).ok().unwrap();
             assert_eq!(auction, SystemContractType::Auction);
+        }
+
+        #[test]
+        fn create_handle_payment_from_int() {
+            let handle_payment = SystemContractType::try_from(3).ok().unwrap();
+            assert_eq!(handle_payment, SystemContractType::HandlePayment);
         }
 
         #[test]
