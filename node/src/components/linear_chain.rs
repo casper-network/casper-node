@@ -439,8 +439,8 @@ where
                             ?block_hash,
                             "received finality signature for not bonded era."
                         );
-                    return Effects::new();
-                }
+                        return Effects::new();
+                    }
                 }
                 if self.has_finality_signature(&fs) {
                     debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
