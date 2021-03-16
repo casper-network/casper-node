@@ -12,7 +12,7 @@ use itertools::Itertools;
 use prometheus::{IntGauge, Registry};
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey};
 
 use super::{consensus::EraId, Component};
 use crate::{
@@ -26,7 +26,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        Block, BlockByHeight, BlockHash, BlockSignatures, DeployHash, FinalitySignature, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockSignatures, Chainspec, DeployHash, FinalitySignature,
+        Timestamp,
     },
     unregister_metric, NodeRng,
 };
@@ -183,7 +184,10 @@ pub(crate) struct LinearChain<I> {
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
     signature_cache: SignatureCache,
-
+    /// Current protocol version of the network.
+    protocol_version: ProtocolVersion,
+    auction_delay: u64,
+    unbonding_delay: u64,
     #[data_size(skip)]
     metrics: LinearChainMetrics,
 
@@ -191,12 +195,20 @@ pub(crate) struct LinearChain<I> {
 }
 
 impl<I> LinearChain<I> {
-    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub fn new(registry: &Registry, chainspec: &Chainspec) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
+        let protocol_version = ProtocolVersion::from_parts(
+            chainspec.protocol_config.version.major as u32,
+            chainspec.protocol_config.version.minor as u32,
+            chainspec.protocol_config.version.patch as u32,
+        );
         Ok(LinearChain {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),
             signature_cache: SignatureCache::new(),
+            protocol_version,
+            auction_delay: chainspec.core_config.auction_delay,
+            unbonding_delay: chainspec.core_config.unbonding_delay,
             metrics,
             _marker: PhantomData,
         })
@@ -415,9 +427,20 @@ where
                     era_id,
                     ..
                 } = *fs;
-                if let Err(err) = fs.verify() {
-                    warn!(%block_hash, %public_key, %err, "received invalid finality signature");
+                if let Some(last_block) = self.latest_block.as_ref() {
+                    let last_block_era = last_block.header().era_id();
+                    let lowest_acceptable_era_id =
+                        last_block_era + self.auction_delay - self.unbonding_delay;
+                    let highest_acceptable_era_id = last_block_era + self.auction_delay;
+                    if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
+                        warn!(
+                            ?era_id,
+                            ?public_key,
+                            ?block_hash,
+                            "received finality signature for not bonded era."
+                        );
                     return Effects::new();
+                }
                 }
                 if self.has_finality_signature(&fs) {
                     debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
@@ -427,6 +450,10 @@ where
                 if self.signature_cache.known_signature(&fs) {
                     debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
                         "finality signature is already known");
+                    return Effects::new();
+                }
+                if let Err(err) = fs.verify() {
+                    warn!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
                 }
                 self.add_pending_finality_signature(*fs.clone());
@@ -482,13 +509,11 @@ where
                     Some(block) => {
                         let latest_header = block.header();
                         let state_root_hash = latest_header.state_root_hash();
-                        // TODO: Use protocol version that is valid for the block's height.
-                        let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
                         effect_builder
                             .is_bonded_in_future_era(
                                 *state_root_hash,
                                 fs.era_id,
-                                protocol_version,
+                                self.protocol_version,
                                 fs.public_key,
                             )
                             .map(|res| {

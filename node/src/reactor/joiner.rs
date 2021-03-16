@@ -502,7 +502,8 @@ impl reactor::Reactor for Reactor {
             registry.clone(),
         );
 
-        let linear_chain = linear_chain::LinearChain::new(&registry)?;
+        let linear_chain =
+            linear_chain::LinearChain::new(&registry, &chainspec_loader.chainspec())?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
