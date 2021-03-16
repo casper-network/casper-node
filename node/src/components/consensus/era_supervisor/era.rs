@@ -175,11 +175,6 @@ impl<I> Era<I> {
         &self.validators
     }
 
-    /// Returns whether validator identified with `public_key` is bonded in that era.
-    pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
-        self.validators.contains_key(public_key)
-    }
-
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
     pub(crate) fn set_paused(&mut self, paused: bool) {
         self.consensus.set_paused(paused);

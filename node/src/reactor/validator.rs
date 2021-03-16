@@ -472,7 +472,16 @@ impl reactor::Reactor for Reactor {
         )
         .with_parent_map(latest_block);
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
-        let linear_chain = LinearChain::new(registry)?;
+        let linear_chain = linear_chain::LinearChain::new(
+            &registry,
+            chainspec_loader.initial_state_root_hash(),
+            protocol_version.clone(),
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .activation_point
+                .era_id(),
+        )?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
         effects.extend(reactor::wrap_effects(
