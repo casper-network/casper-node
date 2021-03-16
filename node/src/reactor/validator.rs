@@ -461,10 +461,10 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec().as_ref(),
         )?;
 
-        let initial_era = latest_block
-            .as_ref()
-            .map(|block| block.header().next_block_era_id())
-            .unwrap_or_else(|| chainspec_loader.initial_era());
+        let initial_era = latest_block.as_ref().map_or_else(
+            || chainspec_loader.initial_era(),
+            |block| block.header().next_block_era_id(),
+        );
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         let block_executor = BlockExecutor::new(
             chainspec_loader.initial_state_root_hash(),

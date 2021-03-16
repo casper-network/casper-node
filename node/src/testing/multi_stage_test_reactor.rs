@@ -122,9 +122,9 @@ impl MultiStageTestReactor {
     pub fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
-            MultiStageTestReactor::Initializer { .. } => None,
-            MultiStageTestReactor::Joiner { .. } => None,
-            MultiStageTestReactor::JoinerFinalizing { .. } => None,
+            MultiStageTestReactor::Initializer { .. }
+            | MultiStageTestReactor::Joiner { .. }
+            | MultiStageTestReactor::JoinerFinalizing { .. } => None,
             MultiStageTestReactor::Validator {
                 validator_reactor, ..
             } => Some(validator_reactor.consensus()),
