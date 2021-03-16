@@ -454,7 +454,7 @@ where
                 effects.extend(
                     effect_builder
                         .handle_linear_chain_block(*block.clone())
-                        .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs), true)),
+                        .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs), false)),
                 );
                 effects.extend(effect_builder.announce_block_added(block).ignore());
                 effects
