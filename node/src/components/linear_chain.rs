@@ -12,7 +12,7 @@ use itertools::Itertools;
 use prometheus::{IntGauge, Registry};
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
+use casper_types::{ExecutionResult, PublicKey};
 
 use super::{consensus::EraId, Component};
 use crate::{
@@ -469,8 +469,7 @@ where
                     Some(block) => {
                         let latest_header = block.header();
                         let state_root_hash = latest_header.state_root_hash();
-                        // TODO: Use protocol version that is valid for the block's height.
-                        let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
+                        let protocol_version = latest_header.protocol_version();
                         effect_builder
                             .is_bonded_in_future_era(
                                 *state_root_hash,
