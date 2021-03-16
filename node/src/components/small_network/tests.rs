@@ -287,6 +287,14 @@ fn greeting_length_matches_version_serialization() {
     assert_eq!(GREETING_LENGTH, ProtocolVersion::V1_0_0.serialized_length());
 }
 
+#[test]
+fn serialized_version_is_sane() {
+    let expected = vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    let pversion = ProtocolVersion::V1_0_0;
+    assert_eq!(pversion.to_bytes().expect("to bytes failed"), expected);
+}
+
 /// Run a two-node network five times.
 ///
 /// Ensures that network cleanup and basic networking works.

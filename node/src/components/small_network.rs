@@ -555,6 +555,7 @@ where
                 effects
             }
             Err(err) => {
+                debug!(?err, "TLS handshake error");
                 warn!(our_id=%self.our_id, %peer_address, %err, "TLS handshake failed");
                 Effects::new()
             }
@@ -1192,12 +1193,12 @@ async fn setup_tls(
 
     let node_id = NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint());
 
+    let greeting = protocol_version
+        .to_bytes()
+        .map_err(Error::SerializeProtocolVersion)?;
+    debug!(%protocol_version, ?greeting, "sending greeting to peer");
     tls_stream
-        .write_all(
-            &protocol_version
-                .to_bytes()
-                .map_err(Error::SerializeProtocolVersion)?,
-        )
+        .write_all(&greeting)
         .await
         .map_err(Error::WriteGreeting)?;
 
@@ -1211,7 +1212,7 @@ async fn setup_tls(
     let (remote_version, _) =
         ProtocolVersion::from_bytes(&buffer).map_err(Error::DeserializeProtocolVersion)?;
 
-    debug!(%remote_version, "received greeting from peer");
+    debug!(%remote_version, remote_greeting=?buffer, "received greeting from peer");
     // TODO: Do something with the received version in later versions of the node software.
 
     Ok((node_id, tls_stream))
