@@ -685,6 +685,7 @@ where
     }
 
     fn deactivate_validator(&mut self) {
+        self.synchronizer.current_era = false;
         self.highway.deactivate_validator()
     }
 

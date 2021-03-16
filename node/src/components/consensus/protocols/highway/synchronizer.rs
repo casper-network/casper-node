@@ -156,6 +156,7 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
+    pub(crate) current_era: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
@@ -166,6 +167,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
+            current_era: true,
         }
     }
 
@@ -196,6 +198,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     fn log_size(&self) {
+        if !self.current_era {
+            return;
+        }
         info!(
             vertices_to_be_added_later = self.vertices_to_be_added_later_size(),
             vertex_deps = self.vertex_deps_size(),
