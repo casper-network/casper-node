@@ -56,6 +56,7 @@ use std::{
 };
 
 use anyhow::Context;
+use casper_types::ProtocolVersion;
 use datasize::DataSize;
 use futures::{
     future::{select, BoxFuture, Either},
@@ -158,6 +159,8 @@ where
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     network_name: String,
+    /// The protocol version of the node.
+    protocol_version: ProtocolVersion,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -196,6 +199,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         network_name: String,
+        protocol_version: ProtocolVersion,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
@@ -242,6 +246,7 @@ where
                 pending: HashMap::new(),
                 blocklist: HashMap::new(),
                 network_name,
+                protocol_version,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
@@ -306,6 +311,7 @@ where
             pending: HashMap::new(),
             blocklist: HashMap::new(),
             network_name,
+            protocol_version,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),

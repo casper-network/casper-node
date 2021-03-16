@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_types::ProtocolVersion;
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
@@ -140,6 +141,7 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             "test_network".to_string(),
+            ProtocolVersion::V1_0_0,
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();

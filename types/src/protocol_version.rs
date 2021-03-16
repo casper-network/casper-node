@@ -54,6 +54,7 @@ impl ProtocolVersion {
     });
 
     /// Constructs a new `ProtocolVersion` from `version`.
+    #[inline]
     pub const fn new(version: SemVer) -> ProtocolVersion {
         ProtocolVersion(version)
     }
