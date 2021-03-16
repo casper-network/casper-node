@@ -55,10 +55,7 @@ pub enum Event<I> {
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     /// Linear chain block we already know but we may refinalize it when syncing protocol state.
-    KnownLinearChainBlock {
-        /// The block.
-        block: Box<Block>,
-    },
+    KnownLinearChainBlock(Box<Block>),
     /// Finality signature received.
     /// Not necessarily _new_ finality signature.
     FinalitySignatureReceived(Box<FinalitySignature>),
@@ -113,7 +110,7 @@ impl<I: Display> Display for Event<I> {
                     fs.era_id, fs.public_key
                 )
             }
-            Event::KnownLinearChainBlock { block } => {
+            Event::KnownLinearChainBlock(block) => {
                 write!(f, "linear chain known block: {}", block.hash())
             }
         }
@@ -427,11 +424,19 @@ where
                     era_id,
                     ..
                 } = *fs;
-                if let Some(last_block) = self.latest_block.as_ref() {
-                    let last_block_era = last_block.header().era_id();
+                if let Some(latest_block) = self.latest_block.as_ref() {
+                    // If it's a switch block it has already forgotten its own era's validators,
+                    // unbonded some old validators, and determined new ones. In that case, we
+                    // should add 1 to last_block_era.
+                    let current_era = latest_block.header().era_id()
+                        + if latest_block.header().is_switch_block() {
+                            1
+                        } else {
+                            0
+                        };
                     let lowest_acceptable_era_id =
-                        last_block_era + self.auction_delay - self.unbonding_delay;
-                    let highest_acceptable_era_id = last_block_era + self.auction_delay;
+                        current_era + self.auction_delay - self.unbonding_delay;
+                    let highest_acceptable_era_id = current_era + self.auction_delay;
                     if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
                         warn!(
                             ?era_id,
@@ -591,7 +596,7 @@ where
                 // TODO: Disconnect from the sender.
                 Effects::new()
             }
-            Event::KnownLinearChainBlock { block } => {
+            Event::KnownLinearChainBlock(block) => {
                 self.latest_block = Some(*block);
                 Effects::new()
             }
