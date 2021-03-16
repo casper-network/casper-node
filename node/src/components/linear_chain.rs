@@ -477,7 +477,7 @@ where
                             0
                         };
                     let lowest_acceptable_era_id =
-                        current_era + self.auction_delay - self.unbonding_delay;
+                        (current_era + self.auction_delay).saturating_sub(self.unbonding_delay);
                     let highest_acceptable_era_id = current_era + self.auction_delay;
                     if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
                         warn!(
