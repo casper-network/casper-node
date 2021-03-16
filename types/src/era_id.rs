@@ -193,21 +193,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn should_calculate_correct_future_eras() {
-        let auction_delay = 3;
-
-        let current_era = EraId::from(42);
-
-        let window: BTreeSet<EraId> = current_era.iter_past(auction_delay).collect();
-        assert_eq!(window.len(), auction_delay as usize);
-        assert_eq!(window.iter().next(), Some(&current_era));
-        assert_eq!(
-            window.iter().rev().next(),
-            Some(&(current_era + auction_delay - 1))
-        );
-    }
-
     proptest! {
         #[test]
         fn bytesrepr_roundtrip(era_id in era_id_arb()) {
