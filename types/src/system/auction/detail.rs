@@ -149,7 +149,7 @@ where
 
     let mut ret = BTreeMap::new();
 
-    for era_id in current_era_id.iter_past_inclusive(auction_delay) {
+    for era_id in current_era_id.iter_inclusive(auction_delay) {
         let recipient = match provider.read_era_validators(era_id)? {
             Some(recipient) => recipient,
             None => return Err(Error::ValidatorNotFound),

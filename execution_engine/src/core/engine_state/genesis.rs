@@ -1146,7 +1146,7 @@ where
         validators: &BTreeMap<PublicKey, Bid>,
         auction_delay: u64,
     ) -> BTreeMap<EraId, SeigniorageRecipients> {
-        let initial_snapshot_range = INITIAL_ERA_ID.iter_past_inclusive(auction_delay);
+        let initial_snapshot_range = INITIAL_ERA_ID.iter_inclusive(auction_delay);
 
         let mut seigniorage_recipients = SeigniorageRecipients::new();
         for (era_validator, founding_validator) in validators {

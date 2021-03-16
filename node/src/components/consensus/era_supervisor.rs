@@ -1150,7 +1150,7 @@ where
                     .effect_builder
                     .announce_fault_event(era_id, pub_key, Timestamp::now())
                     .ignore();
-                for e_id in era_id.iter_past_inclusive(self.era_supervisor.bonded_eras()) {
+                for e_id in era_id.iter_inclusive(self.era_supervisor.bonded_eras()) {
                     let candidate_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
                             era.resolve_evidence(&pub_key)
