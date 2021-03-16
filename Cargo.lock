@@ -5267,6 +5267,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "system-hashes"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
