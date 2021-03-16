@@ -781,10 +781,25 @@ impl reactor::Reactor for Reactor {
                                 responder: None,
                             })
                         }
-                        Tag::Block => todo!("Handle GET block response"),
-                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
+                        Tag::Block => {
+                            error!(
+                                "cannot handle get response for block-by-hash from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockByHeight => {
+                            error!(
+                                "cannot handle get response for block-by-height from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
                         Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
+                            error!(
+                                "cannot handle get response for gossiped-address from {}",
+                                sender
+                            );
                             return Effects::new();
                         }
                     },
