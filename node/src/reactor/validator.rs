@@ -466,6 +466,26 @@ impl reactor::Reactor for Reactor {
             |block| block.header().next_block_era_id(),
         );
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
+
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
+        let (consensus, init_consensus_effects) = EraSupervisor::new(
+            initial_era,
+            WithDir::new(root, config.consensus),
+            effect_builder,
+            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
+            latest_block.as_ref().map(Block::header),
+            maybe_next_activation_point,
+            registry,
+            Box::new(HighwayProtocol::new_boxed),
+        )?;
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            init_consensus_effects,
+        ));
+
         let block_executor = BlockExecutor::new(
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
@@ -489,24 +509,6 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
             small_network_effects,
-        ));
-
-        let maybe_next_activation_point = chainspec_loader
-            .next_upgrade()
-            .map(|next_upgrade| next_upgrade.activation_point());
-        let (consensus, init_consensus_effects) = EraSupervisor::new(
-            initial_era,
-            WithDir::new(root, config.consensus),
-            effect_builder,
-            chainspec_loader.chainspec().as_ref().into(),
-            chainspec_loader.initial_state_root_hash(),
-            maybe_next_activation_point,
-            registry,
-            Box::new(HighwayProtocol::new_boxed),
-        )?;
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            init_consensus_effects,
         ));
 
         Ok((

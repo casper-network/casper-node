@@ -138,6 +138,7 @@ where
         effect_builder: EffectBuilder<REv>,
         protocol_config: ProtocolConfig,
         initial_state_root_hash: Digest,
+        maybe_latest_block_header: Option<&BlockHeader>,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
@@ -163,6 +164,7 @@ where
         );
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
+        let next_height = maybe_latest_block_header.map_or(0, |hdr| hdr.height() + 1);
 
         let era_supervisor = Self {
             active_eras: Default::default(),
@@ -175,12 +177,12 @@ where
             // TODO: Find a better way to decide whether to activate validator, or get the
             // timestamp from when the process started.
             node_start_time: Timestamp::now(),
-            next_block_height: 0,
+            next_block_height: next_height,
             metrics,
             unit_hashes_folder,
             next_upgrade_activation_point,
             stop_for_upgrade: false,
-            next_executed_height: 0,
+            next_executed_height: next_height,
             is_initialized: false,
             enqueued_events: Default::default(),
         };
