@@ -56,7 +56,10 @@ use std::{
 };
 
 use anyhow::Context;
-use casper_types::ProtocolVersion;
+use casper_types::{
+    bytesrepr::{FromBytes, ToBytes},
+    ProtocolVersion,
+};
 use datasize::DataSize;
 use futures::{
     future::{select, BoxFuture, Either},
@@ -71,6 +74,7 @@ use rand::seq::IteratorRandom;
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -105,6 +109,13 @@ pub use error::Error;
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
+
+/// The length of a greeting.
+///
+/// This is hardcoded and NOT made dependent on the `ToBytes` representation of a version string, as
+/// changing this would impair backwards compability. A test is in place to ensure the lengths
+/// align.
+const GREETING_LENGTH: usize = 12;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -958,12 +969,17 @@ where
             } => {
                 debug!(our_id=%self.our_id, %peer_address, "incoming connection, starting TLS handshake");
 
-                setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
-                    .boxed()
-                    .event(move |result| Event::IncomingHandshakeCompleted {
-                        result: Box::new(result),
-                        peer_address,
-                    })
+                setup_tls(
+                    stream,
+                    self.certificate.clone(),
+                    self.secret_key.clone(),
+                    self.protocol_version,
+                )
+                .boxed()
+                .event(move |result| Event::IncomingHandshakeCompleted {
+                    result: Box::new(result),
+                    peer_address,
+                })
             }
             Event::IncomingHandshakeCompleted {
                 result,
@@ -1159,8 +1175,9 @@ async fn setup_tls(
     stream: TcpStream,
     cert: Arc<TlsCert>,
     secret_key: Arc<PKey<Private>>,
+    protocol_version: ProtocolVersion,
 ) -> Result<(NodeId, Transport)> {
-    let tls_stream = tokio_openssl::accept(
+    let mut tls_stream = tokio_openssl::accept(
         &tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
             .map_err(Error::AcceptorCreation)?,
         stream,
@@ -1173,10 +1190,31 @@ async fn setup_tls(
         .peer_certificate()
         .ok_or(Error::NoClientCertificate)?;
 
-    Ok((
-        NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint()),
-        tls_stream,
-    ))
+    let node_id = NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint());
+
+    tls_stream
+        .write_all(
+            &protocol_version
+                .to_bytes()
+                .map_err(Error::SerializeProtocolVersion)?,
+        )
+        .await
+        .map_err(Error::WriteGreeting)?;
+
+    let mut buffer = [0u8; GREETING_LENGTH];
+
+    tls_stream
+        .read_exact(&mut buffer)
+        .await
+        .map_err(Error::ReadGreeting)?;
+
+    let (remote_version, _) =
+        ProtocolVersion::from_bytes(&buffer).map_err(Error::DeserializeProtocolVersion)?;
+
+    debug!(%remote_version, "received greeting from peer");
+    // TODO: Do something with the received version in later versions of the node software.
+
+    Ok((node_id, tls_stream))
 }
 
 /// Network handshake reader for single handshake message received by outgoing connection.

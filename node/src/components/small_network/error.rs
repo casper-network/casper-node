@@ -1,5 +1,6 @@
 use std::{io, net::SocketAddr, result, time::SystemTimeError};
 
+use casper_types::bytesrepr;
 use openssl::error::ErrorStack;
 use serde::Serialize;
 use thiserror::Error;
@@ -87,6 +88,34 @@ pub enum Error {
         #[serde(skip_serializing)]
         #[source]
         ErrorStack,
+    ),
+    /// Failed to serialize the protocol version into bytes for greeting.
+    #[error("could not serialize protocol version for greeting")]
+    SerializeProtocolVersion(
+        #[serde(skip_serializing)]
+        #[source]
+        bytesrepr::Error,
+    ),
+    /// Failed to write greeting.
+    #[error("could not write greeting")]
+    WriteGreeting(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// Failed to read greeting.
+    #[error("could not read greeting")]
+    ReadGreeting(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// Could not deserialize protocol version from greeting.
+    #[error("could not deserialize protocol version from greeting")]
+    DeserializeProtocolVersion(
+        #[serde(skip_serializing)]
+        #[source]
+        bytesrepr::Error,
     ),
     /// Handshaking error.
     #[error("handshake error: {0}")]

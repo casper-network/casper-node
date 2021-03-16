@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::ProtocolVersion;
+use casper_types::{bytesrepr::ToBytes, ProtocolVersion};
 use derive_more::From;
 use pnet::datalink;
 use prometheus::Registry;
@@ -18,7 +18,7 @@ use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
-use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
+use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork, GREETING_LENGTH};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
@@ -280,6 +280,11 @@ fn network_started(net: &Network<TestReactor>) -> bool {
         .iter()
         .map(|(_, runner)| runner.reactor().inner().net.peers())
         .all(|peers| !peers.is_empty())
+}
+
+#[test]
+fn greeting_length_matches_version_serialization() {
+    assert_eq!(GREETING_LENGTH, ProtocolVersion::V1_0_0.serialized_length());
 }
 
 /// Run a two-node network five times.
