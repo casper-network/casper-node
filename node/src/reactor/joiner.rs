@@ -776,7 +776,7 @@ impl reactor::Reactor for Reactor {
                 let block_hash = *block.hash();
 
                 // send to linear chain
-                let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
+                let reactor_event = Event::LinearChain(linear_chain::Event::NewLinearChainBlock {
                     block: Box::new(block),
                     execution_results: execution_results
                         .iter()
