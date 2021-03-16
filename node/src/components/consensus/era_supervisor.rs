@@ -407,7 +407,14 @@ where
     }
 
     /// To be called when we transition from the joiner to the validator reactor.
-    pub(crate) fn finished_joining(&mut self, now: Timestamp) -> ProtocolOutcomes<I, ClContext> {
+    pub(crate) fn finished_joining(
+        &mut self,
+        now: Timestamp,
+        maybe_header: Option<Box<BlockHeader>>,
+    ) -> ProtocolOutcomes<I, ClContext> {
+        let next_height = maybe_header.map(|hdr| hdr.height() + 1).unwrap_or(0);
+        self.next_executed_height = self.next_executed_height.max(next_height);
+        self.next_block_height = self.next_block_height.max(next_height);
         self.finished_joining = true;
         let secret = Keypair::new(self.secret_signing_key.clone(), self.public_signing_key);
         let public_key = self.public_signing_key;
@@ -1183,8 +1190,12 @@ where
         }
     }
 
-    pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
-        let outcomes = self.era_supervisor.finished_joining(now);
+    pub(crate) fn finished_joining(
+        &mut self,
+        now: Timestamp,
+        maybe_header: Option<Box<BlockHeader>>,
+    ) -> Effects<Event<I>> {
+        let outcomes = self.era_supervisor.finished_joining(now, maybe_header);
         self.handle_consensus_outcomes(self.era_supervisor.current_era, outcomes)
     }
 
