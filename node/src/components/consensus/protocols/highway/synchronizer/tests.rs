@@ -39,7 +39,7 @@ fn purge_vertices() {
     let peer0 = NodeId(0);
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
-    let mut sync = Synchronizer::<NodeId, TestContext>::new(0x20.into());
+    let mut sync = Synchronizer::<NodeId, TestContext>::new(0x20.into(), TEST_INSTANCE_ID);
     let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
 
     // At time 0x20, we receive c2, b0 and b1 — the latter ahead of their timestamp.

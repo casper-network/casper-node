@@ -6,6 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use tracing::info;
 
 use crate::{
     components::consensus::{
@@ -75,6 +76,10 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Drops all pending vertices other than evidence.
     pub(crate) fn retain_evidence_only(&mut self) {
         self.0.retain(|pvv, _| pvv.inner().is_evidence());
+    }
+
+    pub(crate) fn len(&self) -> u64 {
+        self.0.len() as u64
     }
 
     fn is_empty(&self) -> bool {
@@ -151,16 +156,20 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
+    era_id: C::InstanceId,
+    pub(crate) current_era: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
-    pub(crate) fn new(pending_vertex_timeout: TimeDiff) -> Self {
+    pub(crate) fn new(pending_vertex_timeout: TimeDiff, era_id: C::InstanceId) -> Self {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
+            era_id,
+            current_era: true,
         }
     }
 
@@ -170,6 +179,31 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.vertices_to_be_added.remove_expired(oldest);
         Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
         Self::remove_expired(&mut self.vertex_deps, oldest);
+    }
+
+    fn vertices_to_be_added_later_size(&self) -> u64 {
+        self.vertices_to_be_added_later
+            .iter()
+            .map(|(_, pv)| pv.len())
+            .sum()
+    }
+
+    fn vertex_deps_size(&self) -> u64 {
+        self.vertex_deps.iter().map(|(_, pv)| pv.len()).sum()
+    }
+
+    fn vertices_to_be_added_size(&self) -> u64 {
+        self.vertices_to_be_added.len()
+    }
+
+    pub(crate) fn log_size(&self) {
+        info!(
+            era_id = ?self.era_id,
+            vertices_to_be_added_later = self.vertices_to_be_added_later_size(),
+            vertex_deps = self.vertex_deps_size(),
+            vertices_to_be_added = self.vertices_to_be_added_size(),
+            "synchronizer queue sizes"
+        );
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
@@ -278,7 +312,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     /// Adds a vertex with a known missing dependency to the queue.
-    pub(crate) fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
+    fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
         self.vertex_deps.entry(dep).or_default().push(pv)
     }
 
