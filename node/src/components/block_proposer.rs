@@ -97,17 +97,12 @@ impl BlockProposer {
         debug!(%next_finalized_block, "creating block proposer");
         // load the state from storage or use a fresh instance if loading fails.
         let state_key = deploy_sets::create_storage_key(chainspec);
-        let cloned_state_key = state_key.clone();
-        let effects = async move {
-            effect_builder
-                .load_state(cloned_state_key.into())
-                .await
-                .unwrap_or_default()
-        }
-        .event(move |sets| Event::Loaded {
-            sets,
-            next_finalized_block,
-        });
+        let effects = effect_builder
+            .load_state::<BlockProposerDeploySets>(state_key.clone().into())
+            .event(move |sets| Event::Loaded {
+                sets,
+                next_finalized_block,
+            });
 
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
@@ -262,7 +257,10 @@ impl BlockProposerReady {
 
                 // After pruning, we store a state snapshot.
                 let mut effects = effect_builder
-                    .save_state(self.state_key.clone().into(), self.sets.clone())
+                    .save_state::<BlockProposerDeploySets>(
+                        self.state_key.clone().into(),
+                        self.sets.clone(),
+                    )
                     .ignore();
 
                 // Re-trigger timer after `PRUNE_INTERVAL`.
