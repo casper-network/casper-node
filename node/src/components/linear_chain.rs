@@ -47,11 +47,16 @@ pub enum Event<I> {
     #[from]
     Request(LinearChainRequest<I>),
     /// New linear chain block has been produced.
-    LinearChainBlock {
+    NewLinearChainBlock {
         /// The block.
         block: Box<Block>,
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
+    },
+    /// Linear chain block we already know but we may refinalize it when syncing protocol state.
+    KnownLinearChainBlock {
+        /// The block.
+        block: Box<Block>,
     },
     /// Finality signature received.
     /// Not necessarily _new_ finality signature.
@@ -76,7 +81,7 @@ impl<I: Display> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Request(req) => write!(f, "linear chain request: {}", req),
-            Event::LinearChainBlock { block, .. } => {
+            Event::NewLinearChainBlock { block, .. } => {
                 write!(f, "linear chain new block: {}", block.hash())
             }
             Event::FinalitySignatureReceived(fs) => write!(
@@ -106,6 +111,9 @@ impl<I: Display> Display for Event<I> {
                     "linear chain is-bonded for future era {} validator {}",
                     fs.era_id, fs.public_key
                 )
+            }
+            Event::KnownLinearChainBlock { block } => {
+                write!(f, "linear chain known block: {}", block.hash())
             }
         }
     }
@@ -349,7 +357,7 @@ where
                 }
             }
             .ignore(),
-            Event::LinearChainBlock {
+            Event::NewLinearChainBlock {
                 block,
                 execution_results,
             } => {
@@ -556,6 +564,10 @@ where
                     "Received a signature from a validator that is not bonded."
                 );
                 // TODO: Disconnect from the sender.
+                Effects::new()
+            }
+            Event::KnownLinearChainBlock { block } => {
+                self.latest_block = Some(*block);
                 Effects::new()
             }
         }
