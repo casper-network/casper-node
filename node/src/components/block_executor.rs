@@ -289,7 +289,7 @@ impl BlockExecutor {
                     slash_items,
                     evict_items,
                     run_auction: true,
-                    next_era_id: state.finalized_block.era_id().successor().into(),
+                    next_era_id: state.finalized_block.era_id().successor(),
                     era_end_timestamp_millis,
                 };
                 return effect_builder

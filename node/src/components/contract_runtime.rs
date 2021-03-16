@@ -374,7 +374,7 @@ where
                     .expect("should run");
                     trace!(?result, "is validator bonded result");
                     let is_bonded =
-                        result.and_then(|validator_map| match validator_map.get(&era_id.0) {
+                        result.and_then(|validator_map| match validator_map.get(&era_id) {
                             None => Err(GetEraValidatorsError::EraValidatorsMissing),
                             Some(era_validators) => Ok(era_validators.contains_key(&validator_key)),
                         });
@@ -419,7 +419,7 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let era_id = request.era_id().into();
+                        let era_id = request.era_id();
                         let era_validators =
                             engine_state.get_era_validators(correlation_id, request.into());
                         let ret: Result<Option<ValidatorWeights>, GetEraValidatorsError> =

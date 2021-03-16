@@ -18,8 +18,8 @@ use crate::{
         ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
     },
     AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
-    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Key, NamedArg,
-    Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
+    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
+    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
 };
 
 use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
@@ -63,6 +63,10 @@ pub fn uref_arb() -> impl Strategy<Value = URef> {
         .prop_map(|(id, access_rights)| URef::new(id, access_rights))
 }
 
+pub fn era_id_arb() -> impl Strategy<Value = EraId> {
+    any::<u64>().prop_map(EraId::from)
+}
+
 pub fn key_arb() -> impl Strategy<Value = Key> {
     prop_oneof![
         account_hash_arb().prop_map(Key::Account),
@@ -70,7 +74,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         uref_arb().prop_map(Key::URef),
         transfer_addr_arb().prop_map(Key::Transfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
-        any::<u64>().prop_map(Key::EraInfo),
+        era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
         account_hash_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Withdraw),

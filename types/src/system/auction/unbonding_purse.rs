@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::EraId,
-    CLType, CLTyped, PublicKey, URef, U512,
+    CLType, CLTyped, EraId, PublicKey, URef, U512,
 };
 
 /// Unbonding purse.
@@ -140,8 +139,8 @@ mod tests {
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);
-    const ERA_OF_WITHDRAWAL: EraId = EraId::max_value();
 
+    static ERA_OF_WITHDRAWAL: Lazy<EraId> = Lazy::new(|| EraId::from(u64::max_value()));
     static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
         Lazy::new(|| SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into());
     static UNBONDER_PUBLIC_KEY: Lazy<PublicKey> =
@@ -154,7 +153,7 @@ mod tests {
             bonding_purse: BONDING_PURSE,
             validator_public_key: *VALIDATOR_PUBLIC_KEY,
             unbonder_public_key: *UNBONDER_PUBLIC_KEY,
-            era_of_creation: ERA_OF_WITHDRAWAL,
+            era_of_creation: *ERA_OF_WITHDRAWAL,
             amount: *AMOUNT,
         };
 
@@ -166,7 +165,7 @@ mod tests {
             BONDING_PURSE,
             *VALIDATOR_PUBLIC_KEY,
             *VALIDATOR_PUBLIC_KEY,
-            ERA_OF_WITHDRAWAL,
+            *ERA_OF_WITHDRAWAL,
             *AMOUNT,
         );
         assert!(validator_unbonding_purse.is_validator());
@@ -178,7 +177,7 @@ mod tests {
             BONDING_PURSE,
             *VALIDATOR_PUBLIC_KEY,
             *UNBONDER_PUBLIC_KEY,
-            ERA_OF_WITHDRAWAL,
+            *ERA_OF_WITHDRAWAL,
             *AMOUNT,
         );
         assert!(!delegator_unbonding_purse.is_validator());

@@ -7,11 +7,11 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{ExecutionResult, PublicKey, SecretKey};
+use casper_types::{EraId, ExecutionResult, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{
-    components::{consensus::EraId, storage::lmdb_ext::WriteTransactionExt},
+    components::storage::lmdb_ext::WriteTransactionExt,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
@@ -907,7 +907,7 @@ fn should_hard_reset() {
             let is_switch = index % blocks_per_era == blocks_per_era - 1;
             Block::random_with_specifics(
                 &mut harness.rng,
-                EraId(index as u64 / 3),
+                EraId::from(index as u64 / 3),
                 index as u64,
                 is_switch,
             )
@@ -928,7 +928,7 @@ fn should_hard_reset() {
     );
 
     // Initialize a new storage with a hard reset to era 2, effectively hiding blocks 6 and 7.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(2));
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(2));
     // Check the highest block is #5.
     assert_eq!(
         Some(blocks[blocks_count - blocks_per_era].clone()),
@@ -936,7 +936,7 @@ fn should_hard_reset() {
     );
 
     // Initialize a new storage with a hard reset to era 1, effectively hiding blocks 3-7.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(1));
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(1));
     // Check the highest block is #2.
     assert_eq!(
         Some(blocks[blocks_count - (2 * blocks_per_era)].clone()),
@@ -944,7 +944,7 @@ fn should_hard_reset() {
     );
 
     // Initialize a new storage with a hard reset to era 0, effectively hiding all blocks.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(0));
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(0));
     // Check the highest block is `None`.
     assert!(get_highest_block(&mut harness, &mut storage).is_none());
 }

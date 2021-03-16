@@ -34,12 +34,12 @@ use casper_execution_engine::{
     },
     shared::stored_value::StoredValue,
 };
-use casper_types::{bytesrepr::FromBytes, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::{consensus::EraId, Component},
+    components::Component,
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
@@ -288,7 +288,7 @@ impl ChainspecLoader {
         match self.initial_block_header() {
             Some(header) if header.is_switch_block() => header.era_id().successor(),
             Some(header) => header.era_id(),
-            None => EraId(0),
+            None => EraId::from(0),
         }
     }
 
@@ -458,7 +458,13 @@ impl ChainspecLoader {
             new_version,
             Some(self.chainspec.wasm_config),
             Some(self.chainspec.system_costs_config),
-            Some(self.chainspec.protocol_config.activation_point.era_id().0),
+            Some(
+                self.chainspec
+                    .protocol_config
+                    .activation_point
+                    .era_id()
+                    .into(),
+            ),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),
             Some(self.chainspec.core_config.locked_funds_period.millis()),

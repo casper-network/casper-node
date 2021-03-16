@@ -27,7 +27,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{PublicKey, U512};
+use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::Component,
@@ -50,7 +50,7 @@ use crate::{
 use crate::effect::EffectExt;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
-pub(crate) use era_supervisor::{EraId, EraSupervisor};
+pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
@@ -141,11 +141,11 @@ impl Debug for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload: _ } => {
-                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+                write!(f, "Protocol {{ era_id: \"{}\", .. }}", era_id)
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
                 .debug_struct("EvidenceRequest")
-                .field("era_id.0", &era_id.0)
+                .field("era_id", era_id)
                 .field("pub_key", pub_key)
                 .finish(),
         }
@@ -178,11 +178,11 @@ impl<I: Debug> Display for Event<I> {
                 timer_id,
             } => write!(
                 f,
-                "timer (ID {}) for era {} scheduled for timestamp {}",
-                timer_id.0, era_id.0, timestamp,
+                "timer (ID {}) for {} scheduled for timestamp {}",
+                timer_id.0, era_id, timestamp,
             ),
             Event::Action { era_id, action_id } => {
-                write!(f, "action (ID {}) for era {}", action_id.0, era_id.0)
+                write!(f, "action (ID {}) for {}", action_id.0, era_id)
             }
             Event::NewProtoBlock {
                 era_id,
@@ -222,8 +222,8 @@ impl<I: Debug> Display for Event<I> {
                 era_id, faulty_num, ..
             } => write!(
                 f,
-                "Deactivate old era {} unless additional faults are observed; faults so far: {}",
-                era_id.0, faulty_num
+                "Deactivate old {} unless additional faults are observed; faults so far: {}",
+                era_id, faulty_num
             ),
             Event::CreateNewEra {
                 booking_block_hash,

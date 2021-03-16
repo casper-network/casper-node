@@ -43,8 +43,8 @@ use casper_types::{
     },
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    EntryPointType, EntryPoints, EraId, Key, Parameter, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, URef, U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
@@ -1145,8 +1145,8 @@ where
         &self,
         validators: &BTreeMap<PublicKey, Bid>,
         auction_delay: u64,
-    ) -> BTreeMap<u64, SeigniorageRecipients> {
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
+    ) -> BTreeMap<EraId, SeigniorageRecipients> {
+        let initial_snapshot_range = INITIAL_ERA_ID.iter_past_inclusive(auction_delay);
 
         let mut seigniorage_recipients = SeigniorageRecipients::new();
         for (era_validator, founding_validator) in validators {

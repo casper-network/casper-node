@@ -98,17 +98,14 @@ use casper_execution_engine::{
     storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
-    U512,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    Transfer, U512,
 };
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade,
-        consensus::{BlockContext, EraId},
-        contract_runtime::EraValidatorsRequest,
-        deploy_acceptor,
-        fetcher::FetchResult,
+        chainspec_loader::NextUpgrade, consensus::BlockContext,
+        contract_runtime::EraValidatorsRequest, deploy_acceptor, fetcher::FetchResult,
         small_network::GossipedAddress,
     },
     crypto::hash::Digest,
@@ -1547,7 +1544,7 @@ impl<REv> EffectBuilder<REv> {
             self.get_era_validators_from_contract_runtime(req)
                 .await
                 .ok()
-                .and_then(|era_validators| era_validators.get(&era_id.0).cloned())
+                .and_then(|era_validators| era_validators.get(&era_id).cloned())
         } else {
             // in other eras, we just use the validators from the key block
             self.get_key_block_for_era_id_from_storage(era_id)
@@ -1640,7 +1637,7 @@ impl<REv> EffectBuilder<REv> {
                 .into_iter()
                 // we would get None for era 0 and that would make it seem like the entire
                 // function failed
-                .filter(|era_id| *era_id != EraId(0))
+                .filter(|era_id| *era_id != EraId::from(0))
                 .map(|era_id| {
                     self.get_key_block_for_era_id_from_storage(era_id)
                         .map(move |maybe_block| {
