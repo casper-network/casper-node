@@ -36,7 +36,7 @@ export const enum SystemContract {
   /**
    * Mint contract.
    */
-  Mint = 0,
+  Mint = 1,
   /**
    * Auction contract.
    */
