@@ -693,6 +693,9 @@ pub enum GenesisError {
     InvalidBondAmount {
         public_key: PublicKey,
     },
+    InvalidDelegatedAmount {
+        public_key: PublicKey,
+    },
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -879,7 +882,15 @@ where
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
         // Make sure all delegators have corresponding genesis validator entries
-        for (&validator_public_key, &delegator_public_key, ..) in &genesis_delegators {
+        for (&validator_public_key, &delegator_public_key, _balance, delegated_amount) in
+            &genesis_delegators
+        {
+            if delegated_amount.is_zero() {
+                return Err(GenesisError::InvalidDelegatedAmount {
+                    public_key: delegator_public_key,
+                });
+            }
+
             if genesis_validators
                 .iter()
                 .find(|genesis_validator| genesis_validator.public_key() == validator_public_key)
