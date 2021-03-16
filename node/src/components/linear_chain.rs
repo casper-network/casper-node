@@ -175,7 +175,7 @@ enum Signature {
 }
 
 impl Signature {
-    fn to_inner(&self) -> &Box<FinalitySignature> {
+    fn to_inner(&self) -> &FinalitySignature {
         match self {
             Signature::Local(fs) => fs,
             Signature::External(fs) => fs,
@@ -288,7 +288,7 @@ impl<I> LinearChain<I> {
                 signature.to_inner().signature,
             );
             if signature.is_local() {
-                let message = Message::FinalitySignature(signature.to_inner().clone());
+                let message = Message::FinalitySignature(Box::new(signature.to_inner().clone()));
                 effects.extend(effect_builder.broadcast_message(message).ignore());
             }
             effects.extend(
