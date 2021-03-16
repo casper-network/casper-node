@@ -875,10 +875,9 @@ impl reactor::Reactor for Reactor {
                         effects
                     }
                     ConsensusAnnouncement::Handled(linear_chain_block) => {
-                        let event =
-                            Event::LinearChain(linear_chain::Event::KnownLinearChainBlock {
-                                block: linear_chain_block,
-                            });
+                        let event = Event::LinearChain(linear_chain::Event::KnownLinearChainBlock(
+                            linear_chain_block,
+                        ));
                         self.dispatch_event(effect_builder, rng, event)
                     }
                     ConsensusAnnouncement::Fault {
