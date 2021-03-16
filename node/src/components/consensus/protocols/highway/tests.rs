@@ -95,7 +95,11 @@ where
         0,
         start_timestamp,
     );
-    // We expect only the vertex purge timer, participation log timer and `Ping` outcomes.
+    // We expect for messages:
+    // * log participation timer,
+    // * log synchronizer queue length timer,
+    // * purge synchronizer queue timer,
+    // * inactivity timer.
     // If there are more, the tests might need to handle them.
     assert_eq!(4, outcomes.len());
     hw_proto
