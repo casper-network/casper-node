@@ -46,7 +46,7 @@ function main() {
     # 11. Verify all nodes are in sync
     check_network_sync
     # 12. Check for equivication
-    assert_no_equivocation '5'
+    assert_no_equivocation "5" "1" "100"
 
     log "------------------------------------------------------------"
     log "Scenario itst14 complete"
@@ -66,11 +66,11 @@ function assert_same_era() {
 
 function assert_node_proposed() {
     local NODE_ID=${1}
-    local NODE_PATH=$(get_path_to_node $NODE_ID)
-    local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
+    local NODE_PATH=$(get_path_to_node "$NODE_ID")
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex "$NODE_ID")
     local TIMEOUT=${2:-300}
     log_step "Waiting for a node-$NODE_ID to produce a block..."
-    local OUTPUT=$(timeout $TIMEOUT tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
     if ( echo "$OUTPUT" | grep -q "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)" ); then
         log "Node-$NODE_ID created a block!"
         log "$OUTPUT"
@@ -82,12 +82,19 @@ function assert_node_proposed() {
 
 function assert_no_equivocation() {
     local NODE_ID=${1}
-    log_step "Checking to see if node-$NODE_ID equivocated..."
-    if ( check_faulty "$NODE_ID" ); then
-        log "Error: Node-$NODE_ID equivocated!"
-        exit 1
+    local QUERY_NODE_ID=${2}
+    local WALKBACK=${3}
+    local EQUIVOCATORS
+    # "casper-client list-rpc" shows this including '01' prefix. Using extended version.
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex_extended "$NODE_ID")
+    log_step "Checking to see if node-$NODE_ID:$PUBLIC_KEY_HEX equivocated..."
+    EQUIVOCATORS=$(get_switch_block_equivocators "$QUERY_NODE_ID" "$WALKBACK")
+    log "$EQUIVOCATORS"
+    if ( ! echo "$EQUIVOCATORS" | grep -q "$PUBLIC_KEY_HEX" ); then
+        log "Node-$NODE_ID didn't equivocate! yay!"
     else
-        log "Node-$NODE_ID did not equivocate! yay!"
+        log "ERROR: Node-$NODE_ID equivocated!"
+        exit 1
     fi
 }
 

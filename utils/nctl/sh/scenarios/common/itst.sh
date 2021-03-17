@@ -124,3 +124,38 @@ function do_await_n_blocks() {
     log_step "Waiting $BLOCK_COUNT blocks..."
     nctl-await-n-blocks offset="$BLOCK_COUNT"
 }
+
+function get_switch_block_equivocators() {
+    local NODE_ID=${1}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${2}
+    local BLOCK_HASH=${3}
+    local JSON_OUT
+    local PARENT
+    local BLOCK_HEADER
+
+    if [ -z "$BLOCK_HASH" ]; then
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID"))
+    else
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID") -b "$BLOCK_HASH")
+    fi
+
+    if [ "$WALKBACK" -gt 0 ]; then
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
+        if [ "$(echo "$BLOCK_HEADER" | jq '.era_end')" = "null" ]; then
+            PARENT=$(echo "$BLOCK_HEADER" | jq -r '.parent_hash')
+            WALKBACK=$((WALKBACK - 1))
+            log "$WALKBACK: Walking back to block: $PARENT"
+            get_switch_block_equivocators "$NODE_ID" "$WALKBACK" "$PARENT"
+        else
+            log "equivocators: $(echo "$BLOCK_HEADER" | jq '.era_end.era_report.equivocators')"
+        fi
+    else
+        log "Error: Switch block not found within walkback!"
+        exit 1
+    fi
+}
+
+function get_running_node_count {
+    nctl-status | grep 'RUNNING' | wc -l
+}
