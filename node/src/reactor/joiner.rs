@@ -932,6 +932,7 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
+        let latest_block = self.linear_chain_sync.latest_block().cloned();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
         linear_chain_sync::clean_linear_chain_state(
@@ -944,7 +945,7 @@ impl Reactor {
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage: self.storage,
-            latest_block: self.linear_chain_sync.latest_block().cloned(),
+            latest_block,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),
