@@ -9,11 +9,6 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
-  - name: verify-genesis-checksums
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
-
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
