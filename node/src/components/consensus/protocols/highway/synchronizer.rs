@@ -156,18 +156,24 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
+    request_latest_state_timeout: TimeDiff,
     era_id: C::InstanceId,
     pub(crate) current_era: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
-    pub(crate) fn new(pending_vertex_timeout: TimeDiff, era_id: C::InstanceId) -> Self {
+    pub(crate) fn new(
+        pending_vertex_timeout: TimeDiff,
+        request_latest_state_timeout: TimeDiff,
+        era_id: C::InstanceId,
+    ) -> Self {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
+            request_latest_state_timeout,
             era_id,
             current_era: true,
         }
@@ -331,6 +337,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
     pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
         self.pending_vertex_timeout
+    }
+
+    pub(crate) fn request_latest_state_timeout(&self) -> TimeDiff {
+        self.request_latest_state_timeout
     }
 
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and

@@ -6,7 +6,6 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-
 # =================================
 # Configuration options for logging
 # =================================
@@ -21,7 +20,6 @@ color = false
 # Abbreviate module names in text output.  Has no effect if format = 'json'.
 abbreviate_modules = false
 
-
 # ===================================
 # Configuration options for consensus
 # ===================================
@@ -35,7 +33,9 @@ secret_key_path = 'secret_key.pem'
 unit_hashes_folder = "../node-storage"
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
-pending_vertex_timeout = '30min'
+pending_vertex_timeout = '1min'
+
+request_latest_state_timeout = '30sec'
 
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
@@ -216,7 +216,6 @@ gossip_request_timeout_secs = 10
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout_secs = 5
 
-
 # ===================================
 # Configuration options for fetcher
 # ===================================
@@ -234,7 +233,6 @@ get_from_peer_timeout = 3
 
 # If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
 verify_accounts = true
-
 
 # ========================================================
 # Configuration options for the contract runtime component

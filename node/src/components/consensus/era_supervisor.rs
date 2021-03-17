@@ -595,8 +595,6 @@ where
                 let _ = vacant.insert(active_era_outcomes);
             }
         };
-        // .and_modify(|outcomes| outcomes.extend(active_era_outcomes))
-        // .or_insert(active_era_outcomes);
         self.next_block_height = self.active_eras[&self.current_era].start_height;
         result_map
     }

@@ -53,6 +53,8 @@ const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 /// The timer for logging synchronizer queue size.
 const TIMER_ID_SYNCHRONIZER_QUEUE: TimerId = TimerId(4);
+/// The timer for requesting panorama.
+const TIMER_ID_PANORAMA_REQUEST: TimerId = TimerId(5);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -160,6 +162,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 now + TimeDiff::from(5_000),
                 TIMER_ID_SYNCHRONIZER_QUEUE,
             ),
+            ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_PANORAMA_REQUEST),
         ];
 
         let min_round_exp = params.min_round_exp();
@@ -177,7 +180,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             round_success_meter,
-            synchronizer: Synchronizer::new(config.pending_vertex_timeout, instance_id),
+            synchronizer: Synchronizer::new(
+                config.pending_vertex_timeout,
+                config.request_latest_state_timeout,
+                instance_id,
+            ),
             evidence_only: false,
         });
         (hw_proto, outcomes)
@@ -606,6 +613,21 @@ where
                 if !self.finalized_switch_block() {
                     let next_timer = Timestamp::now() + TimeDiff::from(5_000);
                     vec![ProtocolOutcome::ScheduleTimer(next_timer, timer_id)]
+                } else {
+                    vec![]
+                }
+            }
+            TIMER_ID_PANORAMA_REQUEST => {
+                if !self.finalized_switch_block() {
+                    let request =
+                        HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+                    let mut outcomes = vec![ProtocolOutcome::CreatedGossipMessage(
+                        (&request).serialize(),
+                    )];
+                    let next_timer =
+                        Timestamp::now() + self.synchronizer.request_latest_state_timeout();
+                    outcomes.push(ProtocolOutcome::ScheduleTimer(next_timer, timer_id));
+                    outcomes
                 } else {
                     vec![]
                 }
