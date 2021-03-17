@@ -57,8 +57,10 @@ function get_chain_name()
 #######################################
 function get_chain_latest_block_hash()
 {
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
+
     $(get_path_to_client) get-block \
-        --node-address "$(get_node_address_rpc)" \
+        --node-address "$(get_node_address_rpc "$NODE_ID")" \
         | jq '.result.block.hash' \
         | sed -e 's/^"//' -e 's/"$//'
 }
