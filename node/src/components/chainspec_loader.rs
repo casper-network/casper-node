@@ -458,13 +458,7 @@ impl ChainspecLoader {
             new_version,
             Some(self.chainspec.wasm_config),
             Some(self.chainspec.system_costs_config),
-            Some(
-                self.chainspec
-                    .protocol_config
-                    .activation_point
-                    .era_id()
-                    .into(),
-            ),
+            Some(self.chainspec.protocol_config.activation_point.era_id()),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),
             Some(self.chainspec.core_config.locked_funds_period.millis()),

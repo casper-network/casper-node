@@ -46,7 +46,8 @@ impl EraId {
     /// Maximum possible value an [`EraId`] can hold.
     pub const MAX: EraId = EraId(u64::max_value());
 
-    pub(crate) const fn new(value: u64) -> EraId {
+    /// Creates new [`EraId`] instance.
+    pub const fn new(value: u64) -> EraId {
         EraId(value)
     }
 

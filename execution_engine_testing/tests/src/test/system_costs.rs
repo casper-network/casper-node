@@ -10,7 +10,7 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisValidator, upgrade::ActivationPoint, GenesisAccount},
+    core::engine_state::{genesis::GenesisValidator, GenesisAccount},
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -44,7 +44,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
@@ -64,7 +64,7 @@ const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
 const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
 const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
-const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
+const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
