@@ -196,10 +196,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
 
-    /// Returns the protocol outcomes for all the required timers.
-    /// TODO: Remove this once the Joiner no longer has a consensus component.
-    fn recreate_timers(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
-
     // TODO: Make this lees Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }
