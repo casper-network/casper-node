@@ -606,20 +606,6 @@ where
                             Trie::Leaf { .. } => {
                                 panic!("Node pointer should not point to leaf")
                             }
-                            // The single sibling is a node, and the grandparent does not exist.
-                            // Therefore the parent is the root.  We output an extension to
-                            // replace the parent, with a single byte corresponding to the sibling
-                            // index.  In the next loop iteration, we will handle the case where
-                            // this extension might need to be combined with a grandparent
-                            // extension.
-                            Trie::Node { .. } => {
-                                let new_extension: Trie<K, V> = Trie::Extension {
-                                    affix: vec![sibling_idx].into(),
-                                    pointer: sibling_pointer,
-                                };
-                                let trie_key = Blake2bHash::new(&new_extension.to_bytes()?);
-                                new_elements.push((trie_key, new_extension))
-                            }
                             // The single sibling is a node, and there exists a grandparent.
                             // Therefore the parent is not the root.  We output an extension to
                             // replace the parent, with a single byte corresponding to the sibling
