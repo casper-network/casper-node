@@ -60,7 +60,11 @@ pub(crate) use era_supervisor::oldest_bonded_era;
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
-    Protocol { era_id: EraId, payload: Vec<u8> },
+    Protocol {
+        era_id: EraId,
+        #[serde(with = "serde_bytes")]
+        payload: Vec<u8>,
+    },
     /// A request for evidence against the specified validator, from any era that is still bonded
     /// in `era_id`.
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
