@@ -333,8 +333,7 @@ where
             };
             if trie_key != hash_of_trie_value {
                 panic!(
-                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
-                     adding to list of missing nodes",
+                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?})",
                     trie_key, trie_value, hash_of_trie_value
                 );
             }
