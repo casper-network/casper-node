@@ -688,12 +688,15 @@ where
             }
         }
     }
-    let mut root_hash: Blake2bHash = root.to_owned();
     for (hash, element) in new_elements.iter() {
         store.put(txn, hash, element)?;
-        root_hash = *hash;
     }
-    Ok(DeleteResult::Deleted(root_hash))
+    // The hash of the final trie in the new elements is the new root
+    let new_root = new_elements
+        .pop()
+        .map(|(hash, _)| hash)
+        .unwrap_or_else(|| root.to_owned());
+    Ok(DeleteResult::Deleted(new_root))
 }
 
 #[allow(clippy::type_complexity)]
