@@ -245,8 +245,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    fn mark_done(&mut self) {
-        let latest_block = self.latest_block().cloned().map(Box::new);
+    fn mark_done(&mut self, latest_block: Option<Block>) {
+        let latest_block = latest_block.map(Box::new);
         self.state = State::Done(latest_block);
     }
 
@@ -360,7 +360,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         era=block.header().era_id().0,
                         "downloaded recent block. finished synchronization"
                     );
-                    self.mark_done();
+                    self.mark_done(Some(*latest_block.clone()));
                     return Effects::new();
                 }
                 if self.is_currently_active_era(&maybe_switch_block) {
@@ -370,7 +370,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         era=block.header().era_id().0,
                         "downloaded switch block of a new era. finished synchronization"
                     );
-                    self.mark_done();
+                    self.mark_done(Some(*latest_block.clone()));
                     return Effects::new();
                 }
                 self.state = curr_state;
@@ -583,7 +583,7 @@ where
                                     "finished synchronizing descendants of the trusted hash. \
                                     cleaning state."
                                 );
-                                self.mark_done();
+                                self.mark_done(self.latest_block().cloned());
                                 Effects::new()
                             }
                             Some(peer) => {
