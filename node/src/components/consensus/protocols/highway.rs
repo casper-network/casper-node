@@ -147,7 +147,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let mut outcomes = vec![
+        let outcomes = vec![
             ProtocolOutcome::ScheduleTimer(
                 now + config.pending_vertex_timeout,
                 TIMER_ID_PURGE_VERTICES,
@@ -161,18 +161,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 TIMER_ID_SYNCHRONIZER_QUEUE,
             ),
         ];
-
-        // If there's a chance that we start after the era is finished…
-        if now < (params.start_timestamp() + params.min_era_length()) {
-            // … request the latest state from peers on startup, in case we joined the era
-            // late and we wouldn't get any consensus units otherwise.
-            let latest_state_request =
-                HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
-
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
-                (&latest_state_request).serialize(),
-            ));
-        }
 
         let min_round_exp = params.min_round_exp();
         let max_round_exp = params.max_round_exp();
@@ -631,6 +619,14 @@ where
             ACTION_ID_VERTEX => self.add_vertex(),
             _ => unreachable!("unexpected action ID"),
         }
+    }
+
+    fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
+        let latest_state_request =
+            HighwayMessage::LatestStateRequest::<C>(Panorama::new(self.highway.validators().len()));
+        vec![ProtocolOutcome::CreatedGossipMessage(
+            (&latest_state_request).serialize(),
+        )]
     }
 
     fn propose(

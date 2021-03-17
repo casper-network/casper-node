@@ -9,7 +9,7 @@ mod era;
 mod era_id;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::PathBuf,
@@ -584,6 +584,19 @@ where
         }
 
         self.is_initialized = true;
+        let active_era_outcomes = self.active_eras[&self.current_era]
+            .consensus
+            .handle_is_current();
+        match result_map.entry(self.current_era) {
+            Entry::Occupied(mut current) => {
+                let _ = current.get_mut().extend(active_era_outcomes);
+            }
+            Entry::Vacant(vacant) => {
+                let _ = vacant.insert(active_era_outcomes);
+            }
+        };
+        // .and_modify(|outcomes| outcomes.extend(active_era_outcomes))
+        // .or_insert(active_era_outcomes);
         self.next_block_height = self.active_eras[&self.current_era].start_height;
         result_map
     }
