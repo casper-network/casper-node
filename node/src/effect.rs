@@ -1612,7 +1612,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Get our public key from consensus, and if we're a validator, the next round length.
-    pub(crate) async fn consensus_status(self) -> (PublicKey, Option<TimeDiff>)
+    pub(crate) async fn consensus_status(self) -> Option<(PublicKey, Option<TimeDiff>)>
     where
         REv: From<ConsensusRequest>,
     {

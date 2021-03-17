@@ -17,7 +17,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    mem,
     time::Duration,
 };
 
@@ -131,8 +130,6 @@ pub enum Event<I> {
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
     },
-    /// An event fired when the joiner reactor transitions into validator.
-    FinishedJoining(Timestamp),
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
 }
@@ -234,9 +231,6 @@ impl<I: Debug> Display for Event<I> {
                 booking_block_hash, block
             ),
             Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
-            Event::FinishedJoining(timestamp) => {
-                write!(f, "The node finished joining the network at {}", timestamp)
-            }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
@@ -345,26 +339,7 @@ where
                 key_blocks,
                 booking_blocks,
                 validators,
-            } => {
-                let mut effects =
-                    handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators);
-
-                // TODO: remove that when possible
-                // This is needed because we want to make sure that we only try to handle linear
-                // chain blocks once the eras are initialized. It's possible that we will get
-                // events with linear chain blocks before that - in such a case we cache the
-                // requests and only handle them here.
-                for queued_event in mem::take(&mut handling_es.era_supervisor.enqueued_events) {
-                    effects.extend(handling_es.era_supervisor.handle_event(
-                        effect_builder,
-                        handling_es.rng,
-                        queued_event,
-                    ));
-                }
-
-                effects
-            }
-            Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }

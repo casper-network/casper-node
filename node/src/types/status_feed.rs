@@ -44,7 +44,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
-        our_public_signing_key: *PublicKey::doc_example(),
+        our_public_signing_key: Some(*PublicKey::doc_example()),
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
@@ -94,7 +94,7 @@ pub struct StatusFeed<I> {
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
     /// Our public signing key.
-    pub our_public_signing_key: PublicKey,
+    pub our_public_signing_key: Option<PublicKey>,
     /// The next round length if this node is a validator.
     pub round_length: Option<TimeDiff>,
     /// The compiled node version.
@@ -106,8 +106,12 @@ impl<I> StatusFeed<I> {
         last_added_block: Option<Block>,
         peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
-        (our_public_signing_key, round_length): (PublicKey, Option<TimeDiff>),
+        consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
     ) -> Self {
+        let (our_public_signing_key, round_length) = match consensus_status {
+            Some((public_key, round_length)) => (Some(public_key), round_length),
+            None => (None, None),
+        };
         StatusFeed {
             last_added_block,
             peers,
@@ -160,7 +164,7 @@ pub struct GetStatusResult {
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
     /// Our public signing key.
-    pub our_public_signing_key: PublicKey,
+    pub our_public_signing_key: Option<PublicKey>,
     /// The next round length if this node is a validator.
     pub round_length: Option<TimeDiff>,
     /// Information about the next scheduled upgrade.
