@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
-source "$NCTL"/sh/utils/main.sh
-source "$NCTL"/sh/views/utils.sh
-source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+source "$NCTL"/sh/scenarios/common/itst.sh
 
 # Exit if any of the commands fail.
 set -e
@@ -90,8 +88,8 @@ function do_send_transfers() {
 
 function do_await_deploy_inclusion() {
     # Should be enough to await for one era.
-    log_step "awaiting one era…"
-    await_n_eras 1
+    log_step "awaiting 5 blocks..."
+    await_n_blocks 5
 }
 
 function do_read_lfb_hash() {
@@ -114,7 +112,7 @@ function do_await_full_synchronization() {
     log_step "awaiting full synchronization of the new node=${NODE_ID}…"
     while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash 1)" ]; do
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: Failed to synchronize in ${SYNC_TIMEOUT_SEC} seconds"
+            log "ERROR: Failed to keep up with the protocol state"
             exit 1
         fi
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
@@ -123,7 +121,7 @@ function do_await_full_synchronization() {
     # Wait one more era and then test LFB again.
     # This way we can verify that the node is up-to-date with the protocol state
     # after transitioning to an active validator.
-    await_n_eras 1
+    await_n_blocks 5
     while [ "$(do_read_lfb_hash "$NODE_ID")" != "$(do_read_lfb_hash 1)" ]; do
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to keep up with the protocol state"
