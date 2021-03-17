@@ -4620,27 +4620,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rmp"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f10b46df14cf1ee1ac7baa4d2fbc2c52c0622a4b82fa8740e37bc452ac0184f"
-dependencies = [
- "byteorder",
- "num-traits",
-]
-
-[[package]]
-name = "rmp-serde"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ce7d70c926fe472aed493b902010bccc17fa9f7284145cb8772fd22fdb052d8"
-dependencies = [
- "byteorder",
- "rmp",
- "serde",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5433,11 +5412,11 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebdd897b01021779294eb09bb3b52b6e11b0747f9f7e333a84bef532b656de99"
 dependencies = [
+ "bincode",
  "bytes 0.5.6",
  "derivative",
  "futures",
  "pin-project 0.4.27",
- "rmp-serde",
  "serde",
 ]
 

@@ -80,7 +80,7 @@ tempfile = "3.1.0"
 thiserror = "1.0.18"
 tokio = { version = "0.2.20", features = ["blocking", "macros", "rt-threaded", "sync", "tcp", "time"] }
 tokio-openssl = "0.4.0"
-tokio-serde = { version = "0.6.1", features = ["messagepack"] }
+tokio-serde = { version = "0.6.1", features = ["bincode"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
 toml = "0.5.6"
 tower = "0.3.1"

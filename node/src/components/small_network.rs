@@ -78,7 +78,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
+use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
@@ -1298,7 +1298,7 @@ type Transport = SslStream<TcpStream>;
 type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
-    SymmetricalMessagePack<Message<P>>,
+    SymmetricalBincode<Message<P>>,
 >;
 
 /// Constructs a new framed transport on a stream.
@@ -1306,7 +1306,7 @@ fn framed<P>(stream: Transport) -> FramedTransport<P> {
     let length_delimited = Framed::new(stream, LengthDelimitedCodec::new());
     SymmetricallyFramed::new(
         length_delimited,
-        SymmetricalMessagePack::<Message<P>>::default(),
+        SymmetricalBincode::<Message<P>>::default(),
     )
 }
 
