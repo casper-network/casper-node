@@ -667,7 +667,7 @@ where
                 Trie::Extension { affix, .. },
             ) => {
                 let mut new_affix: Vec<u8> = Vec::<u8>::from(affix);
-                new_affix.extend(Vec::<u8>::from(child_affix.to_owned()));
+                new_affix.extend_from_slice(child_affix.as_slice());
                 *child_affix = new_affix.into();
                 *trie_key = {
                     let new_extension: Trie<K, V> = Trie::Extension {
