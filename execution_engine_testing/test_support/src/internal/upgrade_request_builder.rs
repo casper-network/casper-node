@@ -92,7 +92,7 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_activation_point(mut self, height: u64) -> Self {
+    pub fn with_activation_point(mut self, height: ActivationPoint) -> Self {
         self.activation_point = Some(height);
         self
     }

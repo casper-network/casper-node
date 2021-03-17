@@ -765,7 +765,7 @@ impl BlockHeader {
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
-        self.era_id() == EraId::from(0) && self.height() == 0
+        self.era_id().is_genesis() && self.height() == 0
     }
 
     // Serialize the block header.

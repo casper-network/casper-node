@@ -1637,7 +1637,7 @@ impl<REv> EffectBuilder<REv> {
                 .into_iter()
                 // we would get None for era 0 and that would make it seem like the entire
                 // function failed
-                .filter(|era_id| *era_id != EraId::from(0))
+                .filter(|era_id| !era_id.is_genesis())
                 .map(|era_id| {
                     self.get_key_block_for_era_id_from_storage(era_id)
                         .map(move |maybe_block| {

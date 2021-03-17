@@ -43,6 +43,9 @@ use crate::{
 pub struct EraId(u64);
 
 impl EraId {
+    /// Maximum possible value an [`EraId`] can hold.
+    pub const MAX: EraId = EraId(u64::max_value());
+
     pub(crate) const fn new(value: u64) -> EraId {
         EraId(value)
     }
@@ -172,7 +175,6 @@ impl Distribution<EraId> for Standard {
 
 #[cfg(test)]
 mod tests {
-    use alloc::collections::BTreeSet;
     use proptest::prelude::*;
 
     use super::*;
@@ -184,13 +186,20 @@ mod tests {
 
         let current_era = EraId::from(42);
 
-        let window: BTreeSet<EraId> = current_era.iter_inclusive(auction_delay).collect();
+        let window: Vec<EraId> = current_era.iter_inclusive(auction_delay).collect();
         assert_eq!(window.len(), auction_delay as usize + 1);
-        assert_eq!(window.iter().next(), Some(&current_era));
+        assert_eq!(window.get(0), Some(&current_era));
         assert_eq!(
             window.iter().rev().next(),
             Some(&(current_era + auction_delay))
         );
+    }
+
+    #[test]
+    fn should_have_valid_genesis_era_id() {
+        let expected_initial_era_id = EraId::from(0);
+        assert!(expected_initial_era_id.is_genesis());
+        assert!(!expected_initial_era_id.successor().is_genesis())
     }
 
     proptest! {

@@ -86,9 +86,9 @@ impl Default for StepRequestBuilder {
             slash_items: Default::default(),
             reward_items: Default::default(),
             evict_items: Default::default(),
-            run_auction: true,
+            run_auction: true, //<-- run_auction by default
             next_era_id: Default::default(),
-            era_end_timestamp_millis: Default::default(), //<-- run_auction by default
+            era_end_timestamp_millis: Default::default(),
         }
     }
 }

@@ -903,12 +903,12 @@ fn should_hard_reset() {
 
     // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
     let blocks: Vec<Block> = (0..blocks_count)
-        .map(|index| {
-            let is_switch = index % blocks_per_era == blocks_per_era - 1;
+        .map(|height| {
+            let is_switch = height % blocks_per_era == blocks_per_era - 1;
             Block::random_with_specifics(
                 &mut harness.rng,
-                EraId::from(index as u64 / 3),
-                index as u64,
+                EraId::from(height as u64 / 3),
+                height as u64,
                 is_switch,
             )
         })

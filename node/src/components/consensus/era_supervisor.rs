@@ -996,21 +996,15 @@ where
                 );
                 self.disconnect(sender)
             }
-            ProtocolOutcome::CreatedGossipMessage(out_msg) => {
-                let message = ConsensusMessage::Protocol {
-                    era_id,
-                    payload: out_msg,
-                };
+            ProtocolOutcome::CreatedGossipMessage(payload) => {
+                let message = ConsensusMessage::Protocol { era_id, payload };
                 // TODO: we'll want to gossip instead of broadcast here
                 self.effect_builder
                     .broadcast_message(message.into())
                     .ignore()
             }
-            ProtocolOutcome::CreatedTargetedMessage(out_msg, to) => {
-                let message = ConsensusMessage::Protocol {
-                    era_id,
-                    payload: out_msg,
-                };
+            ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
+                let message = ConsensusMessage::Protocol { era_id, payload };
                 self.effect_builder
                     .send_message(to, message.into())
                     .ignore()
@@ -1241,7 +1235,7 @@ fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
     let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
     hasher.update(protocol_config.chainspec_hash.as_ref());
-    hasher.update(era_id.value().to_le_bytes());
+    hasher.update(era_id.to_le_bytes());
 
     hasher.finalize_variable(|slice| {
         result.copy_from_slice(slice);
