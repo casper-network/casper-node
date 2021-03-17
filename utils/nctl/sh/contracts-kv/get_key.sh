@@ -13,10 +13,6 @@ function main()
     local KEY_NAME=${1}
     local CONTRACT_OWNER_ACCOUNT_KEY
     local CONTRACT_HASH
-    local TOKEN_NAME
-    local TOKEN_SYMBOL
-    local TOKEN_SUPPLY
-    local TOKEN_DECIMALS
 
     # Set contract owner account key - i.e. faucet account.
     CONTRACT_OWNER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")
@@ -25,7 +21,7 @@ function main()
     CONTRACT_HASH=$(get_kv_contract_hash "$CONTRACT_OWNER_ACCOUNT_KEY")
 
     # Set stored key value (hits node api).
-    KEY_VALUE=$(get_kv_contract_key_value "$CONTRACT_HASH" $KEY_NAME)
+    KEY_VALUE=$(get_kv_contract_key_value "$CONTRACT_HASH" "$KEY_NAME")
 
     log "Contract Details -> KV-STORAGE"
     log "... contract name     : kvstorage_contract"

@@ -13,15 +13,17 @@ function main()
     local NODE_ID=${1}
     local LOG_LEVEL=${2}
     local PATH_NODE_BIN
+    local PATH_NODE_CONFIG
+    local CASPER_BIN_DIR
+    local CASPER_CONFIG_DIR
 
     PATH_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
+    PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
 
+    # Export so that launcher picks them up.
     export RUST_LOG=$LOG_LEVEL
     export CASPER_BIN_DIR=$PATH_NODE_BIN
-    export CASPER_CONFIG_DIR=$(get_path_to_node_config "$NODE_ID")
-
-    echo $CASPER_BIN_DIR
-    echo $CASPER_CONFIG_DIR
+    export CASPER_CONFIG_DIR=$PATH_NODE_CONFIG
 
     "$PATH_NODE_BIN"/casper-node-launcher
 }
