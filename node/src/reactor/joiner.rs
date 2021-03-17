@@ -502,7 +502,8 @@ impl reactor::Reactor for Reactor {
             registry.clone(),
         );
 
-        let linear_chain = linear_chain::LinearChain::new(&registry)?;
+        let linear_chain =
+            linear_chain::LinearChain::new(&registry, &chainspec_loader.chainspec())?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
@@ -776,7 +777,7 @@ impl reactor::Reactor for Reactor {
                 let block_hash = *block.hash();
 
                 // send to linear chain
-                let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
+                let reactor_event = Event::LinearChain(linear_chain::Event::NewLinearChainBlock {
                     block: Box::new(block),
                     execution_results: execution_results
                         .iter()
