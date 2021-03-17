@@ -666,7 +666,7 @@ where
                 )),
                 Trie::Extension { affix, .. },
             ) => {
-                let mut new_affix: Vec<u8> = Vec::<u8>::from(affix);
+                let mut new_affix: Vec<u8> = affix.into();
                 new_affix.extend_from_slice(child_affix.as_slice());
                 *child_affix = new_affix.into();
                 *trie_key = {
