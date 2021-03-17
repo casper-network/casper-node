@@ -680,8 +680,8 @@ where
             // The parent is an extension and the new element is a pointer block.
             // The next element we add will be an extension to the pointer block we are going to
             // add.
-            (Some((trie_key, Trie::Node { .. })), Trie::Extension { affix, mut pointer }) => {
-                pointer = Pointer::NodePointer(*trie_key);
+            (Some((trie_key, Trie::Node { .. })), Trie::Extension { affix, .. }) => {
+                let pointer = Pointer::NodePointer(*trie_key);
                 let trie_extension = Trie::Extension { affix, pointer };
                 let trie_key = Blake2bHash::new(&trie_extension.to_bytes()?);
                 new_elements.push((trie_key, trie_extension))
