@@ -257,7 +257,6 @@ steps:
   image: casperlabs/node-build-u1804
   # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
   commands:
-    - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:

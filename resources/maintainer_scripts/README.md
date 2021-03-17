@@ -1,1 +1,0 @@
-This directory holds scripts and systemd files for packaging.
