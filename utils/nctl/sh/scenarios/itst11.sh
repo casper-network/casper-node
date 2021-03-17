@@ -43,13 +43,6 @@ function create_doppelganger() {
     cp -r "$(get_path_to_node $NODE_ID)/keys" "$(get_path_to_node $DOPPEL_ID)/"
 }
 
-function check_faulty() {
-    local NODE_ID=${1}
-    local NODE_PATH=$(get_path_to_node $NODE_ID)
-    grep -q 'this validator is faulty' "$NODE_PATH/logs/stdout.log"
-    return $?
-}
-
 function check_doppel() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node $NODE_ID)
