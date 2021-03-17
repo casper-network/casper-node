@@ -287,7 +287,7 @@ impl ChainspecLoader {
         // it's not, we continue the era the highest block belongs to.
         self.initial_block_header()
             .map(BlockHeader::next_block_era_id)
-            .unwrap_or(EraId::from(0))
+            .unwrap_or_else(|| EraId::from(0))
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
