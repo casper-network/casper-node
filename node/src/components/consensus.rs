@@ -17,7 +17,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    mem,
     time::Duration,
 };
 
@@ -340,25 +339,7 @@ where
                 key_blocks,
                 booking_blocks,
                 validators,
-            } => {
-                let mut effects =
-                    handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators);
-
-                // TODO: remove that when possible
-                // This is needed because we want to make sure that we only try to handle linear
-                // chain blocks once the eras are initialized. It's possible that we will get
-                // events with linear chain blocks before that - in such a case we cache the
-                // requests and only handle them here.
-                for queued_event in mem::take(&mut handling_es.era_supervisor.enqueued_events) {
-                    effects.extend(handling_es.era_supervisor.handle_event(
-                        effect_builder,
-                        handling_es.rng,
-                        queued_event,
-                    ));
-                }
-
-                effects
-            }
+            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
             }

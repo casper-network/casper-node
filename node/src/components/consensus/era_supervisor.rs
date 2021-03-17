@@ -9,7 +9,7 @@ mod era;
 mod era_id;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::PathBuf,
@@ -115,8 +115,6 @@ pub struct EraSupervisor<I> {
     /// TODO: A temporary field. Shouldn't be needed once the Joiner doesn't have a consensus
     /// component.
     is_initialized: bool,
-    /// TODO: Remove once the era supervisor is removed from the Joiner reactor.
-    pub(crate) enqueued_events: VecDeque<Event<I>>,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -184,7 +182,6 @@ where
             stop_for_upgrade: false,
             next_executed_height: next_height,
             is_initialized: false,
-            enqueued_events: Default::default(),
         };
 
         let bonded_eras = era_supervisor.bonded_eras();
@@ -424,11 +421,6 @@ where
             Some(era) => era.set_paused(paused),
             None => error!(era = self.current_era.0, "current era not initialized"),
         }
-    }
-
-    /// Returns true if initialization of the first eras is finished.
-    pub(crate) fn is_initialized(&self) -> bool {
-        self.is_initialized
     }
 
     fn handle_initialize_eras(
@@ -721,14 +713,6 @@ where
     }
 
     pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
-        // TODO: Delete once `EraSupervisor` gets removed from the joiner reactor.
-        if !self.era_supervisor.is_initialized() {
-            // enqueue
-            self.era_supervisor
-                .enqueued_events
-                .push_back(Event::BlockAdded(Box::new(block)));
-            return Effects::new();
-        }
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
