@@ -303,7 +303,7 @@ impl Storage {
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
                 if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
-                    cursor.del(Default::default())?;
+                    cursor.del(WriteFlags::empty())?;
                     continue;
                 }
             }
