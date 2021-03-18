@@ -68,6 +68,14 @@ function do_emergency_upgrade() {
     for NODE_ID in $(seq 1 $((NODE_COUNT * 2))); do
         PATH_TO_NODE=$(get_path_to_node $NODE_ID)
         _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
+        # Specify hard reset in the chainspec.
+        local SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
+            "cfg['protocol']['hard_reset']=True;"
+            "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
+        )
+        python3 -c "${SCRIPT[*]}"
         cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
             "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
     done

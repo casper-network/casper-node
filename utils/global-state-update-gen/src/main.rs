@@ -8,7 +8,7 @@ use casper_execution_engine::shared::{newtypes::Blake2bHash, stored_value::Store
 use casper_types::{
     bytesrepr::ToBytes,
     system::auction::{Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
-    AsymmetricType, CLValue, Key, ProtocolVersion, PublicKey, U512,
+    AsymmetricType, Key, PublicKey, U512,
 };
 
 use clap::{App, Arg};
@@ -216,30 +216,8 @@ fn main() {
     let mut test_builder =
         LmdbWasmTestBuilder::open(data_dir, Default::default(), hash_from_str(state_hash));
 
-    let protocol_data = test_builder
-        .get_engine_state()
-        .get_protocol_data(ProtocolVersion::from_parts(1, 0, 0)) // TODO: make it a parameter?
-        .unwrap()
-        .expect("should have protocol data");
-
-    // Find the hash of the auction contract.
-    let auction_contract_hash = protocol_data.auction();
-
-    // Read the key under which the snapshot is stored.
-    let validators_key = test_builder
-        .get_contract(auction_contract_hash)
-        .expect("auction should exist")
-        .named_keys()["seigniorage_recipients_snapshot"];
-
-    // Decode the old snapshot.
-    let stored_value = test_builder
-        .query(None, validators_key, &[])
-        .expect("should query");
-    let cl_value = stored_value
-        .as_cl_value()
-        .cloned()
-        .expect("should be cl value");
-    let old_snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
+    // Read the old SeigniorageRecipientsSnapshot
+    let old_snapshot = test_builder.get_seigniorage_recipients_snapshot();
 
     // Create a new snapshot based on the old one and the supplied validators.
     let new_snapshot = gen_snapshot(
@@ -249,10 +227,12 @@ fn main() {
     );
 
     // Print the write to the snapshot key.
-    print_entry(
-        &validators_key,
-        &StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
-    );
+    for (era_id, validators) in &new_snapshot {
+        print_entry(
+            &Key::EraValidators(*era_id),
+            &StoredValue::EraValidators(validators.clone()),
+        );
+    }
 
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 
