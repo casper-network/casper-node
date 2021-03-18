@@ -87,9 +87,13 @@ where
         0,
         start_timestamp,
     );
-    // We expect only the vertex purge timer and participation log timer outcomes.
+    // We expect:
+    // * the vertex purge timer,
+    // * participation log timer outcomes,
+    // * synchronizer queu lenghts timer,
+    // * request latest state timer.
     // If there are more, the tests might need to handle them.
-    assert_eq!(2, outcomes.len());
+    assert_eq!(4, outcomes.len());
     hw_proto
 }
 
