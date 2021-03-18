@@ -78,6 +78,7 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
         self.0.retain(|pvv, _| pvv.inner().is_evidence());
     }
 
+    /// Returns number of unique vertices pending in the queue.
     pub(crate) fn len(&self) -> u64 {
         self.0.len() as u64
     }
@@ -156,8 +157,11 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
+    /// The delay between consecutive requests of the latest state.
     request_latest_state_timeout: TimeDiff,
+    /// Instance ID of an era for which this synchronizer is constructed for.
     era_id: C::InstanceId,
+    /// Boolean flag indicating whether we're synchronizing current era.
     pub(crate) current_era: bool,
 }
 
@@ -187,6 +191,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         Self::remove_expired(&mut self.vertex_deps, oldest);
     }
 
+    // Returns number of elements in the `verties_to_be_added_later` queue.
+    // Every pending vertex is counted once, even if it has multiple senders.
     fn vertices_to_be_added_later_len(&self) -> u64 {
         self.vertices_to_be_added_later
             .iter()
@@ -194,10 +200,12 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .sum()
     }
 
+    // Returns number of elements in `vertex_deps` queue.
     fn vertex_deps_len(&self) -> u64 {
         self.vertex_deps.iter().map(|(_, pv)| pv.len()).sum()
     }
 
+    // Returns number of elements in `vertices_to_be_added` queue.
     fn vertices_to_be_added_len(&self) -> u64 {
         self.vertices_to_be_added.len()
     }
