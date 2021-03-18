@@ -99,6 +99,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         seed: u64,
         now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<I, C>>, ProtocolOutcomes<I, C>) {
+        let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
             !sum_stakes.is_zero(),
@@ -194,7 +195,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(config.highway.pending_vertex_timeout, instance_id),
+            synchronizer: Synchronizer::new(
+                config.highway.pending_vertex_timeout,
+                validators_count,
+                instance_id,
+            ),
             evidence_only: false,
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
