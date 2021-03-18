@@ -5,6 +5,8 @@
 
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
+
+
 # =================================
 # Configuration options for logging
 # =================================
@@ -18,6 +20,8 @@ color = false
 
 # Abbreviate module names in text output.  Has no effect if format = 'json'.
 abbreviate_modules = false
+
+
 # ===================================
 # Configuration options for consensus
 # ===================================
@@ -38,6 +42,8 @@ request_latest_state_timeout = '30sec'
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
+
+
 # ====================================
 # Configuration options for networking
 # ====================================
@@ -83,6 +89,8 @@ initial_gossip_delay = '5s'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
+
+
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
@@ -99,6 +107,8 @@ address = '0.0.0.0:7777'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 50
+
+
 # ==============================================
 # Configuration options for the REST HTTP server
 # ==============================================
@@ -115,6 +125,8 @@ address = '0.0.0.0:8888'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 10
+
+
 # ==========================================================
 # Configuration options for the SSE HTTP event stream server
 # ==========================================================
@@ -137,6 +149,8 @@ broadcast_channel_size = 100
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 10
+
+
 # ===============================================
 # Configuration options for the storage component
 # ===============================================
@@ -177,6 +191,8 @@ max_deploy_metadata_store_size = 322_122_547_200
 #
 # 10_737_418_240 == 10 GiB.
 max_state_store_size = 10_737_418_240
+
+
 # ===================================
 # Configuration options for gossiping
 # ===================================
@@ -207,6 +223,8 @@ gossip_request_timeout_secs = 30
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout_secs = 5
+
+
 # =================================
 # Configuration options for fetcher
 # =================================
@@ -216,6 +234,8 @@ get_remainder_timeout_secs = 5
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
 get_from_peer_timeout = 3
+
+
 # ===================================================
 # Configuration options for deploy acceptor component
 # ===================================================
@@ -223,6 +243,8 @@ get_from_peer_timeout = 3
 
 # If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
 verify_accounts = true
+
+
 # ========================================================
 # Configuration options for the contract runtime component
 # ========================================================
