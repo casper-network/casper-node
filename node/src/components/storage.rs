@@ -321,7 +321,7 @@ impl Storage {
         }
         info!("block store reindexing complete");
         drop(cursor);
-        drop(block_txn);
+        block_txn.commit()?;
 
         // Check the integrity of the block body database.
         check_block_body_db(&env, &block_body_db)?;
