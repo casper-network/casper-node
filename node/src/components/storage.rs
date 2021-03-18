@@ -299,6 +299,9 @@ impl Storage {
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
+                // Don't index blocks that are in to-be-upgraded eras, but have obsolete protocol
+                // versions - they were most likely created before the upgrade and should be
+                // reverted.
                 if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
                     continue;
                 }
