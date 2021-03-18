@@ -286,8 +286,8 @@ impl Storage {
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
-        let block_txn = env.begin_ro_txn()?;
-        let mut cursor = block_txn.open_ro_cursor(block_header_db)?;
+        let mut block_txn = env.begin_rw_txn()?;
+        let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
@@ -299,11 +299,11 @@ impl Storage {
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
-                // Don't index blocks that are in to-be-upgraded eras, but have obsolete protocol
+                // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
                 if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
-                    continue;
+                    cursor.del(Default::default())?;
                 }
             }
             // We use the opportunity for a small integrity check.
