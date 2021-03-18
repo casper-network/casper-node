@@ -3,6 +3,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use rand::{prelude::SliceRandom, Rng};
+use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
@@ -42,8 +43,12 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg), None)
-        .expect("could not create storage component fixture")
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        None,
+        Version::new(1, 0, 0),
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Storage component test fixture.
@@ -58,8 +63,12 @@ fn storage_fixture_with_hard_reset(
     reset_era_id: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg), Some(reset_era_id))
-        .expect("could not create storage component fixture")
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        Some(reset_era_id),
+        Version::new(1, 1, 0),
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Creates a random block with a specific block height.
