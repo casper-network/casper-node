@@ -6,7 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::info;
+use tracing::debug;
 
 use crate::{
     components::consensus::{
@@ -211,7 +211,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     pub(crate) fn log_len(&self) {
-        info!(
+        debug!(
             era_id = ?self.era_id,
             vertices_to_be_added_later = self.vertices_to_be_added_later_len(),
             vertex_deps = self.vertex_deps_len(),
