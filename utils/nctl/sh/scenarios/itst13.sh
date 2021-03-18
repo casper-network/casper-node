@@ -37,7 +37,7 @@ function main() {
 # Checks that a validator gets marked as inactive
 function check_inactive() {
     local NODE_ID=${1}
-    local HEX=$(get_node_public_key_hex "$NODE_ID")
+    local HEX=$(get_node_public_key_hex_extended "$NODE_ID")
     # In order to pass bash variables into jq you must specify a jq arg.
     # Below the jq arg 'node_hex' is set to $HEX. The query looks at the
     # state of the auction and checks to see if a validator gets marked
@@ -47,19 +47,11 @@ function check_inactive() {
     return $?
 }
 
-# Captures the public key in hex of a node
-function get_node_public_key_hex() {
-    local NODE_ID=${1}
-    local NODE_PATH=$(get_path_to_node $NODE_ID)
-    local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    echo "$PUBLIC_KEY_HEX"
-}
-
 # Checks that the current era + 1 contains a nodes 
 # public key hex
 function is_trusted_validator() {
     local NODE_ID=${1}
-    local HEX=$(get_node_public_key_hex "$NODE_ID")
+    local HEX=$(get_node_public_key_hex_extended "$NODE_ID")
     local ERA=$(check_current_era)
     # Plus 1 to avoid query issue if era switches mid run
     local ERA_PLUS_1=$(expr $ERA + 1)

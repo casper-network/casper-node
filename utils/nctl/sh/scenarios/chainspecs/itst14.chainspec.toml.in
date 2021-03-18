@@ -21,7 +21,7 @@ name = 'casper-example'
 
 [core]
 # Era duration.
-era_duration = '41seconds'
+era_duration = '180s'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
 minimum_era_height = 10

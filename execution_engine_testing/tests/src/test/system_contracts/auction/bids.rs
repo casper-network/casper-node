@@ -2884,3 +2884,41 @@ fn should_reset_delegators_stake_after_slashing() {
     // Validator 1 total delegated stake is set to 0
     assert_eq!(validator_1_delegator_stakes_3, U512::zero());
 }
+
+#[should_panic(expected = "InvalidDelegatedAmount")]
+#[ignore]
+#[test]
+fn should_validate_genesis_delegators_bond_amount() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Some(GenesisValidator::new(Motes::new(ACCOUNT_1_BOND.into()), 80)),
+        );
+        let account_2 = GenesisAccount::account(
+            *ACCOUNT_2_PK,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(U512::zero()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
+}

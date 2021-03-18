@@ -35,8 +35,7 @@ use crate::{
     effect::{
         announcements::BlockExecutorAnnouncement,
         requests::{
-            BlockExecutorRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            StorageRequest,
+            BlockExecutorRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -56,7 +55,6 @@ pub trait ReactorEventT:
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
-    + From<ConsensusRequest>
     + Send
 {
 }
@@ -67,7 +65,6 @@ impl<REv> ReactorEventT for REv where
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
-        + From<ConsensusRequest>
         + Send
 {
 }

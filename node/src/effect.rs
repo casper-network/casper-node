@@ -99,6 +99,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
+    U512,
 };
 
 use crate::{
@@ -1450,7 +1451,7 @@ impl<REv> EffectBuilder<REv> {
     /// Returns a map of validators weights for all eras as known from `root_hash`.
     ///
     /// This operation is read only.
-    pub(crate) async fn get_era_validators(
+    pub(crate) async fn get_era_validators_from_contract_runtime(
         self,
         request: EraValidatorsRequest,
     ) -> Result<EraValidators, GetEraValidatorsError>
@@ -1500,51 +1501,126 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Check if validator is bonded in the era.
-    pub(crate) async fn is_bonded_validator(self, era_id: EraId, public_key: PublicKey) -> bool
+    /// Gets the correct era validators set for the given era.
+    /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
+    /// and `activation_era_id` parameters.
+    pub(crate) async fn get_era_validators(
+        self,
+        era_id: EraId,
+        activation_era_id: EraId,
+        initial_state_root_hash: Digest,
+        protocol_version: ProtocolVersion,
+    ) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ConsensusRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        self.make_request(
-            |responder| ConsensusRequest::IsBondedValidator(era_id, public_key, responder),
-            QueueKind::Regular,
-        )
-        .await
+        if era_id < activation_era_id {
+            // we don't support getting the validators from before the last upgrade
+            return None;
+        }
+        if era_id == activation_era_id {
+            // in the activation era, we read the validators from the global state; we use the
+            // global state hash of the first block in the era, if it exists - if we can't get it,
+            // we use the initial_state_root_hash passed from the chainspec loader
+            let root_hash = if era_id.is_genesis() {
+                // genesis era - use block at height 0
+                self.get_block_at_height_from_storage(0)
+                    .await
+                    .map(|block| *block.state_root_hash())
+                    .unwrap_or(initial_state_root_hash)
+            } else {
+                // non-genesis - calculate the height based on the key block; if there is no key
+                // block, default to the initial_state_root_hash
+                let maybe_key_block = self.get_key_block_for_era_id_from_storage(era_id).await;
+                match maybe_key_block {
+                    None => initial_state_root_hash,
+                    Some(key_block) => self
+                        .get_block_at_height_from_storage(key_block.height() + 1)
+                        .await
+                        .map(|block| *block.state_root_hash())
+                        // default to the initial_state_root_hash if there is no block above the
+                        // key block for the era
+                        .unwrap_or(initial_state_root_hash),
+                }
+            };
+            let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
+            self.get_era_validators_from_contract_runtime(req)
+                .await
+                .ok()
+                .and_then(|era_validators| era_validators.get(&era_id.0).cloned())
+        } else {
+            // in other eras, we just use the validators from the key block
+            self.get_key_block_for_era_id_from_storage(era_id)
+                .await
+                .and_then(|key_block| key_block.header().next_era_validator_weights().cloned())
+        }
+    }
+
+    /// Checks whether the given validator is bonded in the given era.
+    pub(crate) async fn is_bonded_validator(
+        self,
+        validator: PublicKey,
+        era_id: EraId,
+        activation_era_id: EraId,
+        initial_state_root_hash: Digest,
+        latest_state_root_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+    ) -> Result<bool, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+    {
+        // try just reading the era validators first
+        let maybe_era_validators = self
+            .get_era_validators(
+                era_id,
+                activation_era_id,
+                initial_state_root_hash,
+                protocol_version,
+            )
+            .await;
+        let maybe_is_currently_bonded =
+            maybe_era_validators.map(|validators| validators.contains_key(&validator));
+
+        match maybe_is_currently_bonded {
+            // if we know whether the validator is bonded, just return that
+            Some(is_bonded) => Ok(is_bonded),
+            // if not, try checking future eras with the latest state root hash
+            None => match latest_state_root_hash {
+                // no root hash later than initial -> we just assume the validator is not bonded
+                None => Ok(false),
+                // otherwise, check with contract runtime
+                Some(state_root_hash) => self
+                    .make_request(
+                        |responder| ContractRuntimeRequest::IsBonded {
+                            state_root_hash,
+                            era_id,
+                            protocol_version,
+                            public_key: validator,
+                            responder,
+                        },
+                        QueueKind::Regular,
+                    )
+                    .await
+                    .or_else(|error| {
+                        // Promote this error to a non-error case.
+                        // It's not an error that we can't find the era that was requested.
+                        if error.is_era_validators_missing() {
+                            Ok(false)
+                        } else {
+                            Err(error)
+                        }
+                    }),
+            },
+        }
     }
 
     /// Get our public key from consensus, and if we're a validator, the next round length.
-    pub(crate) async fn consensus_status(self) -> (PublicKey, Option<TimeDiff>)
+    pub(crate) async fn consensus_status(self) -> Option<(PublicKey, Option<TimeDiff>)>
     where
         REv: From<ConsensusRequest>,
     {
         self.make_request(ConsensusRequest::Status, QueueKind::Regular)
             .await
-    }
-
-    /// Check if validator is bonded in the future era (`era_id`).
-    /// This information is known only by the Contract Runtime since consensus component
-    /// knows only about currently active eras.
-    pub(crate) async fn is_bonded_in_future_era(
-        self,
-        state_root_hash: Digest,
-        era_id: EraId,
-        protocol_version: ProtocolVersion,
-        public_key: PublicKey,
-    ) -> Result<bool, GetEraValidatorsError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::IsBonded {
-                state_root_hash,
-                era_id,
-                protocol_version,
-                public_key,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Collects the key blocks for the eras identified by provided era IDs. Returns

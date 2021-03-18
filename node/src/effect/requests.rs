@@ -980,10 +980,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Check whether validator identifying with the public key is bonded.
-    IsBondedValidator(EraId, PublicKey, Responder<bool>),
     /// Request for our public key, and if we're a validator, the next round length.
-    Status(Responder<(PublicKey, Option<TimeDiff>)>),
+    Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
 }
 
 /// ChainspecLoader component requests.
