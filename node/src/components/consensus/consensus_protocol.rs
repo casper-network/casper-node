@@ -137,7 +137,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Triggers a queued action.
     fn handle_action(&mut self, action_id: ActionId) -> ProtocolOutcomes<I, C>;
 
-    /// Current instance of consensus protocol is latest era.
+    /// This instance of consensus protocol is running in the latest era.
     fn handle_is_current(&self) -> ProtocolOutcomes<I, C>;
 
     /// Proposes a new value for consensus.
