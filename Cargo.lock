@@ -3784,9 +3784,9 @@ dependencies = [
 
 [[package]]
 name = "parity-wasm"
-version = "0.41.0"
+version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
+checksum = "be5e13c266502aadf83426d87d81a0f5d1ef45b8027f5a471c360abfe4bfae92"
 
 [[package]]
 name = "parking"
@@ -4303,9 +4303,9 @@ dependencies = [
 
 [[package]]
 name = "pwasm-utils"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c8ac87af529432d3a4f0e2b3bbf08af49f28f09cc73ed7e551161bdaef5f78d"
+checksum = "51992bc74c0f34f759ff97fb303602e60343afc83693769c91aa17724442809e"
 dependencies = [
  "byteorder",
  "log 0.4.14",
@@ -6266,8 +6266,7 @@ dependencies = [
 [[package]]
 name = "wasmi"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ad7e265153e1010a73e595eef3e2fd2a1fd644ba4e2dd3af4dd6bd7ec692342"
+source = "git+https://github.com/paritytech/wasmi?branch=master#f5fd480260490ff0de455017229caf7baee68195"
 dependencies = [
  "downcast-rs",
  "libc",
@@ -6280,9 +6279,8 @@ dependencies = [
 
 [[package]]
 name = "wasmi-validation"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea78c597064ba73596099281e2f4cfc019075122a65cdda3205af94f0b264d93"
+version = "0.3.1"
+source = "git+https://github.com/paritytech/wasmi?branch=master#f5fd480260490ff0de455017229caf7baee68195"
 dependencies = [
  "parity-wasm",
 ]

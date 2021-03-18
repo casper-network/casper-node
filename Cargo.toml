@@ -39,3 +39,8 @@ lto = false
 
 [profile.bench]
 lto = true
+
+[patch.crates-io]
+# A temporary patch for unreleased wasmi 0.8.x that depends on parity-wasm 0.42.2
+# https://github.com/paritytech/wasmi/commit/f5fd480260490ff0de455017229caf7baee68195
+wasmi = { git = "https://github.com/paritytech/wasmi", branch = "master" }

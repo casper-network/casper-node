@@ -32,9 +32,9 @@ num-derive = "0.3.0"
 num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"
 once_cell = "1.5.2"
-parity-wasm = "0.41.0"
+parity-wasm = "0.42.2"
 proptest = { version = "1.0.0", optional = true }
-pwasm-utils = "0.16.0"
+pwasm-utils = "0.17.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
 schemars = { version = "0.8.0", features = ["preserve_order"] }
