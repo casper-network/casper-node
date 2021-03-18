@@ -187,28 +187,28 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         Self::remove_expired(&mut self.vertex_deps, oldest);
     }
 
-    fn vertices_to_be_added_later_size(&self) -> u64 {
+    fn vertices_to_be_added_later_len(&self) -> u64 {
         self.vertices_to_be_added_later
             .iter()
             .map(|(_, pv)| pv.len())
             .sum()
     }
 
-    fn vertex_deps_size(&self) -> u64 {
+    fn vertex_deps_len(&self) -> u64 {
         self.vertex_deps.iter().map(|(_, pv)| pv.len()).sum()
     }
 
-    fn vertices_to_be_added_size(&self) -> u64 {
+    fn vertices_to_be_added_len(&self) -> u64 {
         self.vertices_to_be_added.len()
     }
 
-    pub(crate) fn log_size(&self) {
+    pub(crate) fn log_len(&self) {
         info!(
             era_id = ?self.era_id,
-            vertices_to_be_added_later = self.vertices_to_be_added_later_size(),
-            vertex_deps = self.vertex_deps_size(),
-            vertices_to_be_added = self.vertices_to_be_added_size(),
-            "synchronizer queue sizes"
+            vertices_to_be_added_later = self.vertices_to_be_added_later_len(),
+            vertex_deps = self.vertex_deps_len(),
+            vertices_to_be_added = self.vertices_to_be_added_len(),
+            "synchronizer queue lengths"
         );
     }
 

@@ -609,7 +609,7 @@ where
                 }
             }
             TIMER_ID_SYNCHRONIZER_QUEUE => {
-                self.synchronizer.log_size();
+                self.synchronizer.log_len();
                 if !self.finalized_switch_block() {
                     let next_timer = Timestamp::now() + TimeDiff::from(5_000);
                     vec![ProtocolOutcome::ScheduleTimer(next_timer, timer_id)]
