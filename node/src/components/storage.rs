@@ -304,6 +304,7 @@ impl Storage {
                 // reverted.
                 if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
                     cursor.del(Default::default())?;
+                    continue;
                 }
             }
             // We use the opportunity for a small integrity check.
