@@ -71,6 +71,7 @@ where
         secret_key_path: Default::default(),
         unit_hashes_folder: Default::default(),
         pending_vertex_timeout: "1min".parse().unwrap(),
+        request_latest_state_timeout: "30sec".parse().unwrap(),
         max_execution_delay: 3,
     };
     // Timestamp of the genesis era start and test start.
