@@ -178,7 +178,7 @@ impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
     fn gen_range_vec(&self, rng: &mut NodeRng, lower: u64, upper: u64, count: u8) -> Vec<u64> {
         match self {
-            Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
+            Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower..upper)).collect(),
         }
     }
 }
@@ -849,7 +849,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
             if self.faulty_percent == 0 {
                 // All validators are honest.
-                let validators_num = rng.gen_range(2, self.max_faulty_validators + 1);
+                let validators_num = rng.gen_range(2..self.max_faulty_validators + 1);
                 let honest_validators: Vec<Weight> = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, validators_num)
@@ -860,7 +860,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 (vec![], honest_validators)
             } else {
                 // At least 2 validators total and at least one faulty.
-                let faulty_num = rng.gen_range(1, self.max_faulty_validators + 1);
+                let faulty_num = rng.gen_range(1..self.max_faulty_validators + 1);
 
                 // Randomly (but within chosed range) assign weights to faulty nodes.
                 let faulty_weights = self
@@ -879,7 +879,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                         let weight = if weights_to_distribute < upper {
                             weights_to_distribute
                         } else {
-                            rng.gen_range(lower, upper)
+                            rng.gen_range(lower..upper)
                         };
                         weights.push(weight);
                         weights_to_distribute -= weight

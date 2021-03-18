@@ -7,6 +7,7 @@ use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
+use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
 use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
     storage::trie::Trie,
@@ -38,6 +39,10 @@ pub enum Tag {
     GossipedAddress,
     /// A block requested by its height in the linear chain.
     BlockByHeight,
+    /// A block header requested by its hash.
+    BlockHeaderByHash,
+    /// A block header and its finality signatures requested by its height in the linear chain.
+    BlockHeaderAndFinalitySignaturesByHeight,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
@@ -63,5 +68,25 @@ impl Item for Trie<Key, StoredValue> {
     fn id(&self) -> Self::Id {
         let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
         Blake2bHash::new(&node_bytes)
+    }
+}
+
+impl Item for BlockHeader {
+    type Id = BlockHash;
+    const TAG: Tag = Tag::BlockHeaderByHash;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn id(&self) -> Self::Id {
+        self.hash()
+    }
+}
+
+impl Item for BlockHeaderWithMetadata {
+    type Id = u64;
+    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn id(&self) -> Self::Id {
+        self.block_header.height()
     }
 }

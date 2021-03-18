@@ -13,6 +13,8 @@ pub enum Event<I> {
     BlockHandled(Box<Block>),
     GotUpgradeActivationPoint(ActivationPoint),
     InitUpgradeShutdown,
+    /// An event instructing us to shutdown if we haven't downloaded any blocks.
+    InitializeTimeout,
     Shutdown(bool),
 }
 
@@ -72,6 +74,7 @@ where
                 "linear chain sync is ready for shutdown. upgrade: {}",
                 upgrade
             ),
+            Event::InitializeTimeout => write!(f, "Initialize timeout"),
         }
     }
 }

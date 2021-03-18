@@ -6,17 +6,23 @@ pub mod ds;
 mod external;
 mod median;
 pub mod milliseconds;
+pub mod pid_file;
+#[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
 
 use std::{
     cell::RefCell,
-    fmt::{self, Display, Formatter},
-    fs, io,
+    fmt::{self, Debug, Display, Formatter},
+    fs,
+    io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, Div},
+    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
+#[cfg(test)]
+use std::{env, str::FromStr};
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
@@ -210,6 +216,26 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     })
 }
 
+/// Writes data to `path`, ensuring only the owner can read or write it.
+///
+/// Otherwise functions like [`write_file`].
+pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
+    filename: P,
+    data: B,
+) -> Result<(), WriteFileError> {
+    let path = filename.as_ref();
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .open(path)
+        .and_then(|mut file| file.write_all(data.as_ref()))
+        .map_err(|error| WriteFileError {
+            path: path.to_owned(),
+            error,
+        })
+}
+
 /// With-directory context.
 ///
 /// Associates a type with a "working directory".
@@ -229,7 +255,7 @@ impl<T> WithDir<T> {
     }
 
     /// Returns a reference to the inner path.
-    pub(crate) fn dir(&self) -> &Path {
+    pub fn dir(&self) -> &Path {
         self.dir.as_ref()
     }
 
@@ -238,7 +264,8 @@ impl<T> WithDir<T> {
         (self.dir, self.value)
     }
 
-    pub(crate) fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
+    /// Maps an internal value onto a reference.
+    pub fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
         WithDir {
             dir: self.dir.clone(),
             value: f(&self.value),
@@ -246,12 +273,12 @@ impl<T> WithDir<T> {
     }
 
     /// Get a reference to the inner value.
-    pub(crate) fn value(&self) -> &T {
+    pub fn value(&self) -> &T {
         &self.value
     }
 
     /// Adds `self.dir` as a parent if `path` is relative, otherwise returns `path` unchanged.
-    pub(crate) fn with_dir(&self, path: PathBuf) -> PathBuf {
+    pub fn with_dir(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
             self.dir.join(path)
         } else {
@@ -267,11 +294,13 @@ pub enum Source<I> {
     Peer(I),
     /// A client.
     Client,
+    /// This node.
+    Ourself,
 }
 
 impl<I> Source<I> {
-    pub(crate) fn from_client(&self) -> bool {
-        matches!(self, Source::Client)
+    pub(crate) fn from_peer(&self) -> bool {
+        matches!(self, Source::Peer(_))
     }
 }
 
@@ -280,7 +309,7 @@ impl<I: Clone> Source<I> {
     pub(crate) fn node_id(&self) -> Option<I> {
         match self {
             Source::Peer(node_id) => Some(node_id.clone()),
-            Source::Client => None,
+            Source::Client | Source::Ourself => None,
         }
     }
 }
@@ -290,6 +319,7 @@ impl<I: Display> Display for Source<I> {
         match self {
             Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
+            Source::Ourself => write!(formatter, "ourself"),
         }
     }
 }
@@ -315,4 +345,28 @@ macro_rules! unregister_metric {
                 )
             });
     };
+}
+
+/// Reads an envvar from the environment and, if present, parses it.
+///
+/// Only absent envvars are returned as `None`.
+///
+/// # Panics
+///
+/// Panics on any parse error.
+#[cfg(test)]
+pub fn read_env<T: FromStr>(name: &str) -> Option<T>
+where
+    <T as FromStr>::Err: Debug,
+{
+    match env::var(name) {
+        Ok(raw) => Some(
+            raw.parse()
+                .unwrap_or_else(|_| panic!("cannot parse envvar `{}`", name)),
+        ),
+        Err(env::VarError::NotPresent) => None,
+        Err(err) => {
+            panic!(err)
+        }
+    }
 }

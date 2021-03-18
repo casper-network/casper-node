@@ -35,8 +35,7 @@ use crate::{
     effect::{
         announcements::BlockExecutorAnnouncement,
         requests::{
-            BlockExecutorRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            StorageRequest,
+            BlockExecutorRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -56,7 +55,6 @@ pub trait ReactorEventT:
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
-    + From<ConsensusRequest>
     + Send
 {
 }
@@ -67,7 +65,6 @@ impl<REv> ReactorEventT for REv where
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
-        + From<ConsensusRequest>
         + Send
 {
 }
@@ -304,7 +301,7 @@ impl BlockExecutor {
         let execute_request = ExecuteRequest::new(
             state.state_root_hash.into(),
             state.finalized_block.timestamp().millis(),
-            vec![Ok(deploy_item)],
+            vec![deploy_item],
             self.protocol_version,
             state.finalized_block.proposer(),
         );
@@ -530,9 +527,9 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         )
                     })
             }
-            Event::BlockAlreadyExists(block) => {
-                effect_builder.handle_linear_chain_block(*block).ignore()
-            }
+            Event::BlockAlreadyExists(block) => effect_builder
+                .announce_block_already_executed(*block)
+                .ignore(),
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
             Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),

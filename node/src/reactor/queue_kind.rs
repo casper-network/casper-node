@@ -14,6 +14,8 @@ use serde::Serialize;
 /// Priorities are ordered from lowest to highest.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, PartialOrd, Ord, Serialize)]
 pub enum QueueKind {
+    /// Control messages for the runtime itself.
+    Control,
     /// Network events that were initiated outside of this node.
     ///
     /// Their load may vary and grouping them together in one queue aides DoS protection.
@@ -34,6 +36,7 @@ pub enum QueueKind {
 impl Display for QueueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str_value = match self {
+            QueueKind::Control => "Control",
             QueueKind::NetworkIncoming => "NetworkIncoming",
             QueueKind::Network => "Network",
             QueueKind::Regular => "Regular",
@@ -56,6 +59,8 @@ impl QueueKind {
     /// each event processing round.
     fn weight(self) -> NonZeroUsize {
         NonZeroUsize::new(match self {
+            // Note: Control events should be very rare, but we do want to process them right away.
+            QueueKind::Control => 32,
             QueueKind::NetworkIncoming => 4,
             QueueKind::Network => 4,
             QueueKind::Regular => 8,
@@ -73,6 +78,7 @@ impl QueueKind {
 
     pub(crate) fn metrics_name(&self) -> &str {
         match self {
+            QueueKind::Control => "control",
             QueueKind::NetworkIncoming => "network_incoming",
             QueueKind::Network => "network",
             QueueKind::Regular => "regular",

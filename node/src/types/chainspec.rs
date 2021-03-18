@@ -286,7 +286,7 @@ mod tests {
         local: 20,
         global: 21,
         control_flow: 22,
-        integer_comparsion: 23,
+        integer_comparison: 23,
         conversion: 24,
         unreachable: 25,
         nop: 26,

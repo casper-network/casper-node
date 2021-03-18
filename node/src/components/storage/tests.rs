@@ -2,25 +2,28 @@
 
 use std::{borrow::Cow, collections::HashMap};
 
+use lmdb::Transaction;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{
-    components::consensus::EraId,
+    components::{consensus::EraId, storage::lmdb_ext::WriteTransactionExt},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
     },
-    testing::{ComponentHarness, TestRng},
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
+    testing::{ComponentHarness, TestRng, UnitTestEvent},
+    types::{
+        Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata, FinalitySignature,
+    },
     utils::WithDir,
 };
 
-fn new_config(harness: &ComponentHarness<()>) -> Config {
+fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
 
     // Restrict all stores to 50 mibibytes, to catch issues before filling up the entire disk.
@@ -40,7 +43,7 @@ fn new_config(harness: &ComponentHarness<()>) -> Config {
 /// # Panics
 ///
 /// Panics if setting up the storage fixture fails.
-fn storage_fixture(harness: &ComponentHarness<()>) -> Storage {
+fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(&WithDir::new(harness.tmp.path(), cfg), None)
         .expect("could not create storage component fixture")
@@ -53,7 +56,10 @@ fn storage_fixture(harness: &ComponentHarness<()>) -> Storage {
 /// # Panics
 ///
 /// Panics if setting up the storage fixture fails.
-fn storage_fixture_with_hard_reset(harness: &ComponentHarness<()>, reset_era_id: EraId) -> Storage {
+fn storage_fixture_with_hard_reset(
+    harness: &ComponentHarness<UnitTestEvent>,
+    reset_era_id: EraId,
+) -> Storage {
     let cfg = new_config(harness);
     Storage::new(&WithDir::new(harness.tmp.path(), cfg), Some(reset_era_id))
         .expect("could not create storage component fixture")
@@ -68,7 +74,7 @@ fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
 
 /// Requests block at a specific height from a storage component.
 fn get_block_at_height(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     height: u64,
 ) -> Option<Block> {
@@ -81,7 +87,7 @@ fn get_block_at_height(
 
 /// Loads a block from a storage component.
 fn get_block(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
 ) -> Option<Block> {
@@ -98,7 +104,7 @@ fn get_block(
 
 /// Loads a set of deploys from a storage component.
 fn get_deploys(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hashes: Multiple<DeployHash>,
 ) -> Vec<Option<Deploy>> {
@@ -115,7 +121,7 @@ fn get_deploys(
 
 /// Loads a deploy with associated metadata from the storage component.
 fn get_deploy_and_metadata(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hash: DeployHash,
 ) -> Option<(Deploy, DeployMetadata)> {
@@ -131,7 +137,10 @@ fn get_deploy_and_metadata(
 }
 
 /// Requests the highest block from a storage component.
-fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
+fn get_highest_block(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetHighestBlock { responder }.into()
     });
@@ -141,7 +150,7 @@ fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) 
 
 /// Loads state from the storage component.
 fn load_state<T>(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     key: Cow<'static, [u8]>,
 ) -> Option<T>
@@ -158,7 +167,11 @@ where
 }
 
 /// Stores a block in a storage component.
-fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
+fn put_block(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    block: Box<Block>,
+) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutBlock { block, responder }.into()
     });
@@ -168,7 +181,7 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
 
 /// Stores a deploy in a storage component.
 fn put_deploy(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy: Box<Deploy>,
 ) -> bool {
@@ -181,7 +194,7 @@ fn put_deploy(
 
 /// Stores execution results in a storage component.
 fn put_execution_results(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
     execution_results: HashMap<DeployHash, ExecutionResult>,
@@ -200,7 +213,7 @@ fn put_execution_results(
 
 /// Saves state from the storage component.
 fn save_state<T>(
-    harness: &mut ComponentHarness<()>,
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     key: Cow<'static, [u8]>,
     value: &T,
@@ -263,6 +276,95 @@ fn can_put_and_get_block() {
     });
 
     assert_eq!(response.as_ref(), Some(block.header()));
+}
+
+#[test]
+fn test_get_block_header_and_finality_signatures_by_height() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Create a random block, store and load it.
+    let block = Block::random(&mut harness.rng);
+    let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
+
+    {
+        let alice_secret_key = SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]);
+        let FinalitySignature {
+            public_key,
+            signature,
+            ..
+        } = FinalitySignature::new(
+            block.header().hash(),
+            block.header().era_id(),
+            &alice_secret_key,
+            PublicKey::from(&alice_secret_key),
+        );
+        block_signatures.insert_proof(public_key, signature);
+    }
+
+    {
+        let bob_secret_key = SecretKey::ed25519([2; SecretKey::ED25519_LENGTH]);
+        let FinalitySignature {
+            public_key,
+            signature,
+            ..
+        } = FinalitySignature::new(
+            block.header().hash(),
+            block.header().era_id(),
+            &bob_secret_key,
+            PublicKey::from(&bob_secret_key),
+        );
+        block_signatures.insert_proof(public_key, signature);
+    }
+
+    let was_new = put_block(&mut harness, &mut storage, Box::new(block.clone()));
+    assert!(was_new, "putting block should have returned `true`");
+
+    let mut txn = storage
+        .env
+        .begin_rw_txn()
+        .expect("Could not start transaction");
+    let was_new = txn
+        .put_value(
+            storage.block_metadata_db,
+            &block.hash(),
+            &block_signatures,
+            true,
+        )
+        .expect("should put value into LMDB");
+    assert!(
+        was_new,
+        "putting block signatures should have returned `true`"
+    );
+    txn.commit().expect("Could not commit transaction");
+
+    {
+        let block_header = storage
+            .read_block_header_by_hash(block.hash())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_header,
+            block.header().clone(),
+            "Should have retrieved expected block header"
+        );
+    }
+
+    {
+        let block_header_with_metadata = storage
+            .read_block_header_and_finality_signatures_by_height(block.header().height())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_header_with_metadata.block_header,
+            block.header().clone(),
+            "Should have retrieved expected block header"
+        );
+        assert_eq!(
+            block_header_with_metadata.block_signatures, block_signatures,
+            "Should have retrieved expected block signatures"
+        );
+    }
 }
 
 #[test]
@@ -526,7 +628,7 @@ fn store_random_execution_results() {
     let mut expected_outcome = HashMap::new();
 
     fn setup_block(
-        harness: &mut ComponentHarness<()>,
+        harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
         expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
         block_hash: &BlockHash,

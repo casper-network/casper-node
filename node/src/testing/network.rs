@@ -131,8 +131,12 @@ where
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
-        let span = error_span!("crank", node_id = %node_id);
-        if runner.try_crank(rng).instrument(span).await.is_some() {
+        if runner
+            .try_crank(rng)
+            .instrument(error_span!("crank", node_id = %node_id))
+            .await
+            .is_some()
+        {
             1
         } else {
             0
@@ -188,8 +192,12 @@ where
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            let span = error_span!("crank", node_id = %node_id);
-            event_count += if node.try_crank(rng).instrument(span).await.is_some() {
+            event_count += if node
+                .try_crank(rng)
+                .instrument(error_span!("crank", node_id = %node_id))
+                .await
+                .is_some()
+            {
                 1
             } else {
                 0
@@ -276,6 +284,23 @@ where
         &self.nodes
     }
 
+    /// Returns the internal map of nodes.
+    pub fn nodes_mut(&mut self) -> &mut HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+        &mut self.nodes
+    }
+
+    /// Returns an iterator over all reactors.
+    pub fn reactors(&self) -> impl Iterator<Item = &R> {
+        self.nodes.values().map(|runner| runner.reactor().inner())
+    }
+
+    /// Returns an iterator over all reactors, mutable.
+    pub fn reactors_mut(&mut self) -> impl Iterator<Item = &mut R> {
+        self.nodes
+            .values_mut()
+            .map(|runner| runner.reactor_mut().inner_mut())
+    }
+
     /// Create effects and dispatch them on the given node.
     ///
     /// The effects are created via a call to `create_effects` which is itself passed an instance of
@@ -286,10 +311,9 @@ where
     {
         let runner = self.nodes.get_mut(node_id).unwrap();
         let node_id = runner.reactor().node_id();
-        let span = error_span!("inject", node_id = %node_id);
         runner
             .process_injected_effects(create_effects)
-            .instrument(span)
+            .instrument(error_span!("inject", node_id = %node_id))
             .await
     }
 }

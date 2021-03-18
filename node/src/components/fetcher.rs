@@ -347,7 +347,7 @@ where
                             peer,
                         )
                     }
-                    Source::Client => {
+                    Source::Client | Source::Ourself => {
                         // TODO - we could possibly also handle this case
                         Effects::new()
                     }

@@ -206,7 +206,7 @@ const RANDOM_BYTES_MAX_LENGTH: usize = 100;
 
 impl Distribution<Bytes> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Bytes {
-        let len = rng.gen_range(0, RANDOM_BYTES_MAX_LENGTH);
+        let len = rng.gen_range(0..RANDOM_BYTES_MAX_LENGTH);
         let mut result = Vec::with_capacity(len);
         for _ in 0..len {
             result.push(rng.gen());

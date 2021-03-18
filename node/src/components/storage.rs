@@ -61,6 +61,9 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tracing::{error, info};
 
+use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_types::{ExecutionResult, Transfer, Transform};
+
 use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
@@ -71,15 +74,14 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
+    reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata,
+        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
+        DeployHash, DeployMetadata,
     },
     utils::WithDir,
     NodeRng,
 };
-use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -206,7 +208,10 @@ pub struct Storage {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
 }
 
-impl<REv> Component<REv> for Storage {
+impl<REv> Component<REv> for Storage
+where
+    REv: ReactorEvent,
+{
     type Event = Event;
     type ConstructionError = Error;
 
@@ -615,6 +620,8 @@ impl Storage {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(block_hash, block.header().era_id()),
                 };
+                assert!(signatures.verify().is_ok());
+
                 responder.respond(Some((block, signatures))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
@@ -695,6 +702,42 @@ impl Storage {
         })
     }
 
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_and_metadata_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+        let block_hash = match self.block_height_index.get(&height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+        let block_header = match self.get_single_block_header(tx, block_hash)? {
+            None => return Ok(None),
+            Some(block_header) => block_header,
+        };
+        let block_signatures = match self.get_finality_signatures(tx, block_hash)? {
+            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            Some(signatures) => signatures,
+        };
+        Ok(Some(BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }))
+    }
+
+    // Retrieves a block header to handle a network request.
+    pub fn read_block_header_and_finality_signatures_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_header_and_finality_signatures =
+            self.get_block_header_and_metadata_by_height(&mut txn, height)?;
+        drop(txn);
+        Ok(maybe_block_header_and_finality_signatures)
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
@@ -742,12 +785,12 @@ impl Storage {
         Some(blake_hashes)
     }
 
-    /// Retrieves a single block in a separate transaction from storage.
-    fn get_single_block<Tx: Transaction>(
+    /// Retrieves a single block header in a separate transaction from storage.
+    fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
         let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -758,7 +801,31 @@ impl Storage {
                 queried_block_hash: *block_hash,
                 found_block_header_hash,
             });
-        }
+        };
+        Ok(Some(block_header))
+    }
+
+    // Retrieves a block header to handle a network request.
+    pub fn read_block_header_by_hash(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_header = self.get_single_block_header(&mut txn, block_hash)?;
+        drop(txn);
+        Ok(maybe_block_header)
+    }
+
+    /// Retrieves a single block in a separate transaction from storage.
+    fn get_single_block<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Block>, LmdbExtError> {
+        let block_header: BlockHeader = match self.get_single_block_header(tx, block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
         let block_body: BlockBody =
             match tx.get_value(self.block_body_db, block_header.body_hash())? {
                 Some(block_header) => block_header,
@@ -874,7 +941,7 @@ pub struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
-    pub(crate) path: PathBuf,
+    pub path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.

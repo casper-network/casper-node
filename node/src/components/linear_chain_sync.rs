@@ -29,7 +29,7 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem, str::FromStr};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -46,6 +46,7 @@ use super::{
 };
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
+    fatal,
     types::{
         ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
         TimeDiff,
@@ -77,30 +78,40 @@ pub(crate) struct LinearChainSync<I> {
     acceptable_drift: TimeDiff,
     /// Shortest era that is allowed with the given protocol configuration.
     shortest_era: TimeDiff,
+    /// Flag indicating whether we managed to sync at least one block.
+    started_syncing: bool,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     // TODO: fix this
     #[allow(clippy::too_many_arguments)]
-    pub fn new<Err>(
+    pub fn new<REv, Err>(
         registry: &Registry,
+        effect_builder: EffectBuilder<REv>,
         chainspec: &Chainspec,
         storage: &Storage,
         init_hash: Option<BlockHash>,
         highest_block_header: Option<BlockHeader>,
         _genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
-    ) -> Result<Self, Err>
+    ) -> Result<(Self, Effects<Event<I>>), Err>
     where
+        REv: From<Event<I>> + Send,
         Err: From<prometheus::Error> + From<storage::Error>,
     {
+        // set timeout to 5 minutes after now.
+        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
+        let timeout_event = effect_builder
+            .set_timeout(five_minutes.into())
+            .event(|_| Event::InitializeTimeout);
         if let Some(state) = read_init_state(storage, chainspec)? {
-            Ok(LinearChainSync::from_state(
+            let linear_chain_sync = LinearChainSync::from_state(
                 registry,
                 chainspec,
                 state,
                 next_upgrade_activation_point,
-            )?)
+            )?;
+            Ok((linear_chain_sync, timeout_event))
         } else {
             let acceptable_drift = chainspec.highway_config.max_round_length();
             // Shortest era is the maximum of the two.
@@ -113,7 +124,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 State::sync_trusted_hash(init_hash, highest_block_header)
             });
             let state_key = create_state_key(&chainspec);
-            Ok(LinearChainSync {
+            let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
                 state,
                 metrics: LinearChainSyncMetrics::new(registry)?,
@@ -122,7 +133,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 state_key,
                 acceptable_drift,
                 shortest_era,
-            })
+                started_syncing: false,
+            };
+            Ok((linear_chain_sync, timeout_event))
         }
     }
 
@@ -150,11 +163,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             state_key,
             acceptable_drift,
             shortest_era,
+            started_syncing: false,
         })
     }
 
     /// Add new block to linear chain.
     fn add_block(&mut self, block: Block) {
+        self.started_syncing = true;
         match &mut self.state {
             State::None | State::Done(_) => {}
             State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block),
@@ -187,7 +202,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         self.add_block(block.clone());
         match &self.state {
             State::None | State::Done(_) => {
-                panic!("Downloaded block when in {} state.", self.state)
+                error!(state=?self.state, "block downloaded when in incorrect state.");
+                fatal!(effect_builder, "block downloaded in incorrect state").ignore()
             }
             State::SyncingTrustedHash {
                 highest_block_header,
@@ -215,8 +231,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    fn mark_done(&mut self) {
-        let latest_block = self.latest_block().cloned().map(Box::new);
+    fn mark_done(&mut self, latest_block: Option<Block>) {
+        let latest_block = latest_block.map(Box::new);
         self.state = State::Done(latest_block);
     }
 
@@ -252,7 +268,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
             State::None | State::Done(_) => {
-                panic!("Block handled when in {:?} state.", &curr_state)
+                error!(state=?self.state, "block handled when in incorrect state.");
+                fatal!(effect_builder, "block handled in incorrect state").ignore()
             }
             // Keep syncing from genesis if we haven't reached the trusted block hash
             State::SyncingTrustedHash {
@@ -261,11 +278,20 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ..
             } if highest_block_seen != block_height => {
                 match latest_block.as_ref() {
-                    Some(expected) => assert_eq!(
-                        expected, &block,
-                        "Block execution result doesn't match received block."
-                    ),
-                    None => panic!("Unexpected block execution results."),
+                    Some(expected) if expected != &block => {
+                        error!(
+                            ?expected, got=?block,
+                            "block execution result doesn't match received block"
+                        );
+                        return fatal!(effect_builder, "unexpected block execution result")
+                            .ignore();
+                    }
+                    None => {
+                        error!("block execution results received when not expected");
+                        return fatal!(effect_builder, "unexpected block execution results.")
+                            .ignore();
+                    }
+                    Some(_) => (),
                 }
                 self.state = curr_state;
                 self.fetch_next_block_deploys(effect_builder)
@@ -280,11 +306,20 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             } => {
                 assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
-                    Some(expected) => assert_eq!(
-                        expected, &block,
-                        "Block execution result doesn't match received block."
-                    ),
-                    None => panic!("Unexpected block execution results."),
+                    Some(expected) if expected != &block => {
+                        error!(
+                            ?expected, got=?block,
+                            "block execution result doesn't match received block"
+                        );
+                        return fatal!(effect_builder, "unexpected block execution result")
+                            .ignore();
+                    }
+                    None => {
+                        error!("block execution results received when not expected");
+                        return fatal!(effect_builder, "unexpected block execution results.")
+                            .ignore();
+                    }
+                    Some(_) => (),
                 }
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
@@ -297,10 +332,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 ref maybe_switch_block,
                 ..
             } => {
-                assert_eq!(
-                    **latest_block, block,
-                    "Block execution result doesn't match received block."
-                );
+                if latest_block.as_ref() != &block {
+                    error!(
+                        expected=?*latest_block, got=?block,
+                        "block execution result doesn't match received block"
+                    );
+                    return fatal!(effect_builder, "unexpected block execution result").ignore();
+                }
                 if self.is_recent_block(&block) {
                     info!(
                         hash=?block.hash(),
@@ -308,7 +346,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         era=block.header().era_id().0,
                         "downloaded recent block. finished synchronization"
                     );
-                    self.mark_done();
+                    self.mark_done(Some(*latest_block.clone()));
                     return Effects::new();
                 }
                 if self.is_currently_active_era(&maybe_switch_block) {
@@ -318,7 +356,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                         era=block.header().era_id().0,
                         "downloaded switch block of a new era. finished synchronization"
                     );
-                    self.mark_done();
+                    self.mark_done(Some(*latest_block.clone()));
                     return Effects::new();
                 }
                 self.state = curr_state;
@@ -354,7 +392,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
         let next_block = match &mut self.state {
             State::None | State::Done(_) => {
-                panic!("Tried fetching next block when in {:?} state.", self.state)
+                error!(state=?self.state, "tried fetching next block when in wrong state");
+                return fatal!(
+                    effect_builder,
+                    "tried fetching next block when in wrong state"
+                )
+                .ignore();
             }
             State::SyncingTrustedHash {
                 linear_chain,
@@ -408,7 +451,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 fetch_block_at_height(effect_builder, peer, next_height)
             }
             State::Done(_) | State::None => {
-                panic!("Tried fetching block when in {:?} state", self.state)
+                error!(state=?self.state, "tried fetching next block when in wrong state");
+                fatal!(
+                    effect_builder,
+                    "tried fetching next block when in wrong state"
+                )
+                .ignore()
             }
         }
     }
@@ -423,10 +471,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     {
         if self.state.is_done() || self.state.is_none() {
             error!(state=?self.state, "shutdown for upgrade initiated when in wrong state");
-            panic!(
-                "shutdown for upgrade initiated when in wrong state: {}",
-                self.state,
+            return fatal!(
+                effect_builder,
+                "shutdown for upgrade initiated when in wrong state"
             )
+            .ignore();
         }
         effect_builder
             .save_state(self.state_key.clone().into(), Some(self.state.clone()))
@@ -506,15 +555,21 @@ where
                 match fetch_result {
                     BlockByHeightResult::Absent(peer) => {
                         self.metrics.observe_get_block_by_height();
-                        trace!(%block_height, %peer, "failed to download block by height. Trying next peer");
+                        trace!(
+                            %block_height, %peer,
+                            "failed to download block by height. Trying next peer"
+                        );
                         self.peers.failure(&peer);
                         match self.peers.random() {
                             None => {
                                 // `block_height` not found on any of the peers.
                                 // We have synchronized all, currently existing, descendants of
                                 // trusted hash.
-                                info!("finished synchronizing descendants of the trusted hash. cleaning state.");
-                                self.mark_done();
+                                info!(
+                                    "finished synchronizing descendants of the trusted hash. \
+                                    cleaning state."
+                                );
+                                self.mark_done(self.latest_block().cloned());
                                 Effects::new()
                             }
                             Some(peer) => {
@@ -566,12 +621,28 @@ where
                 match fetch_result {
                     BlockByHashResult::Absent(peer) => {
                         self.metrics.observe_get_block_by_hash();
-                        trace!(%block_hash, %peer, "failed to download block by hash. Trying next peer");
+                        trace!(
+                            %block_hash, %peer,
+                            "failed to download block by hash. Trying next peer"
+                        );
                         self.peers.failure(&peer);
                         match self.peers.random() {
+                            None if self.started_syncing => {
+                                error!(
+                                    %block_hash,
+                                    "could not download linear block from any of the peers."
+                                );
+                                fatal!(effect_builder, "failed to synchronize linear chain")
+                                    .ignore()
+                            }
                             None => {
-                                error!(%block_hash, "Could not download linear block from any of the peers.");
-                                panic!("Failed to download linear chain.")
+                                warn!(
+                                    "run out of peers before managed to start syncing. \
+                                    Resetting peers' list and continuing"
+                                );
+                                self.peers.reset(rng);
+                                self.metrics.reset_start_time();
+                                fetch_block_by_hash(effect_builder, peer, block_hash)
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
@@ -635,13 +706,19 @@ where
                     }
                     event::DeploysResult::NotFound(block, peer) => {
                         let block_hash = block.hash();
-                        trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
+                        trace!(
+                            %block_hash, %peer,
+                            "deploy for linear chain block not found. Trying next peer"
+                        );
                         self.peers.failure(&peer);
                         match self.peers.random() {
                             None => {
-                                error!(%block_hash,
-                                "could not download deploys from linear chain block.");
-                                panic!("Failed to download linear chain deploys.")
+                                error!(
+                                    %block_hash,
+                                    "could not download deploys from linear chain block."
+                                );
+                                fatal!(effect_builder, "failed to download linear chain deploys")
+                                    .ignore()
                             }
                             Some(peer) => {
                                 self.metrics.reset_start_time();
@@ -693,6 +770,14 @@ where
                 info!(?upgrade, "ready for shutdown");
                 self.stop_for_upgrade = upgrade;
                 Effects::new()
+            }
+            Event::InitializeTimeout => {
+                if !self.started_syncing {
+                    info!("hasn't downloaded any blocks in expected time window. Shutting down…");
+                    fatal!(effect_builder, "no syncing progress, shutting down…").ignore()
+                } else {
+                    Effects::new()
+                }
             }
         }
     }
@@ -795,6 +880,8 @@ fn create_state_key(chainspec: &Chainspec) -> Vec<u8> {
 /// Panics on deserialization errors.
 fn deserialize_state(serialized_state: &[u8]) -> Option<State> {
     bincode::deserialize(&serialized_state).unwrap_or_else(|error| {
+        // Panicking here should not corrupt the state of any component as it's done in the
+        // constructor.
         panic!(
             "could not deserialize state from storage, error {:?}",
             error

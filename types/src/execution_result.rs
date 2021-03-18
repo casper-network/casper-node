@@ -31,7 +31,7 @@ use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo, UnbondingPurse},
+    system::auction::{Bid, EraInfo, SeigniorageRecipients, UnbondingPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
@@ -57,13 +57,14 @@ const TRANSFORM_WRITE_TRANSFER_TAG: u8 = 7;
 const TRANSFORM_WRITE_ERA_INFO_TAG: u8 = 8;
 const TRANSFORM_WRITE_BID_TAG: u8 = 9;
 const TRANSFORM_WRITE_WITHDRAW_TAG: u8 = 10;
-const TRANSFORM_ADD_INT32_TAG: u8 = 11;
-const TRANSFORM_ADD_UINT64_TAG: u8 = 12;
-const TRANSFORM_ADD_UINT128_TAG: u8 = 13;
-const TRANSFORM_ADD_UINT256_TAG: u8 = 14;
-const TRANSFORM_ADD_UINT512_TAG: u8 = 15;
-const TRANSFORM_ADD_KEYS_TAG: u8 = 16;
-const TRANSFORM_FAILURE_TAG: u8 = 17;
+const TRANSFORM_WRITE_ERA_VALIDATORS_TAG: u8 = 11;
+const TRANSFORM_ADD_INT32_TAG: u8 = 12;
+const TRANSFORM_ADD_UINT64_TAG: u8 = 13;
+const TRANSFORM_ADD_UINT128_TAG: u8 = 14;
+const TRANSFORM_ADD_UINT256_TAG: u8 = 15;
+const TRANSFORM_ADD_UINT512_TAG: u8 = 16;
+const TRANSFORM_ADD_KEYS_TAG: u8 = 17;
+const TRANSFORM_FAILURE_TAG: u8 = 18;
 
 #[cfg(feature = "std")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
@@ -144,7 +145,7 @@ impl ExecutionResult {
 
 impl Distribution<ExecutionResult> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResult {
-        let op_count = rng.gen_range(0, 6);
+        let op_count = rng.gen_range(0..6);
         let mut operations = Vec::new();
         for _ in 0..op_count {
             let op = [OpKind::Read, OpKind::Add, OpKind::NoOp, OpKind::Write]
@@ -156,7 +157,7 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let transform_count = rng.gen_range(0, 6);
+        let transform_count = rng.gen_range(0..6);
         let mut transforms = Vec::new();
         for _ in 0..transform_count {
             transforms.push(TransformEntry {
@@ -170,7 +171,7 @@ impl Distribution<ExecutionResult> for Standard {
             transforms,
         };
 
-        let transfer_count = rng.gen_range(0, 6);
+        let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
         for _ in 0..transfer_count {
             transfers.push(TransferAddr::new(rng.gen()))
@@ -455,6 +456,8 @@ pub enum Transform {
     WriteBid(Box<Bid>),
     /// Writes the given Withdraw to global state.
     WriteWithdraw(Vec<UnbondingPurse>),
+    /// Writes the given EraValidators to global state.
+    WriteEraValidators(SeigniorageRecipients),
     /// Adds the given `i32`.
     AddInt32(i32),
     /// Adds the given `u64`.
@@ -508,6 +511,10 @@ impl ToBytes for Transform {
             Transform::WriteWithdraw(unbonding_purses) => {
                 buffer.insert(0, TRANSFORM_WRITE_WITHDRAW_TAG);
                 buffer.extend(unbonding_purses.to_bytes()?);
+            }
+            Transform::WriteEraValidators(recipients) => {
+                buffer.insert(0, TRANSFORM_WRITE_ERA_VALIDATORS_TAG);
+                buffer.extend(recipients.to_bytes()?);
             }
             Transform::AddInt32(value) => {
                 buffer.insert(0, TRANSFORM_ADD_INT32_TAG);
@@ -626,7 +633,7 @@ impl FromBytes for Transform {
 impl Distribution<Transform> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
         // TODO - include WriteDeployInfo and WriteTransfer as options
-        match rng.gen_range(0, 13) {
+        match rng.gen_range(0..13) {
             0 => Transform::Identity,
             1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
             2 => Transform::WriteAccount(AccountHash::new(rng.gen())),
@@ -640,7 +647,7 @@ impl Distribution<Transform> for Standard {
             10 => Transform::AddUInt512(rng.gen::<u64>().into()),
             11 => {
                 let mut named_keys = Vec::new();
-                for _ in 0..rng.gen_range(1, 6) {
+                for _ in 0..rng.gen_range(1..6) {
                     let _ = named_keys.push(NamedKey {
                         name: rng.gen::<u64>().to_string(),
                         key: rng.gen::<u64>().to_string(),
@@ -661,7 +668,7 @@ mod tests {
     use super::*;
 
     fn get_rng() -> SmallRng {
-        let mut seed = [0u8; 16];
+        let mut seed = [0u8; 32];
         getrandom::getrandom(seed.as_mut()).unwrap();
         SmallRng::from_seed(seed)
     }

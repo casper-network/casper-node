@@ -52,12 +52,14 @@ use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, instrument, trace, warn};
 use tracing_futures::Instrument;
+
+#[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    effect::{Effect, EffectBuilder, Effects},
+    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     unregister_metric,
     utils::{self, WeightedRoundRobin},
@@ -82,9 +84,6 @@ static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
         .ok()
 });
 
-/// The desired limit for open files.
-const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
-
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
 const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
@@ -103,6 +102,54 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         })
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
+
+#[cfg(target_os = "linux")]
+/// The desired limit for open files.
+const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
+
+#[cfg(target_os = "linux")]
+/// Adjusts the maximum number of open file handles upwards towards the hard limit.
+fn adjust_open_files_limit() {
+    // Ensure we have reasonable ulimits.
+    match ResourceLimit::<OpenFiles>::get() {
+        Err(err) => {
+            warn!(%err, "could not retrieve open files limit");
+        }
+
+        Ok(current_limit) => {
+            if current_limit.current() < TARGET_OPEN_FILES_LIMIT {
+                let best_possible = if current_limit.max() < TARGET_OPEN_FILES_LIMIT {
+                    warn!(
+                        wanted = TARGET_OPEN_FILES_LIMIT,
+                        hard_limit = current_limit.max(),
+                        "settling for lower open files limit due to hard limit"
+                    );
+                    current_limit.max()
+                } else {
+                    TARGET_OPEN_FILES_LIMIT
+                };
+
+                let new_limit = ResourceLimit::<OpenFiles>::fixed(best_possible);
+                if let Err(err) = new_limit.set() {
+                    warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
+                } else {
+                    debug!(?new_limit, "successfully increased open files limit");
+                }
+            } else {
+                debug!(
+                    ?current_limit,
+                    "not changing open files limit, already sufficient"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+/// File handle limit adjustment shim.
+fn adjust_open_files_limit() {
+    info!("not on linux, not adjusting open files limit");
+}
 
 /// The value returned by a reactor on completion of the `run()` loop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
@@ -171,7 +218,7 @@ pub trait Reactor: Sized {
     /// Event type associated with reactor.
     ///
     /// Defines what kind of event the reactor processes.
-    type Event: Send + Debug + Display + 'static;
+    type Event: ReactorEvent + Display;
 
     /// A configuration for the reactor
     type Config;
@@ -210,6 +257,16 @@ pub trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+}
+
+/// A reactor event type.
+pub trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
+    /// Returns the event as a control announcement, if possible.
+    ///
+    /// Returns a reference to a wrapped
+    /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
+    /// is indeed a control announcement variant.
+    fn as_control(&self) -> Option<&ControlAnnouncement>;
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -374,44 +431,13 @@ where
 
     /// Creates a new runner from a given configuration, using existing metrics.
     #[inline]
+    #[instrument("runner creation", level = "debug", skip(cfg, rng, registry))]
     pub async fn with_metrics(
         cfg: R::Config,
         rng: &mut NodeRng,
         registry: &Registry,
     ) -> Result<Self, R::Error> {
-        // Ensure we have reasonable ulimits.
-        match ResourceLimit::<OpenFiles>::get() {
-            Err(err) => {
-                warn!(%err, "could not retrieve open files limit");
-            }
-
-            Ok(current_limit) => {
-                if current_limit.current() < TARGET_OPEN_FILES_LIMIT {
-                    let best_possible = if current_limit.max() < TARGET_OPEN_FILES_LIMIT {
-                        warn!(
-                            wanted = TARGET_OPEN_FILES_LIMIT,
-                            hard_limit = current_limit.max(),
-                            "settling for lower open files limit due to hard limit"
-                        );
-                        current_limit.max()
-                    } else {
-                        TARGET_OPEN_FILES_LIMIT
-                    };
-
-                    let new_limit = ResourceLimit::<OpenFiles>::fixed(best_possible);
-                    if let Err(err) = new_limit.set() {
-                        warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
-                    } else {
-                        debug!(?new_limit, "successfully increased open files limit");
-                    }
-                } else {
-                    debug!(
-                        ?current_limit,
-                        "not changing open files limit, already sufficient"
-                    );
-                }
-            }
-        }
+        adjust_open_files_limit();
 
         let event_size = mem::size_of::<R::Event>();
 
@@ -428,9 +454,8 @@ where
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
-        let span = debug_span!("process initial effects");
         process_effects(scheduler, initial_effects)
-            .instrument(span)
+            .instrument(debug_span!("process initial effects"))
             .await;
 
         info!("reactor main loop is ready");
@@ -460,19 +485,20 @@ where
 
         let effects = create_effects(effect_builder);
 
-        let effect_span = debug_span!("process injected effects", ev = self.event_count);
         process_effects(self.scheduler, effects)
-            .instrument(effect_span)
+            .instrument(debug_span!(
+                "process injected effects",
+                ev = self.event_count
+            ))
             .await;
     }
 
     /// Processes a single event on the event queue.
+    ///
+    /// Returns `false` if processing should stop.
     #[inline]
-    pub async fn crank(&mut self, rng: &mut NodeRng) {
-        // Create another span for tracing the processing of one event.
-        let crank_span = debug_span!("crank", ev = self.event_count);
-        let _inner_enter = crank_span.enter();
-
+    #[instrument("crank", level = "debug", fields(ev = self.event_count), skip(self, rng))]
+    pub async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler);
@@ -480,14 +506,14 @@ where
 
         // Update metrics like memory usage and event queue sizes.
         if self.event_count % self.event_metrics_threshold == 0 {
-            let now = Instant::now();
-
             // We update metrics on the first very event as well to get a good baseline.
-            if now.duration_since(self.last_metrics) >= self.event_metrics_min_delay
-                || self.event_count == 0
-            {
+            if self.last_metrics.elapsed() >= self.event_metrics_min_delay {
                 self.reactor.update_metrics(event_queue);
-                self.last_metrics = now;
+
+                // Use a fresh timestamp. This skews the metrics collection interval a little bit,
+                // but ensures that if metrics collection time explodes, we are guaranteed a full
+                // `event_metrics_min_delay` of event processing.
+                self.last_metrics = Instant::now();
             }
 
             if let Some(AllocatedMem {
@@ -527,41 +553,55 @@ where
 
         // Create another span for tracing the processing of one event.
         let event_span = debug_span!("dispatch events", ev = self.event_count);
-        let inner_enter = event_span.enter();
+        let (effects, keep_going) = event_span.in_scope(|| {
+            // We log events twice, once in display and once in debug mode.
+            let event_as_string = format!("{}", event);
+            debug!(event=%event_as_string, ?q);
+            trace!(?event, ?q);
 
-        // We log events twice, once in display and once in debug mode.
-        let event_as_string = format!("{}", event);
-        debug!(event=%event_as_string, ?q);
-        trace!(?event, ?q);
+            // Dispatch the event, then execute the resulting effect.
+            let start = self.clock.start();
 
-        // Dispatch the event, then execute the resulting effect.
-        let start = self.clock.start();
-        let effects = self.reactor.dispatch_event(effect_builder, rng, event);
-        let end = self.clock.end();
+            let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+                // We've received a control event, which will _not_ be handled by the reactor.
+                match ctrl_ann {
+                    ControlAnnouncement::FatalError { file, line, msg } => {
+                        error!(%file, %line, %msg, "fatal error via control announcement");
+                        (Default::default(), false)
+                    }
+                }
+            } else {
+                (
+                    self.reactor.dispatch_event(effect_builder, rng, event),
+                    true,
+                )
+            };
 
-        // Warn if processing took a long time, record to histogram.
-        let delta = self.clock.delta(start, end);
-        if delta > *DISPATCH_EVENT_THRESHOLD {
-            warn!(
-                ns = delta.into_nanos(),
-                event = %event_as_string,
-                "event took very long to dispatch"
-            );
-        }
-        self.metrics
-            .event_dispatch_duration
-            .observe(delta.into_nanos() as f64);
+            let end = self.clock.end();
 
-        drop(inner_enter);
+            // Warn if processing took a long time, record to histogram.
+            let delta = self.clock.delta(start, end);
+            if delta > *DISPATCH_EVENT_THRESHOLD {
+                warn!(
+                    ns = delta.into_nanos(),
+                    event = %event_as_string,
+                    "event took very long to dispatch"
+                );
+            }
+            self.metrics
+                .event_dispatch_duration
+                .observe(delta.into_nanos() as f64);
 
-        // We create another span for the effects, but will keep the same ID.
-        let effect_span = debug_span!("process effects", ev = self.event_count);
+            (effects, keep_going)
+        });
 
         process_effects(self.scheduler, effects)
-            .instrument(effect_span)
+            .instrument(debug_span!("process effects", ev = self.event_count))
             .await;
 
         self.event_count += 1;
+
+        keep_going
     }
 
     /// Gets both the allocated and total memory from sys-info + jemalloc
@@ -647,12 +687,11 @@ where
     /// Processes a single event if there is one, returns `None` otherwise.
     #[inline]
     #[cfg(test)]
-    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<()> {
+    pub async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
         if self.scheduler.item_count() == 0 {
             None
         } else {
-            self.crank(rng).await;
-            Some(())
+            Some(self.crank(rng).await)
         }
     }
 
@@ -664,13 +703,15 @@ where
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(reactor_exit) = self.reactor.maybe_exit() {
-                        return reactor_exit;
+                        break reactor_exit;
                     }
-                    self.crank(rng).await;
+                    if !self.crank(rng).await {
+                        break ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                    }
                 }
-                SIGINT => return ReactorExit::ProcessShouldExit(ExitCode::SigInt),
-                SIGQUIT => return ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
-                SIGTERM => return ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                SIGINT => break ReactorExit::ProcessShouldExit(ExitCode::SigInt),
+                SIGQUIT => break ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
+                SIGTERM => break ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
                 _ => error!("should be unreachable - bug in signal handler"),
             }
         }
@@ -716,13 +757,17 @@ impl Runner<InitializerReactor> {
 
         info!("reactor main loop is ready");
 
+        let event_metrics_min_delay = Duration::from_secs(30);
+        let now = Instant::now();
         Ok(Runner {
             scheduler,
             reactor,
             event_count: 0,
             metrics: RunnerMetrics::new(&registry)?,
-            last_metrics: Instant::now(),
-            event_metrics_min_delay: Duration::from_secs(30),
+            // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
+            // cause the runner to collect metrics at the first opportunity.
+            last_metrics: now.checked_sub(event_metrics_min_delay).unwrap_or(now),
+            event_metrics_min_delay,
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
