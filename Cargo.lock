@@ -11,6 +11,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "activate-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-bid"
 version = "0.1.0"
 dependencies = [
