@@ -46,7 +46,8 @@ mod partial_tries {
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
-        assert_eq!(store.get(&txn, &expected_root_after_delete)?, None); // this only works with partial tries
+        // The assert below only works with partial tries
+        assert_eq!(store.get(&txn, &expected_root_after_delete)?, None);
         let root_after_delete = match checked_delete::<K, V, _, _, E>(
             correlation_id,
             &mut txn,

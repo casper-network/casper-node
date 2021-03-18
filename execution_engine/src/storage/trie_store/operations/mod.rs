@@ -540,9 +540,9 @@ where
                     .to_indexed_pointers()
                     .find(|(jdx, _)| idx != *jdx)
                 {
-                    // There are zero siblings.  Elsewhere we maintain the invariant that only
-                    // the root node can contain a single leaf.  Therefore the parent is the
-                    // root node.  The resulting output is just the empty node and nothing else.
+                    // There are zero siblings.  Elsewhere we maintain the invariant that only the
+                    // root node can contain a single leaf.  Therefore the parent is the root node.
+                    // The resulting output is just the empty node and nothing else.
                     None => {
                         let trie_node = Trie::Node {
                             pointer_block: Box::new(PointerBlock::new()),
@@ -556,9 +556,8 @@ where
                 // There is one sibling.
                 match (sibling_pointer, parents.pop()) {
                     (_, Some((_, Trie::Leaf { .. }))) => panic!("Should not have leaf in scan"),
-                    // There is no grandparent.  Therefore the parent is the root node. Output
-                    // the root node with the index zeroed out.
-                    // TODO: unify me
+                    // There is no grandparent.  Therefore the parent is the root node.  Output the
+                    // root node with the index zeroed out.
                     (_, None) => {
                         pointer_block[idx as usize] = None;
                         let trie_node = Trie::Node { pointer_block };
@@ -622,9 +621,8 @@ where
                             }
                             // The single sibling is a extension.  We output an extension to replace
                             // the parent, prepending the sibling index to the sibling's affix.  In
-                            // the next loop iteration, we will handle
-                            // the case where this extension might need to
-                            // be combined with a grandparent extension.
+                            // the next loop iteration, we will handle the case where this extension
+                            // might need to be combined with a grandparent extension.
                             Trie::Extension {
                                 affix: extension_affix,
                                 pointer,
@@ -642,9 +640,9 @@ where
                     }
                 }
             }
-            // The parent is a pointer block, and we are propagating a node or extension upwards. It
-            // is impossible to propagate a leaf upwards.  Reseat the thing we are propagating into
-            // the parent.
+            // The parent is a pointer block, and we are propagating a node or extension upwards.
+            // It is impossible to propagate a leaf upwards.  Reseat the thing we are propagating
+            // into the parent.
             (Some((trie_key, _)), Trie::Node { mut pointer_block }) => {
                 let trie_node: Trie<K, V> = {
                     pointer_block[idx as usize] = Some(Pointer::NodePointer(*trie_key));
@@ -653,9 +651,9 @@ where
                 let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
                 new_elements.push((trie_key, trie_node))
             }
-            // The parent is an extension, and we are outputting an extension.  Prepend the
-            // parent affix to affix of the output extension, mutating the output in place.
-            // This is the only mutate-in-place.
+            // The parent is an extension, and we are outputting an extension.  Prepend the parent
+            // affix to affix of the output extension, mutating the output in place.  This is the
+            // only mutate-in-place.
             (
                 Some((
                     trie_key,
@@ -677,9 +675,8 @@ where
                     Blake2bHash::new(&new_extension.to_bytes()?)
                 }
             }
-            // The parent is an extension and the new element is a pointer block.
-            // The next element we add will be an extension to the pointer block we are going to
-            // add.
+            // The parent is an extension and the new element is a pointer block.  The next element
+            // we add will be an extension to the pointer block we are going to add.
             (Some((trie_key, Trie::Node { .. })), Trie::Extension { affix, .. }) => {
                 let pointer = Pointer::NodePointer(*trie_key);
                 let trie_extension = Trie::Extension { affix, pointer };
