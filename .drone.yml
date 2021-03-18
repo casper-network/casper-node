@@ -486,7 +486,7 @@ steps:
   image: plugins/slack
   settings:
     webhook:
-      from_secret: slack_webhook
+      from_secret: slack_webhook_nightly
     template:
     - |
       Nightly Test Run Status: *{{ uppercasefirst build.status }}*
@@ -496,6 +496,7 @@ steps:
   when:
     status:
     - failure
+    - success
   depends_on:
   - nctl-nighly-script
 
