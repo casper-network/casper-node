@@ -85,7 +85,7 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_serde::{formats::SymmetricalMessagePack, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
@@ -372,6 +372,7 @@ where
                     Arc::clone(&self.certificate),
                     Arc::clone(&self.secret_key),
                     Arc::clone(&self.is_stopped),
+                    self.protocol_version,
                 )
                 .result(
                     move |(peer_id, transport)| Event::OutgoingEstablished {
@@ -824,6 +825,7 @@ where
                 Arc::clone(&self.certificate),
                 Arc::clone(&self.secret_key),
                 Arc::clone(&self.is_stopped),
+                self.protocol_version,
             )
             .result(
                 move |(peer_id, transport)| Event::OutgoingEstablished {
@@ -970,7 +972,7 @@ where
             } => {
                 debug!(our_id=%self.our_id, %peer_address, "incoming connection, starting TLS handshake");
 
-                setup_tls(
+                setup_tls_incoming(
                     stream,
                     self.certificate.clone(),
                     self.secret_key.clone(),
@@ -1172,7 +1174,7 @@ impl From<&SmallNetworkIdentity> for NodeId {
 /// Server-side TLS handshake.
 ///
 /// This function groups the TLS handshake into a convenient function, enabling the `?` operator.
-async fn setup_tls(
+async fn setup_tls_incoming(
     stream: TcpStream,
     cert: Arc<TlsCert>,
     secret_key: Arc<PKey<Private>>,
@@ -1193,18 +1195,34 @@ async fn setup_tls(
 
     let node_id = NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint());
 
+    let _remote_version = exchange_greeting(&mut tls_stream, protocol_version).await?;
+    // TODO: Do something with the received version in later versions of the node software.
+
+    Ok((node_id, tls_stream))
+}
+
+/// Exchanges the initial greeting method with a peer.
+///
+/// Send the remote our protocol version and expects to read it from them. Returns the decoded
+/// protocol version.
+#[instrument(level = "debug", skip(transport))]
+async fn exchange_greeting(
+    transport: &mut Transport,
+    protocol_version: ProtocolVersion,
+) -> Result<ProtocolVersion> {
     let greeting = protocol_version
         .to_bytes()
         .map_err(Error::SerializeProtocolVersion)?;
-    debug!(%protocol_version, ?greeting, "sending greeting to peer");
-    tls_stream
+    debug!(%protocol_version, "sending greeting to peer");
+
+    transport
         .write_all(&greeting)
         .await
         .map_err(Error::WriteGreeting)?;
 
     let mut buffer = [0u8; GREETING_LENGTH];
 
-    tls_stream
+    transport
         .read_exact(&mut buffer)
         .await
         .map_err(Error::ReadGreeting)?;
@@ -1212,10 +1230,9 @@ async fn setup_tls(
     let (remote_version, _) =
         ProtocolVersion::from_bytes(&buffer).map_err(Error::DeserializeProtocolVersion)?;
 
-    debug!(%remote_version, remote_greeting=?buffer, "received greeting from peer");
-    // TODO: Do something with the received version in later versions of the node software.
+    debug!(%remote_version, "received greeting from peer");
 
-    Ok((node_id, tls_stream))
+    Ok(remote_version)
 }
 
 /// Network handshake reader for single handshake message received by outgoing connection.
@@ -1361,6 +1378,7 @@ async fn connect_outgoing(
     our_certificate: Arc<TlsCert>,
     secret_key: Arc<PKey<Private>>,
     server_is_stopped: Arc<AtomicBool>,
+    protocol_version: ProtocolVersion,
 ) -> Result<(NodeId, Transport)> {
     let mut config = tls::create_tls_connector(&our_certificate.as_x509(), &secret_key)
         .context("could not create TLS connector")?
@@ -1372,9 +1390,10 @@ async fn connect_outgoing(
         .await
         .context("TCP connection failed")?;
 
-    let tls_stream = tokio_openssl::connect(config, "this-will-not-be-checked.example.com", stream)
-        .await
-        .context("tls handshake failed")?;
+    let mut tls_stream =
+        tokio_openssl::connect(config, "this-will-not-be-checked.example.com", stream)
+            .await
+            .context("tls handshake failed")?;
 
     let peer_cert = tls_stream
         .ssl()
@@ -1382,6 +1401,9 @@ async fn connect_outgoing(
         .ok_or(Error::NoServerCertificate)?;
 
     let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
+
+    let _remote_version = exchange_greeting(&mut tls_stream, protocol_version).await?;
+    // TODO: Do something with the received version in later versions of the node software.
 
     if server_is_stopped.load(Ordering::SeqCst) {
         debug!(
