@@ -5,7 +5,6 @@
 
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
-
 # =================================
 # Configuration options for logging
 # =================================
@@ -19,7 +18,6 @@ color = false
 
 # Abbreviate module names in text output.  Has no effect if format = 'json'.
 abbreviate_modules = false
-
 # ===================================
 # Configuration options for consensus
 # ===================================
@@ -40,7 +38,6 @@ request_latest_state_timeout = '30sec'
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
-
 # ====================================
 # Configuration options for networking
 # ====================================
@@ -64,67 +61,7 @@ bind_address = '0.0.0.0:35000'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = [
-  '134.122.14.111:35000',
-  '54.146.160.57:35000',
-  '35.192.213.171:35000',
-  '35.233.165.80:35000',
-  '135.181.192.149:35000',
-  '34.123.40.20:35000',
-  '95.217.227.245:35000',
-  '95.217.203.156:35000',
-  '95.217.196.20:35000',
-  '95.217.2.40:35000',
-  '95.217.193.34:35000',
-  '135.181.158.218:35000',
-  '78.47.10.119:35000',
-  '35.239.228.18:35000',
-  '135.181.89.76:35000',
-  '168.119.59.12:35000',
-  '157.90.26.198:35000',
-  '161.97.136.153:35000',
-  '116.203.214.160:35000',
-  '195.201.148.78:35000',
-  '168.119.49.220:35000',
-  '78.47.9.189:35000',
-  '116.202.17.49:35000',
-  '116.202.24.91:35000',
-  '168.119.123.213:35000',
-  '78.46.198.83:35000',
-  '159.69.218.20:35000',
-  '135.181.40.95:35000',
-  '116.203.182.37:35000',
-  '207.180.243.57:35000',
-  '78.46.186.163:35000',
-  '78.47.131.222:35000',
-  '78.47.14.48:35000',
-  '95.217.193.36:35000',
-  '207.180.199.157:35000',
-  '144.91.83.59:35000',
-  '107.22.247.79:35000',
-  '95.216.202.98:35000',
-  '37.221.196.53:35000',
-  '95.216.215.119:35000',
-  '195.201.225.135:35000',
-  '47.91.18.226:35000',
-  '207.180.200.65:35000',
-  '168.119.165.44:35000',
-  '135.181.97.186:35000',
-  '168.119.177.37:35000',
-  '62.171.138.114:35000',
-  '178.33.239.236:35000',
-  '135.181.36.98:35000',
-  '167.86.75.50:35000',
-  '45.61.52.142:35000',
-  '161.97.124.55:35000',
-  '168.119.98.214:35000',
-  '134.209.16.172:35000',
-  '35.236.56.221:35000',
-  '31.7.207.16:35000',
-  '54.183.27.75:35000',
-  '18.144.176.168:35000',
-  '13.57.200.251:35000',
-]
+known_addresses = ['134.122.14.111:35000', '54.146.160.57:35000', '35.192.213.171:35000', '35.233.165.80:35000', '135.181.192.149:35000', '34.123.40.20:35000', '95.217.227.245:35000', '95.217.203.156:35000', '95.217.196.20:35000', '95.217.2.40:35000', '95.217.193.34:35000', '135.181.158.218:35000', '78.47.10.119:35000', '35.239.228.18:35000', '135.181.89.76:35000', '168.119.59.12:35000', '157.90.26.198:35000', '161.97.136.153:35000', '116.203.214.160:35000', '195.201.148.78:35000', '168.119.49.220:35000', '78.47.9.189:35000', '116.202.17.49:35000', '116.202.24.91:35000', '168.119.123.213:35000', '78.46.198.83:35000', '159.69.218.20:35000', '135.181.40.95:35000', '116.203.182.37:35000', '207.180.243.57:35000', '78.46.186.163:35000', '78.47.131.222:35000', '78.47.14.48:35000', '95.217.193.36:35000', '207.180.199.157:35000', '144.91.83.59:35000', '107.22.247.79:35000', '95.216.202.98:35000', '37.221.196.53:35000', '95.216.215.119:35000', '195.201.225.135:35000', '47.91.18.226:35000', '207.180.200.65:35000', '168.119.165.44:35000', '135.181.97.186:35000', '168.119.177.37:35000', '62.171.138.114:35000', '178.33.239.236:35000', '135.181.36.98:35000', '167.86.75.50:35000', '45.61.52.142:35000', '161.97.124.55:35000', '168.119.98.214:35000', '134.209.16.172:35000', '35.236.56.221:35000', '31.7.207.16:35000', '54.183.27.75:35000', '18.144.176.168:35000', '13.57.200.251:35000']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
@@ -146,7 +83,6 @@ initial_gossip_delay = '5s'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
-
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
@@ -163,7 +99,6 @@ address = '0.0.0.0:7777'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 50
-
 # ==============================================
 # Configuration options for the REST HTTP server
 # ==============================================
@@ -180,7 +115,6 @@ address = '0.0.0.0:8888'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 10
-
 # ==========================================================
 # Configuration options for the SSE HTTP event stream server
 # ==========================================================
@@ -203,7 +137,6 @@ broadcast_channel_size = 100
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 10
-
 # ===============================================
 # Configuration options for the storage component
 # ===============================================
@@ -244,7 +177,6 @@ max_deploy_metadata_store_size = 322_122_547_200
 #
 # 10_737_418_240 == 10 GiB.
 max_state_store_size = 10_737_418_240
-
 # ===================================
 # Configuration options for gossiping
 # ===================================
@@ -275,7 +207,6 @@ gossip_request_timeout_secs = 30
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout_secs = 5
-
 # =================================
 # Configuration options for fetcher
 # =================================
@@ -285,7 +216,6 @@ get_remainder_timeout_secs = 5
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
 get_from_peer_timeout = 3
-
 # ===================================================
 # Configuration options for deploy acceptor component
 # ===================================================
@@ -293,7 +223,6 @@ get_from_peer_timeout = 3
 
 # If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
 verify_accounts = true
-
 # ========================================================
 # Configuration options for the contract runtime component
 # ========================================================
