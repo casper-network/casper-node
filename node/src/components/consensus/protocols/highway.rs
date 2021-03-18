@@ -28,7 +28,10 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
-            highway::{Dependency, GetDepOutcome, Highway, Params, ValidVertex, Vertex},
+            highway::{
+                Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
+                Vertex, VertexError,
+            },
             state,
             state::{Observation, Panorama},
             validators::{ValidatorIndex, Validators},
@@ -75,6 +78,7 @@ where
     /// A tracker for whether we are keeping up with the current round exponent or not.
     round_success_meter: RoundSuccessMeter<C>,
     synchronizer: Synchronizer<I, C>,
+    pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
     /// The panorama snapshot. This is updated periodically, and if it does not change for too
     /// long, an alert is raised.
@@ -201,6 +205,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 validators_count,
                 instance_id,
             ),
+            pvv_cache: Default::default(),
             evidence_only: false,
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
@@ -394,12 +399,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return vec![];
         }
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
+        let vertex_id = vv.inner().id();
         // Check whether we should change the round exponent.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
         self.calculate_round_exponent(&vv, now);
         let av_effects = self.highway.add_valid_vertex(vv, now);
+        // Once vertex is added to the state, we can remove it from the cache.
+        self.pvv_cache.remove(&vertex_id);
         self.process_av_effects(av_effects, now)
     }
 
@@ -480,6 +488,21 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         );
         true
     }
+
+    /// Prevalidates the vertex but checks the cache for previously validated vertices.
+    /// Avoids multiple validation of the same vertex.
+    fn pre_validate_vertex(
+        &mut self,
+        v: Vertex<C>,
+    ) -> Result<PreValidatedVertex<C>, (Vertex<C>, VertexError)> {
+        let id = v.id();
+        if let Some(prev_pvv) = self.pvv_cache.get(&id) {
+            return Ok(prev_pvv.clone());
+        }
+        let pvv = self.highway.pre_validate_vertex(v)?;
+        self.pvv_cache.insert(id, pvv.clone());
+        Ok(pvv)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -528,9 +551,12 @@ where
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
-                // Keep track of whether the prevalidated vertex was from an equivocator
                 let v_id = v.id();
-                let pvv = match self.highway.pre_validate_vertex(v) {
+                // If we already have that vertex, do not process it.
+                if self.highway.has_dependency(&v_id) {
+                    return vec![];
+                }
+                let pvv = match self.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
                         trace!("received an invalid vertex");
@@ -545,6 +571,7 @@ where
                         .collect();
                     }
                 };
+                // Keep track of whether the prevalidated vertex was from an equivocator
                 let is_faulty = match pvv.inner().creator() {
                     Some(creator) => self.highway.state().is_faulty(creator),
                     None => false,
@@ -677,7 +704,8 @@ where
             }
             TIMER_ID_PURGE_VERTICES => {
                 self.synchronizer.purge_vertices(now);
-                let next_time = now + self.synchronizer.pending_vertex_timeout();
+                self.pvv_cache.clear();
+                let next_time = Timestamp::now() + self.synchronizer.pending_vertex_timeout();
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => {
