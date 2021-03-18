@@ -236,7 +236,7 @@ mod full_tries {
         let mut txn = environment.create_read_write_txn()?;
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
-        for (key, value) in pairs.iter() {
+        for (key, value) in pairs {
             if let WriteResult::Written(new_root) = write::<K, V, _, _, E>(
                 correlation_id,
                 &mut txn,
