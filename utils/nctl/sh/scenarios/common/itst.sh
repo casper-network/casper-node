@@ -125,6 +125,40 @@ function do_await_n_blocks() {
     nctl-await-n-blocks offset="$BLOCK_COUNT"
 }
 
+function verify_transfer() {
+    local NODE_ID=${1}
+    local TRANSFER_HASH=${2}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${3}
+    local BLOCK_HASH=${4}
+    local JSON_OUT
+    local PARENT
+    local HASHES
+    local BLOCK_HEADER
+
+    if [ -z "$BLOCK_HASH" ]; then
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID"))
+    else
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID") -b "$BLOCK_HASH")
+    fi
+
+    if [ "$WALKBACK" -gt 0 ]; then
+        HASHES=$(echo "$JSON_OUT" | jq '.result.block.body.transfer_hashes')
+
+        if [ "$(echo "$HASHES" | jq "index( \"$TRANSFER_HASH\" )")" = "null" ]; then
+            PARENT=$(echo "$BLOCK_HEADER" | jq -r '.parent_hash')
+            WALKBACK=$((WALKBACK - 1))
+            log "$WALKBACK: Walking back to block: $PARENT"
+            verify_transfer "$NODE_ID" "$TRANSFER_HASH" "$WALKBACK" "$PARENT"
+        else
+            log "transfer verified: $(echo "$JSON_OUT" | jq '.result.block.hash')"
+        fi
+    else
+        log "Error: Block with transfer not found within walkback!"
+        exit 1
+    fi
+}
+
 function get_switch_block_equivocators() {
     local NODE_ID=${1}
     # Number of blocks to walkback before erroring out
