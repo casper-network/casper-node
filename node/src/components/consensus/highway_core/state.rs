@@ -279,12 +279,10 @@ impl<C: Context> State<C> {
     }
 
     /// Returns endorsements for `unit`, if any.
-    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
-        self.endorsements.get(unit).map(|signatures| {
-            signatures
-                .iter_some()
-                .map(|(vidx, sig)| SignedEndorsement::new(Endorsement::new(*unit, vidx), *sig))
-                .collect()
+    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Endorsements<C>> {
+        self.endorsements.get(unit).map(|signatures| Endorsements {
+            unit: *unit,
+            endorsers: signatures.iter_some().map(|(i, sig)| (i, *sig)).collect(),
         })
     }
 

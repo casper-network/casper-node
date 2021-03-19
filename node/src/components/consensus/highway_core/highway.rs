@@ -365,9 +365,7 @@ impl<C: Context> Highway<C> {
             },
             Dependency::Endorsement(hash) => match self.state.maybe_endorsements(hash) {
                 None => GetDepOutcome::None,
-                Some(e) => {
-                    GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
-                }
+                Some(e) => GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(e))),
             },
             Dependency::Ping(_, _) => GetDepOutcome::None, // We don't store ping signatures.
         }
@@ -675,8 +673,7 @@ pub(crate) mod tests {
             highway_core::{
                 evidence::{Evidence, EvidenceError},
                 highway::{
-                    Dependency, Endorsements, Highway, SignedWireUnit, UnitError, Vertex,
-                    VertexError, WireUnit,
+                    Dependency, Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit,
                 },
                 highway_testing::TEST_INSTANCE_ID,
                 state::{tests::*, Panorama, State},
@@ -768,7 +765,7 @@ pub(crate) mod tests {
             active_validator: None,
         };
 
-        let vertex_end_a = Vertex::Endorsements(Endorsements::new(end_a));
+        let vertex_end_a = Vertex::Endorsements(end_a);
         let pvv_a = highway.pre_validate_vertex(Vertex::Unit(wunit_a)).unwrap();
         let pvv_end_a = highway.pre_validate_vertex(vertex_end_a).unwrap();
         let pvv_ev_c = highway.pre_validate_vertex(Vertex::Evidence(ev_c)).unwrap();
