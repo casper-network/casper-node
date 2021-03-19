@@ -61,7 +61,7 @@ impl<C: Context> FinalityDetector<C> {
         }
         Ok(iter::from_fn(move || {
             let bhash = self.next_finalized(state)?;
-            // Index exists, since we have units from them.
+            // Safe to unwrap: Index exists, since we have units from them.
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let unit = state.unit(bhash);
@@ -170,6 +170,7 @@ impl<C: Context> FinalityDetector<C> {
         unit: &Unit<C>,
         highway: &Highway<C>,
     ) -> TerminalBlockData<C> {
+        // Safe to unwrap: Index exists, since we have units from them.
         let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
         let state = highway.state();
 
@@ -180,6 +181,7 @@ impl<C: Context> FinalityDetector<C> {
 
         // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
         // if at least one maximum-length round passed between the first and last block.
+        // Safe to unwrap: Ancestor at height 0 always exists.
         let first_bhash = state.find_ancestor(bhash, 0).unwrap();
         let sufficient_time_for_activity =
             unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();

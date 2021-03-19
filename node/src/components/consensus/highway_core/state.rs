@@ -485,6 +485,7 @@ impl<C: Context> State<C> {
         let threshold = self.total_weight() / 2;
         if endorsed > threshold {
             info!(%uhash, "Unit endorsed by at least 1/2 of validators.");
+            // Unwrap is safe: We created the map entry above.
             let mut fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
             let endorsed_map = self
                 .weights()
@@ -594,6 +595,7 @@ impl<C: Context> State<C> {
         });
 
         // Create an Evidence instance for each conflict we found.
+        // The unwraps are safe, because we know that there are units with these hashes.
         conflicting_endorsements
             .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
                 let unit1 = self.unit(uhash1);
