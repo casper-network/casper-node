@@ -6,7 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{
     components::consensus::{
@@ -84,22 +84,6 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Returns number of unique vertices pending in the queue.
     pub(crate) fn len(&self) -> u64 {
         self.0.len() as u64
-    }
-
-    /// Adds alternative source to download the vertex from.
-    /// Returns error if vertex was not known.
-    pub(crate) fn alternative_source(
-        &mut self,
-        pvv: PreValidatedVertex<C>,
-        sender: I,
-        time_received: Timestamp,
-    ) -> Result<(), (PreValidatedVertex<C>, I)> {
-        if !self.0.contains_key(&pvv) {
-            Err((pvv, sender))
-        } else {
-            self.add(sender, pvv, time_received);
-            Ok(())
-        }
     }
 
     fn is_empty(&self) -> bool {
@@ -409,27 +393,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.vertex_deps.clear();
         self.vertices_to_be_added_later.clear();
         self.vertices_to_be_added.retain_evidence_only();
-    }
-
-    /// Adds `sender` as alternative source for downloading vertex.
-    /// Returns protocol outcomes scheduled as a result of this action.
-    pub(crate) fn alternative_source(
-        &mut self,
-        pvv: PreValidatedVertex<C>,
-        sender: I,
-        now: Timestamp,
-    ) -> ProtocolOutcomes<I, C> {
-        match self
-            .vertices_to_be_added
-            .alternative_source(pvv, sender, now)
-        {
-            Ok(_) => vec![],
-            Err((pvv, sender)) => {
-                let id = pvv.inner().id();
-                error!(?id, "vertex not known. This most probably mean a corrupted state of pending vertices cache.");
-                self.schedule_add_vertex(sender, pvv, now)
-            }
-        }
     }
 
     /// Schedules vertices to be added to the protocol state.

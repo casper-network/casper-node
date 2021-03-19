@@ -429,20 +429,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn pre_validate_vertex(
         &mut self,
         v: Vertex<C>,
-    ) -> Result<PreValidationStatus<C>, (Vertex<C>, VertexError)> {
+    ) -> Result<PreValidatedVertex<C>, (Vertex<C>, VertexError)> {
         let id = v.id();
         if let Some(prev_pvv) = self.pvv_cache.get(&id) {
-            return Ok(PreValidationStatus::Known(prev_pvv.clone()));
+            return Ok(prev_pvv.clone());
         }
         let pvv = self.highway.pre_validate_vertex(v)?;
         self.pvv_cache.insert(id, pvv.clone());
-        Ok(PreValidationStatus::New(pvv))
+        Ok(pvv)
     }
-}
-
-enum PreValidationStatus<C: Context> {
-    New(PreValidatedVertex<C>),
-    Known(PreValidatedVertex<C>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -507,49 +502,37 @@ where
                         .collect();
                     }
                 };
+                let is_faulty = match pvv.inner().creator() {
+                    Some(creator) => self.highway.state().is_faulty(creator),
+                    None => false,
+                };
 
-                match pvv {
-                    PreValidationStatus::New(pvv) => {
-                        trace!(id=?pvv.inner().id(), "new vertex received");
-                        let is_faulty = match pvv.inner().creator() {
-                            Some(creator) => self.highway.state().is_faulty(creator),
-                            None => false,
-                        };
+                if is_faulty && !self.synchronizer.is_dependency(&pvv.inner().id()) {
+                    trace!("received a vertex from a faulty validator; dropping");
+                    return vec![];
+                }
 
-                        if is_faulty && !self.synchronizer.is_dependency(&pvv.inner().id()) {
-                            trace!("received a vertex from a faulty validator; dropping");
-                            return vec![];
-                        }
-
-                        let now = Timestamp::now();
-                        match pvv.timestamp() {
-                            Some(timestamp)
-                                if timestamp > now + self.synchronizer.pending_vertex_timeout() =>
-                            {
-                                trace!("received a vertex with a timestamp far in the future; dropping");
-                                vec![]
-                            }
-                            Some(timestamp) if timestamp > now => {
-                                // If it's not from an equivocator and from the future, add to queue
-                                trace!("received a vertex from the future; storing for later");
-                                self.synchronizer
-                                    .store_vertex_for_addition_later(timestamp, now, sender, pvv);
-                                let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
-                                vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
-                            }
-                            _ => {
-                                // If it's not from an equivocator or it is a transitive dependency,
-                                // add the vertex
-                                trace!("received a valid vertex");
-                                self.synchronizer.schedule_add_vertex(sender, pvv, now)
-                            }
-                        }
-                    }
-                    PreValidationStatus::Known(pvv) => {
-                        trace!(hash=?pvv.inner().id(), "vertex already pending synchronization");
-                        self.synchronizer
-                            .alternative_source(pvv, sender, Timestamp::now());
+                let now = Timestamp::now();
+                match pvv.timestamp() {
+                    Some(timestamp)
+                        if timestamp > now + self.synchronizer.pending_vertex_timeout() =>
+                    {
+                        trace!("received a vertex with a timestamp far in the future; dropping");
                         vec![]
+                    }
+                    Some(timestamp) if timestamp > now => {
+                        // If it's not from an equivocator and from the future, add to queue
+                        trace!("received a vertex from the future; storing for later");
+                        self.synchronizer
+                            .store_vertex_for_addition_later(timestamp, now, sender, pvv);
+                        let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
+                        vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
+                    }
+                    _ => {
+                        // If it's not from an equivocator or it is a transitive dependency, add the
+                        // vertex
+                        trace!("received a valid vertex");
+                        self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
             }
