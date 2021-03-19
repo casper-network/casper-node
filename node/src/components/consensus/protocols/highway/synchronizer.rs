@@ -162,6 +162,8 @@ where
     pending_vertex_timeout: TimeDiff,
     /// Instance ID of an era for which this synchronizer is constructed for.
     era_id: C::InstanceId,
+    /// Keeps track of the lowest/oldest seen unit per validator when syncing.
+    /// Used only for logging.
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
     /// Boolean flag indicating whether we're synchronizing current era.
     pub(crate) current_era: bool,
@@ -222,7 +224,16 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             vertices_to_be_added = self.vertices_to_be_added_len(),
             "synchronizer queue lengths"
         );
-        debug!(oldest_panorama=%self.oldest_seen_panorama, "oldest seen unit per validator");
+        // All units seen have seq_number == 0.
+        let all_lowest = self
+            .oldest_seen_panorama
+            .iter()
+            .all(|entry| entry.map(|seq_num| seq_num == 0).unwrap_or(false));
+        if all_lowest {
+            debug!("all seen units while synchronization with seq_num=0");
+        } else {
+            debug!(oldest_panorama=%self.oldest_seen_panorama, "oldest seen unit per validator");
+        }
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
