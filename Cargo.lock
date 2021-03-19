@@ -5871,7 +5871,7 @@ dependencies = [
 
 [[package]]
 name = "twoway"
-version = "0.1.
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59b11b2b5241ba34be09c3cc85a36e56e48f9888862e19cedf23336d35316ed1"
 dependencies = [
