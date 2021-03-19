@@ -125,12 +125,19 @@ function do_await_n_blocks() {
     nctl-await-n-blocks offset="$BLOCK_COUNT"
 }
 
-function verify_transfer() {
+function _verify_deploy_transfer() {
     local NODE_ID=${1}
-    local TRANSFER_HASH=${2}
-    # Number of blocks to walkback before erroring out
-    local WALKBACK=${3}
-    local BLOCK_HASH=${4}
+    local TARGET_HASH=${2}
+
+    # What kind of hash we are looking for, can be "transfer" or "deploy".
+    local TYPE=${3}
+
+    # Number of blocks to walkback before erroring out.
+    local WALKBACK=${4}
+
+    # Starting block hash to begin walking back from.
+    local BLOCK_HASH=${5}
+
     local JSON_OUT
     local PARENT
     local HASHES
@@ -138,25 +145,46 @@ function verify_transfer() {
 
     if [ -z "$BLOCK_HASH" ]; then
         JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID"))
+        BLOCK_HASH=$(echo "$JSON_OUT" | jq -r '.result.block.hash')
     else
         JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID") -b "$BLOCK_HASH")
     fi
 
-    if [ "$WALKBACK" -gt 0 ]; then
-        HASHES=$(echo "$JSON_OUT" | jq '.result.block.body.transfer_hashes')
+    BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
 
-        if [ "$(echo "$HASHES" | jq "index( \"$TRANSFER_HASH\" )")" = "null" ]; then
+    if [ "$WALKBACK" -gt 0 ]; then
+        HASHES=$(echo "$JSON_OUT" | jq ".result.block.body.${TYPE}_hashes")
+
+        if [ "$(echo "$HASHES" | jq "index( \"$TARGET_HASH\" )")" = "null" ]; then
             PARENT=$(echo "$BLOCK_HEADER" | jq -r '.parent_hash')
             WALKBACK=$((WALKBACK - 1))
             log "$WALKBACK: Walking back to block: $PARENT"
-            verify_transfer "$NODE_ID" "$TRANSFER_HASH" "$WALKBACK" "$PARENT"
+            _verify_deploy_transfer "$NODE_ID" "$TARGET_HASH" "$TYPE" "$WALKBACK" "$PARENT"
         else
-            log "transfer verified: $(echo "$JSON_OUT" | jq '.result.block.hash')"
+            log "$TYPE verified, found in block: $BLOCK_HASH"
         fi
     else
-        log "Error: Block with transfer not found within walkback!"
+        log "Error: Block with $TYPE hash not found within walkback range!"
         exit 1
     fi
+}
+
+function verify_transfer() {
+    local NODE_ID=${1}
+    local TRANSFER_HASH=${2}
+    local WALKBACK=${3}
+    local BLOCK_HASH=${4}
+
+    _verify_deploy_transfer "$NODE_ID" "$TARGET_HASH" "transfer" "$WALKBACK" "$PARENT"
+}
+
+function verify_deploy() {
+    local NODE_ID=${1}
+    local TRANSFER_HASH=${2}
+    local WALKBACK=${3}
+    local BLOCK_HASH=${4}
+
+    _verify_deploy_transfer "$NODE_ID" "$TARGET_HASH" "deploy" "$WALKBACK" "$PARENT"
 }
 
 function get_switch_block_equivocators() {
