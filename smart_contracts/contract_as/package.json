@@ -1,5 +1,5 @@
 {
-  "name": "@casper/contract",
+  "name": "casper-contract",
   "version": "0.9.3",
   "description": "Library for developing Casper smart contracts.",
   "main": "index.js",
