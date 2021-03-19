@@ -512,7 +512,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns the most recent unit by this validator.
-    fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
+    pub(crate) fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
             .get(self.vidx)

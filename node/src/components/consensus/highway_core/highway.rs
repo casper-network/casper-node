@@ -17,7 +17,7 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{Fault, State, UnitError, Weight},
+            state::{Fault, State, Unit, UnitError, Weight},
             validators::{Validator, Validators},
         },
         traits::Context,
@@ -663,6 +663,13 @@ impl<C: Context> Highway<C> {
         self.active_validator
             .as_ref()
             .map(|av| av.next_round_length())
+    }
+
+    /// Returns our latest unit, if any
+    pub(crate) fn latest_own_unit(&self) -> Option<&Unit<C>> {
+        self.active_validator
+            .as_ref()
+            .and_then(|av| av.latest_unit(&self.state))
     }
 }
 

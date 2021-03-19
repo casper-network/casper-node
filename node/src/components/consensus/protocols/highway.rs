@@ -125,7 +125,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let init_round_exp = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .and_then(|highway_proto| highway_proto.median_round_exp())
+            .and_then(|highway_proto| highway_proto.our_round_exp())
             .unwrap_or(highway_config.minimum_round_exponent);
 
         info!(
@@ -390,11 +390,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.process_av_effects(av_effects, now)
     }
 
-    /// Returns the median round exponent of all the validators that haven't been observed to be
-    /// malicious, as seen by the current panorama.
-    /// Returns `None` if there are no correct validators in the panorama.
-    fn median_round_exp(&self) -> Option<u8> {
-        self.highway.state().median_round_exp()
+    /// Returns our most recent round exponent.
+    /// Returns `None` if we created no units in this era.
+    fn our_round_exp(&self) -> Option<u8> {
+        self.highway.latest_own_unit().map(|unit| unit.round_exp)
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where

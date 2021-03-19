@@ -40,7 +40,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
-    utils::{ds, weighted_median},
+    utils::ds,
 };
 use block::Block;
 use tallies::Tallies;
@@ -859,17 +859,6 @@ impl<C: Context> State<C> {
             next = self.block(current).parent();
             Some(current)
         })
-    }
-
-    /// Returns the median round exponent of all the validators that haven't been observed to be
-    /// malicious, as seen by the current panorama.
-    /// Returns `None` if there are no correct validators in the panorama.
-    pub(crate) fn median_round_exp(&self) -> Option<u8> {
-        weighted_median(
-            self.panorama
-                .iter_correct(self)
-                .map(|unit| (unit.round_exp, self.weight(unit.creator))),
-        )
     }
 
     /// Returns `true` if the state contains no units.
