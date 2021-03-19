@@ -425,7 +425,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
-    /// Avoids multiplate validation of the same vertex.
+    /// Avoids multiple validation of the same vertex.
     fn pre_validate_vertex(
         &mut self,
         v: Vertex<C>,
