@@ -11,6 +11,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "activate-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-bid"
 version = "0.1.0"
 dependencies = [
@@ -634,7 +642,7 @@ checksum = "631ae5198c9be5e753e5cc215e1bd73c2b466a3565173db433f52bb9d3e66dba"
 
 [[package]]
 name = "cargo-casper"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -646,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "casper-client"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -676,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -687,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "casper-contract",
  "casper-execution-engine",
@@ -728,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -772,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "ansi_term 0.12.1",
  "anyhow",
@@ -868,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node-macros"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -879,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "base16",
  "base64 0.13.0",

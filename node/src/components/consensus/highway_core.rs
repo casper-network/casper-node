@@ -27,6 +27,8 @@
 //! or with some other governance system that can add and remove validators, by starting a new
 //! protocol instance whenever the set of validators changes.
 
+#![warn(clippy::integer_arithmetic)]
+
 // This needs to come before the other modules, so the macros are available everywhere.
 #[cfg(test)]
 #[macro_use]

@@ -33,7 +33,7 @@ use casper_types::{
         auction::{
             self, Bids, DelegationRate, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
             ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_ACTIVATE_BID,
+            ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -42,6 +42,7 @@ use casper_types::{
 const ARG_TARGET: &str = "target";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
+const CONTRACT_ACTIVATE_BID: &str = "activate_bid.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
@@ -1752,11 +1753,10 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 #[test]
 fn should_handle_evictions() {
     let activate_bid = |builder: &mut InMemoryWasmTestBuilder, validator_public_key: PublicKey| {
-        let auction = builder.get_auction_contract_hash();
-        let run_request = ExecuteRequestBuilder::contract_call_by_hash(
+        const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
+        let run_request = ExecuteRequestBuilder::standard(
             AccountHash::from(&validator_public_key),
-            auction,
-            METHOD_ACTIVATE_BID,
+            CONTRACT_ACTIVATE_BID,
             runtime_args! {
                 ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
             },

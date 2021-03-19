@@ -143,15 +143,21 @@ function _set_binaries()
         fi
     done
 
-    # Set client binaries.
+    # Set client binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         cp "$NCTL_CASPER_HOME"/target/debug/casper-client "$PATH_TO_NET"/bin
     else
         cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_NET"/bin
     fi
-	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
+
+    # Set client contracts.
+	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
 	do
-        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_NET"/bin
+        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_NET"/bin/auction
+	done  
+	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
+	do
+        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_NET"/bin/transfers
 	done  
 }
 
@@ -216,6 +222,9 @@ function _set_directories()
     PATH_TO_NET="$(get_path_to_net)"
 
     mkdir "$PATH_TO_NET"/bin 
+    mkdir "$PATH_TO_NET"/bin/auction
+    mkdir "$PATH_TO_NET"/bin/eco
+    mkdir "$PATH_TO_NET"/bin/transfers
     mkdir "$PATH_TO_NET"/chainspec
     mkdir "$PATH_TO_NET"/daemon
     mkdir "$PATH_TO_NET"/daemon/config
