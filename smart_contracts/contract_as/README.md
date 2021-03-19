@@ -1,4 +1,4 @@
-# @casper/contract
+# casper-contract
 
 This package allows a distributed app developer to create smart contracts
 for the open source [Casper](https://github.com/CasperLabs/casper-node) project using [AssemblyScript](https://www.npmjs.com/package/assemblyscript).
@@ -19,7 +19,7 @@ Then install assembly script and this package in the project directory.
 
 ```
 npm install --save-dev assemblyscript@0.9.1
-npm install --save @casper/contract
+npm install --save casper-contract
 ```
 
 ## Usage
@@ -73,7 +73,7 @@ You can use the following sample snippet which demonstrates a very simple smart 
 
 ```typescript
 //@ts-nocheck
-import {Error, ErrorCode} from "@casper/contract/error";
+import {Error, ErrorCode} from "casper-contract/error";
 
 // simplest possible feedback loop
 export function call(): void {
