@@ -9,9 +9,9 @@ mod memory_metrics;
 mod tests;
 
 use std::{
-    cmp, env,
+    env,
     fmt::{self, Debug, Display, Formatter},
-    str::FromStr,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -30,7 +30,7 @@ use crate::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraSupervisor},
+        consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -61,8 +61,8 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, Deploy, ExitCode, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
-    utils::Source,
+    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag},
+    utils::{Source, WithDir},
     NodeRng,
 };
 pub use config::Config;
@@ -307,11 +307,11 @@ impl Display for Event {
 
 /// The configuration needed to initialize a Validator reactor
 pub struct ValidatorInitConfig {
+    pub(super) root: PathBuf,
     pub(super) config: Config,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
-    pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
@@ -320,10 +320,6 @@ pub struct ValidatorInitConfig {
 
 #[cfg(test)]
 impl ValidatorInitConfig {
-    /// Inspect consensus.
-    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
-        &self.consensus
-    }
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
@@ -391,14 +387,14 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
+            root,
             config,
             chainspec_loader,
             storage,
             contract_runtime,
-            mut consensus,
             latest_block,
             event_stream_server,
             small_network_identity,
@@ -464,7 +460,32 @@ impl reactor::Reactor for Reactor {
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
         )?;
+
+        let initial_era = latest_block.as_ref().map_or_else(
+            || chainspec_loader.initial_era(),
+            |block| block.header().next_block_era_id(),
+        );
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
+
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
+        let (consensus, init_consensus_effects) = EraSupervisor::new(
+            initial_era,
+            WithDir::new(root, config.consensus),
+            effect_builder,
+            chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
+            latest_block.as_ref().map(Block::header),
+            maybe_next_activation_point,
+            registry,
+            Box::new(HighwayProtocol::new_boxed),
+        )?;
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            init_consensus_effects,
+        ));
+
         let block_executor = BlockExecutor::new(
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
@@ -473,46 +494,21 @@ impl reactor::Reactor for Reactor {
         )
         .with_parent_map(latest_block);
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
-        let linear_chain = LinearChain::new(registry)?;
+        let linear_chain = linear_chain::LinearChain::new(
+            &registry,
+            chainspec_loader.initial_state_root_hash(),
+            protocol_version.clone(),
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .activation_point
+                .era_id(),
+        )?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
             small_network_effects,
-        ));
-        // This is a workaround for dropping the Era Supervisor's timer event when transitioning
-        // from the joiner.
-        // TODO: Remove this once the consensus component is removed from the Joiner reactor.
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            consensus.recreate_timers(effect_builder, rng),
-        ));
-
-        // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
-        let now = Timestamp::now();
-        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
-        let later_timestamp = cmp::max(
-            now,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .unwrap_or_else(Timestamp::zero),
-        );
-        let timer_duration = later_timestamp + five_minutes - now;
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            effect_builder
-                .set_timeout(timer_duration.into())
-                .event(|_| consensus::Event::Shutdown),
-        ));
-
-        effects.extend(reactor::wrap_effects(
-            Event::Consensus,
-            effect_builder
-                .immediately()
-                .event(move |_| consensus::Event::FinishedJoining(now)),
         ));
 
         Ok((
@@ -762,6 +758,86 @@ impl reactor::Reactor for Reactor {
                             warn!("received get request for gossiped-address from {}", sender);
                             return Effects::new();
                         }
+                        Tag::BlockHeaderByHash => {
+                            let block_hash: BlockHash = match bincode::deserialize(&serialized_id) {
+                                Ok(block_hash) => block_hash,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+
+                            match self.storage.read_block_header_by_hash(&block_hash) {
+                                Ok(Some(block_header)) => {
+                                    match Message::new_get_response(&block_header) {
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                    };
+                                }
+                                Ok(None) => {
+                                    debug!("failed to get {} for {}", block_hash, sender);
+                                    return Effects::new();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to get {} for {}: {}",
+                                        block_hash, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            }
+                        }
+                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                            let block_height = match bincode::deserialize(&serialized_id) {
+                                Ok(block_height) => block_height,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            match self
+                                .storage
+                                .read_block_header_and_finality_signatures_by_height(block_height)
+                            {
+                                Ok(Some(block_header)) => {
+                                    match Message::new_get_response(&block_header) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                Ok(None) => {
+                                    debug!("failed to get {} for {}", block_height, sender);
+                                    return Effects::new();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to get {} for {}: {}",
+                                        block_height, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            }
+                        }
                     },
                     Message::GetResponse {
                         tag,
@@ -781,10 +857,40 @@ impl reactor::Reactor for Reactor {
                                 responder: None,
                             })
                         }
-                        Tag::Block => todo!("Handle GET block response"),
-                        Tag::BlockByHeight => todo!("Handle GET BlockByHeight response"),
+                        Tag::Block => {
+                            error!(
+                                "cannot handle get response for block-by-hash from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockByHeight => {
+                            error!(
+                                "cannot handle get response for block-by-height from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
                         Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
+                            error!(
+                                "cannot handle get response for gossiped-address from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockHeaderByHash => {
+                            error!(
+                                "cannot handle get response for block-header-by-hash from {}",
+                                sender
+                            );
+                            return Effects::new();
+                        }
+                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                            error!(
+                                "cannot handle get response for \
+                                 block-header-and-finality-signatures-by-height from {}",
+                                sender
+                            );
                             return Effects::new();
                         }
                     },
@@ -874,10 +980,11 @@ impl reactor::Reactor for Reactor {
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
-                    ConsensusAnnouncement::Handled(_) => {
-                        debug!("Ignoring `Handled` announcement in `validator` reactor.");
-                        Effects::new()
-                    }
+                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs)),
+                    ),
                     ConsensusAnnouncement::Fault {
                         era_id,
                         public_key,
@@ -929,6 +1036,12 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
+            Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::BlockAlreadyExecuted(
+                _,
+            )) => {
+                debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
+                Effects::new()
+            }
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
             }
@@ -940,13 +1053,12 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let block_hash = *block.hash();
                 let reactor_event =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded {
-                        block_hash,
-                        block,
-                    });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+                let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =

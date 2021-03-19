@@ -2,21 +2,25 @@
 
 use std::{borrow::Cow, collections::HashMap};
 
+use lmdb::Transaction;
 use rand::{prelude::SliceRandom, Rng};
+use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{
-    components::consensus::EraId,
+    components::{consensus::EraId, storage::lmdb_ext::WriteTransactionExt},
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
     },
     testing::{ComponentHarness, TestRng, UnitTestEvent},
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
+    types::{
+        Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata, FinalitySignature,
+    },
     utils::WithDir,
 };
 
@@ -42,8 +46,12 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg), None)
-        .expect("could not create storage component fixture")
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        None,
+        Version::new(1, 0, 0),
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Storage component test fixture.
@@ -58,8 +66,12 @@ fn storage_fixture_with_hard_reset(
     reset_era_id: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg), Some(reset_era_id))
-        .expect("could not create storage component fixture")
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        Some(reset_era_id),
+        Version::new(1, 1, 0),
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Creates a random block with a specific block height.
@@ -273,6 +285,95 @@ fn can_put_and_get_block() {
     });
 
     assert_eq!(response.as_ref(), Some(block.header()));
+}
+
+#[test]
+fn test_get_block_header_and_finality_signatures_by_height() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Create a random block, store and load it.
+    let block = Block::random(&mut harness.rng);
+    let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
+
+    {
+        let alice_secret_key = SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]);
+        let FinalitySignature {
+            public_key,
+            signature,
+            ..
+        } = FinalitySignature::new(
+            block.header().hash(),
+            block.header().era_id(),
+            &alice_secret_key,
+            PublicKey::from(&alice_secret_key),
+        );
+        block_signatures.insert_proof(public_key, signature);
+    }
+
+    {
+        let bob_secret_key = SecretKey::ed25519([2; SecretKey::ED25519_LENGTH]);
+        let FinalitySignature {
+            public_key,
+            signature,
+            ..
+        } = FinalitySignature::new(
+            block.header().hash(),
+            block.header().era_id(),
+            &bob_secret_key,
+            PublicKey::from(&bob_secret_key),
+        );
+        block_signatures.insert_proof(public_key, signature);
+    }
+
+    let was_new = put_block(&mut harness, &mut storage, Box::new(block.clone()));
+    assert!(was_new, "putting block should have returned `true`");
+
+    let mut txn = storage
+        .env
+        .begin_rw_txn()
+        .expect("Could not start transaction");
+    let was_new = txn
+        .put_value(
+            storage.block_metadata_db,
+            &block.hash(),
+            &block_signatures,
+            true,
+        )
+        .expect("should put value into LMDB");
+    assert!(
+        was_new,
+        "putting block signatures should have returned `true`"
+    );
+    txn.commit().expect("Could not commit transaction");
+
+    {
+        let block_header = storage
+            .read_block_header_by_hash(block.hash())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_header,
+            block.header().clone(),
+            "Should have retrieved expected block header"
+        );
+    }
+
+    {
+        let block_header_with_metadata = storage
+            .read_block_header_and_finality_signatures_by_height(block.header().height())
+            .expect("should not throw exception")
+            .expect("should not be None");
+        assert_eq!(
+            block_header_with_metadata.block_header,
+            block.header().clone(),
+            "Should have retrieved expected block header"
+        );
+        assert_eq!(
+            block_header_with_metadata.block_signatures, block_signatures,
+            "Should have retrieved expected block signatures"
+        );
+    }
 }
 
 #[test]

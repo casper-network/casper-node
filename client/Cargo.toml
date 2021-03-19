@@ -41,7 +41,7 @@ thiserror = "1.0.20"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
 
 [build-dependencies]
-cbindgen = { version = "0.15", optional = true }
+cbindgen = { version = "0.18", optional = true }
 
 [features]
 default = ["ffi"]

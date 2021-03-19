@@ -3,7 +3,7 @@ use alloc::{collections::BTreeSet, vec::Vec};
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
+    system::auction::{Bid, EraId, EraInfo, Error, SeigniorageRecipients, UnbondingPurse},
     CLTyped, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
@@ -44,6 +44,19 @@ pub trait StorageProvider {
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
+    ) -> Result<(), Error>;
+
+    /// Reads collection of [`SeignorageRecipients`]s
+    fn read_era_validators(
+        &mut self,
+        era_id: EraId,
+    ) -> Result<Option<SeigniorageRecipients>, Error>;
+
+    /// Writes given EraValidators for a given EraId.
+    fn write_era_validators(
+        &mut self,
+        era_id: EraId,
+        recipients: SeigniorageRecipients,
     ) -> Result<(), Error>;
 }
 

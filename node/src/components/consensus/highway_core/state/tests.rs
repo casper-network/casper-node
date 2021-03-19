@@ -1,4 +1,5 @@
 #![allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
+#![allow(clippy::integer_arithmetic)] // Overflows in tests would panic anyway.
 
 use std::{
     collections::{hash_map::DefaultHasher, BTreeSet},
@@ -839,10 +840,14 @@ fn retain_evidence_only() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn test_log2() {
+    assert_eq!(0, log2(0));
     assert_eq!(2, log2(0b100));
     assert_eq!(2, log2(0b101));
     assert_eq!(2, log2(0b111));
     assert_eq!(3, log2(0b1000));
+    assert_eq!(63, log2(u64::MAX));
+    assert_eq!(63, log2(1 << 63));
+    assert_eq!(62, log2((1 << 63) - 1));
 }
 
 #[test]

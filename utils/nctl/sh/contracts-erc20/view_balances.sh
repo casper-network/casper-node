@@ -56,7 +56,7 @@ function main()
         USER_ACCOUNT_BALANCE_KEY="_balances_$USER_ACCOUNT_HASH"
 
         # Set user account balance (hits node api).
-        USER_ACCOUNT_BALANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" $USER_ACCOUNT_BALANCE_KEY)
+        USER_ACCOUNT_BALANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" "$USER_ACCOUNT_BALANCE_KEY")
 
         log "... ... user $USER_ID = $USER_ACCOUNT_BALANCE"
     done

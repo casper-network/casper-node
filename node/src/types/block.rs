@@ -729,6 +729,16 @@ impl BlockHeader {
         self.era_id
     }
 
+    /// Returns the era ID in which the next block would be created (that is, this block's era ID,
+    /// or its successor if this is a switch block).
+    pub fn next_block_era_id(&self) -> EraId {
+        if self.era_end.is_some() {
+            self.era_id.successor()
+        } else {
+            self.era_id
+        }
+    }
+
     /// Returns the height of this block, i.e. the number of ancestors.
     pub fn height(&self) -> u64 {
         self.height
@@ -852,6 +862,18 @@ impl FromBytes for BlockHeader {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlockHeaderWithMetadata {
+    pub block_header: BlockHeader,
+    pub block_signatures: BlockSignatures,
+}
+
+impl Display for BlockHeaderWithMetadata {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} and {}", self.block_header, self.block_signatures)
+    }
+}
+
 /// The body portion of a block.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
@@ -971,7 +993,7 @@ impl From<bytesrepr::Error> for BlockValidationError {
 }
 
 /// A storage representation of finality signatures with the associated block hash.
-#[derive(Debug, Serialize, Deserialize, Clone, DataSize)]
+#[derive(Debug, Serialize, Deserialize, Clone, DataSize, PartialEq)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
     pub(crate) block_hash: BlockHash,
