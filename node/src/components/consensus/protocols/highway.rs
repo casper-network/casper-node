@@ -237,7 +237,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         match effect {
             AvEffect::NewVertex(vv) => {
                 self.calculate_round_exponent(&vv, now);
-                self.process_new_vertex(vv.into())
+                self.process_new_vertex(vv)
             }
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ProtocolOutcome::ScheduleTimer(
@@ -262,18 +262,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         }
     }
 
-    fn process_new_vertex(&mut self, v: Vertex<C>) -> ProtocolOutcomes<I, C> {
+    fn process_new_vertex(&mut self, vv: ValidVertex<C>) -> ProtocolOutcomes<I, C> {
         let mut outcomes = Vec::new();
-        if let Vertex::Evidence(ev) = &v {
+        if let Vertex::Evidence(ev) = vv.inner() {
             let v_id = self
                 .highway
                 .validators()
                 .id(ev.perpetrator())
-                .expect("validator not found")
+                .expect("validator not found") // We already validated this vertex.
                 .clone();
             outcomes.push(ProtocolOutcome::NewEvidence(v_id));
         }
-        let msg = HighwayMessage::NewVertex(v);
+        let msg = HighwayMessage::NewVertex(vv.into());
         outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
         outcomes.extend(self.detect_finality());
         outcomes

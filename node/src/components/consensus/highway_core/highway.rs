@@ -191,14 +191,17 @@ impl<C: Context> Highway<C> {
         unit_hash_file: Option<PathBuf>,
         target_ftt: Weight,
     ) -> Vec<Effect<C>> {
-        assert!(
-            self.active_validator.is_none(),
-            "activate_validator called twice"
-        );
-        let idx = self
-            .validators
-            .get_index(&id)
-            .expect("missing own validator ID");
+        if self.active_validator.is_some() {
+            error!(?id, "activate_validator called twice");
+            return vec![];
+        }
+        let idx = match self.validators.get_index(&id) {
+            Some(idx) => idx,
+            None => {
+                error!(?id, "missing own validator ID");
+                return vec![];
+            }
+        };
         let start_time = current_time.max(self.state.params().start_timestamp());
         let (av, effects) = ActiveValidator::new(
             idx,
