@@ -365,16 +365,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // register the proposal before the meter is aware that a new round has started, and it
         // will reject the proposal.
         if vv.is_proposal() {
-            // unwraps are safe, as if value is `Some`, this is already a unit
-            trace!(
-                %now,
-                timestamp = vv.inner().timestamp().unwrap().millis(),
-                "adding proposal to protocol state",
-            );
-            self.round_success_meter.new_proposal(
-                vv.inner().unit_hash().unwrap(),
-                vv.inner().timestamp().unwrap(),
-            );
+            let vertex = vv.inner();
+            if let (Some(hash), Some(timestamp)) = (vertex.unit_hash(), vertex.timestamp()) {
+                trace!(%now, timestamp = timestamp.millis(), "adding proposal to protocol state");
+                self.round_success_meter.new_proposal(hash, timestamp);
+            } else {
+                error!(?vertex, "proposal without unit hash and timestamp");
+            }
         }
         self.highway.set_round_exp(new_round_exp);
     }

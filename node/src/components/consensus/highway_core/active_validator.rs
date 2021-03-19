@@ -653,6 +653,7 @@ pub(crate) fn write_last_unit<C: Context>(
 }
 
 #[cfg(test)]
+#[allow(clippy::integer_arithmetic)] // Overflows in tests panic anyway.
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
     use tempfile::tempdir;
@@ -710,7 +711,7 @@ mod tests {
             let earliest_round_start = if start_time == current_round_id {
                 start_time
             } else {
-                current_round_id + (1 << state.params().init_round_exp()).into()
+                current_round_id + state::round_len(state.params().init_round_exp())
             };
             let target_ftt = state.total_weight() / 3;
             let active_validators = validators
