@@ -3,59 +3,62 @@
 version = '1.0.0'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = false
-
-[protocol.activation_point]
-# This protocol version becomes active at the start of this era.
-era_id = 0
+# This protocol version becomes active at this point.
+#
+# If it is a timestamp string, it represents the timestamp for the genesis block.  This is the beginning of era 0.  By
+# this time, a sufficient majority (> 50% + F/2 — see finality_threshold_fraction below) of validator nodes must be up
+# and running to start the blockchain.  This timestamp is also used in seeding the pseudo-random number generator used
+# in contract-runtime for computing genesis post-state hash.
+#
+# If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
+activation_point = '2021-03-15T17:00:00Z'
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casper-delta'
-# Timestamp for the genesis block.  This is the beginning of era 0. By this time, a sufficient majority (> 50% + F/2 —
-# see finality_threshold_percent below) of validator nodes must be up and running to start the blockchain.  This
-# timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
-# post-state hash.
-timestamp = '2020-12-29T20:00:00Z'
+name = 'delta-11'
 
 [core]
 # Era duration.
-era_duration = '30minutes'
+era_duration = '120minutes'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
-minimum_era_height = 10
+minimum_era_height = 20
 # Number of slots available in validator auction.
-validator_slots = 75
+validator_slots = 100
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
-auction_delay = 3
+auction_delay = 1
 # The period after genesis during which a genesis validator's bid is locked.
 locked_funds_period = '90days'
 # Default number of eras that need to pass to be able to withdraw unbonded funds.
-unbonding_delay = 14
+unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
-# Annual issuance: 2%
-# Minimum round exponent: 16
+# Annual issuance: 6%
+# Minimum round exponent: 14
 # Ticks per year: 31536000000
 #
-# (1+0.02)^((2^16)/31536000000)-1 is expressed as a fractional number below.
-round_seigniorage_rate = [185_334_351, 4_503_599_627_370_496]
+# (1+0.06)^((2^14)/31536000000)-1 is expressed as a fractional number below
+# Python:
+# from fractions import Fraction
+# Fraction((1 + 0.06)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [15, 495497012]
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
 # It is the fraction of validators that would need to equivocate to make two honest nodes see two conflicting blocks as
 # finalized: A higher value F makes it safer to rely on finalized blocks.  It also makes it more difficult to finalize
 # blocks, however, and requires strictly more than (F + 1)/2 validators to be working correctly.
-finality_threshold_fraction = [1, 10]
+finality_threshold_fraction = [1, 3]
 # Integer between 0 and 255.  The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child.  E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
-minimum_round_exponent = 16
+minimum_round_exponent = 14
 # Integer between 0 and 255.  Must be greater than `minimum_round_exponent`.  The power of two that is the number of
 # milliseconds in the maximum round length, and therefore the maximum delay between a block and its child.  E.g. 19
 # means 2^19 milliseconds, i.e. about 8.7 minutes.
-maximum_round_exponent = 19
+maximum_round_exponent = 18
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
@@ -114,7 +117,7 @@ global = 390
 # Control flow operations multiplier.
 control_flow = 440
 # Integer operations multiplier.
-integer_comparsion = 250
+integer_comparison = 250
 # Conversion operations multiplier.
 conversion = 420
 # Unreachable operation multiplier.

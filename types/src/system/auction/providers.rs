@@ -1,9 +1,9 @@
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, vec::Vec};
 
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::{Bid, EraId, EraInfo, Error},
+    system::auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
     CLTyped, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
@@ -35,6 +35,16 @@ pub trait StorageProvider {
 
     /// Writes given [`Bid`] at account hash derived from given public key
     fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error>;
+
+    /// Reads collection of [`UnbondingPurse`]s at account hash derived from given public key
+    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
+
+    /// Writes given [`UnbondingPurse`]s at account hash derived from given public key
+    fn write_withdraw(
+        &mut self,
+        account_hash: AccountHash,
+        unbonding_purses: Vec<UnbondingPurse>,
+    ) -> Result<(), Error>;
 }
 
 /// Provides functionality of a system module.

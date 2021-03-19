@@ -773,7 +773,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         local: 0,
         global: 0,
         control_flow: 0,
-        integer_comparsion: 0,
+        integer_comparison: 0,
         conversion: 0,
         unreachable: 0,
         nop: 0,

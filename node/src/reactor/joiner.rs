@@ -13,10 +13,9 @@ use datasize::DataSize;
 use derive_more::From;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
+use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
-
-use casper_types::{PublicKey, U512};
 
 #[cfg(not(feature = "fast-sync"))]
 use crate::components::linear_chain_sync::{self, LinearChainSync};
@@ -50,8 +49,8 @@ use crate::{
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            NetworkAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
@@ -73,6 +72,7 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -195,6 +195,10 @@ pub enum Event {
     StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
 
     // Announcements
+    /// A control announcement.
+    #[from]
+    ControlAnnouncement(ControlAnnouncement),
+
     /// Network announcement.
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
@@ -222,6 +226,16 @@ pub enum Event {
     /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+}
+
+impl ReactorEvent for Event {
+    fn as_control(&self) -> Option<&ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {
@@ -323,6 +337,7 @@ impl Display for Event {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            Event::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
@@ -335,34 +350,34 @@ impl Display for Event {
 /// Joining node reactor.
 #[derive(DataSize)]
 pub struct Reactor {
-    pub(super) metrics: Metrics,
-    pub(super) network: Network<Event, Message>,
-    pub(super) small_network: SmallNetwork<Event, Message>,
-    pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
-    pub(super) config: validator::Config,
-    pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Storage,
-    pub(super) contract_runtime: ContractRuntime,
-    pub(super) linear_chain_fetcher: Fetcher<Block>,
-    pub(super) linear_chain_sync: LinearChainSync<NodeId>,
-    pub(super) block_validator: BlockValidator<Block, NodeId>,
-    pub(super) deploy_fetcher: Fetcher<Deploy>,
-    pub(super) block_executor: BlockExecutor,
-    pub(super) linear_chain: linear_chain::LinearChain<NodeId>,
-    pub(super) consensus: EraSupervisor<NodeId>,
+    metrics: Metrics,
+    network: Network<Event, Message>,
+    small_network: SmallNetwork<Event, Message>,
+    address_gossiper: Gossiper<GossipedAddress, Event>,
+    config: validator::Config,
+    chainspec_loader: ChainspecLoader,
+    storage: Storage,
+    contract_runtime: ContractRuntime,
+    linear_chain_fetcher: Fetcher<Block>,
+    linear_chain_sync: LinearChainSync<NodeId>,
+    block_validator: BlockValidator<Block, NodeId>,
+    deploy_fetcher: Fetcher<Deploy>,
+    block_executor: BlockExecutor,
+    linear_chain: linear_chain::LinearChain<NodeId>,
+    consensus: EraSupervisor<NodeId>,
     // Handles request for linear chain block by height.
-    pub(super) block_by_height_fetcher: Fetcher<BlockByHeight>,
+    block_by_height_fetcher: Fetcher<BlockByHeight>,
     #[data_size(skip)]
-    pub(super) deploy_acceptor: DeployAcceptor,
+    deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
     #[data_size(skip)]
-    pub(super) rest_server: RestServer,
+    rest_server: RestServer,
     #[data_size(skip)]
-    pub(super) event_stream_server: EventStreamServer,
+    event_stream_server: EventStreamServer,
     // Attach memory metrics for the joiner.
     #[data_size(skip)] // Never allocates data on the heap.
-    pub(super) memory_metrics: MemoryMetrics,
+    memory_metrics: MemoryMetrics,
 }
 
 impl reactor::Reactor for Reactor {
@@ -440,15 +455,21 @@ impl reactor::Reactor for Reactor {
             None => {
                 let chainspec = chainspec_loader.chainspec();
                 let era_duration = chainspec.core_config.era_duration;
-                if Timestamp::now() > chainspec.network_config.timestamp + era_duration {
-                    error!(
-                        "Node started with no trusted hash after the expected end of \
-                         the genesis era! Please specify a trusted hash and restart. \
-                         Time: {}, End of genesis era: {}",
-                        Timestamp::now(),
-                        chainspec.network_config.timestamp + era_duration
-                    );
-                    panic!("should have trusted hash after genesis era")
+                if let Some(start_time) = chainspec
+                    .protocol_config
+                    .activation_point
+                    .genesis_timestamp()
+                {
+                    if Timestamp::now() > start_time + era_duration {
+                        error!(
+                            "Node started with no trusted hash after the expected end of \
+                             the genesis era! Please specify a trusted hash and restart. \
+                             Time: {}, End of genesis era: {}",
+                            Timestamp::now(),
+                            start_time + era_duration
+                        );
+                        panic!("should have trusted hash after genesis era")
+                    }
                 }
                 info!("No synchronization of the linear chain will be done.")
             }
@@ -490,30 +511,35 @@ impl reactor::Reactor for Reactor {
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
-
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
-        let linear_chain_sync = LinearChainSync::new::<Error>(
+        let (linear_chain_sync, init_sync_effects) = LinearChainSync::new::<Event, Error>(
             registry,
+            effect_builder,
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
             chainspec_loader.initial_block_header().cloned(),
-            validator_weights.clone(),
+            validator_weights,
             maybe_next_activation_point,
         )?;
 
+        effects.extend(reactor::wrap_effects(
+            Event::LinearChainSync,
+            init_sync_effects,
+        ));
+
         // Used to decide whether era should be activated.
-        let timestamp = Timestamp::now();
+        let now = Timestamp::now();
 
         let (consensus, init_consensus_effects) = EraSupervisor::new(
-            timestamp,
+            now,
             chainspec_loader.initial_era(),
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
-            validator_weights,
             chainspec_loader.chainspec().as_ref().into(),
+            chainspec_loader.initial_state_root_hash(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
@@ -566,6 +592,9 @@ impl reactor::Reactor for Reactor {
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
             ),
+            Event::ControlAnnouncement(ctrl_ann) => {
+                unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => reactor::wrap_effects(
                 Event::LinearChainSync,
                 self.linear_chain_sync.handle_event(
@@ -577,7 +606,7 @@ impl reactor::Reactor for Reactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Client,
+                    source: Source::<NodeId>::Ourself,
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
@@ -840,17 +869,17 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
-            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
-                block_hash,
-                block,
-            }) => reactor::wrap_effects(
-                Event::EventStreamServer,
-                self.event_stream_server.handle_event(
-                    effect_builder,
-                    rng,
-                    event_stream_server::Event::BlockAdded { block_hash, block },
-                ),
-            ),
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                let block_hash = *block.hash();
+                reactor::wrap_effects(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::BlockAdded { block_hash, block },
+                    ),
+                )
+            }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
                 let reactor_event =
                     Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));

@@ -75,6 +75,48 @@ function get_cl_arg_string()
 }
 
 #######################################
+# Returns a formatted session argument (cl type=u8).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u8()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U8"
+}
+
+#######################################
+# Returns a formatted session argument (cl type=u16).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u16()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U16"
+}
+
+#######################################
+# Returns a formatted session argument (cl type=u32).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u32()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U32"
+}
+
+#######################################
 # Returns a formatted session argument (cl type=u64).
 # Arguments:
 #   Argument name.
@@ -86,6 +128,20 @@ function get_cl_arg_u64()
     local ARG_VALUE=${2}
 
     get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U64"
+}
+
+#######################################
+# Returns a formatted session argument (cl type=u128).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u128()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U128"
 }
 
 #######################################

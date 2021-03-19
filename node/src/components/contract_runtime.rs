@@ -25,7 +25,7 @@ use casper_execution_engine::{
         genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
         GetEraValidatorsRequest,
     },
-    shared::newtypes::CorrelationId,
+    shared::newtypes::{Blake2bHash, CorrelationId},
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
@@ -547,7 +547,7 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let result = engine_state.missing_trie_keys(correlation_id, trie_key);
+                        let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
                         metrics.read_trie.observe(start.elapsed().as_secs_f64());
                         result
                     })
@@ -627,5 +627,17 @@ impl ContractRuntime {
             protocol_version,
             &ee_config,
         )
+    }
+
+    /// Retrieve trie keys for the integrity check.
+    pub fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
+        let correlation_id = CorrelationId::new();
+        match self
+            .engine_state
+            .missing_trie_keys(correlation_id, trie_keys)
+        {
+            Ok(keys) => keys,
+            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
+        }
     }
 }

@@ -178,7 +178,7 @@ impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
     fn gen_range_vec(&self, rng: &mut NodeRng, lower: u64, upper: u64, count: u8) -> Vec<u64> {
         match self {
-            Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
+            Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower..upper)).collect(),
         }
     }
 }
@@ -224,12 +224,7 @@ impl HighwayValidator {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
-    fn post_hook(
-        &mut self,
-        rng: &mut NodeRng,
-        delivery_time: Timestamp,
-        msg: HighwayMessage,
-    ) -> Vec<HighwayMessage> {
+    fn post_hook(&mut self, delivery_time: Timestamp, msg: HighwayMessage) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             Some(DesFault::TemporarilyMute { from, till })
                 if *from <= delivery_time && delivery_time <= *till =>
@@ -273,7 +268,7 @@ impl HighwayValidator {
                                 }
                                 let secret = TestSecret(wunit2.creator.0.into());
                                 let hwunit2 = wunit2.into_hashed();
-                                let swunit2 = SignedWireUnit::new(hwunit2, &secret, rng);
+                                let swunit2 = SignedWireUnit::new(hwunit2, &secret);
                                 let vertex2 = Box::new(Vertex::Unit(swunit2));
                                 vec![msg, HighwayMessage::NewVertex(vertex2)]
                             }
@@ -392,24 +387,21 @@ where
 
     fn call_validator<F>(
         &mut self,
-        rng: &mut NodeRng,
         delivery_time: Timestamp,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator, &mut NodeRng) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
-        let res = f(validator_node.validator_mut(), rng);
+        let res = f(validator_node.validator_mut());
         let messages = res
             .into_iter()
             .flat_map(|eff| {
-                validator_node.validator_mut().post_hook(
-                    rng,
-                    delivery_time,
-                    HighwayMessage::from(eff),
-                )
+                validator_node
+                    .validator_mut()
+                    .post_hook(delivery_time, HighwayMessage::from(eff))
             })
             .collect();
         Ok(messages)
@@ -435,8 +427,8 @@ where
 
             match hwm {
                 HighwayMessage::Timer(timestamp) => {
-                    self.call_validator(rng, delivery_time, &validator_id, |consensus, rng| {
-                        consensus.highway_mut().handle_timer(timestamp, rng)
+                    self.call_validator(delivery_time, &validator_id, |consensus| {
+                        consensus.highway_mut().handle_timer(timestamp)
                     })?
                 }
                 HighwayMessage::NewVertex(v) => {
@@ -465,10 +457,10 @@ where
                 HighwayMessage::RequestBlock(block_context) => {
                     let consensus_value = self.next_consensus_value(block_context.height());
 
-                    self.call_validator(rng, delivery_time, &validator_id, |consensus, rng| {
+                    self.call_validator(delivery_time, &validator_id, |consensus| {
                         consensus
                             .highway_mut()
-                            .propose(consensus_value, block_context, rng)
+                            .propose(consensus_value, block_context)
                     })?
                 }
                 HighwayMessage::WeAreFaulty(_evidence) => vec![],
@@ -561,9 +553,9 @@ where
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
                         Ok(valid_vertex) => {
-                            self.call_validator(rng, delivery_time, &recipient, |v, rng| {
+                            self.call_validator(delivery_time, &recipient, |v| {
                                 v.highway_mut()
-                                    .add_valid_vertex(valid_vertex, rng, delivery_time)
+                                    .add_valid_vertex(valid_vertex, delivery_time)
                             })?
                         }
                     }
@@ -857,7 +849,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         let (faulty_weights, honest_weights): (Vec<Weight>, Vec<Weight>) = {
             if self.faulty_percent == 0 {
                 // All validators are honest.
-                let validators_num = rng.gen_range(2, self.max_faulty_validators + 1);
+                let validators_num = rng.gen_range(2..self.max_faulty_validators + 1);
                 let honest_validators: Vec<Weight> = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, validators_num)
@@ -868,7 +860,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 (vec![], honest_validators)
             } else {
                 // At least 2 validators total and at least one faulty.
-                let faulty_num = rng.gen_range(1, self.max_faulty_validators + 1);
+                let faulty_num = rng.gen_range(1..self.max_faulty_validators + 1);
 
                 // Randomly (but within chosed range) assign weights to faulty nodes.
                 let faulty_weights = self
@@ -887,7 +879,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                         let weight = if weights_to_distribute < upper {
                             weights_to_distribute
                         } else {
-                            rng.gen_range(lower, upper)
+                            rng.gen_range(lower..upper)
                         };
                         weights.push(weight);
                         weights_to_distribute -= weight
@@ -1031,7 +1023,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }

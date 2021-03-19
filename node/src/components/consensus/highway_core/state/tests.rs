@@ -9,18 +9,13 @@ use datasize::DataSize;
 use rand::{Rng, RngCore};
 
 use super::*;
-use crate::{
-    components::consensus::{
-        highway_core::{
-            evidence::EvidenceError,
-            highway::Dependency,
-            highway_testing::{
-                TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
-            },
-        },
-        traits::{ConsensusValueT, ValidatorSecret},
+use crate::components::consensus::{
+    highway_core::{
+        evidence::EvidenceError,
+        highway::Dependency,
+        highway_testing::{TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID},
     },
-    NodeRng,
+    traits::{ConsensusValueT, ValidatorSecret},
 };
 
 pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -52,7 +47,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = u64;
     type Signature = u64;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash) -> Self::Signature {
         data + u64::from(self.0)
     }
 }
@@ -171,7 +166,6 @@ impl State<TestContext> {
 #[test]
 fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
 
     // Create units as follows; a0, b0 are blocks:
     //
@@ -180,11 +174,11 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     // Bob:   b0 —— b1
     //          \  /
     // Carol:    c0
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_unit!(state, rng, BOB, 49, 4u8, None; N, b0, c0)?;
-    let _a1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, BOB, 48, 4u8, 0xB; N, N, N)?;
+    let c0 = add_unit!(state, CAROL, 49, 4u8, None; N, b0, N)?;
+    let b1 = add_unit!(state, BOB, 49, 4u8, None; N, b0, c0)?;
+    let _a1 = add_unit!(state, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
     let mut wunit = WireUnit {
@@ -197,32 +191,30 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         round_exp: 4u8,
         endorsed: BTreeSet::new(),
     };
-    let unit = SignedWireUnit::new(wunit.clone().into_hashed(), &BOB_SEC, &mut rng);
+    let unit = SignedWireUnit::new(wunit.clone().into_hashed(), &BOB_SEC);
     let maybe_err = state.add_unit(unit).err().map(unit_err);
     assert_eq!(Some(UnitError::SequenceNumber), maybe_err);
     // Still not valid: This would be the third unit in the first round.
     wunit.seq_number = 2;
-    let unit = SignedWireUnit::new(wunit.into_hashed(), &BOB_SEC, &mut rng);
+    let unit = SignedWireUnit::new(wunit.into_hashed(), &BOB_SEC);
     let maybe_err = state.add_unit(unit).err().map(unit_err);
     assert_eq!(Some(UnitError::ThreeUnitsInRound), maybe_err);
 
     // Inconsistent panorama: If you see b1, you have to see c0, too.
-    let maybe_err = add_unit!(state, rng, CAROL, None; N, b1, N)
-        .err()
-        .map(unit_err);
+    let maybe_err = add_unit!(state, CAROL, None; N, b1, N).err().map(unit_err);
     assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), maybe_err);
     // And you can't make the round exponent too small
-    let maybe_err = add_unit!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
+    let maybe_err = add_unit!(state, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
         .map(unit_err);
     assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), maybe_err);
     // And you can't make the round exponent too big
-    let maybe_err = add_unit!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
+    let maybe_err = add_unit!(state, CAROL, 50, 40u8, None; N, b1, c0)
         .err()
         .map(unit_err);
     assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), maybe_err);
     // After the round from 48 to 64 has ended, the exponent can change.
-    let c1 = add_unit!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
+    let c1 = add_unit!(state, CAROL, 65, 5u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -231,7 +223,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(Some(Dependency::Unit(42)), missing);
 
     // Alice equivocates: ae1 doesn't see a1.
-    let ae1 = add_unit!(state, rng, ALICE, 0xAE1; a0, b1, c0)?;
+    let ae1 = add_unit!(state, ALICE, 0xAE1; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
     assert_eq!(panorama![F, b1, c1], *state.panorama());
 
@@ -241,7 +233,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(None, missing);
 
     // Bob can see the equivocation.
-    let b2 = add_unit!(state, rng, BOB, None; F, b1, c0)?;
+    let b2 = add_unit!(state, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
     assert_eq!(*state.panorama(), panorama!(F, b2, c1));
@@ -250,7 +242,6 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
-    let mut rng = crate::new_rng();
     let params = Params::new(
         0,
         TEST_BLOCK_REWARD,
@@ -268,13 +259,13 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
 
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.maybe_fault(ALICE));
-    let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    let err = unit_err(add_unit!(state, ALICE, 0xA; N, N, N).err().unwrap());
     assert_eq!(UnitError::Banned, err);
 
     state.mark_faulty(ALICE); // No change: Banned state is permanent.
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.maybe_fault(ALICE));
-    let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    let err = unit_err(add_unit!(state, ALICE, 0xA; N, N, N).err().unwrap());
     assert_eq!(UnitError::Banned, err);
 
     // Now we also received external evidence (i.e. not in this instance) that Bob is faulty.
@@ -283,18 +274,17 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(Some(&Fault::Indirect), state.maybe_fault(BOB));
 
     // However, we still accept messages from Bob, since he is not banned.
-    add_unit!(state, rng, BOB, 0xB; F, N, N)?;
+    add_unit!(state, BOB, 0xB; F, N, N)?;
     Ok(())
 }
 
 #[test]
 fn find_in_swimlane() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
     let mut a = vec![a0];
     for i in 1..10 {
-        let ai = add_unit!(state, rng, ALICE, None; a[i - 1], N, N)?;
+        let ai = add_unit!(state, ALICE, None; a[i - 1], N, N)?;
         a.push(ai);
     }
 
@@ -317,7 +307,6 @@ fn find_in_swimlane() -> Result<(), AddUnitError<TestContext>> {
 #[test]
 fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
 
     // Create blocks with scores as follows:
     //
@@ -326,13 +315,13 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
     // b0: 12           b2: 4
     //        \
     //          c0: 5 — c1: 5
-    let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
-    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
-    let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
-    let b1 = add_unit!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-    let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
-    let b2 = add_unit!(state, rng, BOB, 0xB2; a0, b1, N)?;
+    let b0 = add_unit!(state, BOB, 0xB0; N, N, N)?;
+    let c0 = add_unit!(state, CAROL, 0xC0; N, b0, N)?;
+    let c1 = add_unit!(state, CAROL, 0xC1; N, b0, c0)?;
+    let a0 = add_unit!(state, ALICE, 0xA0; N, b0, N)?;
+    let b1 = add_unit!(state, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+    let a1 = add_unit!(state, ALICE, 0xA1; a0, b1, c1)?;
+    let b2 = add_unit!(state, BOB, 0xB2; a0, b1, N)?;
 
     // Alice built `a1` on top of `a0`, which had already 7 points.
     assert_eq!(Some(&a0), state.block(&state.unit(&a1).block).parent());
@@ -345,7 +334,6 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
 #[test]
 fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
 
     // No equivocations – incoming vote doesn't violate LNC.
     // Create votes as follows; a0, b0 are blocks:
@@ -353,11 +341,11 @@ fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
     // Alice: a0 — a1
     //           /
     // Bob:   b0
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N)?;
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, BOB, 0xB; N, N, N)?;
 
     // a1 does not violate LNC
-    add_unit!(state, rng, ALICE, None; a0, b0, N)?;
+    add_unit!(state, ALICE, None; a0, b0, N)?;
     Ok(())
 }
 
@@ -374,12 +362,12 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
     //           \|
     // Carol:    c0
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N)?;
-    let _a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N)?;
+
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, BOB, 0xB; a0, N, N)?;
+    let _a0_prime = add_unit!(state, ALICE, 0xA2; N, N, N)?;
     // c0 does not violate LNC b/c it sees Alice as faulty.
-    add_unit!(state, rng, CAROL, None; F, b0, N)?;
+    add_unit!(state, CAROL, None; F, b0, N)?;
     Ok(())
 }
 
@@ -400,23 +388,21 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 
     let weights4 = &[Weight(3), Weight(4), Weight(5), Weight(5)];
     let mut state = State::new_test(weights4, 0);
-    let mut rng = crate::new_rng();
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
-    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 0xB2; a0_prime, N, N, N)?;
+
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_unit!(state, ALICE, 0xA2; N, N, N, N)?;
+    let b0 = add_unit!(state, BOB, 0xB; a0, N, N, N)?;
+    let c0 = add_unit!(state, CAROL, 0xB2; a0_prime, N, N, N)?;
     // d0 violates LNC b/c it naively cites Alice's equivocation.
     // None of the votes is marked as being endorsed – violates LNC.
     assert_eq!(
-        add_unit!(state, rng, DAN, None; F, b0, c0, N)
-            .unwrap_err()
-            .cause,
+        add_unit!(state, DAN, None; F, b0, c0, N).unwrap_err().cause,
         UnitError::LncNaiveCitation(ALICE)
     );
-    endorse!(state, rng, CAROL, c0);
-    endorse!(state, rng, c0; BOB, DAN);
+    endorse!(state, CAROL, c0);
+    endorse!(state, c0; BOB, DAN);
     // Now d0 cites non-naively b/c c0 is endorsed.
-    add_unit!(state, rng, DAN, None; F, b0, c0, N; c0)?;
+    add_unit!(state, DAN, None; F, b0, c0, N; c0)?;
     Ok(())
 }
 
@@ -441,23 +427,23 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 
     let weights5 = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
     let mut state = State::new_test(weights5, 0);
-    let mut rng = crate::new_rng();
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
-    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 0xB; a0_prime, N, c0, N, N)?;
-    let c0_prime = add_unit!(state, rng, CAROL, 0xC2; N, N, N, N, N)?;
-    let d0 = add_unit!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
+
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N, N, N)?;
+    let a0_prime = add_unit!(state, ALICE, 0xA2; N, N, N, N, N)?;
+    let c0 = add_unit!(state, CAROL, 0xC; N, N, N, N, N)?;
+    let b0 = add_unit!(state, BOB, 0xB; a0_prime, N, c0, N, N)?;
+    let c0_prime = add_unit!(state, CAROL, 0xC2; N, N, N, N, N)?;
+    let d0 = add_unit!(state, DAN, 0xD; a0, N, c0_prime, N, N)?;
     // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
     assert_eq!(
-        add_unit!(state, rng, ERIC, None; F, b0, F, d0, N)
+        add_unit!(state, ERIC, None; F, b0, F, d0, N)
             .unwrap_err()
             .cause,
         UnitError::LncNaiveCitation(ALICE)
     );
     // Endorse b0.
-    endorse!(state, rng, b0; BOB, DAN, ERIC);
-    add_unit!(state,rng, ERIC, None; F, b0, F, d0, N; b0)?;
+    endorse!(state, b0; BOB, DAN, ERIC);
+    add_unit!(state,ERIC, None; F, b0, F, d0, N; b0)?;
     Ok(())
 }
 
@@ -474,28 +460,28 @@ fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
     // Dan             +-----d0<--+
     let weights4 = &[Weight(3), Weight(4), Weight(5), Weight(5)];
     let mut state = State::new_test(weights4, 0);
-    let mut rng = crate::new_rng();
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
-    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
+
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_unit!(state, ALICE, 0xA2; N, N, N, N)?;
 
     // Bob and Carol don't see a0 yet, so they cite a0_prime naively. Dan cites a0 naively.
-    let b0 = add_unit!(state, rng, BOB, None; a0_prime, N, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, None; a0_prime, N, N, N)?;
-    let d0 = add_unit!(state, rng, DAN, None; a0, N, N, N)?;
-    endorse!(state, rng, c0; ALICE, BOB, CAROL, DAN); // Everyone endorses c0.
-    endorse!(state, rng, d0; ALICE, BOB, CAROL, DAN); // Everyone endorses d0.
+    let b0 = add_unit!(state, BOB, None; a0_prime, N, N, N)?;
+    let c0 = add_unit!(state, CAROL, None; a0_prime, N, N, N)?;
+    let d0 = add_unit!(state, DAN, None; a0, N, N, N)?;
+    endorse!(state, c0; ALICE, BOB, CAROL, DAN); // Everyone endorses c0.
+    endorse!(state, d0; ALICE, BOB, CAROL, DAN); // Everyone endorses d0.
 
     // The fact that c0 is endorsed is not enough. Bob would violate the LNC because his new unit
     // cites a0 naively, and his previous unit b0 cited a0_prime naively.
     assert_eq!(
-        add_unit!(state, rng, BOB, None; F, b0, c0, d0; c0)
+        add_unit!(state, BOB, None; F, b0, c0, d0; c0)
             .unwrap_err()
             .cause,
         UnitError::LncNaiveCitation(ALICE)
     );
     // The fact that d0 is endorsed makes both of Bob's units cite only one of Alice's forks
     // naively (namely a0_prime), which is fine.
-    add_unit!(state, rng, BOB, None; F, b0, c0, d0; d0)?;
+    add_unit!(state, BOB, None; F, b0, c0, d0; d0)?;
     Ok(())
 }
 
@@ -521,23 +507,23 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     //
     let weights5 = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
     let mut state = State::new_test(weights5, 0);
-    let mut rng = crate::new_rng();
-    let c0 = add_unit!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
-    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, N, c0, N, N)?;
-    let c1_prime = add_unit!(state, rng, CAROL, 0xC1B; N, N, c0, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, c1, N, N)?;
-    let d0 = add_unit!(state, rng, DAN, 0xD; N, N, c1_prime, N, N)?;
+
+    let c0 = add_unit!(state, CAROL, 0xC; N, N, N, N, N)?;
+    let c1 = add_unit!(state, CAROL, 0xC1; N, N, c0, N, N)?;
+    let c1_prime = add_unit!(state, CAROL, 0xC1B; N, N, c0, N, N)?;
+    let b0 = add_unit!(state, BOB, 0xB; N, N, c1, N, N)?;
+    let d0 = add_unit!(state, DAN, 0xD; N, N, c1_prime, N, N)?;
     // Should not require endorsements b/c e0 sees Carol as correct.
-    let e0 = add_unit!(state, rng, ERIC, 0xE; N, N, c0, N, N)?;
+    let e0 = add_unit!(state, ERIC, 0xE; N, N, c0, N, N)?;
     assert_eq!(
-        add_unit!(state, rng, ALICE, None; N, b0, F, d0, e0)
+        add_unit!(state, ALICE, None; N, b0, F, d0, e0)
             .unwrap_err()
             .cause,
         UnitError::LncNaiveCitation(CAROL)
     );
     // We pick b0 to be endorsed.
-    endorse!(state, rng, b0; ALICE, BOB, ERIC);
-    add_unit!(state, rng, ALICE, None; N, b0, F, d0, e0; b0)?;
+    endorse!(state, b0; ALICE, BOB, ERIC);
+    add_unit!(state, ALICE, None; N, b0, F, d0, e0; b0)?;
     Ok(())
 }
 
@@ -560,20 +546,18 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 
     let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
     let mut state = State::new_test(weights_dan, 0);
-    let mut rng = crate::new_rng();
-    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N, N)?;
-    let b0_prime = add_unit!(state, rng, BOB, 0xB1; N, N, N, N)?;
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, b0, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N, N)?;
-    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0_prime, c0, N)?;
+
+    let b0 = add_unit!(state, BOB, 0xB; N, N, N, N)?;
+    let b0_prime = add_unit!(state, BOB, 0xB1; N, N, N, N)?;
+    let a0 = add_unit!(state, ALICE, 0xA; N, b0, N, N)?;
+    let c0 = add_unit!(state, CAROL, 0xC; N, b0_prime, N, N)?;
+    let c1 = add_unit!(state, CAROL, 0xC1; N, b0_prime, c0, N)?;
     assert_eq!(
-        add_unit!(state, rng, DAN, None; a0, F, c1, N)
-            .unwrap_err()
-            .cause,
+        add_unit!(state, DAN, None; a0, F, c1, N).unwrap_err().cause,
         UnitError::LncNaiveCitation(BOB)
     );
-    endorse!(state, rng, c0; CAROL, DAN, ALICE);
-    add_unit!(state, rng, DAN, None; a0, F, c1, N; c0)?;
+    endorse!(state, c0; CAROL, DAN, ALICE);
+    add_unit!(state, DAN, None; a0, F, c1, N; c0)?;
     Ok(())
 }
 
@@ -594,20 +578,18 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
     // Dan              +----------+d0
     let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
     let mut state = State::new_test(weights_dan, 0);
-    let mut rng = crate::new_rng();
-    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N, N)?;
-    let b0_prime = add_unit!(state, rng, BOB, 0xBA; N, N, N, N)?;
-    let b1 = add_unit!(state, rng, BOB, 0xB1; N, b0, N, N)?;
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, b1, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N, N)?;
+
+    let b0 = add_unit!(state, BOB, 0xB; N, N, N, N)?;
+    let b0_prime = add_unit!(state, BOB, 0xBA; N, N, N, N)?;
+    let b1 = add_unit!(state, BOB, 0xB1; N, b0, N, N)?;
+    let a0 = add_unit!(state, ALICE, 0xA; N, b1, N, N)?;
+    let c0 = add_unit!(state, CAROL, 0xC; N, b0_prime, N, N)?;
     assert_eq!(
-        add_unit!(state, rng, DAN, None; a0, F, c0, N)
-            .unwrap_err()
-            .cause,
+        add_unit!(state, DAN, None; a0, F, c0, N).unwrap_err().cause,
         UnitError::LncNaiveCitation(BOB)
     );
-    endorse!(state, rng, c0; ALICE, CAROL, DAN);
-    add_unit!(state, rng, DAN, None; a0, F, c0, N; c0)?;
+    endorse!(state, c0; ALICE, CAROL, DAN);
+    add_unit!(state, DAN, None; a0, F, c0, N; c0)?;
     Ok(())
 }
 
@@ -630,19 +612,19 @@ fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
         Weight(5),
     ];
     let mut state = State::new_test(weights, 0);
-    let mut rng = crate::new_rng();
-    let d0 = add_unit!(state, rng, DAN, 0xBA; N, N, N, N, N, N, N, N)?;
-    let d0_prime = add_unit!(state, rng, DAN, 0xBB; N, N, N, N, N, N, N, N)?;
-    let a0 = add_unit!(state, rng, ALICE, None; N, N, N, d0, N, N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, None; N, N, N, d0_prime, N, N, N, N)?;
-    endorse!(state, rng, a0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
-    let c0 = add_unit!(state, rng, CAROL, None; a0, b0, N, F, N, N, N, N; a0)?;
-    let e0 = add_unit!(state, rng, ERIC, None; N, N, N, d0, N, N, N, N)?;
-    let f0 = add_unit!(state, rng, FRANK, None; N, N, N, d0_prime, N, N, N, N)?;
-    endorse!(state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
-    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; f0)?;
+
+    let d0 = add_unit!(state, DAN, 0xBA; N, N, N, N, N, N, N, N)?;
+    let d0_prime = add_unit!(state, DAN, 0xBB; N, N, N, N, N, N, N, N)?;
+    let a0 = add_unit!(state, ALICE, None; N, N, N, d0, N, N, N, N)?;
+    let b0 = add_unit!(state, BOB, None; N, N, N, d0_prime, N, N, N, N)?;
+    endorse!(state, a0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
+    let c0 = add_unit!(state, CAROL, None; a0, b0, N, F, N, N, N, N; a0)?;
+    let e0 = add_unit!(state, ERIC, None; N, N, N, d0, N, N, N, N)?;
+    let f0 = add_unit!(state, FRANK, None; N, N, N, d0_prime, N, N, N, N)?;
+    endorse!(state, f0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
+    let g0 = add_unit!(state, GINA, None; N, N, N, F, e0, f0, N, N; f0)?;
     // Should pass the LNC validation test.
-    add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; a0, f0)?;
+    add_unit!(state, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; a0, f0)?;
     Ok(())
 }
 
@@ -661,20 +643,20 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
         Weight(5),
     ];
     let mut state = State::new_test(weights, 0);
-    let mut rng = crate::new_rng();
-    let d0 = add_unit!(state, rng, DAN, 0xDA; N, N, N, N, N, N, N, N)?;
-    let d0_prime = add_unit!(state, rng, DAN, 0xDB; N, N, N, N, N, N, N, N)?;
-    let d0_bis = add_unit!(state, rng, DAN, 0xDC; N, N, N, N, N, N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, None; N, N, N, d0, N, N, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, None; N, N, N, d0_prime, N, N, N, N)?;
-    let e0 = add_unit!(state, rng, ERIC, None; N, N, N, d0_prime, N, N, N, N)?;
-    let f0 = add_unit!(state, rng, FRANK, None; N, N, N, d0_bis, N, N, N, N)?;
-    endorse!(state, rng, c0; ALICE, BOB, CAROL, ERIC, FRANK);
-    let a0 = add_unit!(state, rng, ALICE, None; N, b0, c0, F, N, N, N, N; c0)?;
-    endorse!(state, rng, e0; ALICE, BOB, CAROL, ERIC, FRANK);
-    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; e0)?;
+
+    let d0 = add_unit!(state, DAN, 0xDA; N, N, N, N, N, N, N, N)?;
+    let d0_prime = add_unit!(state, DAN, 0xDB; N, N, N, N, N, N, N, N)?;
+    let d0_bis = add_unit!(state, DAN, 0xDC; N, N, N, N, N, N, N, N)?;
+    let b0 = add_unit!(state, BOB, None; N, N, N, d0, N, N, N, N)?;
+    let c0 = add_unit!(state, CAROL, None; N, N, N, d0_prime, N, N, N, N)?;
+    let e0 = add_unit!(state, ERIC, None; N, N, N, d0_prime, N, N, N, N)?;
+    let f0 = add_unit!(state, FRANK, None; N, N, N, d0_bis, N, N, N, N)?;
+    endorse!(state, c0; ALICE, BOB, CAROL, ERIC, FRANK);
+    let a0 = add_unit!(state, ALICE, None; N, b0, c0, F, N, N, N, N; c0)?;
+    endorse!(state, e0; ALICE, BOB, CAROL, ERIC, FRANK);
+    let g0 = add_unit!(state, GINA, None; N, N, N, F, e0, f0, N, N; e0)?;
     assert_eq!(
-        add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0)
+        add_unit!(state, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0)
             .unwrap_err()
             .cause,
         UnitError::LncNaiveCitation(DAN)
@@ -683,11 +665,11 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
     // we need to endorse either b0 or f0.
     let mut pre_endorse_state = state.clone();
     // Endorse b0 first.
-    endorse!(state, rng, b0; ALICE, BOB, CAROL, ERIC, FRANK);
-    add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, b0)?;
+    endorse!(state, b0; ALICE, BOB, CAROL, ERIC, FRANK);
+    add_unit!(state, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, b0)?;
     // Should also pass if e0 is endorsed.
-    endorse!(pre_endorse_state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK);
-    add_unit!(pre_endorse_state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, f0)?;
+    endorse!(pre_endorse_state, f0; ALICE, BOB, CAROL, ERIC, FRANK);
+    add_unit!(pre_endorse_state, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, f0)?;
     Ok(())
 }
 
@@ -706,22 +688,22 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
         Weight(5),
     ];
     let mut state = State::new_test(weights, 0);
-    let mut rng = crate::new_rng();
-    let e0 = add_unit!(state, rng, ERIC, 0xEA; N, N, N, N, N, N, N, N)?;
-    let e0_prime = add_unit!(state, rng, ERIC, 0xEB; N, N, N, N, N, N, N, N)?;
-    let e0_bis = add_unit!(state, rng, ERIC, 0xEC; N, N, N, N, N, N, N, N)?;
-    let e0_cis = add_unit!(state, rng, ERIC, 0xED; N, N, N, N, N, N, N, N)?;
-    let a0 = add_unit!(state, rng, ALICE, None; N, N, N, N, e0, N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, None; N, N, N, N, e0_prime, N, N, N)?;
-    let g0 = add_unit!(state, rng, GINA, None; N, N, N, N, e0_bis, N, N, N)?;
-    let h0 = add_unit!(state, rng, HANNA, None; N, N, N, N, e0_cis, N, N, N)?;
-    endorse!(state, rng, a0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    let c0 = add_unit!(state, rng, CAROL, None; a0, b0, N, N, F, N, N, N; a0)?;
-    endorse!(state, rng, g0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    let f0 = add_unit!(state, rng, FRANK, None; N, N, N, N, F, N, g0, h0; g0)?;
-    let d0 = add_unit!(state, rng, DAN, None; N, N, N, N, F, f0, g0, h0; g0)?;
+
+    let e0 = add_unit!(state, ERIC, 0xEA; N, N, N, N, N, N, N, N)?;
+    let e0_prime = add_unit!(state, ERIC, 0xEB; N, N, N, N, N, N, N, N)?;
+    let e0_bis = add_unit!(state, ERIC, 0xEC; N, N, N, N, N, N, N, N)?;
+    let e0_cis = add_unit!(state, ERIC, 0xED; N, N, N, N, N, N, N, N)?;
+    let a0 = add_unit!(state, ALICE, None; N, N, N, N, e0, N, N, N)?;
+    let b0 = add_unit!(state, BOB, None; N, N, N, N, e0_prime, N, N, N)?;
+    let g0 = add_unit!(state, GINA, None; N, N, N, N, e0_bis, N, N, N)?;
+    let h0 = add_unit!(state, HANNA, None; N, N, N, N, e0_cis, N, N, N)?;
+    endorse!(state, a0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    let c0 = add_unit!(state, CAROL, None; a0, b0, N, N, F, N, N, N; a0)?;
+    endorse!(state, g0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    let f0 = add_unit!(state, FRANK, None; N, N, N, N, F, N, g0, h0; g0)?;
+    let d0 = add_unit!(state, DAN, None; N, N, N, N, F, f0, g0, h0; g0)?;
     assert_eq!(
-        add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0)
+        add_unit!(state, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0)
             .unwrap_err()
             .cause,
         UnitError::LncNaiveCitation(ERIC)
@@ -729,37 +711,36 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     let mut pre_endorse_state = state.clone();
     // If we endorse h0, then d1 still violates the LNC: d0 cited e0_cis naively and d1 cites
     // e0_prime naively.
-    endorse!(state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    let result = add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, h0);
+    endorse!(state, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    let result = add_unit!(state, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, h0);
     assert_eq!(result.unwrap_err().cause, UnitError::LncNaiveCitation(ERIC));
     // It should work if we had endorsed b0 instead.
-    endorse!(pre_endorse_state, rng, b0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0)?;
+    endorse!(pre_endorse_state, b0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    add_unit!(pre_endorse_state, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0)?;
     // And it should still work if both were endorsed.
-    endorse!(pre_endorse_state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0, h0)?;
+    endorse!(pre_endorse_state, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    add_unit!(pre_endorse_state, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0, h0)?;
     Ok(())
 }
 
 #[test]
 fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
 
-    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
+    let a0 = add_unit!(state, ALICE, 0x00; N, N, N)?;
     assert!(!state.is_terminal_block(&a0)); // height 0
-    let b0 = add_unit!(state, rng, BOB, 0x01; a0, N, N)?;
+    let b0 = add_unit!(state, BOB, 0x01; a0, N, N)?;
     assert!(!state.is_terminal_block(&b0)); // height 1
-    let c0 = add_unit!(state, rng, CAROL, 0x02; a0, b0, N)?;
+    let c0 = add_unit!(state, CAROL, 0x02; a0, b0, N)?;
     assert!(!state.is_terminal_block(&c0)); // height 2
-    let a1 = add_unit!(state, rng, ALICE, 0x03; a0, b0, c0)?;
+    let a1 = add_unit!(state, ALICE, 0x03; a0, b0, c0)?;
     assert!(!state.is_terminal_block(&a1)); // height 3
-    let a2 = add_unit!(state, rng, ALICE, None; a1, b0, c0)?;
+    let a2 = add_unit!(state, ALICE, None; a1, b0, c0)?;
     assert!(!state.is_terminal_block(&a2)); // not a block
-    let a3 = add_unit!(state, rng, ALICE, 0x04; a2, b0, c0)?;
+    let a3 = add_unit!(state, ALICE, 0x04; a2, b0, c0)?;
     assert!(state.is_terminal_block(&a3)); // height 4, i.e. the fifth block and thus the last one
     assert_eq!(TEST_ERA_HEIGHT - 1, state.block(&a3).height);
-    let a4 = add_unit!(state, rng, ALICE, None; a3, b0, c0)?;
+    let a4 = add_unit!(state, ALICE, None; a3, b0, c0)?;
     assert!(!state.is_terminal_block(&a4)); // not a block
     Ok(())
 }
@@ -777,22 +758,21 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
         })
         .collect();
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
 
     // Alice equivocates and creates two forks:
     // * a0_prime and
     // * a0 < a1 < a2
-    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
-    let a0_prime = add_unit!(state, rng, ALICE, 0x01; N, N, N)?;
-    let a1 = add_unit!(state, rng, ALICE, None; a0, N, N)?;
-    let a2 = add_unit!(state, rng, ALICE, None; a1, N, N)?;
+    let a0 = add_unit!(state, ALICE, 0x00; N, N, N)?;
+    let a0_prime = add_unit!(state, ALICE, 0x01; N, N, N)?;
+    let a1 = add_unit!(state, ALICE, None; a0, N, N)?;
+    let a2 = add_unit!(state, ALICE, None; a1, N, N)?;
 
     // Bob endorses a0_prime.
-    endorse!(state, rng, BOB, a0_prime);
+    endorse!(state, BOB, a0_prime);
     assert!(!state.is_faulty(BOB));
 
     // Now he also endorses a2, even though it is on a different fork. That's a fault!
-    endorse!(state, rng, BOB, a2);
+    endorse!(state, BOB, a2);
     assert!(state.is_faulty(BOB));
 
     let evidence = state
@@ -809,18 +789,18 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
     let mut a = vec![a0, a1, a2];
     while a.len() <= limit + 1 {
         let prev_a = *a.last().unwrap();
-        a.push(add_unit!(state, rng, ALICE, None; prev_a, N, N)?);
+        a.push(add_unit!(state, ALICE, None; prev_a, N, N)?);
     }
 
     // Carol endorses a0_prime.
-    endorse!(state, rng, CAROL, a0_prime);
+    endorse!(state, CAROL, a0_prime);
 
     // She also endorses a[limit + 1], and gets away with it because the evidence would be too big.
-    endorse!(state, rng, CAROL, a[limit + 1]);
+    endorse!(state, CAROL, a[limit + 1]);
     assert!(!state.is_faulty(CAROL));
 
     // But if she endorses a[limit], the units fit into an evidence vertex.
-    endorse!(state, rng, CAROL, a[limit]);
+    endorse!(state, CAROL, a[limit]);
     assert!(state.is_faulty(CAROL));
 
     let evidence = state
@@ -845,10 +825,10 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
 #[test]
 fn retain_evidence_only() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = crate::new_rng();
-    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N)?;
-    let _a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N)?;
+
+    let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, BOB, 0xB; a0, N, N)?;
+    let _a0_prime = add_unit!(state, ALICE, 0xA2; N, N, N)?;
     assert_eq!(&panorama!(F, b0, N), state.panorama());
     state.retain_evidence_only();
     assert_eq!(&panorama!(F, N, N), state.panorama());
@@ -871,7 +851,7 @@ fn test_leader_prng() {
 
     // Repeat a few times to make it likely that the inner loop runs more than once.
     for _ in 0..10 {
-        let upper = rng.gen_range(1, u64::MAX);
+        let upper = rng.gen_range(1..u64::MAX);
         let seed = rng.next_u64();
 
         // This tests that the rand crate's gen_range implementation, which is used in

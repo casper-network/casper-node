@@ -8,6 +8,8 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
 use crate::testing::TestRng;
+#[cfg(not(feature = "fast-sync"))]
+use crate::types::TimeDiff;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -52,16 +54,28 @@ impl HighwayConfig {
             );
         }
     }
+
+    /// Returns the length of the longest allowed round.
+    #[cfg(not(feature = "fast-sync"))]
+    pub fn max_round_length(&self) -> TimeDiff {
+        TimeDiff::from(1 << self.maximum_round_exponent)
+    }
+
+    /// Returns the length of the shortest allowed round.
+    #[cfg(not(feature = "fast-sync"))]
+    pub fn min_round_length(&self) -> TimeDiff {
+        TimeDiff::from(1 << self.minimum_round_exponent)
+    }
 }
 
 #[cfg(test)]
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let finality_threshold_fraction = Ratio::new(rng.gen_range(1, 100), 100);
-        let minimum_round_exponent = rng.gen_range(0, 16);
-        let maximum_round_exponent = rng.gen_range(16, 22);
-        let reduced_reward_multiplier = Ratio::new(rng.gen_range(0, 10), 10);
+        let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
+        let minimum_round_exponent = rng.gen_range(0..16);
+        let maximum_round_exponent = rng.gen_range(16..22);
+        let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);
 
         HighwayConfig {
             finality_threshold_fraction,

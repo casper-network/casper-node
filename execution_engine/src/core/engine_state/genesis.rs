@@ -20,16 +20,14 @@ use casper_types::{
     system::{
         auction::{
             Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-            SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-            ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-            ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY,
-            DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-            INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-            METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
-            METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS,
+            SeigniorageRecipientsSnapshot, ValidatorWeights, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR,
+            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
+            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
+            METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
             METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-            VALIDATOR_SLOTS_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
@@ -516,7 +514,7 @@ impl GenesisConfig {
 
 impl Distribution<GenesisConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisConfig {
-        let count = rng.gen_range(1, 1000);
+        let count = rng.gen_range(1..1000);
         let name = iter::repeat(())
             .map(|_| rng.gen::<char>())
             .take(count)
@@ -633,7 +631,7 @@ impl ExecConfig {
 
 impl Distribution<ExecConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecConfig {
-        let count = rng.gen_range(1, 10);
+        let count = rng.gen_range(1..10);
 
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
@@ -648,8 +646,8 @@ impl Distribution<ExecConfig> for Standard {
         let locked_funds_period_millis = rng.gen();
 
         let round_seigniorage_rate = Ratio::new(
-            rng.gen_range(1, 1_000_000_000),
-            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1..1_000_000_000),
+            rng.gen_range(1..1_000_000_000),
         );
 
         let unbonding_delay = rng.gen();
@@ -1027,19 +1025,6 @@ where
             )
         }
 
-        let unbonding_purses_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
-            unbonding_purses_uref.into(),
-            StoredValue::CLValue(
-                CLValue::from_t(UnbondingPurses::new())
-                    .map_err(|_| GenesisError::CLValue(UNBONDING_PURSES_KEY.to_string()))?,
-            ),
-        );
-        named_keys.insert(UNBONDING_PURSES_KEY.into(), unbonding_purses_uref.into());
-
         let validator_slots = self.exec_config.validator_slots();
         let validator_slots_uref = self
             .uref_address_generator
@@ -1409,15 +1394,6 @@ where
             METHOD_GET_ERA_VALIDATORS,
             vec![],
             Option::<ValidatorWeights>::cl_type(),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(entry_point);
-
-        let entry_point = EntryPoint::new(
-            METHOD_READ_SEIGNIORAGE_RECIPIENTS,
-            vec![],
-            SeigniorageRecipients::cl_type(),
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );

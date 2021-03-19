@@ -19,11 +19,44 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
-        Item, Timestamp,
+        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
     },
     utils::Source,
 };
+
+/// Control announcements are special announcements handled directly by the runtime/runner.
+///
+/// Reactors are never passed control announcements back in and every reactor event must be able to
+/// be constructed from a `ControlAnnouncement` to be run.
+///
+/// Control announcements also use a priority queue to ensure that a component that reports a fatal
+/// error is given as few follow-up events as possible. However, there currently is no guarantee
+/// that this happens.
+#[derive(Debug, Serialize)]
+#[must_use]
+pub enum ControlAnnouncement {
+    /// The component has encountered a fatal error and cannot continue.
+    ///
+    /// This usually triggers a shutdown of the component, reactor or whole application.
+    FatalError {
+        /// File the fatal error occurred in.
+        file: &'static str,
+        /// Line number where the fatal error occurred.
+        line: u32,
+        /// Error message.
+        msg: String,
+    },
+}
+
+impl Display for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ControlAnnouncement::FatalError { file, line, msg } => {
+                write!(f, "fatal error [{}:{}]: {}", file, line, msg)
+            }
+        }
+    }
+}
 
 /// A networking layer announcement.
 #[derive(Debug, Serialize)]
@@ -215,12 +248,7 @@ impl<T: Item> Display for GossiperAnnouncement<T> {
 #[derive(Debug)]
 pub enum LinearChainAnnouncement {
     /// A new block has been created and stored locally.
-    BlockAdded {
-        /// Block hash.
-        block_hash: BlockHash,
-        /// Block.
-        block: Box<Block>,
-    },
+    BlockAdded(Box<Block>),
     /// New finality signature received.
     NewFinalitySignature(Box<FinalitySignature>),
 }
@@ -228,8 +256,8 @@ pub enum LinearChainAnnouncement {
 impl Display for LinearChainAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinearChainAnnouncement::BlockAdded { block_hash, .. } => {
-                write!(f, "block added {}", block_hash)
+            LinearChainAnnouncement::BlockAdded(block) => {
+                write!(f, "block added {}", block.hash())
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
                 write!(f, "new finality signature {}", fs.block_hash)

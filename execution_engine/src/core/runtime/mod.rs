@@ -97,6 +97,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::EraInfo(_) => None,
         Key::Balance(_) => None,
         Key::Bid(_) => None,
+        Key::Withdraw(_) => None,
     }
 }
 
@@ -1635,16 +1636,6 @@ where
                 runtime.charge_system_contract_call(auction_costs.get_era_validators)?;
 
                 let result = runtime.get_era_validators().map_err(Self::reverter)?;
-
-                CLValue::from_t(result).map_err(Self::reverter)
-            })(),
-
-            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_seigniorage_recipients)?;
-
-                let result = runtime
-                    .read_seigniorage_recipients()
-                    .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),

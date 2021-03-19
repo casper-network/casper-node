@@ -17,7 +17,7 @@ pub const DEFAULT_CONST_COST: u32 = 110;
 pub const DEFAULT_LOCAL_COST: u32 = 390;
 pub const DEFAULT_GLOBAL_COST: u32 = 390;
 pub const DEFAULT_CONTROL_FLOW_COST: u32 = 440;
-pub const DEFAULT_INTEGER_COMPARSION_COST: u32 = 250;
+pub const DEFAULT_INTEGER_COMPARISON_COST: u32 = 250;
 pub const DEFAULT_CONVERSION_COST: u32 = 420;
 pub const DEFAULT_UNREACHABLE_COST: u32 = 270;
 pub const DEFAULT_NOP_COST: u32 = 200; // TODO: This value is not researched
@@ -53,7 +53,7 @@ pub struct OpcodeCosts {
     /// Control flow operations multiplier.
     pub control_flow: u32,
     /// Integer operations multiplier.
-    pub integer_comparsion: u32,
+    pub integer_comparison: u32,
     /// Conversion operations multiplier.
     pub conversion: u32,
     /// Unreachable operation multiplier.
@@ -86,8 +86,8 @@ impl OpcodeCosts {
                 Metering::Fixed(self.control_flow),
             );
             tmp.insert(
-                InstructionType::IntegerComparsion,
-                Metering::Fixed(self.integer_comparsion),
+                InstructionType::IntegerComparison,
+                Metering::Fixed(self.integer_comparison),
             );
             tmp.insert(
                 InstructionType::Conversion,
@@ -107,7 +107,7 @@ impl OpcodeCosts {
                 Metering::Fixed(self.grow_memory),
             );
 
-            // Instructions Float, FloatComparsion, FloatConst, FloatConversion are omitted here
+            // Instructions Float, FloatComparison, FloatConst, FloatConversion are omitted here
             // because we're using `with_forbidden_floats` below.
 
             tmp
@@ -131,7 +131,7 @@ impl Default for OpcodeCosts {
             local: DEFAULT_LOCAL_COST,
             global: DEFAULT_GLOBAL_COST,
             control_flow: DEFAULT_CONTROL_FLOW_COST,
-            integer_comparsion: DEFAULT_INTEGER_COMPARSION_COST,
+            integer_comparison: DEFAULT_INTEGER_COMPARISON_COST,
             conversion: DEFAULT_CONVERSION_COST,
             unreachable: DEFAULT_UNREACHABLE_COST,
             nop: DEFAULT_NOP_COST,
@@ -155,7 +155,7 @@ impl Distribution<OpcodeCosts> for Standard {
             local: rng.gen(),
             global: rng.gen(),
             control_flow: rng.gen(),
-            integer_comparsion: rng.gen(),
+            integer_comparison: rng.gen(),
             conversion: rng.gen(),
             unreachable: rng.gen(),
             nop: rng.gen(),
@@ -180,7 +180,7 @@ impl ToBytes for OpcodeCosts {
         ret.append(&mut self.local.to_bytes()?);
         ret.append(&mut self.global.to_bytes()?);
         ret.append(&mut self.control_flow.to_bytes()?);
-        ret.append(&mut self.integer_comparsion.to_bytes()?);
+        ret.append(&mut self.integer_comparison.to_bytes()?);
         ret.append(&mut self.conversion.to_bytes()?);
         ret.append(&mut self.unreachable.to_bytes()?);
         ret.append(&mut self.nop.to_bytes()?);
@@ -208,7 +208,7 @@ impl FromBytes for OpcodeCosts {
         let (local, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (global, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (control_flow, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (integer_comparsion, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (integer_comparison, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (conversion, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (unreachable, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (nop, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
@@ -226,7 +226,7 @@ impl FromBytes for OpcodeCosts {
             local,
             global,
             control_flow,
-            integer_comparsion,
+            integer_comparison,
             conversion,
             unreachable,
             nop,
@@ -256,7 +256,7 @@ pub mod gens {
             local in num::u32::ANY,
             global in num::u32::ANY,
             control_flow in num::u32::ANY,
-            integer_comparsion in num::u32::ANY,
+            integer_comparison in num::u32::ANY,
             conversion in num::u32::ANY,
             unreachable in num::u32::ANY,
             nop in num::u32::ANY,
@@ -275,7 +275,7 @@ pub mod gens {
                 local,
                 global,
                 control_flow,
-                integer_comparsion,
+                integer_comparison,
                 conversion,
                 unreachable,
                 nop,

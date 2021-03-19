@@ -1,5 +1,4 @@
 //! System modules, formerly known as "system contracts"
-
 pub mod auction;
 pub mod handle_payment;
 pub mod mint;
@@ -11,21 +10,23 @@ pub use system_contract_type::{
 };
 
 mod error {
-    use failure::Fail;
+    #[cfg(feature = "std")]
+    use thiserror::Error;
 
     use crate::system::{auction, handle_payment, mint};
 
     /// An aggregate enum error with variants for each system contract's error.
-    #[derive(Fail, Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone)]
+    #[cfg_attr(feature = "std", derive(Error))]
     pub enum Error {
         /// Contains a [`mint::Error`].
-        #[fail(display = "Mint error: {}", _0)]
+        #[cfg_attr(feature = "std", error("Mint error: {}", _0))]
         Mint(mint::Error),
         /// Contains a [`handle_payment::Error`].
-        #[fail(display = "HandlePayment error: {}", _0)]
+        #[cfg_attr(feature = "std", error("HandlePayment error: {}", _0))]
         HandlePayment(handle_payment::Error),
         /// Contains a [`auction::Error`].
-        #[fail(display = "Auction error: {}", _0)]
+        #[cfg_attr(feature = "std", error("Auction error: {}", _0))]
         Auction(auction::Error),
     }
 

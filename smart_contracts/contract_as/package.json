@@ -1,6 +1,6 @@
 {
-  "name": "@casper/contract",
-  "version": "0.9.0",
+  "name": "casper-contract",
+  "version": "0.9.3",
   "description": "Library for developing Casper smart contracts.",
   "main": "index.js",
   "ascMain": "assembly/index.ts",
@@ -12,7 +12,7 @@
     "concat-md": "^0.3.5",
     "ts-loader": "^6.2.1",
     "ts-node": "^8.5.4",
-    "typedoc": "^0.17.0",
+    "typedoc": "^0.19.1",
     "typedoc-plugin-markdown": "^2.2.17",
     "typescript": "^3.8.3"
   },

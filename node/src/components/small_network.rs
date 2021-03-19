@@ -52,7 +52,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::Context;
@@ -93,8 +93,7 @@ use crate::{
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
-    fatal,
-    reactor::{EventQueueHandle, Finalize, QueueKind},
+    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::{NodeId, TimeDiff, Timestamp},
     utils, NodeRng,
@@ -102,7 +101,7 @@ use crate::{
 pub use config::Config;
 pub use error::Error;
 
-const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
+const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
@@ -131,6 +130,8 @@ pub(crate) struct SmallNetwork<REv, P>
 where
     REv: 'static,
 {
+    /// Initial configuration values.
+    cfg: Config,
     /// Server certificate.
     certificate: Arc<TlsCert>,
     /// Server secret key.
@@ -153,9 +154,7 @@ where
     blocklist: HashMap<SocketAddr, Timestamp>,
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
-    pending: HashSet<SocketAddr>,
-    /// The interval between each fresh round of gossiping the node's public listening address.
-    gossip_interval: Duration,
+    pending: HashMap<SocketAddr, Instant>,
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     network_name: String,
@@ -178,13 +177,13 @@ where
     net_metrics: NetworkingMetrics,
 
     /// Known addresses for this node.
-    known_addresses: Vec<String>,
+    known_addresses: HashSet<SocketAddr>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
-    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
     ///
@@ -199,9 +198,23 @@ where
         network_name: String,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
+        let mut known_addresses = HashSet::new();
+        for address in &cfg.known_addresses {
+            match utils::resolve_address(address) {
+                Ok(known_address) => {
+                    if !known_addresses.insert(known_address) {
+                        warn!(%address, resolved=%known_address, "ignoring duplicated known address");
+                    };
+                }
+                Err(err) => {
+                    warn!(%address, %err, "failed to resolve known address");
+                }
+            }
+        }
+
         // Assert we have at least one known address in the config.
-        if cfg.known_addresses.is_empty() {
-            warn!("no known addresses provided via config");
+        if known_addresses.is_empty() {
+            warn!("no known addresses provided via config or all failed DNS resolution");
             return Err(Error::InvalidConfig);
         }
 
@@ -216,7 +229,8 @@ where
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
-                known_addresses: cfg.known_addresses.clone(),
+                cfg,
+                known_addresses,
                 certificate,
                 secret_key,
                 public_address,
@@ -225,9 +239,8 @@ where
                 event_queue,
                 incoming: HashMap::new(),
                 outgoing: HashMap::new(),
-                pending: HashSet::new(),
+                pending: HashMap::new(),
                 blocklist: HashMap::new(),
-                gossip_interval: cfg.gossip_interval,
                 network_name,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
@@ -280,7 +293,8 @@ where
         ));
 
         let mut model = SmallNetwork {
-            known_addresses: cfg.known_addresses.clone(),
+            cfg,
+            known_addresses,
             certificate,
             secret_key,
             public_address,
@@ -289,9 +303,8 @@ where
             event_queue,
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
-            pending: HashSet::new(),
+            pending: HashMap::new(),
             blocklist: HashMap::new(),
-            gossip_interval: cfg.gossip_interval,
             network_name,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
@@ -301,54 +314,19 @@ where
         };
 
         // Bootstrap process.
-        let mut effects = Effects::new();
-
-        for address in &cfg.known_addresses {
-            match utils::resolve_address(address) {
-                Ok(known_address) => {
-                    model.pending.insert(known_address);
-
-                    // We successfully resolved an address, add an effect to connect to it.
-                    effects.extend(
-                        connect_outgoing(
-                            known_address,
-                            Arc::clone(&model.certificate),
-                            Arc::clone(&model.secret_key),
-                            Arc::clone(&model.is_stopped),
-                        )
-                        .result(
-                            move |(peer_id, transport)| Event::OutgoingEstablished {
-                                peer_id: Box::new(peer_id),
-                                transport,
-                            },
-                            move |error| Event::BootstrappingFailed {
-                                peer_address: Box::new(known_address),
-                                error,
-                            },
-                        ),
-                    );
-                }
-                Err(err) => {
-                    warn!(%address, %err, "failed to resolve known address");
-                }
-            }
-        }
-
         let effect_builder = EffectBuilder::new(event_queue);
 
-        // If there are no pending connections, we failed to resolve any.
-        if model.pending.is_empty() && !cfg.known_addresses.is_empty() {
-            effects.extend(
-                fatal!(
-                    effect_builder,
-                    "was given known addresses, but failed to resolve any of them"
-                )
-                .ignore(),
-            );
-        } else {
-            // Start broadcasting our public listening address.
-            effects.extend(model.gossip_our_address(effect_builder));
-        }
+        // We kick things off by adding effects to connect to all known addresses. This will
+        // automatically attempt to repeat the connection process if it fails (see
+        // `connect_to_known_addresses` for details).
+        let mut effects = model.connect_to_known_addresses();
+
+        // Start broadcasting our public listening address.
+        effects.extend(
+            effect_builder
+                .set_timeout(model.cfg.initial_gossip_delay.into())
+                .event(|_| Event::GossipOurAddress),
+        );
 
         Ok((model, effects))
     }
@@ -358,6 +336,41 @@ where
         for peer_id in self.outgoing.keys() {
             self.send_message(peer_id.clone(), msg.clone());
         }
+    }
+
+    /// Try to establish a connection to all known addresses in the configuration.
+    ///
+    /// Will schedule another reconnection if no DNS addresses could be resolved.
+    fn connect_to_known_addresses(&mut self) -> Effects<Event<P>> {
+        let mut effects = Effects::new();
+
+        let now = Instant::now();
+        for &address in &self.known_addresses {
+            self.pending.insert(address, now);
+
+            // Add an effect to connect to the known address.
+            effects.extend(
+                connect_outgoing(
+                    address,
+                    Arc::clone(&self.certificate),
+                    Arc::clone(&self.secret_key),
+                    Arc::clone(&self.is_stopped),
+                )
+                .result(
+                    move |(peer_id, transport)| Event::OutgoingEstablished {
+                        peer_id: Box::new(peer_id),
+                        transport,
+                    },
+                    move |error| Event::OutgoingFailed {
+                        peer_address: Box::new(address),
+                        peer_id: Box::new(None),
+                        error: Box::new(Some(error)),
+                    },
+                ),
+            );
+        }
+
+        effects
     }
 
     /// Queues a message to `count` random nodes on the network.
@@ -409,6 +422,46 @@ where
         }
     }
 
+    /// Sweep and timeout pending connections.
+    ///
+    /// This is a reliability measure that sweeps pending connections, since leftover entries will
+    /// block any renewed connection attempts to a specific address.
+    ///
+    /// In 100% bug free code, this would not be necessary, so this is in here as a stop-gap measure
+    /// to avoid locking up a node with unremoved pending connections.
+    ///
+    /// Connections will only be removed from pending, they will NOT be forcefully disconnected.
+    fn sweep_pending_connections(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
+        let now = Instant::now();
+        let max_addr_pending_time: Duration = self.cfg.max_addr_pending_time.into();
+
+        // Remove pending connections that have been pending for a long time. Ideally, we would use
+        // `drain_filter` here, but it is still unstable, so just collect the keys.
+        let outdated_keys: Vec<_> = self
+            .pending
+            .iter()
+            .filter_map(|(&addr, &timestamp)| {
+                if now - timestamp > max_addr_pending_time {
+                    Some(addr)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        outdated_keys.iter().for_each(|key| {
+            warn!(addr=%key, "swept pending address");
+            self.pending.remove(key);
+        });
+
+        effect_builder
+            .set_timeout(max_addr_pending_time / 2)
+            .event(|_| Event::SweepPending)
+    }
+
     fn handle_incoming_tls_handshake_completed(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -446,6 +499,7 @@ where
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
                     network_name: self.network_name.clone(),
+                    public_address: self.public_address,
                 };
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -498,19 +552,20 @@ where
         transport: Transport,
     ) -> Effects<Event<P>> {
         // This connection is send-only, we only use the sink.
-        let peer_address = transport
-            .get_ref()
-            .peer_addr()
-            .expect("should have peer address");
+        let peer_address = match transport.get_ref().peer_addr() {
+            Ok(peer_addr) => peer_addr,
+            Err(err) => {
+                // The peer address disappeared, likely because the connection was closed while
+                // we are setting up.
+                warn!(%peer_id, %err, "peer connection terminated while setting up outgoing connection, dropping");
 
-        if !self.pending.remove(&peer_address) {
-            info!(
-                our_id=%self.our_id,
-                %peer_address,
-                "this peer's incoming connection has dropped, so don't establish an outgoing"
-            );
-            return Effects::new();
-        }
+                // We still need to clean up any trace of the connection.
+                return self.remove(effect_builder, &peer_id, false);
+            }
+        };
+
+        // Remove from pending connection set, but ignore if it is missing.
+        self.pending.remove(&peer_address);
 
         // If we have connected to ourself, allow the connection to drop.
         if peer_id == self.our_id {
@@ -545,6 +600,7 @@ where
 
         let handshake = Message::Handshake {
             network_name: self.network_name.clone(),
+            public_address: self.public_address,
         };
         let peer_id_cloned = peer_id.clone();
         effects.extend(
@@ -583,24 +639,29 @@ where
     ) -> Effects<Event<P>> {
         let _ = self.pending.remove(&peer_address);
 
+        let mut effects = Effects::new();
+
         if let Some(peer_id) = peer_id {
-            if let Some(err) = error {
+            if let Some(ref err) = error {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "outgoing connection failed");
             } else {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
             }
-            return self.remove(effect_builder, &peer_id, false);
+            effects.extend(self.remove(effect_builder, &peer_id, false));
+        } else {
+            // If we are not calling remove, call the reconnection check explicitly.
+            effects.extend(self.reconnect_if_not_connected_to_any_known_addresses(effect_builder));
         }
 
         // If we don't have the node ID passed in here, it was never added as an
         // outgoing connection, hence no need to call `self.remove()`.
-        if let Some(err) = error {
+        if let Some(ref err) = error {
             warn!(our_id=%self.our_id, %peer_address, %err, "outgoing connection failed");
         } else {
             warn!(our_id=%self.our_id, %peer_address, "outgoing connection closed");
         }
 
-        Effects::new()
+        effects
     }
 
     fn remove(
@@ -619,14 +680,14 @@ where
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
-            let peer_ip = format!("{}", outgoing.peer_address.ip());
-            if add_to_blocklist && !self.known_addresses.contains(&peer_ip) {
+            if add_to_blocklist && !self.known_addresses.contains(&outgoing.peer_address) {
                 info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
                 self.blocklist
                     .insert(outgoing.peer_address, Timestamp::now());
             }
         }
-        self.terminate_if_isolated(effect_builder)
+
+        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
     }
 
     /// Gossips our public listening address, and schedules the next such gossip round.
@@ -637,7 +698,7 @@ where
             .ignore();
         effects.extend(
             effect_builder
-                .set_timeout(self.gossip_interval)
+                .set_timeout(self.cfg.gossip_interval)
                 .event(|_| Event::GossipOurAddress),
         );
         effects
@@ -690,7 +751,10 @@ where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
         match msg {
-            Message::Handshake { network_name } => {
+            Message::Handshake {
+                network_name,
+                public_address,
+            } => {
                 if network_name != self.network_name {
                     info!(
                         our_id=%self.our_id,
@@ -703,8 +767,12 @@ where
                     self.update_peers_metric();
                     return remove;
                 }
+
+                // This speeds up the connection process, but masks potential bugs in the gossiper.
+                let effects = self.connect_to_peer_if_required(public_address);
                 self.update_peers_metric();
-                Effects::new()
+
+                effects
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
@@ -719,7 +787,7 @@ where
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
         self.blocklist
             .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
-        if self.pending.contains(&peer_address)
+        if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
                 .outgoing
@@ -731,7 +799,8 @@ where
             Effects::new()
         } else {
             // We need to connect.
-            assert!(self.pending.insert(peer_address));
+            let now = Instant::now();
+            self.pending.insert(peer_address, now);
             connect_outgoing(
                 peer_address,
                 Arc::clone(&self.certificate),
@@ -769,26 +838,20 @@ where
         }
     }
 
-    fn terminate_if_isolated(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        if self.is_isolated() {
-            if self.is_bootstrap_node {
-                info!(
-                    our_id=%self.our_id,
-                    "failed to bootstrap to any other nodes, but continuing to run as we are a \
-                    bootstrap node"
-                );
-            } else {
-                // Note that we could retry the connection to other nodes, but for now we
-                // just leave it up to the node operator to restart.
-                return fatal!(
-                    effect_builder,
-                    "{}: failed to connect to any known node, now isolated",
-                    self.our_id
-                )
-                .ignore();
-            }
+    /// If we are isolated, try to reconnect to all known nodes.
+    fn reconnect_if_not_connected_to_any_known_addresses(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
+        if self.is_not_connected_to_any_known_address() {
+            info!(delay=?self.cfg.isolation_reconnect_delay, "we are isolated. will attempt to reconnect to all known nodes after a delay");
+
+            effect_builder
+                .set_timeout(self.cfg.isolation_reconnect_delay.into())
+                .event(|_| Event::IsolationReconnection)
+        } else {
+            Effects::new()
         }
-        Effects::new()
     }
 
     /// Returns the set of connected nodes.
@@ -804,12 +867,23 @@ where
         ret
     }
 
-    /// Returns whether or not this node has been isolated.
-    ///
-    /// An isolated node has no chance of recovering a connection to the network and is not
-    /// connected to any peer.
-    fn is_isolated(&self) -> bool {
-        self.pending.is_empty() && self.outgoing.is_empty() && self.incoming.is_empty()
+    /// Returns whether or not this node has been disconnected from all known nodes.
+    fn is_not_connected_to_any_known_address(&self) -> bool {
+        for &known_address in &self.known_addresses {
+            if self.pending.contains_key(&known_address) {
+                return false;
+            }
+
+            if self
+                .outgoing
+                .values()
+                .any(|outgoing_connection| outgoing_connection.peer_address == known_address)
+            {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Returns the node id of this network node.
@@ -850,7 +924,7 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: Send + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
@@ -863,18 +937,14 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BootstrappingFailed {
-                peer_address,
-                error,
-            } => {
-                warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
-
-                let was_removed = self.pending.remove(&peer_address);
-                assert!(
-                    was_removed,
-                    "Bootstrap failed for node, but it was not in the set of pending connections"
-                );
-                self.terminate_if_isolated(effect_builder)
+            Event::IsolationReconnection => {
+                if self.is_not_connected_to_any_known_address() {
+                    info!("still isolated after grace time, attempting to reconnect to all known_nodes");
+                    self.connect_to_known_addresses()
+                } else {
+                    info!("would attempt to reconnect, but no longer isolated. not reconnecting");
+                    Effects::new()
+                }
             }
             Event::IncomingNew {
                 stream,
@@ -921,6 +991,7 @@ where
                 peer_address,
                 error,
             } => self.handle_outgoing_lost(effect_builder, *peer_id, *peer_address, *error),
+            Event::SweepPending => self.sweep_pending_connections(effect_builder),
             Event::NetworkRequest { req } => {
                 match *req {
                     NetworkRequest::SendMessage {
