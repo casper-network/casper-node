@@ -462,7 +462,7 @@ steps:
     email:
       from_secret: npm_email
     folder:
-    - "smart_contracts/contract-as"
+    - "smart_contracts/contract_as"
     fail_on_version_conflict:
     - true
     access:
