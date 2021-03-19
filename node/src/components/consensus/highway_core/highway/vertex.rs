@@ -277,18 +277,6 @@ where
 }
 
 impl<C: Context> Endorsements<C> {
-    pub fn new<I: IntoIterator<Item = SignedEndorsement<C>>>(endorsements: I) -> Self {
-        let mut iter = endorsements.into_iter().peekable();
-        let unit = *iter.peek().expect("non-empty iter").unit();
-        let endorsers = iter
-            .map(|e| {
-                assert_eq!(e.unit(), &unit, "endorsements for different units.");
-                (e.validator_idx(), *e.signature())
-            })
-            .collect();
-        Endorsements { unit, endorsers }
-    }
-
     /// Returns hash of the endorsed vode.
     pub fn unit(&self) -> &C::Hash {
         &self.unit
@@ -297,6 +285,15 @@ impl<C: Context> Endorsements<C> {
     /// Returns an iterator over validator indexes that endorsed the `unit`.
     pub fn validator_ids(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.endorsers.iter().map(|(v, _)| *v)
+    }
+}
+
+impl<C: Context> From<SignedEndorsement<C>> for Endorsements<C> {
+    fn from(signed_e: SignedEndorsement<C>) -> Self {
+        Endorsements {
+            unit: *signed_e.unit(),
+            endorsers: vec![(signed_e.validator_idx(), *signed_e.signature())],
+        }
     }
 }
 
