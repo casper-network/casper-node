@@ -998,9 +998,9 @@ impl reactor::Reactor for Reactor {
                             });
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
-                    ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                    ConsensusAnnouncement::DisconnectFromPeer(peer) => {
                         // TODO: handle the announcement and actually disconnect
-                        warn!("Disconnecting from a given peer not yet implemented.");
+                        warn!(%peer, "peer deemed potentially byzantine");
                         Effects::new()
                     }
                 }
