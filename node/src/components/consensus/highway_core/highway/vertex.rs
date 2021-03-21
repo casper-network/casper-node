@@ -110,6 +110,14 @@ impl<C: Context> Vertex<C> {
             Vertex::Ping(ping) => Dependency::Ping(ping.creator(), ping.timestamp()),
         }
     }
+
+    /// Returns a reference to the unit, or `None` if this is not a unit.
+    pub(crate) fn unit(&self) -> Option<&SignedWireUnit<C>> {
+        match self {
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
