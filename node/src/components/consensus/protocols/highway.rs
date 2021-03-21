@@ -310,6 +310,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let vertex = vv.inner();
         if let (Some(value), Some(timestamp)) = (vertex.value(), vertex.timestamp()) {
             if value.needs_validation() {
+                self.log_proposal(vertex, "requesting proposal validation");
                 let cv = value.clone();
                 self.pending_values
                     .entry(value.hash())
@@ -319,6 +320,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     sender, cv, timestamp,
                 ));
                 return outcomes;
+            } else {
+                self.log_proposal(vertex, "proposal does not need validation");
             }
         }
 
@@ -361,6 +364,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
             return vec![];
         }
+        self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         // Check whether we should change the round exponent.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
@@ -414,6 +418,29 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.finality_detector
             .last_finalized()
             .map_or(false, is_switch)
+    }
+
+    /// Prints a log message if the vertex is a proposal unit. Otherwise returns `false`.
+    fn log_proposal(&self, vertex: &Vertex<C>, msg: &str) -> bool {
+        let (wire_unit, hash) = match vertex.unit() {
+            Some(swu) if swu.wire_unit().value.is_some() => (swu.wire_unit(), swu.hash()),
+            _ => return false, // Not a proposal.
+        };
+        let creator = if let Some(creator) = self.highway.validators().id(wire_unit.creator) {
+            creator
+        } else {
+            error!(?wire_unit, "{}: invalid creator", msg);
+            return true;
+        };
+        info!(
+            %hash,
+            ?creator,
+            creator_index = wire_unit.creator.0,
+            timestamp = %wire_unit.timestamp,
+            round_exp = wire_unit.round_exp,
+            "{}", msg
+        );
+        true
     }
 }
 
@@ -504,7 +531,9 @@ where
                     _ => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        trace!("received a valid vertex");
+                        if !self.log_proposal(pvv.inner(), "received a proposal") {
+                            trace!("received a valid vertex");
+                        }
                         self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
@@ -670,19 +699,19 @@ where
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&value.hash());
+            warn!(?value, ?dropped_vertices, "consensus value is invalid");
+            let dropped_vertex_ids = dropped_vertices
+                .into_iter()
+                .flatten()
+                .map(|vv| {
+                    self.log_proposal(vv.inner(), "dropping invalid proposal");
+                    vv.inner().id()
+                })
+                .collect();
             // recursively remove vertices depending on the dropped ones
-            warn!(
-                ?value,
-                ?dropped_vertices,
-                "consensus value is invalid; dropping dependent vertices"
-            );
-            let _faulty_senders = self.synchronizer.drop_dependent_vertices(
-                dropped_vertices
-                    .into_iter()
-                    .flatten()
-                    .map(|vv| vv.inner().id())
-                    .collect(),
-            );
+            let _faulty_senders = self
+                .synchronizer
+                .drop_dependent_vertices(dropped_vertex_ids);
             // We don't disconnect from the faulty senders here: The block validator considers the
             // value "invalid" even if it just couldn't download the deploys, which could just be
             // because the original sender went offline.
