@@ -208,6 +208,12 @@ impl<C: Context> ActiveValidator<C> {
                     if let Some(witness_unit) =
                         self.new_unit(panorama, timestamp, None, state, instance_id)
                     {
+                        if self
+                            .latest_unit(state)
+                            .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
+                        {
+                            info!(round_id = %r_id, "sending witness in round with no proposal");
+                        }
                         effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
                         return effects;
                     }
