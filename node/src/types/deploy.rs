@@ -117,6 +117,15 @@ pub enum DeployValidationFailure {
         got: usize,
     },
 
+    /// Deploy is too large.
+    #[error("{deploy_size} deploy size exceeds block size limit of {max_block_size}")]
+    ExcessiveSize {
+        /// The block size limit.
+        max_block_size: u32,
+        /// The size of the deploy provided.
+        deploy_size: usize,
+    },
+
     /// Excessive time-to-live.
     #[error("time-to-live of {got} exceeds limit of {max_ttl}")]
     ExcessiveTimeToLive {
@@ -626,6 +635,14 @@ impl Deploy {
         chain_name: &str,
         config: &DeployConfig,
     ) -> Result<(), DeployValidationFailure> {
+        let deploy_size = self.serialized_length();
+        if deploy_size > config.max_block_size as usize {
+            return Err(DeployValidationFailure::ExcessiveSize {
+                max_block_size: config.max_block_size,
+                deploy_size,
+            });
+        }
+
         let header = self.header();
         if header.chain_name() != chain_name {
             info!(
