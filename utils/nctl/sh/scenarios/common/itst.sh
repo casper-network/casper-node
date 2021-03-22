@@ -53,7 +53,7 @@ function do_stop_node() {
 
 function check_network_sync() {
     local WAIT_TIME_SEC=0
-    log_step "check all nodes are in sync"
+    log_step "check all node's LFBs are in sync"
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
         if [ "$(do_read_lfb_hash '5')" = "$(do_read_lfb_hash '1')" ] && \
 		[ "$(do_read_lfb_hash '4')" = "$(do_read_lfb_hash '1')" ] && \
@@ -79,5 +79,83 @@ function do_await_era_change() {
 }
 
 function check_current_era {
-    echo $(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+    local ERA="null"
+    while true; do
+        ERA=$(get_chain_era $(get_node_for_dispatch) | awk '{print $NF}')
+        if [ "$ERA" = "null" ] || [ "$ERA" = "N/A" ]; then
+            sleep 1
+        else
+            break
+        fi
+    done
+    echo "$ERA"
+}
+
+function check_faulty() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    grep -q 'this validator is faulty' "$NODE_PATH/logs/stdout.log"
+    return $?
+}
+
+# Captures the public key in hex of a node minus the '01' prefix.
+# This is because the logs don't include the '01' prefix when
+# searching in them for the public key in hex. See itst14 for
+# use case.
+function get_node_public_key_hex() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
+    echo "${PUBLIC_KEY_HEX:2}"
+}
+
+# Same as get_node_public_key_hex but includes the '01' prefix.
+# When parsing the state with jq, the '01' prefix is included.
+# See itst13 for use case.
+function get_node_public_key_hex_extended() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
+    echo "$PUBLIC_KEY_HEX"
+}
+
+function do_await_n_blocks() {
+    local BLOCK_COUNT=${1:-1}
+    log_step "Waiting $BLOCK_COUNT blocks..."
+    nctl-await-n-blocks offset="$BLOCK_COUNT"
+}
+
+function get_switch_block_equivocators() {
+    local NODE_ID=${1}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${2}
+    local BLOCK_HASH=${3}
+    local JSON_OUT
+    local PARENT
+    local BLOCK_HEADER
+
+    if [ -z "$BLOCK_HASH" ]; then
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID"))
+    else
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID") -b "$BLOCK_HASH")
+    fi
+
+    if [ "$WALKBACK" -gt 0 ]; then
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
+        if [ "$(echo "$BLOCK_HEADER" | jq '.era_end')" = "null" ]; then
+            PARENT=$(echo "$BLOCK_HEADER" | jq -r '.parent_hash')
+            WALKBACK=$((WALKBACK - 1))
+            log "$WALKBACK: Walking back to block: $PARENT"
+            get_switch_block_equivocators "$NODE_ID" "$WALKBACK" "$PARENT"
+        else
+            log "equivocators: $(echo "$BLOCK_HEADER" | jq '.era_end.era_report.equivocators')"
+        fi
+    else
+        log "Error: Switch block not found within walkback!"
+        exit 1
+    fi
+}
+
+function get_running_node_count {
+    nctl-status | grep 'RUNNING' | wc -l
 }

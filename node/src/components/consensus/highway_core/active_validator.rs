@@ -11,7 +11,7 @@ use tracing::{error, info, trace, warn};
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{Endorsements, Ping, ValidVertex, Vertex, WireUnit},
+    highway::{Ping, ValidVertex, Vertex, WireUnit},
     state::{self, Panorama, State, Unit, Weight},
     validators::ValidatorIndex,
 };
@@ -213,6 +213,12 @@ impl<C: Context> ActiveValidator<C> {
                     if let Some(witness_unit) =
                         self.new_unit(panorama, timestamp, None, state, instance_id)
                     {
+                        if self
+                            .latest_unit(state)
+                            .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
+                        {
+                            info!(round_id = %r_id, "sending witness in round with no proposal");
+                        }
                         effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
                         return effects;
                     }
@@ -512,7 +518,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns the most recent unit by this validator.
-    fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
+    pub(crate) fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
             .get(self.vidx)
@@ -562,10 +568,7 @@ impl<C: Context> ActiveValidator<C> {
     fn endorse(&self, vhash: &C::Hash) -> Vertex<C> {
         let endorsement = Endorsement::new(*vhash, self.vidx);
         let signature = self.secret.sign(&endorsement.hash());
-        Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
-            endorsement,
-            signature,
-        )]))
+        Vertex::Endorsements(SignedEndorsement::new(endorsement, signature).into())
     }
 
     /// Returns a panorama that is valid to use in our own unit at the given timestamp.
@@ -653,6 +656,7 @@ pub(crate) fn write_last_unit<C: Context>(
 }
 
 #[cfg(test)]
+#[allow(clippy::integer_arithmetic)] // Overflows in tests panic anyway.
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
     use tempfile::tempdir;
@@ -710,7 +714,7 @@ mod tests {
             let earliest_round_start = if start_time == current_round_id {
                 start_time
             } else {
-                current_round_id + (1 << state.params().init_round_exp()).into()
+                current_round_id + state::round_len(state.params().init_round_exp())
             };
             let target_ftt = state.total_weight() / 3;
             let active_validators = validators

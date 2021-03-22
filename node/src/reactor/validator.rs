@@ -496,8 +496,10 @@ impl reactor::Reactor for Reactor {
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChain::new(
             &registry,
-            chainspec_loader.initial_state_root_hash(),
             protocol_version.clone(),
+            chainspec_loader.initial_state_root_hash(),
+            chainspec_loader.chainspec().core_config.auction_delay,
+            chainspec_loader.chainspec().core_config.unbonding_delay,
             chainspec_loader
                 .chainspec()
                 .protocol_config
@@ -894,7 +896,9 @@ impl reactor::Reactor for Reactor {
                             return Effects::new();
                         }
                     },
-                    Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
+                    Message::FinalitySignature(fs) => {
+                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, true))
+                    }
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -983,7 +987,9 @@ impl reactor::Reactor for Reactor {
                     ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
                         effect_builder,
                         rng,
-                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs)),
+                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(
+                            fs, false,
+                        )),
                     ),
                     ConsensusAnnouncement::Fault {
                         era_id,
@@ -1013,7 +1019,7 @@ impl reactor::Reactor for Reactor {
                 let block_hash = *block.hash();
 
                 // send to linear chain
-                let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
+                let reactor_event = Event::LinearChain(linear_chain::Event::NewLinearChainBlock {
                     block: Box::new(block),
                     execution_results: execution_results
                         .iter()

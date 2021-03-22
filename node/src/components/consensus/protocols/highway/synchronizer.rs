@@ -231,6 +231,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .filter(|dep| highway.has_dependency(dep))
             .cloned()
             .collect_vec();
+        // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
         let pvs = satisfied_deps
             .into_iter()
             .flat_map(|dep| self.vertex_deps.remove(&dep).unwrap())

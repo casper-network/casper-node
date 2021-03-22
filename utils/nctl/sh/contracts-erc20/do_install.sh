@@ -31,7 +31,7 @@ function main()
     PATH_TO_CLIENT=$(get_path_to_client)
 
     # Set contract path.
-    PATH_TO_CONTRACT=$(get_path_to_contract "erc20.wasm")
+    PATH_TO_CONTRACT=$(get_path_to_contract "eco/erc20.wasm")
     if [ ! -f "$PATH_TO_CONTRACT" ]; then
         echo "ERROR: The erc20.wasm binary file cannot be found.  Please compile it and move it to the following directory: $(get_path_to_net)"
         return

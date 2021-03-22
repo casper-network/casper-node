@@ -247,6 +247,11 @@ impl TimeDiff {
     pub const fn from_seconds(seconds: u32) -> Self {
         TimeDiff(seconds as u64 * 1_000)
     }
+
+    /// Returns the product, or `TimeDiff(u64::MAX)` if it would overflow.
+    pub fn saturating_mul(self, rhs: u64) -> Self {
+        TimeDiff(self.0.saturating_mul(rhs))
+    }
 }
 
 impl Mul<u64> for TimeDiff {
@@ -262,6 +267,14 @@ impl Div<u64> for TimeDiff {
 
     fn div(self, rhs: u64) -> TimeDiff {
         TimeDiff(self.0 / rhs)
+    }
+}
+
+impl Div<TimeDiff> for TimeDiff {
+    type Output = u64;
+
+    fn div(self, rhs: TimeDiff) -> u64 {
+        self.0 / rhs.0
     }
 }
 
