@@ -59,7 +59,7 @@ use crate::{
 /// Contract runtime component event.
 #[derive(Debug, From)]
 pub enum Event {
-    /// A request made of the contract runtime component.
+    /// A request made for the contract runtime component.
     #[from]
     Request(Box<ContractRuntimeRequest>),
     /// Indicates that block has already been finalized and executed in the past.
