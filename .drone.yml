@@ -9,11 +9,6 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
-  - name: verify-genesis-checksums
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
-
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
@@ -262,7 +257,6 @@ steps:
   image: casperlabs/node-build-u1804
   # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
   commands:
-    - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:
