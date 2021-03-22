@@ -123,10 +123,21 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             as u64)
             .into();
 
-        let init_round_exp = prev_cp
+        let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .and_then(|highway_proto| highway_proto.our_round_exp())
-            .unwrap_or(highway_config.minimum_round_exponent);
+            .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time))
+            .unwrap_or_else(|| {
+                RoundSuccessMeter::new(
+                    highway_config.minimum_round_exponent,
+                    highway_config.minimum_round_exponent,
+                    highway_config.maximum_round_exponent,
+                    era_start_time,
+                    config.into(),
+                )
+            });
+        // This will return the minimum round exponent if we just initialized the meter, i.e. if
+        // there was no previous consensus instance or it had no round success meter.
+        let init_round_exp = round_success_meter.new_exponent();
 
         info!(
             %init_round_exp,
@@ -169,22 +180,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             (&latest_state_request).serialize(),
         ));
 
-        let min_round_exp = params.min_round_exp();
-        let max_round_exp = params.max_round_exp();
-        let round_exp = params.init_round_exp();
-        let start_timestamp = params.start_timestamp();
-        let round_success_meter = prev_cp
-            .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .map(|highway_proto| highway_proto.next_era_round_succ_meter(start_timestamp))
-            .unwrap_or_else(|| {
-                RoundSuccessMeter::new(
-                    round_exp,
-                    min_round_exp,
-                    max_round_exp,
-                    start_timestamp,
-                    config.into(),
-                )
-            });
         let highway = Highway::new(instance_id, validators, params);
         let last_panorama = highway.state().panorama().clone();
         let hw_proto = Box::new(HighwayProtocol {
@@ -388,12 +383,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.calculate_round_exponent(&vv, now);
         let av_effects = self.highway.add_valid_vertex(vv, now);
         self.process_av_effects(av_effects, now)
-    }
-
-    /// Returns our most recent round exponent.
-    /// Returns `None` if we created no units in this era.
-    fn our_round_exp(&self) -> Option<u8> {
-        self.highway.latest_own_unit().map(|unit| unit.round_exp)
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where

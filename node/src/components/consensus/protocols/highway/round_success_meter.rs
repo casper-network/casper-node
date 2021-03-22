@@ -176,7 +176,7 @@ impl<C: Context> RoundSuccessMeter<C> {
         self.rounds.iter().filter(|&success| !success).count()
     }
 
-    fn new_exponent(&self) -> u8 {
+    pub(super) fn new_exponent(&self) -> u8 {
         let current_round_index = self.current_round_id >> self.current_round_exp;
         let num_failures = self.count_failures() as u64;
         if num_failures > self.config.max_failed_rounds()
