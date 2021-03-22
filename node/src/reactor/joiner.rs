@@ -18,15 +18,12 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
+#[cfg(not(feature = "fast-sync"))]
+use crate::components::linear_chain_sync::{self, LinearChainSync};
 #[cfg(feature = "fast-sync")]
 use crate::components::{
     linear_chain_fast_sync as linear_chain_sync,
     linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
-};
-#[cfg(not(feature = "fast-sync"))]
-use crate::{
-    components::linear_chain_sync::{self, LinearChainSync},
-    effect::announcements::LinearChainBlock,
 };
 
 #[cfg(test)]
