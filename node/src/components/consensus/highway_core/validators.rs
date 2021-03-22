@@ -10,6 +10,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::{AsRef, From};
 use serde::{Deserialize, Serialize};
+use itertools::Itertools;
 
 use super::Weight;
 use crate::utils::ds;
@@ -154,9 +155,8 @@ where
                 None => "N".to_string(),
                 Some(el) => format!("{}", el),
             })
-            .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "OldestSeen({})", view)?;
+        write!(f, "ValidatorMap({})", view)?;
         Ok(())
     }
 }

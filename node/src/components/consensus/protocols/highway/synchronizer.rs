@@ -160,8 +160,8 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
-    /// Instance ID of an era for which this synchronizer is constructed for.
-    era_id: C::InstanceId,
+    /// Instance ID of an era for which this synchronizer is constructed.
+    instance_id: C::InstanceId,
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
     /// Used only for logging.
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
@@ -174,17 +174,15 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn new(
         pending_vertex_timeout: TimeDiff,
         validator_len: usize,
-        era_id: C::InstanceId,
+        instance_id: C::InstanceId,
     ) -> Self {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
-            oldest_seen_panorama: ValidatorMap::from(
-                iter::repeat(None).take(validator_len).collect_vec(),
-            ),
-            era_id,
+            oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
+            instance_id,
             current_era: true,
         }
     }
@@ -218,7 +216,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     pub(crate) fn log_len(&self) {
         debug!(
-            era_id = ?self.era_id,
+            era_id = ?self.instance_id,
             vertices_to_be_added_later = self.vertices_to_be_added_later_len(),
             vertex_deps = self.vertex_deps_len(),
             vertices_to_be_added = self.vertices_to_be_added_len(),

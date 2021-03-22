@@ -56,7 +56,7 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 /// The timer for an alert no progress was made in a long time.
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
-const TIMER_ID_SYNCHRONIZER_QUEUE: TimerId = TimerId(5);
+const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -227,10 +227,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 now.max(era_start_time) + highway_config.standstill_timeout,
                 TIMER_ID_STANDSTILL_ALERT,
             ),
-            ProtocolOutcome::ScheduleTimer(
-                now + TimeDiff::from(5_000),
-                TIMER_ID_SYNCHRONIZER_QUEUE,
-            ),
+            ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_SYNCHRONIZER_LOG),
         ]
     }
 
@@ -699,7 +696,7 @@ where
                 }
             }
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
-            TIMER_ID_SYNCHRONIZER_QUEUE => {
+            TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
                 if !self.finalized_switch_block() {
                     let next_timer = Timestamp::now() + TimeDiff::from(5_000);
