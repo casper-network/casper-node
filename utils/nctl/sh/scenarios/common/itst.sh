@@ -32,7 +32,7 @@ function do_start_node() {
     sleep 1
     if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then
         log "ERROR: node-${NODE_ID} is not running"
-	exit 1
+    exit 1
     else
         log "node-${NODE_ID} is running"
     fi
@@ -45,7 +45,7 @@ function do_stop_node() {
     sleep 1
     if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" = "RUNNING" ]; then
         log "ERROR: node-${NODE_ID} is still running"
-	exit 1
+    exit 1
     else
         log "node-${NODE_ID} was shutdown in era: $(check_current_era)"
     fi
@@ -56,11 +56,11 @@ function check_network_sync() {
     log_step "check all node's LFBs are in sync"
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
         if [ "$(do_read_lfb_hash '5')" = "$(do_read_lfb_hash '1')" ] && \
-		[ "$(do_read_lfb_hash '4')" = "$(do_read_lfb_hash '1')" ] && \
-		[ "$(do_read_lfb_hash '3')" = "$(do_read_lfb_hash '1')" ] && \
-		[ "$(do_read_lfb_hash '2')" = "$(do_read_lfb_hash '1')" ]; then
-	    log "all nodes in sync, proceeding..."
-	    break
+        [ "$(do_read_lfb_hash '4')" = "$(do_read_lfb_hash '1')" ] && \
+        [ "$(do_read_lfb_hash '3')" = "$(do_read_lfb_hash '1')" ] && \
+        [ "$(do_read_lfb_hash '2')" = "$(do_read_lfb_hash '1')" ]; then
+        log "all nodes in sync, proceeding..."
+        break
         fi
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
@@ -125,14 +125,13 @@ function do_await_n_blocks() {
     nctl-await-n-blocks offset="$BLOCK_COUNT"
 }
 
-function get_switch_block_equivocators() {
+# Gets the header of the switch block of the given era.
+function get_switch_block() {
     local NODE_ID=${1}
     # Number of blocks to walkback before erroring out
     local WALKBACK=${2}
     local BLOCK_HASH=${3}
-    local JSON_OUT
-    local PARENT
-    local BLOCK_HEADER
+    local ERA=${4}
 
     if [ -z "$BLOCK_HASH" ]; then
         JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID"))
@@ -141,15 +140,31 @@ function get_switch_block_equivocators() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
-        if [ "$(echo "$BLOCK_HEADER" | jq '.era_end')" = "null" ]; then
-            PARENT=$(echo "$BLOCK_HEADER" | jq -r '.parent_hash')
+        BLOCK=$(echo "$JSON_OUT" | jq '.result.block')
+        local ERA_END="$(echo "$BLOCK" | jq '.header.era_end')"
+        local ERA_ID="$(echo "$BLOCK" | jq '.header.era_id')"
+        if [ "$ERA_END" = "null" ] || { [ -n "$ERA" ] && [ "$ERA_ID" != "$ERA" ]; }; then
+            PARENT=$(echo "$BLOCK" | jq -r '.header.parent_hash')
             WALKBACK=$((WALKBACK - 1))
-            log "$WALKBACK: Walking back to block: $PARENT"
-            get_switch_block_equivocators "$NODE_ID" "$WALKBACK" "$PARENT"
+            get_switch_block "$NODE_ID" "$WALKBACK" "$PARENT" "$ERA"
         else
-            log "equivocators: $(echo "$BLOCK_HEADER" | jq '.era_end.era_report.equivocators')"
+            echo "$BLOCK"
         fi
+    else
+        echo "null"
+    fi
+}
+
+function get_switch_block_equivocators() {
+    local NODE_ID=${1}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${2}
+    local BLOCK_HASH=${3}
+
+    local BLOCK=$(get_switch_block "$NODE_ID" "$WALKBACK" "$BLOCK_HASH")
+
+    if [ "$BLOCK" != "null" ]; then
+        log "equivocators: $(echo "$BLOCK" | jq '.header.era_end.era_report.equivocators')"
     else
         log "Error: Switch block not found within walkback!"
         exit 1
