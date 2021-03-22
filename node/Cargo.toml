@@ -40,7 +40,7 @@ hostname = "0.3.0"
 http = "0.2.1"
 humantime = "2"
 hyper = "0.14.4"
-itertools = "0.9.0"
+itertools = "0.10.0"
 jemalloc-ctl = "0.3.3"
 jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
@@ -49,23 +49,23 @@ libp2p = { version = "0.35.1", default-features = false, features = ["deflate", 
 linked-hash-map = "0.5.3"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
-num = { version = "0.3.0", default-features = false }
+num = { version = "0.4.0", default-features = false }
 num-derive = "0.3.0"
-num-rational = { version = "0.3.0", features = ["serde"] }
+num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"
 num_cpus = "1"
 once_cell = "1"
 openssl = "0.10.32"
 parking_lot = "0.11.0"
 pem = "0.8.1"
-prometheus = "0.10.0"
-proptest = { version = "0.10.0", optional = true }
+prometheus = "0.12.0"
+proptest = { version = "1.0.0", optional = true }
 quanta = "0.7.2"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 schemars = { version = "0.8.0", features = ["preserve_order"] }
-sd-notify = "0.1.1"
+sd-notify = "0.3.0"
 semver = { version = "0.11.0", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde-big-array = "0.3.0"
@@ -90,7 +90,7 @@ tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-futures = "0.2.5"
 tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }
-uint = "0.8.3"
+uint = "0.9.0"
 untrusted = "0.7.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = "0.3.0"
@@ -107,7 +107,6 @@ multihash = "0.13.2"
 pnet = "0.27.2"
 rand_core = "0.6.2"
 rand_pcg = "0.3.0"
-reqwest = "0.11.1"
 tokio = { version = "1", features = ["test-util"] }
 
 [features]

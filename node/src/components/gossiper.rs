@@ -219,7 +219,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         requested_count: usize,
         peers: HashSet<NodeId>,
     ) -> Effects<Event<T>> {
-        self.metrics.times_gossiped.inc_by(peers.len() as i64);
+        self.metrics.times_gossiped.inc_by(peers.len() as u64);
         // We don't have any peers to gossip to, so pause the process, which will eventually result
         // in the entry being removed.
         if peers.is_empty() {
