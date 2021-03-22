@@ -106,27 +106,26 @@ impl DeployAcceptor {
 
         let account_key = deploy.header().account().to_account_hash().into();
 
-        // skip account verification if deploy not received from client or node is configured to
-        // not verify accounts
-        if !source.from_peer() || !self.verify_accounts {
+        // Verify account if deploy received from client and node is configured to do so.
+        if source.from_client() && self.verify_accounts {
             return effect_builder
-                .immediately()
-                .event(move |_| Event::AccountVerificationResult {
+                .is_verified_account(account_key)
+                .event(move |verified| Event::AccountVerificationResult {
                     deploy,
                     source,
                     account_key,
-                    verified: Some(true),
+                    verified,
                     maybe_responder,
                 });
         }
 
         effect_builder
-            .is_verified_account(account_key)
-            .event(move |verified| Event::AccountVerificationResult {
+            .immediately()
+            .event(move |_| Event::AccountVerificationResult {
                 deploy,
                 source,
                 account_key,
-                verified,
+                verified: Some(true),
                 maybe_responder,
             })
     }

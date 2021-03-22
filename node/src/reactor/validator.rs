@@ -473,7 +473,7 @@ impl reactor::Reactor for Reactor {
         )
         .with_parent_map(latest_block);
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
-        let linear_chain = LinearChain::new(registry)?;
+        let linear_chain = LinearChain::new(registry, &chainspec_loader.chainspec())?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
         effects.extend(reactor::wrap_effects(
@@ -788,7 +788,9 @@ impl reactor::Reactor for Reactor {
                             return Effects::new();
                         }
                     },
-                    Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
+                    Message::FinalitySignature(fs) => {
+                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, true))
+                    }
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -874,9 +876,11 @@ impl reactor::Reactor for Reactor {
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
-                    ConsensusAnnouncement::Handled(_) => {
-                        debug!("Ignoring `Handled` announcement in `validator` reactor.");
-                        Effects::new()
+                    ConsensusAnnouncement::Handled(linear_chain_block) => {
+                        let event = Event::LinearChain(linear_chain::Event::KnownLinearChainBlock(
+                            linear_chain_block,
+                        ));
+                        self.dispatch_event(effect_builder, rng, event)
                     }
                     ConsensusAnnouncement::Fault {
                         era_id,
@@ -906,7 +910,7 @@ impl reactor::Reactor for Reactor {
                 let block_hash = *block.hash();
 
                 // send to linear chain
-                let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
+                let reactor_event = Event::LinearChain(linear_chain::Event::NewLinearChainBlock {
                     block: Box::new(block),
                     execution_results: execution_results
                         .iter()

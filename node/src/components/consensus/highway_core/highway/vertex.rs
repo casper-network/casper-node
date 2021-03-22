@@ -80,6 +80,14 @@ impl<C: Context> Vertex<C> {
         }
     }
 
+    /// Returns the seq number of this vertex (if it is a unit).
+    pub(crate) fn unit_seq_number(&self) -> Option<u64> {
+        match self {
+            Vertex::Unit(swunit) => Some(swunit.wire_unit().seq_number),
+            _ => None,
+        }
+    }
+
     /// Returns whether this is evidence, as opposed to other types of vertices.
     pub(crate) fn is_evidence(&self) -> bool {
         matches!(self, Vertex::Evidence(_))

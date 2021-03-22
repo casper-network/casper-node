@@ -51,6 +51,8 @@ const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
 const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 /// The timer for logging inactive validators.
 const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
+/// The timer for logging synchronizer queue size.
+const TIMER_ID_SYNCHRONIZER_QUEUE: TimerId = TimerId(4);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -85,6 +87,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         seed: u64,
         now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<I, C>>, ProtocolOutcomes<I, C>) {
+        let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
             !sum_stakes.is_zero(),
@@ -154,6 +157,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 now + TimeDiff::from(60_000),
                 TIMER_ID_LOG_PARTICIPATION,
             ),
+            ProtocolOutcome::ScheduleTimer(
+                now + TimeDiff::from(5_000),
+                TIMER_ID_SYNCHRONIZER_QUEUE,
+            ),
         ];
 
         // If there's a chance that we start after the era is finished…
@@ -183,7 +190,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             round_success_meter,
-            synchronizer: Synchronizer::new(config.pending_vertex_timeout),
+            synchronizer: Synchronizer::new(
+                config.pending_vertex_timeout,
+                validators_count,
+                instance_id,
+            ),
             evidence_only: false,
         });
         (hw_proto, outcomes)
@@ -607,6 +618,15 @@ where
                     vec![]
                 }
             }
+            TIMER_ID_SYNCHRONIZER_QUEUE => {
+                self.synchronizer.log_len();
+                if !self.finalized_switch_block() {
+                    let next_timer = Timestamp::now() + TimeDiff::from(5_000);
+                    vec![ProtocolOutcome::ScheduleTimer(next_timer, timer_id)]
+                } else {
+                    vec![]
+                }
+            }
             _ => unreachable!("unexpected timer ID"),
         }
     }
@@ -760,6 +780,10 @@ where
             ProtocolOutcome::ScheduleTimer(
                 now + TimeDiff::from(60_000),
                 TIMER_ID_LOG_PARTICIPATION,
+            ),
+            ProtocolOutcome::ScheduleTimer(
+                now + TimeDiff::from(5_000),
+                TIMER_ID_SYNCHRONIZER_QUEUE,
             ),
         ];
 

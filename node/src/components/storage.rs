@@ -54,12 +54,13 @@ use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use super::Component;
 #[cfg(test)]
@@ -80,7 +81,7 @@ use crate::{
     NodeRng,
 };
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{ExecutionResult, Transfer, Transform};
+use casper_types::{ExecutionResult, ProtocolVersion, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -152,14 +153,6 @@ pub enum Error {
         first: BlockHash,
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
-    },
-    /// Attempted to store a duplicate execution result.
-    #[error("duplicate execution result for deploy {deploy_hash} in block {block_hash}")]
-    DuplicateExecutionResult {
-        /// The deploy for which the result should be stored.
-        deploy_hash: DeployHash,
-        /// The block providing the context for the deploy's execution result.
-        block_hash: BlockHash,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
@@ -242,6 +235,7 @@ impl Storage {
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
+        version: Version,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -284,15 +278,24 @@ impl Storage {
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
-        let block_txn = env.begin_ro_txn()?;
-        let mut cursor = block_txn.open_ro_cursor(block_header_db)?;
+        let mut block_txn = env.begin_rw_txn()?;
+        let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
+        let protocol_version = ProtocolVersion::from_parts(
+            version.major as u32,
+            version.minor as u32,
+            version.patch as u32,
+        );
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
-                if block.era_id() >= invalid_era {
+                // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
+                // versions - they were most likely created before the upgrade and should be
+                // reverted.
+                if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
+                    cursor.del(WriteFlags::empty())?;
                     continue;
                 }
             }
@@ -310,7 +313,7 @@ impl Storage {
         }
         info!("block store reindexing complete");
         drop(cursor);
-        drop(block_txn);
+        block_txn.commit()?;
 
         // Check the integrity of the block body database.
         check_block_body_db(&env, &block_body_db)?;
@@ -530,17 +533,13 @@ impl Storage {
                         .get_deploy_metadata(&mut txn, &deploy_hash)?
                         .unwrap_or_default();
 
-                    // If we have a previous execution result, we enforce that it is the same.
+                    // If we have a previous execution result, we can continue if it is the same.
                     if let Some(prev) = metadata.execution_results.get(&block_hash) {
-                        if prev != &execution_result {
-                            return Err(Error::DuplicateExecutionResult {
-                                deploy_hash,
-                                block_hash: *block_hash,
-                            });
+                        if prev == &execution_result {
+                            continue;
+                        } else {
+                            debug!(%deploy_hash, %block_hash, "different execution result");
                         }
-
-                        // We can now skip adding, as the result is the same.
-                        continue;
                     }
 
                     if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
