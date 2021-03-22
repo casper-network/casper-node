@@ -36,6 +36,7 @@ impl EraId {
         }
     }
 
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     pub(crate) fn successor(self) -> EraId {
         EraId(self.0 + 1)
     }
@@ -50,6 +51,11 @@ impl EraId {
         EraId(self.0.saturating_sub(x))
     }
 
+    /// Returns the current era plus `x`, or `u64::MAX` if that would be more than `u64::MAX`.
+    pub(crate) fn saturating_add(&self, x: u64) -> EraId {
+        EraId(self.0.saturating_add(x))
+    }
+
     /// Returns whether this is era 0.
     pub(crate) fn is_genesis(&self) -> bool {
         self.0 == 0
@@ -59,6 +65,7 @@ impl EraId {
 impl Add<u64> for EraId {
     type Output = EraId;
 
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     fn add(self, x: u64) -> EraId {
         EraId(self.0 + x)
     }
@@ -67,6 +74,7 @@ impl Add<u64> for EraId {
 impl Sub<u64> for EraId {
     type Output = EraId;
 
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     fn sub(self, x: u64) -> EraId {
         EraId(self.0 - x)
     }

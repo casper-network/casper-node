@@ -1,5 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
+#![warn(clippy::integer_arithmetic)]
+
 mod candidate_block;
 mod cl_context;
 mod config;

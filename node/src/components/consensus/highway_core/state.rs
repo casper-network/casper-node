@@ -1117,7 +1117,7 @@ impl<C: Context> State<C> {
 }
 
 /// Returns the round length, given the round exponent.
-pub(super) fn round_len(round_exp: u8) -> TimeDiff {
+pub(crate) fn round_len(round_exp: u8) -> TimeDiff {
     TimeDiff::from(1_u64.checked_shl(round_exp.into()).unwrap_or(u64::MAX))
 }
 

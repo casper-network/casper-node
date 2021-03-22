@@ -29,6 +29,7 @@ use crate::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
             highway::{Dependency, GetDepOutcome, Highway, Params, ValidVertex, Vertex},
+            state,
             state::{Observation, Panorama},
             validators::{ValidatorIndex, Validators},
         },
@@ -119,9 +120,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_fraction = highway_config.finality_threshold_fraction;
-        let ftt = ((total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128)
-            as u64)
-            .into();
+        assert!(
+            ftt_fraction < 1.into(),
+            "finality threshold must be less than 100%"
+        );
+        #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow.
+        let ftt = total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128;
+        let ftt = (ftt as u64).into();
 
         let init_round_exp = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
@@ -136,12 +141,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting slashed.
-        let min_round_len = 1 << highway_config.minimum_round_exponent;
+        let min_round_len = state::round_len(highway_config.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
-            .max(1 + protocol_config.era_duration.millis() / min_round_len);
-        let endorsement_evidence_limit =
-            (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
+            .max((TimeDiff::from(1) + protocol_config.era_duration) / min_round_len);
+        let endorsement_evidence_limit = min_rounds_per_era
+            .saturating_mul(2)
+            .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
         let params = Params::new(
             seed,

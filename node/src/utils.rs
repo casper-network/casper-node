@@ -324,7 +324,9 @@ impl<I: Display> Display for Source<I> {
     }
 }
 
-/// Divides `numerator` by `denominator` and rounds to the closest integer.
+/// Divides `numerator` by `denominator` and rounds to the closest integer (round half down).
+///
+/// `numerator + denominator / 2` must not overflow, and `denominator` must not be zero.
 pub(crate) fn div_round<T>(numerator: T, denominator: T) -> T
 where
     T: Add<Output = T> + Div<Output = T> + From<u8> + Copy,
