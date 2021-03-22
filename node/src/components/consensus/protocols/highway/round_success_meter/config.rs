@@ -51,13 +51,16 @@ impl Config {
     /// which we won't increase our round length. Exceeding this threshold will mean that we
     /// should slow down.
     pub(crate) fn max_failed_rounds(&self) -> u64 {
-        self.num_rounds_to_consider - self.num_rounds_slowdown - 1
+        self.num_rounds_to_consider
+            .saturating_sub(self.num_rounds_slowdown)
+            .saturating_sub(1)
     }
 
     /// The maximum number of failures with which we will attempt to accelerate (decrease the round
     /// exponent).
     pub(crate) fn max_failures_for_acceleration(&self) -> u64 {
-        self.num_rounds_to_consider - self.num_rounds_speedup
+        self.num_rounds_to_consider
+            .saturating_sub(self.num_rounds_speedup)
     }
 }
 
