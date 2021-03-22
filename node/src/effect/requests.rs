@@ -21,18 +21,13 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResults,
         genesis::GenesisResult,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
-    shared::{
-        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
-        transform::Transform,
-    },
-    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     system::auction::{EraValidators, ValidatorWeights},
@@ -672,6 +667,9 @@ impl<I> Display for RestRequest<I> {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
+    /// A request to execute a block.
+    ExecuteBlock(FinalizedBlock),
+
     /// Get `ProtocolData` by `ProtocolVersion`.
     GetProtocolData {
         /// The protocol version.
@@ -685,24 +683,6 @@ pub enum ContractRuntimeRequest {
         chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
-    },
-    /// An `ExecuteRequest` that contains multiple deploys that will be executed.
-    Execute {
-        /// Execution request containing deploys.
-        #[serde(skip_serializing)]
-        execute_request: Box<ExecuteRequest>,
-        /// Responder to call with the execution result.
-        responder: Responder<Result<ExecutionResults, engine_state::Error>>,
-    },
-    /// A request to commit existing execution transforms.
-    Commit {
-        /// A valid state root hash.
-        state_root_hash: Digest,
-        /// Effects obtained through `ExecutionResult`
-        #[serde(skip_serializing)]
-        effects: AdditiveMap<Key, Transform>,
-        /// Responder to call with the commit result.
-        responder: Responder<Result<CommitResult, engine_state::Error>>,
     },
     /// A request to run upgrade.
     Upgrade {
@@ -800,6 +780,9 @@ pub enum ContractRuntimeRequest {
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
+                write!(formatter, "finalized_block {}", finalized_block)
+            }
             ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
                 write!(
                     formatter,
@@ -807,23 +790,6 @@ impl Display for ContractRuntimeRequest {
                     chainspec.protocol_config.version
                 )
             }
-            ContractRuntimeRequest::Execute {
-                execute_request, ..
-            } => write!(
-                formatter,
-                "execute request: {}",
-                execute_request.parent_state_hash
-            ),
-
-            ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                ..
-            } => write!(
-                formatter,
-                "commit request: {} {:?}",
-                state_root_hash, effects
-            ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
                 write!(formatter, "upgrade request: {:?}", upgrade_config)
@@ -900,24 +866,6 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
-        }
-    }
-}
-
-/// A contract runtime request.
-#[derive(Debug)]
-#[must_use]
-pub enum BlockExecutorRequest {
-    /// A request to execute finalized block.
-    ExecuteBlock(FinalizedBlock),
-}
-
-impl Display for BlockExecutorRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockExecutorRequest::ExecuteBlock(finalized_block) => {
-                write!(f, "execute block {}", finalized_block)
-            }
         }
     }
 }
