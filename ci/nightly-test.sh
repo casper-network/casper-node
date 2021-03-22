@@ -51,12 +51,12 @@ function start_run_teardown() {
 }
 
 start_run_teardown "sync_test.sh node=6 timeout=500"
-start_run_teardown "sync_upgrade_test.sh node=6 timeout=500"
+start_run_teardown "sync_upgrade_test.sh node=6 era=4 timeout=500"
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
 start_run_teardown "itst11.sh"
 start_run_teardown "itst13.sh" "itst13.chainspec.toml.in"
-start_run_teardown "itst14.sh" "itst14.chainspec.toml.in" "itst14.accounts.toml"
+#start_run_teardown "itst14.sh" "itst14.chainspec.toml.in" "itst14.accounts.toml"
 
 # Clean up cloned repo
 popd
