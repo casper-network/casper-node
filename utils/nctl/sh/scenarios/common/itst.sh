@@ -169,6 +169,8 @@ function _verify_deploy_transfer() {
     fi
 }
 
+# Walks the chain on a given node, looking for a specific transfer hash.
+# Prints out the block hash that contains the target hash, if found.
 function verify_transfer() {
     local NODE_ID=${1}
     local TRANSFER_HASH=${2}
@@ -178,6 +180,8 @@ function verify_transfer() {
     _verify_deploy_transfer "$NODE_ID" "$TARGET_HASH" "transfer" "$WALKBACK" "$PARENT"
 }
 
+# Walks the chain on a given node, looking for a specific deploy hash.
+# Prints out the block hash that contains the target hash, if found.
 function verify_deploy() {
     local NODE_ID=${1}
     local TRANSFER_HASH=${2}
