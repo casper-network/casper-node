@@ -9,8 +9,8 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{AsRef, From};
-use serde::{Deserialize, Serialize};
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
 use super::Weight;
 use crate::utils::ds;
