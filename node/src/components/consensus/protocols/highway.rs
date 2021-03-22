@@ -705,7 +705,7 @@ where
             TIMER_ID_PURGE_VERTICES => {
                 self.synchronizer.purge_vertices(now);
                 self.pvv_cache.clear();
-                let next_time = Timestamp::now() + self.synchronizer.pending_vertex_timeout();
+                let next_time = now + self.synchronizer.pending_vertex_timeout();
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => {
