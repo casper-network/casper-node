@@ -33,7 +33,7 @@ use casper_types::{
         auction::{
             self, Bids, DelegationRate, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
             ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_ACTIVATE_BID,
+            ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -42,6 +42,7 @@ use casper_types::{
 const ARG_TARGET: &str = "target";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
+const CONTRACT_ACTIVATE_BID: &str = "activate_bid.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
@@ -1752,11 +1753,10 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 #[test]
 fn should_handle_evictions() {
     let activate_bid = |builder: &mut InMemoryWasmTestBuilder, validator_public_key: PublicKey| {
-        let auction = builder.get_auction_contract_hash();
-        let run_request = ExecuteRequestBuilder::contract_call_by_hash(
+        const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
+        let run_request = ExecuteRequestBuilder::standard(
             AccountHash::from(&validator_public_key),
-            auction,
-            METHOD_ACTIVATE_BID,
+            CONTRACT_ACTIVATE_BID,
             runtime_args! {
                 ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
             },
@@ -2883,4 +2883,42 @@ fn should_reset_delegators_stake_after_slashing() {
 
     // Validator 1 total delegated stake is set to 0
     assert_eq!(validator_1_delegator_stakes_3, U512::zero());
+}
+
+#[should_panic(expected = "InvalidDelegatedAmount")]
+#[ignore]
+#[test]
+fn should_validate_genesis_delegators_bond_amount() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            *ACCOUNT_1_PK,
+            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Some(GenesisValidator::new(Motes::new(ACCOUNT_1_BOND.into()), 80)),
+        );
+        let account_2 = GenesisAccount::account(
+            *ACCOUNT_2_PK,
+            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND.into()),
+                DelegationRate::zero(),
+            )),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            *ACCOUNT_1_PK,
+            *DELEGATOR_1,
+            Motes::new(DELEGATOR_1_BALANCE.into()),
+            Motes::new(U512::zero()),
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&run_genesis_request);
 }

@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
 pub struct BlockContext {
     timestamp: Timestamp,
     height: u64,
@@ -195,10 +195,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
 
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
-
-    /// Returns the protocol outcomes for all the required timers.
-    /// TODO: Remove this once the Joiner no longer has a consensus component.
-    fn recreate_timers(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
 
     // TODO: Make this lees Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;

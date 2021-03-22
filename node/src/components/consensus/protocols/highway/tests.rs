@@ -95,8 +95,9 @@ where
         0,
         start_timestamp,
     );
-    // We expect only the timer outcomes. If there are more, the tests might need to handle them.
-    assert_eq!(3, outcomes.len());
+    // We expect only the vertex purge timer, participation log timer and `Ping` outcomes.
+    // If there are more, the tests might need to handle them.
+    assert_eq!(4, outcomes.len());
     hw_proto
 }
 

@@ -302,8 +302,8 @@ pub enum Source<I> {
 }
 
 impl<I> Source<I> {
-    pub(crate) fn from_peer(&self) -> bool {
-        matches!(self, Source::Peer(_))
+    pub(crate) fn from_client(&self) -> bool {
+        matches!(self, Source::Client)
     }
 }
 

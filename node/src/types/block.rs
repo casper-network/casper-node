@@ -729,6 +729,16 @@ impl BlockHeader {
         self.era_id
     }
 
+    /// Returns the era ID in which the next block would be created (that is, this block's era ID,
+    /// or its successor if this is a switch block).
+    pub fn next_block_era_id(&self) -> EraId {
+        if self.era_end.is_some() {
+            self.era_id.successor()
+        } else {
+            self.era_id
+        }
+    }
+
     /// Returns the height of this block, i.e. the number of ancestors.
     pub fn height(&self) -> u64 {
         self.height

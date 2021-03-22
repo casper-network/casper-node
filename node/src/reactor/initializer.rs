@@ -176,7 +176,11 @@ impl Reactor {
         let hard_reset_to_start_of_era = chainspec_loader.hard_reset_to_start_of_era();
 
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());
-        let storage = Storage::new(&storage_config, hard_reset_to_start_of_era)?;
+        let storage = Storage::new(
+            &storage_config,
+            hard_reset_to_start_of_era,
+            chainspec_loader.chainspec().protocol_config.version.clone(),
+        )?;
 
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
