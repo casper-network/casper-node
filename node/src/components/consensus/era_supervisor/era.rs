@@ -240,12 +240,12 @@ where
         };
 
         consensus_heap_size
-            + start_time.estimate_heap_size()
-            + start_height.estimate_heap_size()
-            + candidates.estimate_heap_size()
-            + newly_slashed.estimate_heap_size()
-            + slashed.estimate_heap_size()
-            + accusations.estimate_heap_size()
-            + validators.estimate_heap_size()
+            .saturating_add(start_time.estimate_heap_size())
+            .saturating_add(start_height.estimate_heap_size())
+            .saturating_add(candidates.estimate_heap_size())
+            .saturating_add(newly_slashed.estimate_heap_size())
+            .saturating_add(slashed.estimate_heap_size())
+            .saturating_add(accusations.estimate_heap_size())
+            .saturating_add(validators.estimate_heap_size())
     }
 }

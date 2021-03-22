@@ -11,7 +11,7 @@ use tracing::{error, info, trace, warn};
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{Endorsements, Ping, ValidVertex, Vertex, WireUnit},
+    highway::{Ping, ValidVertex, Vertex, WireUnit},
     state::{self, Panorama, State, Unit, Weight},
     validators::ValidatorIndex,
 };
@@ -213,6 +213,12 @@ impl<C: Context> ActiveValidator<C> {
                     if let Some(witness_unit) =
                         self.new_unit(panorama, timestamp, None, state, instance_id)
                     {
+                        if self
+                            .latest_unit(state)
+                            .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
+                        {
+                            info!(round_id = %r_id, "sending witness in round with no proposal");
+                        }
                         effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
                         return effects;
                     }
@@ -562,10 +568,7 @@ impl<C: Context> ActiveValidator<C> {
     fn endorse(&self, vhash: &C::Hash) -> Vertex<C> {
         let endorsement = Endorsement::new(*vhash, self.vidx);
         let signature = self.secret.sign(&endorsement.hash());
-        Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
-            endorsement,
-            signature,
-        )]))
+        Vertex::Endorsements(SignedEndorsement::new(endorsement, signature).into())
     }
 
     /// Returns a panorama that is valid to use in our own unit at the given timestamp.

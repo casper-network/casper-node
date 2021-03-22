@@ -115,16 +115,13 @@ macro_rules! endorse {
         }
     };
     ($state: ident, $creator: expr, $vote: expr) => {{
-        use crate::components::consensus::highway_core::{
-            endorsement::{Endorsement, SignedEndorsement},
-            highway::Endorsements,
+        use crate::components::consensus::highway_core::endorsement::{
+            Endorsement, SignedEndorsement,
         };
 
         let endorsement: Endorsement<TestContext> = Endorsement::new($vote, ($creator));
         let signature = TestSecret(($creator).0).sign(&endorsement.hash());
-        let signed_endorsement = SignedEndorsement::new(endorsement, signature);
-        let endorsements: Endorsements<TestContext> =
-            Endorsements::new(vec![signed_endorsement].into_iter());
+        let endorsements = SignedEndorsement::new(endorsement, signature).into();
         let evidence = $state.find_conflicting_endorsements(&endorsements, &TEST_INSTANCE_ID);
         $state.add_endorsements(endorsements);
         for ev in evidence {

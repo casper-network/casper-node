@@ -1,20 +1,19 @@
 [package]
-name = "host-function-metrics"
+name = "activate-bid"
 version = "0.1.0"
-authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+authors = ["Henry Till <henrytill@gmail.com>"]
 edition = "2018"
 
-[lib]
-crate-type = ["cdylib"]
+[[bin]]
+name = "activate_bid"
+path = "src/main.rs"
 bench = false
 doctest = false
 test = false
 
 [features]
-default = ["casper-contract/test-support", "rand/small_rng"]
 std = ["casper-contract/std", "casper-types/std"]
 
 [dependencies]
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
-rand = { version = "0.8.3", default-features = false }
