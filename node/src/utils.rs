@@ -4,7 +4,6 @@
 mod counting_channel;
 pub mod ds;
 mod external;
-mod median;
 pub mod milliseconds;
 pub mod pid_file;
 #[cfg(target_os = "linux")]
@@ -36,7 +35,6 @@ pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, 
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
-pub(crate) use median::weighted_median;
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.

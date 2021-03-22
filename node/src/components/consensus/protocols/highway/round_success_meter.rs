@@ -180,7 +180,9 @@ impl<C: Context> RoundSuccessMeter<C> {
         self.rounds.iter().filter(|&success| !success).count()
     }
 
-    fn new_exponent(&self) -> u8 {
+    /// Returns the round exponent to be used in the next round, based on the previously used round
+    /// exponent and the current counts of successes and failures.
+    pub(super) fn new_exponent(&self) -> u8 {
         let current_round_index = round_index(self.current_round_id, self.current_round_exp);
         let num_failures = self.count_failures() as u64;
         #[allow(clippy::integer_arithmetic)] // The acceleration_parameter is not zero.
