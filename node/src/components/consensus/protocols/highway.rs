@@ -56,6 +56,8 @@ const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 /// The timer for an alert no progress was made in a long time.
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
+/// The timer for logging synchronizer queue size.
+const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -98,6 +100,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         seed: u64,
         now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<I, C>>, ProtocolOutcomes<I, C>) {
+        let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
             !sum_stakes.is_zero(),
@@ -193,7 +196,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(config.highway.pending_vertex_timeout),
+            synchronizer: Synchronizer::new(
+                config.highway.pending_vertex_timeout,
+                validators_count,
+                instance_id,
+            ),
             evidence_only: false,
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
@@ -221,6 +228,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 now.max(era_start_time) + highway_config.standstill_timeout,
                 TIMER_ID_STANDSTILL_ALERT,
             ),
+            ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_SYNCHRONIZER_LOG),
         ]
     }
 
@@ -682,6 +690,15 @@ where
                 }
             }
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
+            TIMER_ID_SYNCHRONIZER_LOG => {
+                self.synchronizer.log_len();
+                if !self.finalized_switch_block() {
+                    let next_timer = Timestamp::now() + TimeDiff::from(5_000);
+                    vec![ProtocolOutcome::ScheduleTimer(next_timer, timer_id)]
+                } else {
+                    vec![]
+                }
+            }
             _ => unreachable!("unexpected timer ID"),
         }
     }
