@@ -9,6 +9,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{AsRef, From};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use super::Weight;
@@ -141,6 +142,24 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
+
+impl<T> fmt::Display for ValidatorMap<Option<T>>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let view = self
+            .0
+            .iter()
+            .map(|maybe_el| match maybe_el {
+                None => "N".to_string(),
+                Some(el) => format!("{}", el),
+            })
+            .join(", ");
+        write!(f, "ValidatorMap({})", view)?;
+        Ok(())
+    }
+}
 
 impl<T> DataSize for ValidatorMap<T>
 where

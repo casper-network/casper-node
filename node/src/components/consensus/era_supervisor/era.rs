@@ -175,11 +175,6 @@ impl<I> Era<I> {
         &self.validators
     }
 
-    /// Returns whether validator identified with `public_key` is bonded in that era.
-    pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
-        self.validators.contains_key(public_key)
-    }
-
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
     pub(crate) fn set_paused(&mut self, paused: bool) {
         self.consensus.set_paused(paused);
@@ -245,12 +240,12 @@ where
         };
 
         consensus_heap_size
-            + start_time.estimate_heap_size()
-            + start_height.estimate_heap_size()
-            + candidates.estimate_heap_size()
-            + newly_slashed.estimate_heap_size()
-            + slashed.estimate_heap_size()
-            + accusations.estimate_heap_size()
-            + validators.estimate_heap_size()
+            .saturating_add(start_time.estimate_heap_size())
+            .saturating_add(start_height.estimate_heap_size())
+            .saturating_add(candidates.estimate_heap_size())
+            .saturating_add(newly_slashed.estimate_heap_size())
+            .saturating_add(slashed.estimate_heap_size())
+            .saturating_add(accusations.estimate_heap_size())
+            .saturating_add(validators.estimate_heap_size())
     }
 }

@@ -17,7 +17,6 @@ pub(super) use unit::Unit;
 
 use std::{
     borrow::Borrow,
-    cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::identity,
     iter,
@@ -41,7 +40,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
-    utils::{ds, weighted_median},
+    utils::ds,
 };
 use block::Block;
 use tallies::Tallies;
@@ -280,12 +279,10 @@ impl<C: Context> State<C> {
     }
 
     /// Returns endorsements for `unit`, if any.
-    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
-        self.endorsements.get(unit).map(|signatures| {
-            signatures
-                .iter_some()
-                .map(|(vidx, sig)| SignedEndorsement::new(Endorsement::new(*unit, vidx), *sig))
-                .collect()
+    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Endorsements<C>> {
+        self.endorsements.get(unit).map(|signatures| Endorsements {
+            unit: *unit,
+            endorsers: signatures.iter_some().map(|(i, sig)| (i, *sig)).collect(),
         })
     }
 
@@ -485,6 +482,7 @@ impl<C: Context> State<C> {
         let threshold = self.total_weight() / 2;
         if endorsed > threshold {
             info!(%uhash, "Unit endorsed by at least 1/2 of validators.");
+            // Unwrap is safe: We created the map entry above.
             let mut fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
             let endorsed_map = self
                 .weights()
@@ -594,6 +592,7 @@ impl<C: Context> State<C> {
         });
 
         // Create an Evidence instance for each conflict we found.
+        // The unwraps are safe, because we know that there are units with these hashes.
         conflicting_endorsements
             .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
                 let unit1 = self.unit(uhash1);
@@ -683,9 +682,12 @@ impl<C: Context> State<C> {
         if block.height == height {
             return Some(hash);
         }
+        #[allow(clippy::integer_arithmetic)] // block.height > height, otherwise we returned.
         let diff = block.height - height;
         // We want to make the greatest step 2^i such that 2^i <= diff.
         let max_i = log2(diff) as usize;
+        // A block at height > 0 always has at least its parent entry in skip_idx.
+        #[allow(clippy::integer_arithmetic)]
         let i = max_i.min(block.skip_idx.len() - 1);
         self.find_ancestor(&block.skip_idx[i], height)
     }
@@ -797,7 +799,7 @@ impl<C: Context> State<C> {
     /// Returns `true` if the `bhash` is a block that can have no children.
     pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
         self.blocks.get(bhash).map_or(false, |block| {
-            block.height + 1 >= self.params.end_height()
+            block.height.saturating_add(1) >= self.params.end_height()
                 && self.unit(bhash).timestamp >= self.params.end_timestamp()
         })
     }
@@ -813,13 +815,15 @@ impl<C: Context> State<C> {
     /// or `None` if the sequence number is higher than that of the unit with `hash`.
     fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
         let unit = self.unit(hash);
-        match unit.seq_number.cmp(&seq_number) {
-            Ordering::Equal => Some(hash),
-            Ordering::Less => None,
-            Ordering::Greater => {
-                let diff = unit.seq_number - seq_number;
+        match unit.seq_number.checked_sub(seq_number) {
+            None => None,          // There is no unit with seq_number in our swimlane.
+            Some(0) => Some(hash), // The sequence number is the one we're looking for.
+            Some(diff) => {
                 // We want to make the greatest step 2^i such that 2^i <= diff.
-                let max_i = log2(diff) as usize;
+                let max_i = log2(diff) as usize; // Log is safe because diff is not zero.
+
+                // Diff is not zero, so the unit has a predecessor and skip_idx is not empty.
+                #[allow(clippy::integer_arithmetic)]
                 let i = max_i.min(unit.skip_idx.len() - 1);
                 self.find_in_swimlane(&unit.skip_idx[i], seq_number)
             }
@@ -853,17 +857,6 @@ impl<C: Context> State<C> {
             next = self.block(current).parent();
             Some(current)
         })
-    }
-
-    /// Returns the median round exponent of all the validators that haven't been observed to be
-    /// malicious, as seen by the current panorama.
-    /// Returns `None` if there are no correct validators in the panorama.
-    pub(crate) fn median_round_exp(&self) -> Option<u8> {
-        weighted_median(
-            self.panorama
-                .iter_correct(self)
-                .map(|unit| (unit.round_exp, self.weight(unit.creator))),
-        )
     }
 
     /// Returns `true` if the state contains no units.
@@ -1113,8 +1106,8 @@ impl<C: Context> State<C> {
 }
 
 /// Returns the round length, given the round exponent.
-pub(super) fn round_len(round_exp: u8) -> TimeDiff {
-    TimeDiff::from(1 << round_exp)
+pub(crate) fn round_len(round_exp: u8) -> TimeDiff {
+    TimeDiff::from(1_u64.checked_shl(round_exp.into()).unwrap_or(u64::MAX))
 }
 
 /// Returns the time at which the round with the given timestamp and round exponent began.
@@ -1128,18 +1121,21 @@ pub(crate) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
     (timestamp >> round_exp) << round_exp
 }
 
-/// Returns the base-2 logarithm of `x`, rounded down,
-/// i.e. the greatest `i` such that `2.pow(i) <= x`.
+/// Returns the base-2 logarithm of `x`, rounded down, i.e. the greatest `i` such that
+/// `2.pow(i) <= x`. If `x == 0`, it returns `0`.
 fn log2(x: u64) -> u32 {
-    // The least power of two that is strictly greater than x.
-    let next_pow2 = (x + 1).next_power_of_two();
-    // It's twice as big as the greatest power of two that is less or equal than x.
-    let prev_pow2 = next_pow2 >> 1;
-    // The number of trailing zeros is its base-2 logarithm.
-    prev_pow2.trailing_zeros()
+    // Find the least power of two strictly greater than x and count its trailing zeros.
+    // Then subtract 1 to get the zeros of the greatest power of two less or equal than x.
+    x.saturating_add(1)
+        .checked_next_power_of_two()
+        .unwrap_or(0)
+        .trailing_zeros()
+        .saturating_sub(1)
 }
 
 /// Returns a pseudorandom `u64` betweend `1` and `upper` (inclusive).
 fn leader_prng(upper: u64, seed: u64) -> u64 {
-    ChaCha8Rng::seed_from_u64(seed).gen_range(0..upper) + 1
+    ChaCha8Rng::seed_from_u64(seed)
+        .gen_range(0..upper)
+        .saturating_add(1)
 }

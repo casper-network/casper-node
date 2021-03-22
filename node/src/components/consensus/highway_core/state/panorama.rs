@@ -142,6 +142,8 @@ impl<C: Context> Panorama<C> {
 
     /// Returns the correct sequence number for a new unit by `vidx` with this panorama.
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
+        // In a trillion years, we need to make seq number u128.
+        #[allow(clippy::integer_arithmetic)]
         let add1 = |vh: &C::Hash| state.unit(vh).seq_number + 1;
         self[vidx].correct().map_or(0, add1)
     }

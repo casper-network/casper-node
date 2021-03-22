@@ -58,6 +58,10 @@ fn compute_rewards_for<C: Context>(
         assigned_weight += state.weight(idx);
     }
 
+    if assigned_weight.is_zero() {
+        return ValidatorMap::from(vec![0; latest.len()]);
+    }
+
     // Find all level-1 summits. For each validator, store the highest quorum it is a part of.
     let horizon = Horizon::level0(proposal_h, state, &latest);
     let (mut committee, _) = horizon.prune_committee(Weight(1), latest.keys_some().collect());
@@ -75,13 +79,14 @@ fn compute_rewards_for<C: Context>(
     let faulty_w: Weight = panorama.iter_faulty().map(|vidx| state.weight(vidx)).sum();
 
     // Collect the block rewards for each validator who is a member of at least one summit.
+    #[allow(clippy::integer_arithmetic)] // See inline comments.
     max_quorum
         .iter()
         .zip(state.weights())
         .map(|(quorum, weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
             // A level-1 summit with quorum  q  has FTT  q - 50%, so we need  q - 50% > f.
-            let finality_factor = if *quorum > state.total_weight() / 2 + faulty_w {
+            let finality_factor = if *quorum > (state.total_weight() / 2).saturating_add(faulty_w) {
                 state.params().block_reward()
             } else {
                 state.params().reduced_block_reward()
@@ -134,6 +139,7 @@ fn round_participation<'a, C: Context>(
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
+#[allow(clippy::integer_arithmetic)] // Overflows in tests would panic anyway.
 #[cfg(test)]
 mod tests {
     use super::*;

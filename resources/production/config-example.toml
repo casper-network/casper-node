@@ -26,21 +26,51 @@ abbreviate_modules = false
 # Configuration options for consensus
 # ===================================
 [consensus]
-
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+# ===========================================
+# Configuration options for Highway consensus
+# ===========================================
+[consensus.highway]
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "/var/lib/casper/casper-node"
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '30min'
 
+# If the current era's protocol state has not progressed for this long, shut down.
+standstill_timeout = '5min'
+
+# Log inactive or faulty validators periodically, with this interval.
+log_participation_interval = '1min'
+
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
 
+[consensus.highway.round_success_meter]
+# The number of most recent rounds we will be keeping track of.
+num_rounds_to_consider = 40
+
+# The number of successful rounds that triggers us to slow down: With this many or fewer
+# successes per `num_rounds_to_consider`, we increase our round exponent.
+num_rounds_slowdown = 10
+
+# The number of successful rounds that triggers us to speed up: With this many or more successes
+# per `num_rounds_to_consider`, we decrease our round exponent.
+num_rounds_speedup = 32
+
+# We will try to accelerate (decrease our round exponent) every `acceleration_parameter` rounds if
+# we have few enough failures.
+acceleration_parameter = 40
+
+# The FTT, as a percentage (i.e. `acceleration_ftt = [1, 100]` means 1% of the validators' total weight), which
+# we will use for looking for a summit in order to determine a proposal's finality.
+# The required quorum in a summit we will look for to check if a round was successful is
+# determined by this FTT.
+acceleration_ftt = [1, 100]
 
 # ====================================
 # Configuration options for networking
@@ -65,7 +95,7 @@ bind_address = '0.0.0.0:35000'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['18.144.176.168:35000', '13.57.200.251:35000']
+known_addresses = ['134.122.14.111:35000', '54.146.160.57:35000', '35.192.213.171:35000', '35.233.165.80:35000', '135.181.192.149:35000', '34.123.40.20:35000', '95.217.227.245:35000', '95.217.203.156:35000', '95.217.196.20:35000', '95.217.2.40:35000', '95.217.193.34:35000', '135.181.158.218:35000', '78.47.10.119:35000', '35.239.228.18:35000', '135.181.89.76:35000', '168.119.59.12:35000', '157.90.26.198:35000', '161.97.136.153:35000', '116.203.214.160:35000', '195.201.148.78:35000', '168.119.49.220:35000', '78.47.9.189:35000', '116.202.17.49:35000', '116.202.24.91:35000', '168.119.123.213:35000', '78.46.198.83:35000', '159.69.218.20:35000', '135.181.40.95:35000', '116.203.182.37:35000', '207.180.243.57:35000', '78.46.186.163:35000', '78.47.131.222:35000', '78.47.14.48:35000', '95.217.193.36:35000', '207.180.199.157:35000', '144.91.83.59:35000', '107.22.247.79:35000', '95.216.202.98:35000', '37.221.196.53:35000', '95.216.215.119:35000', '195.201.225.135:35000', '47.91.18.226:35000', '207.180.200.65:35000', '168.119.165.44:35000', '135.181.97.186:35000', '168.119.177.37:35000', '62.171.138.114:35000', '178.33.239.236:35000', '135.181.36.98:35000', '167.86.75.50:35000', '45.61.52.142:35000', '161.97.124.55:35000', '168.119.98.214:35000', '134.209.16.172:35000', '35.236.56.221:35000', '31.7.207.16:35000', '54.183.27.75:35000', '18.144.176.168:35000', '13.57.200.251:35000']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
@@ -103,7 +133,7 @@ address = '0.0.0.0:7777'
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 5
+qps_limit = 50
 
 
 # ==============================================
@@ -145,7 +175,7 @@ broadcast_channel_size = 100
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
-qps_limit = 100
+qps_limit = 10
 
 
 # ===============================================

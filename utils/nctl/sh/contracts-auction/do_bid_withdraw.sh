@@ -29,7 +29,7 @@ function main()
     GAS_PAYMENT=${GAS_PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
     NODE_ADDRESS=$(get_node_address_rpc)
     PATH_TO_CLIENT=$(get_path_to_client)
-    PATH_TO_CONTRACT=$(get_path_to_contract "withdraw_bid.wasm")
+    PATH_TO_CONTRACT=$(get_path_to_contract "auction/withdraw_bid.wasm")
 
     BIDDER_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
     BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")

@@ -38,7 +38,6 @@ EOM
 # ------------------------------------------------------------------------
 for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
 do
-    PATH_NODE=$(get_path_to_node "$NODE_ID")
     PATH_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
     PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
