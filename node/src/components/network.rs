@@ -398,8 +398,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             );
         }
 
-        for &&peer_id in &peer_ids {
-            self.send_message(peer_id, payload.clone());
+        for &peer_id in &peer_ids {
+            self.send_message(*peer_id, payload.clone());
         }
 
         peer_ids.into_iter().copied().collect()
