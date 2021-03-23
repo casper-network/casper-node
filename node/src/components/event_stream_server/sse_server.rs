@@ -18,12 +18,9 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey};
 
-use crate::{
-    components::consensus::EraId,
-    types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp},
-};
+use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp};
 
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";

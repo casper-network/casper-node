@@ -4,7 +4,6 @@
 mod counting_channel;
 pub mod ds;
 mod external;
-mod median;
 pub mod milliseconds;
 pub mod pid_file;
 #[cfg(target_os = "linux")]
@@ -36,7 +35,6 @@ pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, 
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
-pub(crate) use median::weighted_median;
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.
@@ -327,7 +325,9 @@ impl<I: Display> Display for Source<I> {
     }
 }
 
-/// Divides `numerator` by `denominator` and rounds to the closest integer.
+/// Divides `numerator` by `denominator` and rounds to the closest integer (round half down).
+///
+/// `numerator + denominator / 2` must not overflow, and `denominator` must not be zero.
 pub(crate) fn div_round<T>(numerator: T, denominator: T) -> T
 where
     T: Add<Output = T> + Div<Output = T> + From<u8> + Copy,

@@ -131,8 +131,8 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn handle_message(&mut self, sender: I, msg: Vec<u8>, now: Timestamp)
         -> ProtocolOutcomes<I, C>;
 
-    /// Handles new connection to a peer.
-    fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C>;
+    /// Current instance of consensus protocol is latest era.
+    fn handle_is_current(&self) -> ProtocolOutcomes<I, C>;
 
     /// Triggers consensus' timer.
     fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;

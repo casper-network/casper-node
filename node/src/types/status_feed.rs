@@ -12,12 +12,11 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::PublicKey;
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade,
-        consensus::EraId,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
     crypto::{hash::Digest, AsymmetricKeyExt},
@@ -25,7 +24,10 @@ use crate::{
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade::new(ActivationPoint::EraId(EraId(42)), Version::new(2, 0, 1));
+    let next_upgrade = NextUpgrade::new(
+        ActivationPoint::EraId(EraId::from(42)),
+        Version::new(2, 0, 1),
+    );
     ChainspecInfo {
         name: String::from("casper-example"),
         starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),

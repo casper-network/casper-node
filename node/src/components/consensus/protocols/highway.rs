@@ -28,7 +28,11 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
-            highway::{Dependency, GetDepOutcome, Highway, Params, ValidVertex, Vertex},
+            highway::{
+                Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
+                Vertex, VertexError,
+            },
+            state,
             state::{Observation, Panorama},
             validators::{ValidatorIndex, Validators},
         },
@@ -55,6 +59,10 @@ const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 /// The timer for an alert no progress was made in a long time.
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
+/// The timer for logging synchronizer queue size.
+const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
+/// The timer for sending the latest panorama reqeuest.
+const TIMER_ID_PANORAMA_REQUEST: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -72,6 +80,7 @@ where
     /// A tracker for whether we are keeping up with the current round exponent or not.
     round_success_meter: RoundSuccessMeter<C>,
     synchronizer: Synchronizer<I, C>,
+    pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
     /// The panorama snapshot. This is updated periodically, and if it does not change for too
     /// long, an alert is raised.
@@ -97,6 +106,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         seed: u64,
         now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<I, C>>, ProtocolOutcomes<I, C>) {
+        let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
             !sum_stakes.is_zero(),
@@ -119,14 +129,29 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_fraction = highway_config.finality_threshold_fraction;
-        let ftt = ((total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128)
-            as u64)
-            .into();
+        assert!(
+            ftt_fraction < 1.into(),
+            "finality threshold must be less than 100%"
+        );
+        #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow.
+        let ftt = total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128;
+        let ftt = (ftt as u64).into();
 
-        let init_round_exp = prev_cp
+        let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .and_then(|highway_proto| highway_proto.median_round_exp())
-            .unwrap_or(highway_config.minimum_round_exponent);
+            .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time))
+            .unwrap_or_else(|| {
+                RoundSuccessMeter::new(
+                    highway_config.minimum_round_exponent,
+                    highway_config.minimum_round_exponent,
+                    highway_config.maximum_round_exponent,
+                    era_start_time,
+                    config.into(),
+                )
+            });
+        // This will return the minimum round exponent if we just initialized the meter, i.e. if
+        // there was no previous consensus instance or it had no round success meter.
+        let init_round_exp = round_success_meter.new_exponent();
 
         info!(
             %init_round_exp,
@@ -136,12 +161,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting slashed.
-        let min_round_len = 1 << highway_config.minimum_round_exponent;
+        let min_round_len = state::round_len(highway_config.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
-            .max(1 + protocol_config.era_duration.millis() / min_round_len);
-        let endorsement_evidence_limit =
-            (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
+            .max((TimeDiff::from(1) + protocol_config.era_duration) / min_round_len);
+        let endorsement_evidence_limit = min_rounds_per_era
+            .saturating_mul(2)
+            .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
         let params = Params::new(
             seed,
@@ -156,35 +182,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let mut outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
+        let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
-        // Request the latest state from peers on startup.
-        // We will catch up with the consensus state and also sync our own unit in case we
-        // restarted. Nodes might have gone into "sleep mode" so we won't get the panorama
-        // in a different way.
-        let latest_state_request =
-            HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
-
-        outcomes.push(ProtocolOutcome::CreatedGossipMessage(
-            (&latest_state_request).serialize(),
-        ));
-
-        let min_round_exp = params.min_round_exp();
-        let max_round_exp = params.max_round_exp();
-        let round_exp = params.init_round_exp();
-        let start_timestamp = params.start_timestamp();
-        let round_success_meter = prev_cp
-            .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .map(|highway_proto| highway_proto.next_era_round_succ_meter(start_timestamp))
-            .unwrap_or_else(|| {
-                RoundSuccessMeter::new(
-                    round_exp,
-                    min_round_exp,
-                    max_round_exp,
-                    start_timestamp,
-                    config.into(),
-                )
-            });
         let highway = Highway::new(instance_id, validators, params);
         let last_panorama = highway.state().panorama().clone();
         let hw_proto = Box::new(HighwayProtocol {
@@ -192,7 +191,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(config.highway.pending_vertex_timeout),
+            synchronizer: Synchronizer::new(
+                config.highway.pending_vertex_timeout,
+                config.highway.request_latest_state_timeout,
+                validators_count,
+                instance_id,
+            ),
+            pvv_cache: Default::default(),
             evidence_only: false,
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
@@ -220,6 +225,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 now.max(era_start_time) + highway_config.standstill_timeout,
                 TIMER_ID_STANDSTILL_ALERT,
             ),
+            ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_SYNCHRONIZER_LOG),
         ]
     }
 
@@ -385,20 +391,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             return vec![];
         }
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
+        let vertex_id = vv.inner().id();
         // Check whether we should change the round exponent.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
         self.calculate_round_exponent(&vv, now);
         let av_effects = self.highway.add_valid_vertex(vv, now);
+        // Once vertex is added to the state, we can remove it from the cache.
+        self.pvv_cache.remove(&vertex_id);
         self.process_av_effects(av_effects, now)
-    }
-
-    /// Returns the median round exponent of all the validators that haven't been observed to be
-    /// malicious, as seen by the current panorama.
-    /// Returns `None` if there are no correct validators in the panorama.
-    fn median_round_exp(&self) -> Option<u8> {
-        self.highway.state().median_round_exp()
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
@@ -478,6 +480,30 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         );
         true
     }
+
+    /// Prevalidates the vertex but checks the cache for previously validated vertices.
+    /// Avoids multiple validation of the same vertex.
+    fn pre_validate_vertex(
+        &mut self,
+        v: Vertex<C>,
+    ) -> Result<PreValidatedVertex<C>, (Vertex<C>, VertexError)> {
+        let id = v.id();
+        if let Some(prev_pvv) = self.pvv_cache.get(&id) {
+            return Ok(prev_pvv.clone());
+        }
+        let pvv = self.highway.pre_validate_vertex(v)?;
+        self.pvv_cache.insert(id, pvv.clone());
+        Ok(pvv)
+    }
+
+    /// Creates a message to be gossiped that sends the validator's panorama.
+    fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
+        trace!(instance_id=?self.highway.instance_id(), "creating latest state request");
+        let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+        vec![ProtocolOutcome::CreatedGossipMessage(
+            (&request).serialize(),
+        )]
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -526,9 +552,12 @@ where
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
-                // Keep track of whether the prevalidated vertex was from an equivocator
                 let v_id = v.id();
-                let pvv = match self.highway.pre_validate_vertex(v) {
+                // If we already have that vertex, do not process it.
+                if self.highway.has_dependency(&v_id) {
+                    return vec![];
+                }
+                let pvv = match self.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
                         trace!("received an invalid vertex");
@@ -543,6 +572,7 @@ where
                         .collect();
                     }
                 };
+                // Keep track of whether the prevalidated vertex was from an equivocator
                 let is_faulty = match pvv.inner().creator() {
                     Some(creator) => self.highway.state().is_faulty(creator),
                     None => false,
@@ -655,15 +685,6 @@ where
         }
     }
 
-    fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C> {
-        trace!(?peer_id, "connected to a new peer");
-        let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-        vec![ProtocolOutcome::CreatedTargetedMessage(
-            msg.serialize(),
-            peer_id,
-        )]
-    }
-
     fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C> {
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
@@ -675,6 +696,7 @@ where
             }
             TIMER_ID_PURGE_VERTICES => {
                 self.synchronizer.purge_vertices(now);
+                self.pvv_cache.clear();
                 let next_time = now + self.synchronizer.pending_vertex_timeout();
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
@@ -688,8 +710,38 @@ where
                 }
             }
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
+            TIMER_ID_SYNCHRONIZER_LOG => {
+                self.synchronizer.log_len();
+                if !self.finalized_switch_block() {
+                    let next_timer = Timestamp::now() + TimeDiff::from(5_000);
+                    vec![ProtocolOutcome::ScheduleTimer(next_timer, timer_id)]
+                } else {
+                    vec![]
+                }
+            }
+            TIMER_ID_PANORAMA_REQUEST => {
+                if !self.finalized_switch_block() {
+                    let mut outcomes = self.latest_panorama_request();
+                    let next_timer =
+                        Timestamp::now() + self.synchronizer.request_latest_state_timeout();
+                    outcomes.push(ProtocolOutcome::ScheduleTimer(next_timer, timer_id));
+                    outcomes
+                } else {
+                    vec![]
+                }
+            }
             _ => unreachable!("unexpected timer ID"),
         }
+    }
+
+    fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
+        // Request latest protocol state of the current era.
+        let mut outcomes = self.latest_panorama_request();
+        outcomes.push(ProtocolOutcome::ScheduleTimer(
+            Timestamp::now() + self.synchronizer.request_latest_state_timeout(),
+            TIMER_ID_PANORAMA_REQUEST,
+        ));
+        outcomes
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {
