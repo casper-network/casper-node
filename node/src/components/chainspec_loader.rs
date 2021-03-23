@@ -161,7 +161,7 @@ pub struct ChainspecLoader {
     /// The initial state root hash for this session.
     initial_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
-    initial_block_header: Option<BlockHeader>,
+    initial_block: Option<Block>,
 }
 
 impl ChainspecLoader {
@@ -245,7 +245,7 @@ impl ChainspecLoader {
             reactor_exit,
             initial_state_root_hash: Digest::default(),
             next_upgrade,
-            initial_block_header: None,
+            initial_block: None,
         };
 
         (chainspec_loader, effects)
@@ -271,7 +271,11 @@ impl ChainspecLoader {
     }
 
     pub(crate) fn initial_block_header(&self) -> Option<&BlockHeader> {
-        self.initial_block_header.as_ref()
+        self.initial_block.as_ref().map(|block| block.header())
+    }
+
+    pub(crate) fn initial_block(&self) -> Option<&Block> {
+        self.initial_block.as_ref()
     }
 
     pub(crate) fn initial_block_hash(&self) -> Option<BlockHash> {
@@ -311,7 +315,7 @@ impl ChainspecLoader {
     {
         let highest_block = match maybe_highest_block {
             Some(block) => {
-                self.initial_block_header = Some(block.header().clone());
+                self.initial_block = Some(*block.clone());
                 block
             }
             None => {
