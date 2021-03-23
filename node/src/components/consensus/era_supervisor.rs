@@ -28,7 +28,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
