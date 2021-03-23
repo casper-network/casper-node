@@ -890,7 +890,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_peer_id)) => {
                 trace!("new peer announcement not handled in the validator reactor");
-                return Effects::new();
+                Effects::new()
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
