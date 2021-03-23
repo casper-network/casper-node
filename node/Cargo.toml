@@ -116,30 +116,3 @@ test = false
 
 [build-dependencies]
 vergen = "3.1.0"
-
-[package.metadata.deb]
-features = ["vendored-openssl"]
-revision = "0"
-depends = "curl"
-assets = [
-    ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
-    ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
-    ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
-    ["../resources/maintainer_scripts/delete_local_db.sh", "/etc/casper/delete_local_db.sh", "755"],
-    ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],
-    ["../resources/maintainer_scripts/systemd_pre_start.sh", "/etc/casper/systemd_pre_start.sh", "755"],
-    ["../resources/production/README.md", "/etc/casper/README.md", "644"],
-    ["../resources/production/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
-    ["../resources/production/config-example.toml", "/etc/casper/config-example.toml", "644"],
-    ["../resources/production/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
-]
-maintainer-scripts = "../resources/maintainer_scripts/debian"
-extended-description = """
-Package for Casper Node and Client.
-
-For information on using package, see https://github.com/CasperLabs/casper-node
-"""
-
-[package.metadata.deb.systemd-units]
-unit-scripts = "../resources/maintainer_scripts/casper_node"
-restart-after-upgrade = false

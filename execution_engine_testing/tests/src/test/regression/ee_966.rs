@@ -11,7 +11,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{upgrade::ActivationPoint, Error, ExecuteRequest},
+        engine_state::{Error, ExecuteRequest},
         execution::Error as ExecError,
     },
     shared::{
@@ -22,12 +22,13 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, ProtocolVersion, RuntimeArgs,
+    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, ProtocolVersion,
+    RuntimeArgs,
 };
 
 const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";
 const MINIMUM_INITIAL_MEMORY: u32 = 16;
-const DEFAULT_ACTIVATION_POINT: ActivationPoint = 0;
+const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(0);
 
 static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(

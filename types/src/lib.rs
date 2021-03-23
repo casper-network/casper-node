@@ -34,6 +34,7 @@ mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
 mod deploy_info;
+mod era_id;
 mod execution_result;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
@@ -81,4 +82,7 @@ pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANS
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
 
-pub use crate::uint::{UIntParseError, U128, U256, U512};
+pub use crate::{
+    era_id::EraId,
+    uint::{UIntParseError, U128, U256, U512},
+};

@@ -4,8 +4,7 @@ use core::fmt;
 use uint::static_assertions::_core::fmt::Formatter;
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, system::auction::EraId, CLValueError, Key, ProtocolVersion,
-    PublicKey, U512,
+    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{

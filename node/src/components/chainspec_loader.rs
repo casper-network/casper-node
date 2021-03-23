@@ -32,12 +32,12 @@ use casper_execution_engine::{
     },
     shared::stored_value::StoredValue,
 };
-use casper_types::{bytesrepr::FromBytes, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::{consensus::EraId, Component},
+    components::Component,
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
@@ -288,7 +288,7 @@ impl ChainspecLoader {
         // it's not, we continue the era the highest block belongs to.
         self.initial_block_header()
             .map(BlockHeader::next_block_era_id)
-            .unwrap_or(EraId(0))
+            .unwrap_or_else(|| EraId::from(0))
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
@@ -453,7 +453,7 @@ impl ChainspecLoader {
             new_version,
             Some(self.chainspec.wasm_config),
             Some(self.chainspec.system_costs_config),
-            Some(self.chainspec.protocol_config.activation_point.era_id().0),
+            Some(self.chainspec.protocol_config.activation_point.era_id()),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),
             Some(self.chainspec.core_config.locked_funds_period.millis()),

@@ -168,7 +168,6 @@ build-for-packaging: build-client-contracts
 
 .PHONY: deb
 deb: setup build-for-packaging
-	cd node && $(CARGO) deb -p casper-node --no-build
 	cd client && $(CARGO) deb -p casper-client --no-build
 
 .PHONY: package

@@ -11,12 +11,11 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{ProtocolVersion, PublicKey};
+use casper_types::{EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade,
-        consensus::EraId,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
     crypto::{hash::Digest, AsymmetricKeyExt},
@@ -25,7 +24,7 @@ use crate::{
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
     let next_upgrade = NextUpgrade::new(
-        ActivationPoint::EraId(EraId(42)),
+        ActivationPoint::EraId(EraId::from(42)),
         ProtocolVersion::from_parts(2, 0, 1),
     );
     ChainspecInfo {

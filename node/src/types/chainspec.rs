@@ -209,7 +209,7 @@ mod tests {
         stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
-    use casper_types::{ProtocolVersion, U512};
+    use casper_types::{EraId, ProtocolVersion, U512};
 
     use super::*;
     use crate::{
@@ -322,11 +322,11 @@ mod tests {
                 );
             }
         } else {
+            assert_eq!(spec.protocol_config.version, ProtocolVersion::from_parts(1, 0, 0));
             assert_eq!(
-                spec.protocol_config.version,
-                ProtocolVersion::from_parts(1, 0, 0)
+                spec.protocol_config.activation_point.era_id(),
+                EraId::from(1)
             );
-            assert_eq!(spec.protocol_config.activation_point.era_id().0, 1);
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
             for value in spec.protocol_config.global_state_update.unwrap().0.values() {
