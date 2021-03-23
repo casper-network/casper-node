@@ -7,10 +7,10 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, gossiper, small_network, storage, storage::Storage},
+    components::{gossiper, small_network, storage, storage::Storage},
     crypto::AsymmetricKeyExt,
     reactor::validator,
     testing::{
@@ -203,7 +203,7 @@ impl TestChain {
 /// Given an era number, returns a predicate to check if all of the nodes are in the specified era.
 fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
     move |nodes: &Nodes<MultiStageTestReactor>| {
-        let era_id = EraId(era_num);
+        let era_id = EraId::from(era_num);
         nodes.values().all(|runner| {
             runner
                 .reactor()

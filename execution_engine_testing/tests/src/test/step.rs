@@ -19,7 +19,7 @@ use casper_types::{
         auction::{Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD},
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> =
@@ -87,7 +87,7 @@ fn should_step() {
         .with_slash_item(SlashItem::new(*ACCOUNT_1_PK))
         .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, BLOCK_REWARD / 2))
         .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
-        .with_next_era_id(1)
+        .with_next_era_id(EraId::from(1))
         .build();
 
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
@@ -160,7 +160,7 @@ fn should_adjust_total_supply() {
         .with_slash_item(SlashItem::new(*ACCOUNT_2_PK))
         .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, 0))
         .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
-        .with_next_era_id(1)
+        .with_next_era_id(EraId::from(1))
         .build();
 
     builder.step(step_request);

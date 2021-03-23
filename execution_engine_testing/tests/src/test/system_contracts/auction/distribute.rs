@@ -21,7 +21,7 @@ use casper_types::{
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
         BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
-    Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -3738,7 +3738,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let mut upgrade_request = {
-        const DEFAULT_ACTIVATION_POINT: u64 = 1;
+        const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(old_protocol_version)
             .with_new_protocol_version(new_protocol_version)
