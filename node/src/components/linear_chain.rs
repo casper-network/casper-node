@@ -12,9 +12,9 @@ use prometheus::{IntGauge, Registry};
 use semver::Version;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
-use super::{consensus::EraId, Component};
+use super::Component;
 use crate::{
     crypto::hash::Digest,
     effect::{
@@ -102,7 +102,7 @@ struct SignatureCache {
 impl SignatureCache {
     fn new() -> Self {
         SignatureCache {
-            curr_era: EraId(0),
+            curr_era: EraId::from(0),
             signatures: Default::default(),
         }
     }

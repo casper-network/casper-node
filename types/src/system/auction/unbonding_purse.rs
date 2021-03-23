@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::EraId,
-    CLType, CLTyped, PublicKey, URef, U512,
+    CLType, CLTyped, EraId, PublicKey, URef, U512,
 };
 
 /// Unbonding purse.
@@ -140,7 +139,7 @@ mod tests {
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);
-    const ERA_OF_WITHDRAWAL: EraId = EraId::max_value();
+    const ERA_OF_WITHDRAWAL: EraId = EraId::MAX;
 
     static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
         Lazy::new(|| SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into());

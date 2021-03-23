@@ -107,11 +107,6 @@ impl<VID: Eq + Hash> Validators<VID> {
             |(idx, v): (usize, &'a Validator<VID>)| (ValidatorIndex::from(idx as u32), v.id());
         self.iter().enumerate().map(to_idx)
     }
-
-    /// Returns the size of validator list.
-    pub(crate) fn len(&self) -> usize {
-        self.validators.len()
-    }
 }
 
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
