@@ -386,22 +386,30 @@ where
         base_key: Key,
         path: &[String],
     ) -> Result<StoredValue, String> {
-        let post_state = maybe_post_state
-            .or(self.post_state_hash)
-            .expect("builder must have a post-state hash");
-
-        let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
-
-        let query_result = self
-            .engine_state
-            .run_query(CorrelationId::new(), query_request)
-            .expect("should get query response");
+        let query_result = self.query_result(maybe_post_state, base_key, path);
 
         if let QueryResult::Success { value, .. } = query_result {
             return Ok(value.deref().clone());
         }
 
         Err(format!("{:?}", query_result))
+    }
+
+    pub fn query_result(
+        &self,
+        maybe_post_state: Option<Blake2bHash>,
+        base_key: Key,
+        path: &[String],
+    ) -> QueryResult {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+
+        let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
+
+        self.engine_state
+            .run_query(CorrelationId::new(), query_request)
+            .expect("should get query response")
     }
 
     pub fn query_with_proof(

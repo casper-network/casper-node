@@ -143,6 +143,7 @@ impl Drop for ScopedInstrumenter {
             FunctionIndex::Blake2b => "host_blake2b",
             FunctionIndex::RecordTransfer => "host_record_transfer",
             FunctionIndex::RecordEraInfo => "host_record_era_info",
+            FunctionIndex::Delete => "host_delete",
         };
 
         let mut properties = mem::take(&mut self.properties);
