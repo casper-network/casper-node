@@ -270,6 +270,14 @@ impl Div<u64> for TimeDiff {
     }
 }
 
+impl Div<TimeDiff> for TimeDiff {
+    type Output = u64;
+
+    fn div(self, rhs: TimeDiff) -> u64 {
+        self.0 / rhs.0
+    }
+}
+
 impl From<TimeDiff> for Duration {
     fn from(diff: TimeDiff) -> Duration {
         Duration::from_millis(diff.0)

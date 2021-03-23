@@ -9,8 +9,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    system::auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
-    AccessRights, PublicKey, SecretKey, URef, U512,
+    system::auction::{Bid, Bids, DelegationRate, Delegator, EraValidators},
+    AccessRights, EraId, PublicKey, SecretKey, URef, U512,
 };
 
 use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
@@ -22,7 +22,7 @@ static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     validator_weights.insert(public_key_1, U512::from(10));
 
     let mut era_validators = BTreeMap::new();
-    era_validators.insert(10u64, validator_weights);
+    era_validators.insert(EraId::from(10u64), validator_weights);
 
     era_validators
 });

@@ -8,13 +8,10 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{
-        consensus::{self, EraId},
-        gossiper, small_network, storage,
-    },
+    components::{consensus, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
     testing::{self, network::Network, TestRng},
@@ -188,10 +185,10 @@ async fn run_validator_network() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(90))
+    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
         .await;
 
-    net.settle_on(&mut rng, is_in_era(EraId(2)), Duration::from_secs(60))
+    net.settle_on(&mut rng, is_in_era(EraId::from(2)), Duration::from_secs(60))
         .await;
 }
 
@@ -222,21 +219,25 @@ async fn run_equivocator_network() {
         .expect("network initialization failed");
 
     info!("Waiting for Era 0 to end");
-    net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(600))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(1)),
+        Duration::from_secs(600),
+    )
+    .await;
 
     let last_era_number = 5;
     let timeout = Duration::from_secs(90);
 
     for era_number in 2..last_era_number {
         info!("Waiting for Era {} to end", era_number);
-        net.settle_on(&mut rng, is_in_era(EraId(era_number)), timeout)
+        net.settle_on(&mut rng, is_in_era(EraId::from(era_number)), timeout)
             .await;
     }
 
     // Make sure we waited long enough for this test to include unbonding and dropping eras.
     let oldest_bonded_era_id =
-        consensus::oldest_bonded_era(&protocol_config, EraId(last_era_number));
+        consensus::oldest_bonded_era(&protocol_config, EraId::from(last_era_number));
     let oldest_evidence_era_id =
         consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
     assert!(!oldest_evidence_era_id.is_genesis());
