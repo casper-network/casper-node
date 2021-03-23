@@ -128,7 +128,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     * chainspec.core_config.minimum_era_height,
                 chainspec.core_config.era_duration,
             );
-            let state = init_hash.map_or(State::None, |init_hash| {
+            let state = init_hash.map_or(State::Done(None), |init_hash| {
                 State::sync_trusted_hash(init_hash, highest_block_header)
             });
             let state_key = create_state_key(&chainspec);
