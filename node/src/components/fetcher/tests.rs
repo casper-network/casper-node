@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 
 use casper_node_macros::reactor;
 use futures::FutureExt;
-use semver::Version;
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
@@ -26,6 +25,8 @@ use crate::{
     types::{Deploy, DeployHash, NodeId},
     utils::{WithDir, RESOURCES_PATH},
 };
+
+use casper_types::ProtocolVersion;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -74,7 +75,7 @@ reactor!(Reactor {
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
             chainspec_loader.hard_reset_to_start_of_era(),
-            Version::new(1, 0, 0),
+            ProtocolVersion::from_parts(1, 0, 0),
         );
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);

@@ -29,7 +29,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -155,11 +155,7 @@ where
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
-        let protocol_version = ProtocolVersion::from_parts(
-            protocol_config.protocol_version.major as u32,
-            protocol_config.protocol_version.minor as u32,
-            protocol_config.protocol_version.patch as u32,
-        );
+        let protocol_version = protocol_config.protocol_version;
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.

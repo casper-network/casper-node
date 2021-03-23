@@ -4,11 +4,10 @@ use std::{borrow::Cow, collections::HashMap};
 
 use lmdb::Transaction;
 use rand::{prelude::SliceRandom, Rng};
-use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{ExecutionResult, PublicKey, SecretKey};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{
@@ -49,7 +48,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
         None,
-        Version::new(1, 0, 0),
+        ProtocolVersion::from_parts(1, 0, 0),
     )
     .expect("could not create storage component fixture")
 }
@@ -69,7 +68,7 @@ fn storage_fixture_with_hard_reset(
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
         Some(reset_era_id),
-        Version::new(1, 1, 0),
+        ProtocolVersion::from_parts(1, 1, 0),
     )
     .expect("could not create storage component fixture")
 }

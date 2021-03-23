@@ -1,7 +1,6 @@
 use futures::FutureExt;
 use http::Response;
 use hyper::Body;
-use semver::Version;
 use tracing::warn;
 use warp::{
     filters::BoxedFilter,
@@ -17,6 +16,7 @@ use crate::{
     reactor::QueueKind,
     types::GetStatusResult,
 };
+use casper_types::ProtocolVersion;
 
 /// The status URL path.
 pub const STATUS_API_PATH: &str = "status";
@@ -26,18 +26,18 @@ pub const METRICS_API_PATH: &str = "metrics";
 
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
-    api_version: Version,
+    api_version: ProtocolVersion,
 ) -> BoxedFilter<(Response<Body>,)> {
     warp::get()
         .and(warp::path(STATUS_API_PATH))
         .and_then(move || {
-            let api_version_cloned = api_version.clone();
+            let api_version_cloned = api_version;
             effect_builder
                 .make_request(
                     |responder| RestRequest::GetStatus { responder },
                     QueueKind::Api,
                 )
-                .map(|status_feed| {
+                .map(move |status_feed| {
                     let body = GetStatusResult::new(status_feed, api_version_cloned);
                     Ok::<_, Rejection>(reply::json(&body).into_response())
                 })

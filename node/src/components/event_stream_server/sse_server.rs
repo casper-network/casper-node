@@ -2,7 +2,6 @@
 
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
     broadcast::{self, RecvError},
@@ -15,7 +14,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{ExecutionResult, PublicKey};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey};
 
 use crate::{
     components::consensus::EraId,
@@ -30,11 +29,12 @@ type Id = u32;
 
 /// The "data" field of the events sent on the event stream to clients.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[allow(clippy::large_enum_variant)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
     #[data_size(skip)]
-    ApiVersion(Version),
+    ApiVersion(ProtocolVersion),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
@@ -71,7 +71,7 @@ pub(super) struct ServerSentEvent {
 
 impl ServerSentEvent {
     /// The first event sent to every subscribing client.
-    pub(super) fn initial_event(client_api_version: Version) -> Self {
+    pub(super) fn initial_event(client_api_version: ProtocolVersion) -> Self {
         ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),

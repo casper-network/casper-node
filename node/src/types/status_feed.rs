@@ -9,10 +9,9 @@ use std::{
 
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::PublicKey;
+use casper_types::{ProtocolVersion, PublicKey};
 
 use crate::{
     components::{
@@ -25,7 +24,10 @@ use crate::{
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade::new(ActivationPoint::EraId(EraId(42)), Version::new(2, 0, 1));
+    let next_upgrade = NextUpgrade::new(
+        ActivationPoint::EraId(EraId(42)),
+        ProtocolVersion::from_parts(2, 0, 1),
+    );
     ChainspecInfo {
         name: String::from("casper-example"),
         starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),
@@ -46,7 +48,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
-    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION.clone())
+    GetStatusResult::new(status_feed, *DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
 
 /// Summary information from the chainspec.
@@ -152,7 +154,7 @@ impl From<Block> for MinimalBlockInfo {
 pub struct GetStatusResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash used at the start of the current session.
@@ -172,7 +174,7 @@ pub struct GetStatusResult {
 }
 
 impl GetStatusResult {
-    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: Version) -> Self {
+    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,

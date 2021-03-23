@@ -2,7 +2,6 @@ use std::{convert::Infallible, time::Duration};
 
 use futures::{future, TryFutureExt};
 use hyper::server::{conn::AddrIncoming, Builder};
-use semver::Version;
 use tokio::sync::oneshot;
 use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
@@ -10,6 +9,7 @@ use warp::Filter;
 
 use super::{filters, ReactorEventT};
 use crate::effect::EffectBuilder;
+use casper_types::ProtocolVersion;
 
 /// Run the REST HTTP server.
 ///
@@ -17,7 +17,7 @@ use crate::effect::EffectBuilder;
 pub(super) async fn run<REv: ReactorEventT>(
     builder: Builder<AddrIncoming>,
     effect_builder: EffectBuilder<REv>,
-    api_version: Version,
+    api_version: ProtocolVersion,
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
 ) {

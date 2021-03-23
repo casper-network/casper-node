@@ -6,7 +6,6 @@ use hyper::{
     server::{conn::AddrIncoming, Builder},
     Body,
 };
-use semver::Version;
 use serde::Serialize;
 use tokio::sync::oneshot;
 use tower::builder::ServiceBuilder;
@@ -18,6 +17,7 @@ use super::{
     ReactorEventT,
 };
 use crate::effect::EffectBuilder;
+use casper_types::ProtocolVersion;
 
 // This is a workaround for not being able to create a `warp_json_rpc::Response` without a
 // `warp_json_rpc::Builder`.
@@ -47,27 +47,25 @@ fn new_error_response(error: warp_json_rpc::Error) -> Response<Body> {
 pub(super) async fn run<REv: ReactorEventT>(
     builder: Builder<AddrIncoming>,
     effect_builder: EffectBuilder<REv>,
-    api_version: Version,
+    api_version: ProtocolVersion,
     qps_limit: u64,
 ) {
     // RPC filters.
-    let rpc_put_deploy =
-        rpcs::account::PutDeploy::create_filter(effect_builder, api_version.clone());
-    let rpc_get_block = rpcs::chain::GetBlock::create_filter(effect_builder, api_version.clone());
+    let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder, api_version);
+    let rpc_get_block = rpcs::chain::GetBlock::create_filter(effect_builder, api_version);
     let rpc_get_block_transfers =
-        rpcs::chain::GetBlockTransfers::create_filter(effect_builder, api_version.clone());
+        rpcs::chain::GetBlockTransfers::create_filter(effect_builder, api_version);
     let rpc_get_state_root_hash =
-        rpcs::chain::GetStateRootHash::create_filter(effect_builder, api_version.clone());
-    let rpc_get_item = rpcs::state::GetItem::create_filter(effect_builder, api_version.clone());
-    let rpc_get_balance =
-        rpcs::state::GetBalance::create_filter(effect_builder, api_version.clone());
-    let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder, api_version.clone());
-    let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder, api_version.clone());
-    let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder, api_version.clone());
+        rpcs::chain::GetStateRootHash::create_filter(effect_builder, api_version);
+    let rpc_get_item = rpcs::state::GetItem::create_filter(effect_builder, api_version);
+    let rpc_get_balance = rpcs::state::GetBalance::create_filter(effect_builder, api_version);
+    let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder, api_version);
+    let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder, api_version);
+    let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder, api_version);
     let rpc_get_era_info =
-        rpcs::chain::GetEraInfoBySwitchBlock::create_filter(effect_builder, api_version.clone());
+        rpcs::chain::GetEraInfoBySwitchBlock::create_filter(effect_builder, api_version);
     let rpc_get_auction_info =
-        rpcs::state::GetAuctionInfo::create_filter(effect_builder, api_version.clone());
+        rpcs::state::GetAuctionInfo::create_filter(effect_builder, api_version);
     let rpc_get_rpcs = rpcs::docs::ListRpcs::create_filter(effect_builder, api_version);
 
     // Catch requests where the method is not one we handle.

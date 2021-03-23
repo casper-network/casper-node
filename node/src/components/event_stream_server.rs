@@ -28,7 +28,6 @@ mod sse_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
-use semver::Version;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
 use super::Component;
@@ -38,6 +37,7 @@ use crate::{
     NodeRng,
 };
 
+use casper_types::ProtocolVersion;
 pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;
@@ -57,7 +57,10 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(config: Config, api_version: Version) -> Result<Self, ListeningError> {
+    pub(crate) fn new(
+        config: Config,
+        api_version: ProtocolVersion,
+    ) -> Result<Self, ListeningError> {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
         let builder = utils::start_listening(&config.address)?;
         tokio::spawn(http_server::run(

@@ -9,7 +9,6 @@ use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
 use prometheus::{IntGauge, Registry};
-use semver::Version;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{ExecutionResult, ProtocolVersion, PublicKey};
@@ -197,18 +196,13 @@ pub(crate) struct LinearChain<I> {
 impl<I> LinearChain<I> {
     pub fn new(
         registry: &Registry,
-        protocol_version: Version,
+        protocol_version: ProtocolVersion,
         initial_state_root_hash: Digest,
         auction_delay: u64,
         unbonding_delay: u64,
         activation_era_id: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
-        let protocol_version = ProtocolVersion::from_parts(
-            protocol_version.major as u32,
-            protocol_version.minor as u32,
-            protocol_version.patch as u32,
-        );
         Ok(LinearChain {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),

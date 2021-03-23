@@ -10,7 +10,6 @@ use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
@@ -42,7 +41,7 @@ static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -52,12 +51,12 @@ static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParam
         .to_string(),
 });
 static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
     auction_state: AuctionState::doc_example().clone(),
 });
 
@@ -86,7 +85,7 @@ impl DocExample for GetItemParams {
 pub struct GetItemResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The merkle proof.
@@ -113,7 +112,7 @@ impl RpcWithParamsExt for GetItem {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Try to parse a `casper_types::Key` from the params.
@@ -186,7 +185,7 @@ impl DocExample for GetBalanceParams {
 pub struct GetBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The balance value.
     pub balance_value: U512,
     /// The merkle proof.
@@ -213,7 +212,7 @@ impl RpcWithParamsExt for GetBalance {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Try to parse the purse's URef from the params.
@@ -290,7 +289,7 @@ impl RpcWithParamsExt for GetBalance {
 pub struct GetAuctionInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The auction state.
     pub auction_state: AuctionState,
 }
@@ -313,7 +312,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let block: Block = {
@@ -341,11 +340,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                 }
             };
 
-            let protocol_version = ProtocolVersion::from_parts(
-                api_version.major as u32,
-                api_version.minor as u32,
-                api_version.patch as u32,
-            );
+            let protocol_version = api_version;
 
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();

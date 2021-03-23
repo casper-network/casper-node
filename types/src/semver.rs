@@ -85,6 +85,7 @@ impl fmt::Display for SemVer {
     }
 }
 
+/// Parsing error when creating a SemVer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Error))]
 #[cfg_attr(not(feature = "std"), derive(Display))]

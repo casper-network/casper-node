@@ -12,7 +12,6 @@ use schemars::{
     schema::Schema,
     JsonSchema, Map, MapEntry,
 };
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
@@ -26,9 +25,10 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
+use casper_types::ProtocolVersion;
 
-pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<Version> =
-    Lazy::new(|| Version::new(1, 0, 0));
+pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<ProtocolVersion> =
+    Lazy::new(|| ProtocolVersion::from_parts(1, 0, 0));
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -89,7 +89,7 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema
 });
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
 });
@@ -377,7 +377,7 @@ struct Components {
 pub struct ListRpcsResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    api_version: Version,
+    api_version: ProtocolVersion,
     name: String,
     /// The list of supported RPCs.
     #[schemars(skip)]
@@ -404,7 +404,7 @@ impl RpcWithoutParamsExt for ListRpcs {
     fn handle_request<REv: ReactorEventT>(
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        _api_version: Version,
+        _api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }

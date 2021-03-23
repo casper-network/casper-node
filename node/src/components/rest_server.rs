@@ -27,7 +27,6 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
-use semver::Version;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, warn};
 
@@ -47,6 +46,7 @@ use crate::{
 };
 
 use crate::effect::requests::RestRequest;
+use casper_types::ProtocolVersion;
 pub use config::Config;
 pub(crate) use event::Event;
 
@@ -88,7 +88,7 @@ impl RestServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
