@@ -104,7 +104,7 @@ function assert_network_upgrade() {
     COUNT=$(grep -o "$CONVERTED" <<< $STATUS[*]  | wc -l)
     RUNNING_COUNT=$(get_running_node_count)
 
-    if [ ! "$COUNT" = "$(get_running_node_count)" ]; then
+    if [ ! "$COUNT" = "$RUNNING_COUNT" ]; then
         log "ERROR: Upgrade failed, $COUNT out of $RUNNING_COUNT upgraded successfully."
         exit 1
     fi
