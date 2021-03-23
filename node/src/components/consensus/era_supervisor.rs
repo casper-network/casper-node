@@ -161,6 +161,7 @@ where
         );
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
+        #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = maybe_latest_block_header.map_or(0, |hdr| hdr.height() + 1);
 
         let era_supervisor = Self {
@@ -185,7 +186,7 @@ where
 
         let bonded_eras = era_supervisor.bonded_eras();
         let era_ids: Vec<EraId> = era_supervisor
-            .iter_past(current_era, era_supervisor.bonded_eras() * 3)
+            .iter_past(current_era, era_supervisor.bonded_eras().saturating_mul(3))
             .collect();
 
         // Asynchronously collect the information needed to initialize all recent eras.
@@ -205,7 +206,8 @@ where
             )
             .await;
 
-            if current_era > activation_era_id + bonded_eras * 2 {
+            if current_era > activation_era_id.saturating_add(bonded_eras.saturating_mul(2).into())
+            {
                 // All eras can be initialized using the key blocks only.
                 (key_blocks, booking_blocks, Default::default())
             } else {
@@ -283,6 +285,12 @@ where
             .value()..era_id.value())
             .map(EraId::from)
     }
+
+    /// Returns an iterator over era IDs of `num_eras` future eras, plus the provided one.
+    fn iter_future(&self, era_id: EraId, num_eras: u64) -> impl Iterator<Item = EraId> {
+        (era_id.value()..=era_id.value().saturating_add(num_eras)).map(EraId::from)
+    }
+
     /// Starts a new era; panics if it already exists.
     #[allow(clippy::too_many_arguments)] // FIXME
     fn new_era(
@@ -382,7 +390,8 @@ where
 
     /// Returns `true` if the specified era is active and bonded.
     fn is_bonded(&self, era_id: EraId) -> bool {
-        era_id + self.bonded_eras() >= self.current_era && era_id <= self.current_era
+        era_id.saturating_add(self.bonded_eras().into()) >= self.current_era
+            && era_id <= self.current_era
     }
 
     /// Returns whether the validator with the given public key is bonded in that era.
@@ -403,6 +412,7 @@ where
 
     /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
     /// block execution has caught up with finalization.
+    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
     fn executed_block(&mut self, block_header: &BlockHeader) {
         self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
         self.update_consensus_pause();
@@ -432,7 +442,7 @@ where
     ) -> HashMap<EraId, ProtocolOutcomes<I, ClContext>> {
         let mut result_map = HashMap::new();
 
-        for era_id in self.iter_past(self.current_era, self.bonded_eras() * 2) {
+        for era_id in self.iter_past(self.current_era, self.bonded_eras().saturating_mul(2)) {
             let newly_slashed;
             let validators;
             let start_height;
@@ -443,6 +453,7 @@ where
                 .get(&era_id)
                 .expect("should have booking block");
 
+            #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
             if era_id.is_genesis() {
                 newly_slashed = vec![];
                 // The validator set was read from the global state: there's no key block for era 0.
@@ -844,6 +855,7 @@ where
             .chain(&newly_slashed)
             .cloned()
             .collect();
+        #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let outcomes = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
@@ -916,6 +928,7 @@ where
         self.era_supervisor.active_eras.get_mut(&era_id).unwrap()
     }
 
+    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
     fn handle_consensus_outcome(
         &mut self,
         era_id: EraId,
@@ -1085,7 +1098,10 @@ where
                     .effect_builder
                     .announce_fault_event(era_id, pub_key, Timestamp::now())
                     .ignore();
-                for e_id in era_id.iter_inclusive(self.era_supervisor.bonded_eras()) {
+                for e_id in self
+                    .era_supervisor
+                    .iter_future(era_id, self.era_supervisor.bonded_eras())
+                {
                     let candidate_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
                             era.resolve_evidence(&pub_key)
@@ -1185,7 +1201,9 @@ fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
 /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
 /// receive blocks that refer to `bonded_eras` before that.
 fn bonded_eras(protocol_config: &ProtocolConfig) -> u64 {
-    protocol_config.unbonding_delay - protocol_config.auction_delay
+    protocol_config
+        .unbonding_delay
+        .saturating_sub(protocol_config.auction_delay)
 }
 
 /// The oldest era whose validators are still bonded.

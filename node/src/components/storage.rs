@@ -54,6 +54,7 @@ use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -81,6 +82,7 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
+use casper_types::ProtocolVersion;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -242,6 +244,7 @@ impl Storage {
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
+        version: Version,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -284,15 +287,24 @@ impl Storage {
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
-        let block_txn = env.begin_ro_txn()?;
-        let mut cursor = block_txn.open_ro_cursor(block_header_db)?;
+        let mut block_txn = env.begin_rw_txn()?;
+        let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
+        let protocol_version = ProtocolVersion::from_parts(
+            version.major as u32,
+            version.minor as u32,
+            version.patch as u32,
+        );
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
-                if block.era_id() >= invalid_era {
+                // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
+                // versions - they were most likely created before the upgrade and should be
+                // reverted.
+                if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
+                    cursor.del(WriteFlags::empty())?;
                     continue;
                 }
             }
@@ -310,7 +322,7 @@ impl Storage {
         }
         info!("block store reindexing complete");
         drop(cursor);
-        drop(block_txn);
+        block_txn.commit()?;
 
         // Check the integrity of the block body database.
         check_block_body_db(&env, &block_body_db)?;

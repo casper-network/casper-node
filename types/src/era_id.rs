@@ -73,6 +73,15 @@ impl EraId {
         EraId::from(self.0.saturating_sub(x))
     }
 
+    /// Returns the current era plus `x`, or [`EraId::MAX`] if overflow would occur.
+    pub fn saturating_add(self, rhs: EraId) -> EraId {
+        EraId(self.0.saturating_add(rhs.0))
+    }
+
+    /// Returns the current era times `x`, or [`EraId::MAX`] if overflow would occur.
+    pub fn saturating_mul(&self, x: u64) -> EraId {
+        EraId::from(self.0.saturating_mul(x))
+    }
     /// Returns whether this is era 0.
     pub fn is_genesis(&self) -> bool {
         self.0 == 0

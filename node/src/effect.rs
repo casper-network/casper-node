@@ -83,19 +83,14 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::{
-        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
-        transform::Transform,
-    },
-    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
@@ -119,14 +114,14 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     NetworkAnnouncement, RpcServerAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+    ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -670,14 +665,11 @@ impl<REv> EffectBuilder<REv> {
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
-        REv: From<BlockExecutorAnnouncement>,
+        REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::LinearChainBlock {
-                    block,
-                    execution_results,
-                },
+                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
                 QueueKind::Regular,
             )
             .await
@@ -686,11 +678,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announce that a block had been executed before.
     pub(crate) async fn announce_block_already_executed(self, block: Block)
     where
-        REv: From<BlockExecutorAnnouncement>,
+        REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::BlockAlreadyExecuted(block),
+                ContractRuntimeAnnouncement::block_already_executed(block),
                 QueueKind::Regular,
             )
             .await
@@ -1094,11 +1086,11 @@ impl<REv> EffectBuilder<REv> {
     /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<BlockExecutorRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.0
             .schedule(
-                BlockExecutorRequest::ExecuteBlock(finalized_block),
+                ContractRuntimeRequest::ExecuteBlock(finalized_block),
                 QueueKind::Regular,
             )
             .await
@@ -1323,45 +1315,6 @@ impl<REv> EffectBuilder<REv> {
                 false
             }
         }
-    }
-
-    /// Requests an execution of deploys using Contract Runtime.
-    pub(crate) async fn request_execute(
-        self,
-        execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        let execute_request = Box::new(execute_request);
-        self.make_request(
-            |responder| ContractRuntimeRequest::Execute {
-                execute_request,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a commit of effects on the Contract Runtime component.
-    pub(crate) async fn request_commit(
-        self,
-        state_root_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Requests a query be executed on the Contract Runtime component.
