@@ -442,7 +442,7 @@ where
                         async move {
                             let correlation_id = CorrelationId::new();
                             let start = Instant::now();
-                            let era_id = request.era_id().into();
+                            let era_id = request.era_id();
                             let era_validators =
                                 engine_state.get_era_validators(correlation_id, request.into());
                             let result: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
@@ -889,7 +889,7 @@ impl ContractRuntime {
             slash_items,
             evict_items,
             run_auction: true,
-            next_era_id: state.finalized_block.era_id().successor().into(),
+            next_era_id: state.finalized_block.era_id().successor(),
             era_end_timestamp_millis,
         };
         effect_builder.run_step(request).event(|result| {

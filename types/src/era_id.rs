@@ -59,6 +59,7 @@ impl EraId {
     }
 
     /// Returns a successor to current era.
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     pub fn successor(self) -> EraId {
         EraId::from(self.0 + 1)
     }
@@ -82,6 +83,7 @@ impl EraId {
     pub fn saturating_mul(&self, x: u64) -> EraId {
         EraId::from(self.0.saturating_mul(x))
     }
+
     /// Returns whether this is era 0.
     pub fn is_genesis(&self) -> bool {
         self.0 == 0
@@ -116,6 +118,7 @@ impl FromStr for EraId {
 impl Add<u64> for EraId {
     type Output = EraId;
 
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     fn add(self, x: u64) -> EraId {
         EraId::from(self.0 + x)
     }
@@ -130,6 +133,7 @@ impl AddAssign<u64> for EraId {
 impl Sub<u64> for EraId {
     type Output = EraId;
 
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     fn sub(self, x: u64) -> EraId {
         EraId::from(self.0 - x)
     }
