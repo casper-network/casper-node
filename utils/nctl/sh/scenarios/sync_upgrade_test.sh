@@ -36,7 +36,6 @@ function main() {
     do_upgrade_network
     # 5. Wait for the network to upgrade.
     do_await_network_upgrade
-    #log "DEBUG:$PROTOCOL_VERSION"
     assert_network_upgrade "$PROTOCOL_VERSION"
     # 6. Take a note of the last finalized block hash
     do_read_lfb_hash
@@ -103,11 +102,6 @@ function assert_network_upgrade() {
     STATUS=$(nctl-view-node-status)
     COUNT=$(grep -o "$CONVERT" <<< $STATUS[*]  | wc -l)
     RUNNING_COUNT=$(get_running_node_count)
-
-    #log "DEBUG: $CONVERT"
-    #log "DEBUG: $STATUS"
-    #log "DEBUG: $COUNT"
-    #log "DEBUG: $RUNNING_COUNT"
 
     if [ ! "$COUNT" = "$(get_running_node_count)" ]; then
         log "ERROR: Upgrade failed, $COUNT out of $RUNNING_COUNT upgraded successfully."
