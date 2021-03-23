@@ -294,7 +294,7 @@ where
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
+            Event::NewPeer(_peer_id) => Effects::new(),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,

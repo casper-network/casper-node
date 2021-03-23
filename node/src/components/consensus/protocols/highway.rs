@@ -61,6 +61,8 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
 const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
+/// The timer for sending the latest panorama reqeuest.
+const TIMER_ID_PANORAMA_REQUEST: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -180,18 +182,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
-        let mut outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
-
-        // Request the latest state from peers on startup.
-        // We will catch up with the consensus state and also sync our own unit in case we
-        // restarted. Nodes might have gone into "sleep mode" so we won't get the panorama
-        // in a different way.
-        let latest_state_request =
-            HighwayMessage::LatestStateRequest::<C>(Panorama::new(validators.len()));
-
-        outcomes.push(ProtocolOutcome::CreatedGossipMessage(
-            (&latest_state_request).serialize(),
-        ));
+        let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
         let highway = Highway::new(instance_id, validators, params);
         let last_panorama = highway.state().panorama().clone();
@@ -202,6 +193,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             round_success_meter,
             synchronizer: Synchronizer::new(
                 config.highway.pending_vertex_timeout,
+                config.highway.request_latest_state_timeout,
                 validators_count,
                 instance_id,
             ),
@@ -684,15 +676,6 @@ where
         }
     }
 
-    fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C> {
-        trace!(?peer_id, "connected to a new peer");
-        let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-        vec![ProtocolOutcome::CreatedTargetedMessage(
-            msg.serialize(),
-            peer_id,
-        )]
-    }
-
     fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C> {
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
@@ -727,8 +710,37 @@ where
                     vec![]
                 }
             }
+            TIMER_ID_PANORAMA_REQUEST => {
+                if !self.finalized_switch_block() {
+                    let request =
+                        HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+                    let mut outcomes = vec![ProtocolOutcome::CreatedGossipMessage(
+                        (&request).serialize(),
+                    )];
+                    let next_timer =
+                        Timestamp::now() + self.synchronizer.request_latest_state_timeout();
+                    outcomes.push(ProtocolOutcome::ScheduleTimer(next_timer, timer_id));
+                    outcomes
+                } else {
+                    vec![]
+                }
+            }
             _ => unreachable!("unexpected timer ID"),
         }
+    }
+
+    fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
+        // Request latest protocol state of the current era.
+        let latest_state_request =
+            HighwayMessage::LatestStateRequest::<C>(Panorama::new(self.highway.validators().len()));
+        let request_state =
+            ProtocolOutcome::CreatedGossipMessage((&latest_state_request).serialize());
+        // Schedule the next timer.
+        let timer_panorama_request = ProtocolOutcome::ScheduleTimer(
+            Timestamp::now() + self.synchronizer.request_latest_state_timeout(),
+            TIMER_ID_PANORAMA_REQUEST,
+        );
+        vec![request_state, timer_panorama_request]
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {

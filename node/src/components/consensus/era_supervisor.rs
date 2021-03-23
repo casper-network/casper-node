@@ -505,7 +505,13 @@ where
             );
             result_map.insert(era_id, results);
         }
-
+        let active_era_outcomes = self.active_eras[&self.current_era]
+            .consensus
+            .handle_is_current();
+        result_map
+            .entry(self.current_era)
+            .or_default()
+            .extend(active_era_outcomes);
         self.is_initialized = true;
         self.next_block_height = self.active_eras[&self.current_era].start_height;
         result_map
@@ -689,12 +695,6 @@ where
         }
     }
 
-    pub(super) fn handle_new_peer(&mut self, peer_id: I) -> Effects<Event<I>> {
-        self.delegate_to_era(self.era_supervisor.current_era, move |consensus| {
-            consensus.handle_new_peer(peer_id)
-        })
-    }
-
     pub(super) fn handle_new_proto_block(
         &mut self,
         era_id: EraId,
@@ -852,7 +852,7 @@ where
             .cloned()
             .collect();
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-        let outcomes = self.era_supervisor.new_era(
+        let mut outcomes = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
@@ -861,6 +861,11 @@ where
             seed,
             switch_block.header().timestamp(),
             switch_block.height() + 1,
+        );
+        outcomes.extend(
+            self.era_supervisor.active_eras[&era_id]
+                .consensus
+                .handle_is_current(),
         );
         self.handle_consensus_outcomes(era_id, outcomes)
     }
