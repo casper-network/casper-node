@@ -11,6 +11,7 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_types::ProtocolVersion;
 
 use super::{
     accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
@@ -18,7 +19,6 @@ use super::{
     ProtocolConfig,
 };
 use crate::utils::{self, Loadable};
-use casper_types::ProtocolVersion;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.

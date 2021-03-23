@@ -9,6 +9,8 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 
+use casper_types::ProtocolVersion;
+
 use super::*;
 use crate::{
     components::{deploy_acceptor, in_memory_network::NetworkController, storage},
@@ -25,8 +27,6 @@ use crate::{
     types::{Deploy, DeployHash, NodeId},
     utils::{WithDir, RESOURCES_PATH},
 };
-
-use casper_types::ProtocolVersion;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 

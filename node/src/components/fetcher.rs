@@ -10,7 +10,11 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_execution_engine::{
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::trie::Trie,
+};
+use casper_types::Key;
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -24,8 +28,6 @@ use crate::{
     NodeRng,
 };
 
-use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
-use casper_types::Key;
 pub use config::Config;
 pub use event::{Event, FetchResult};
 use metrics::FetcherMetrics;

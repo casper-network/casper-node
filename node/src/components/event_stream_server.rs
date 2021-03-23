@@ -30,6 +30,8 @@ use std::{convert::Infallible, fmt::Debug};
 use datasize::DataSize;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
+use casper_types::ProtocolVersion;
+
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
@@ -37,7 +39,6 @@ use crate::{
     NodeRng,
 };
 
-use casper_types::ProtocolVersion;
 pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;

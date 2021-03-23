@@ -322,7 +322,10 @@ mod tests {
                 );
             }
         } else {
-            assert_eq!(spec.protocol_config.version, ProtocolVersion::from_parts(1, 0, 0));
+            assert_eq!(
+                spec.protocol_config.version,
+                ProtocolVersion::from_parts(1, 0, 0)
+            );
             assert_eq!(
                 spec.protocol_config.activation_point.era_id(),
                 EraId::from(1)

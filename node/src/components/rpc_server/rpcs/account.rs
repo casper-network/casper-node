@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
+use casper_types::ProtocolVersion;
+
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
@@ -24,7 +26,6 @@ use crate::{
     reactor::QueueKind,
     types::{Deploy, DeployHash},
 };
-use casper_types::ProtocolVersion;
 
 static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),

@@ -15,6 +15,8 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
+use casper_types::ProtocolVersion;
+
 use super::*;
 use crate::{
     components::{
@@ -42,7 +44,6 @@ use crate::{
     utils::{Loadable, WithDir},
     NodeRng,
 };
-use casper_types::ProtocolVersion;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]

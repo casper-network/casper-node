@@ -30,6 +30,8 @@ use futures::{future::BoxFuture, join, FutureExt};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, warn};
 
+use casper_types::ProtocolVersion;
+
 use super::Component;
 use crate::{
     effect::{
@@ -46,7 +48,6 @@ use crate::{
 };
 
 use crate::effect::requests::RestRequest;
-use casper_types::ProtocolVersion;
 pub use config::Config;
 pub(crate) use event::Event;
 

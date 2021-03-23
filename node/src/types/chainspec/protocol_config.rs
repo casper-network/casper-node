@@ -1,18 +1,21 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use core::str::FromStr;
+
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    ProtocolVersion,
+};
 
 use super::{ActivationPoint, GlobalStateUpdate};
 #[cfg(test)]
 use crate::testing::TestRng;
-use casper_types::ProtocolVersion;
-use std::str::FromStr;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {

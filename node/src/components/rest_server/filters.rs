@@ -10,13 +10,14 @@ use warp::{
     Filter,
 };
 
+use casper_types::ProtocolVersion;
+
 use super::ReactorEventT;
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
     types::GetStatusResult,
 };
-use casper_types::ProtocolVersion;
 
 /// The status URL path.
 pub const STATUS_API_PATH: &str = "status";

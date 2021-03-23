@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
 
+use casper_types::ProtocolVersion;
+
 use super::{
     account::PutDeploy,
     chain::{GetBlock, GetBlockTransfers, GetStateRootHash},
@@ -25,7 +27,6 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
-use casper_types::ProtocolVersion;
 
 pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<ProtocolVersion> =
     Lazy::new(|| ProtocolVersion::from_parts(1, 0, 0));

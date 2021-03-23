@@ -13,11 +13,12 @@ use tower::builder::ServiceBuilder;
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
+use casper_types::ProtocolVersion;
+
 use super::{
     sse_server::{self, BroadcastChannelMessage, ServerSentEvent},
     Config, SseData,
 };
-use casper_types::ProtocolVersion;
 
 /// Run the HTTP server.
 ///

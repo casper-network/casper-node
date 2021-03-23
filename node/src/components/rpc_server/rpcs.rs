@@ -23,9 +23,10 @@ use warp::{
 };
 use warp_json_rpc::{filters, Builder};
 
+use casper_types::ProtocolVersion;
+
 use super::{ReactorEventT, RpcRequest};
 use crate::effect::EffectBuilder;
-use casper_types::ProtocolVersion;
 use docs::DocExample;
 
 /// The URL path.

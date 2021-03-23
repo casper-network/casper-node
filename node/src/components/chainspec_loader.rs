@@ -14,6 +14,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
 };
 
@@ -54,7 +55,6 @@ use crate::{
     utils::{self, Loadable},
     NodeRng,
 };
-use std::str::FromStr;
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]

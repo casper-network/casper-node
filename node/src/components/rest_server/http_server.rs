@@ -7,9 +7,10 @@ use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
 use warp::Filter;
 
+use casper_types::ProtocolVersion;
+
 use super::{filters, ReactorEventT};
 use crate::effect::EffectBuilder;
-use casper_types::ProtocolVersion;
 
 /// Run the REST HTTP server.
 ///

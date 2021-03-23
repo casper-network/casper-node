@@ -12,12 +12,13 @@ use tower::builder::ServiceBuilder;
 use tracing::{info, trace};
 use warp::{Filter, Rejection};
 
+use casper_types::ProtocolVersion;
+
 use super::{
     rpcs::{self, RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt, RPC_API_PATH},
     ReactorEventT,
 };
 use crate::effect::EffectBuilder;
-use casper_types::ProtocolVersion;
 
 // This is a workaround for not being able to create a `warp_json_rpc::Response` without a
 // `warp_json_rpc::Builder`.
