@@ -7,11 +7,13 @@ use casper_types::{
     account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, Key, KeyTag, ProtocolVersion, URef, U512,
+    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, URef,
+    U256, U512,
 };
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
+    QUERY_DEPTH_LIMIT,
 };
 use crate::{
     core::{engine_state::op::Op, ValidationError},
@@ -999,4 +1001,121 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     assert!(key_set.contains(&uref_2_key.normalize()));
     assert!(key_set.contains(&uref_3_key.normalize()));
     assert!(!key_set.contains(&account_key));
+}
+
+fn val_to_hashaddr<T: Into<U256>>(value: T) -> HashAddr {
+    let mut addr = HashAddr::default();
+    value.into().to_big_endian(&mut addr);
+    addr
+}
+
+#[test]
+fn query_with_large_depth_with_fixed_path_should_fail() {
+    let mut pairs = Vec::new();
+    let mut contract_keys = Vec::new();
+    let mut path = Vec::new();
+
+    const WASM_OFFSET: u64 = 1_000_000;
+    const PACKAGE_OFFSET: u64 = 1_000;
+
+    // create a long chain of contract at address X with a named key that points to a contract X+1
+    // which has a size that exceeds `MAXIMUM_QUERY_DEPTH_LIMIT`.
+    for value in 0..QUERY_DEPTH_LIMIT + 1 {
+        let contract_key = Key::Hash(val_to_hashaddr(value));
+        let next_contract_key = Key::Hash(val_to_hashaddr(value + 1));
+        let contract_name = format!("contract{}", value);
+
+        let named_keys = {
+            let mut named_keys = NamedKeys::new();
+            named_keys.insert(contract_name.clone(), next_contract_key);
+            named_keys
+        };
+        let contract = StoredValue::Contract(Contract::new(
+            val_to_hashaddr(PACKAGE_OFFSET + value).into(),
+            val_to_hashaddr(WASM_OFFSET + value).into(),
+            named_keys,
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+        ));
+        pairs.push((contract_key, contract));
+        contract_keys.push(contract_key);
+        path.push(contract_name.clone());
+    }
+
+    let correlation_id = CorrelationId::new();
+    let (global_state, root_hash) =
+        InMemoryGlobalState::from_pairs(correlation_id, &pairs).unwrap();
+
+    let view = global_state.checkout(root_hash).unwrap().unwrap();
+    let tracking_copy = TrackingCopy::new(view);
+
+    let contract_key = contract_keys[0];
+    let result = tracking_copy.query(correlation_id, contract_key, &path);
+
+    assert!(
+        matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
+        depth
+    }) if depth == QUERY_DEPTH_LIMIT + 1),
+        "{:?}",
+        result
+    );
+}
+
+#[test]
+fn query_with_large_depth_with_urefs_should_fail() {
+    let mut pairs = Vec::new();
+    let mut uref_keys = Vec::new();
+
+    const WASM_OFFSET: u64 = 1_000_000;
+    const PACKAGE_OFFSET: u64 = 1_000;
+    let root_key_name = "key".to_string();
+
+    // create a long chain of urefs at address X with a uref that points to a uref X+1
+    // which has a size that exceeds `MAXIMUM_QUERY_DEPTH_LIMIT`.
+    for value in 0..QUERY_DEPTH_LIMIT + 1 {
+        let uref_addr = val_to_hashaddr(value);
+        let uref = Key::URef(URef::new(uref_addr, AccessRights::READ));
+
+        let next_uref_addr = val_to_hashaddr(value + 1);
+        let next_uref = Key::URef(URef::new(next_uref_addr, AccessRights::READ));
+        let next_cl_value = StoredValue::CLValue(CLValue::from_t(next_uref).unwrap());
+
+        pairs.push((uref, next_cl_value));
+        uref_keys.push(uref);
+    }
+
+    let named_keys = {
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert(root_key_name.clone(), uref_keys[0]);
+        named_keys
+    };
+    let contract = StoredValue::Contract(Contract::new(
+        val_to_hashaddr(PACKAGE_OFFSET).into(),
+        val_to_hashaddr(WASM_OFFSET).into(),
+        named_keys,
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
+    ));
+    let contract_key = Key::Hash([0; 32]);
+    pairs.push((contract_key, contract));
+
+    let correlation_id = CorrelationId::new();
+    let (global_state, root_hash) =
+        InMemoryGlobalState::from_pairs(correlation_id, &pairs).unwrap();
+
+    let view = global_state.checkout(root_hash).unwrap().unwrap();
+    let tracking_copy = TrackingCopy::new(view);
+
+    // query for the beggining of a long chain of urefs
+    // (second path element of arbitrary value required to cause iteration _into_ the nested key)
+    let path = vec![root_key_name, String::new()];
+    let result = tracking_copy.query(correlation_id, contract_key, &path);
+
+    assert!(
+        matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
+        depth
+    }) if depth == QUERY_DEPTH_LIMIT + 1),
+        "{:?}",
+        result
+    );
 }
