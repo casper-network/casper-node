@@ -498,7 +498,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Creates a message to be gossiped that sends the validator's panorama.
     fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
-        trace!(instance_id=?self.highway.instance_id, "creating latest state request");
+        trace!(instance_id=?self.highway.instance_id(), "creating latest state request");
         let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
         vec![ProtocolOutcome::CreatedGossipMessage(
             (&request).serialize(),
