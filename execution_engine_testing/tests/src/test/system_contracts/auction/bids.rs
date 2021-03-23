@@ -877,7 +877,7 @@ fn should_fail_to_get_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     assert_eq!(
-        builder.get_validator_weights(EraId::from(u64::max_value())),
+        builder.get_validator_weights(EraId::MAX),
         None,
         "should not have era validators for invalid era"
     );

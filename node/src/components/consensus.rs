@@ -139,7 +139,7 @@ impl Debug for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload: _ } => {
-                write!(f, "Protocol {{ era_id: \"{}\", .. }}", era_id)
+                write!(f, "Protocol {{ era_id: {:?}, .. }}", era_id)
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
                 .debug_struct("EvidenceRequest")

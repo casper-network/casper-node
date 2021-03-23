@@ -317,7 +317,7 @@ where
             %now,
             %start_height,
             %instance_id,
-            era = %era_id,
+            era = era_id.value(),
             "starting era",
         );
 
