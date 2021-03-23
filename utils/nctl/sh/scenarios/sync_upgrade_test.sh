@@ -4,6 +4,7 @@ source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/views/utils.sh
 source "$NCTL"/sh/assets/upgrade.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+source "$NCTL"/sh/scenarios/common/itst.sh
 
 # Exit if any of the commands fail.
 set -e
@@ -35,6 +36,8 @@ function main() {
     do_upgrade_network
     # 5. Wait for the network to upgrade.
     do_await_network_upgrade
+    #log "DEBUG:$PROTOCOL_VERSION"
+    assert_network_upgrade "$PROTOCOL_VERSION"
     # 6. Take a note of the last finalized block hash
     do_read_lfb_hash
     # 7. Send batch of Wasm deploys
@@ -88,6 +91,28 @@ function do_await_network_upgrade() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         sleep 1.0
     done
+}
+
+function assert_network_upgrade() {
+    local STATUS
+    local COUNT
+    local RUNNING_COUNT
+    local PROTO=${1}
+    log_step "checking that entire network upgraded to $PROTO"
+    CONVERT=$(echo $PROTO | sed 's/_/./g')
+    STATUS=$(nctl-view-node-status)
+    COUNT=$(grep -o "$CONVERT" <<< $STATUS[*]  | wc -l)
+    RUNNING_COUNT=$(get_running_node_count)
+
+    #log "DEBUG: $CONVERT"
+    #log "DEBUG: $STATUS"
+    #log "DEBUG: $COUNT"
+    #log "DEBUG: $RUNNING_COUNT"
+
+    if [ ! "$COUNT" = "$(get_running_node_count)" ]; then
+        log "ERROR: Upgrade failed, $COUNT out of $RUNNING_COUNT upgraded successfully."
+        exit 1
+    fi
 }
 
 function do_send_wasm_deploys() {
