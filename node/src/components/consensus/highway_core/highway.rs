@@ -143,7 +143,7 @@ where
     C: Context,
 {
     /// The protocol instance ID. This needs to be unique, to prevent replay attacks.
-    instance_id: C::InstanceId,
+    pub(crate) instance_id: C::InstanceId,
     /// The validator IDs and weight map.
     validators: Validators<C::ValidatorId>,
     /// The abstract protocol state.

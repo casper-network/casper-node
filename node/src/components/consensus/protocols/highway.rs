@@ -495,6 +495,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.pvv_cache.insert(id, pvv.clone());
         Ok(pvv)
     }
+
+    /// Creates a message to be gossiped that sends the validator's panorama.
+    fn latest_panorama_request(&self) -> ProtocolOutcomes<I, C> {
+        trace!(instance_id=?self.highway.instance_id, "creating latest state request");
+        let request = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+        vec![ProtocolOutcome::CreatedGossipMessage(
+            (&request).serialize(),
+        )]
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -712,11 +721,7 @@ where
             }
             TIMER_ID_PANORAMA_REQUEST => {
                 if !self.finalized_switch_block() {
-                    let request =
-                        HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
-                    let mut outcomes = vec![ProtocolOutcome::CreatedGossipMessage(
-                        (&request).serialize(),
-                    )];
+                    let mut outcomes = self.latest_panorama_request();
                     let next_timer =
                         Timestamp::now() + self.synchronizer.request_latest_state_timeout();
                     outcomes.push(ProtocolOutcome::ScheduleTimer(next_timer, timer_id));
@@ -731,16 +736,12 @@ where
 
     fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
         // Request latest protocol state of the current era.
-        let latest_state_request =
-            HighwayMessage::LatestStateRequest::<C>(Panorama::new(self.highway.validators().len()));
-        let request_state =
-            ProtocolOutcome::CreatedGossipMessage((&latest_state_request).serialize());
-        // Schedule the next timer.
-        let timer_panorama_request = ProtocolOutcome::ScheduleTimer(
+        let mut outcomes = self.latest_panorama_request();
+        outcomes.push(ProtocolOutcome::ScheduleTimer(
             Timestamp::now() + self.synchronizer.request_latest_state_timeout(),
             TIMER_ID_PANORAMA_REQUEST,
-        );
-        vec![request_state, timer_panorama_request]
+        ));
+        outcomes
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {
