@@ -688,11 +688,6 @@ where
                         // We shouldn't get invalid data from the storage.
                         // If we do, it's a bug.
                         assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
-                        assert_eq!(
-                            block.protocol_version(),
-                            self.protocol_version,
-                            "block protocol version mismatch"
-                        );
                         trace!(%block_hash, "Linear block found in the local storage.");
                         // We hit a block that we already had in the storage - which should mean
                         // that we also have all of its ancestors, so we switch to traversing the
@@ -714,24 +709,6 @@ where
                                 header_hash,
                                 block.hash(),
                                 peer
-                            );
-                            // NOTE: Signal misbehaving validator to networking layer.
-                            self.peers.ban(&peer);
-                            return self.handle_event(
-                                effect_builder,
-                                rng,
-                                Event::GetBlockHashResult(
-                                    block_hash,
-                                    BlockByHashResult::Absent(peer),
-                                ),
-                            );
-                        }
-                        if block.protocol_version() != self.protocol_version {
-                            warn!(
-                                %peer,
-                                protocol_version = ?self.protocol_version,
-                                block_version = ?block.protocol_version(),
-                                "block protocol version mismatch",
                             );
                             // NOTE: Signal misbehaving validator to networking layer.
                             self.peers.ban(&peer);
