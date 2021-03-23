@@ -80,6 +80,7 @@ where
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
             round_success_meter: Default::default(),
+            request_latest_state_timeout: "10sec".parse().unwrap(),
         },
     };
     // Timestamp of the genesis era start and test start.
