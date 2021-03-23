@@ -179,7 +179,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        matches!(self.state, State::None | State::Done(_))
+        matches!(self.state, State::Done(_))
     }
 
     /// Returns `true` if we should stop for upgrade.
