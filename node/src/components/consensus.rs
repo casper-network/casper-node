@@ -81,8 +81,6 @@ pub struct ActionId(pub u8);
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
-    /// We connected to a peer.
-    NewPeer(I),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -169,7 +167,6 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
-            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer {
                 era_id,
                 timestamp,
@@ -294,7 +291,6 @@ where
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewPeer(_peer_id) => Effects::new(),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
