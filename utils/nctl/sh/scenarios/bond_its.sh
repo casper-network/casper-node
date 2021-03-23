@@ -60,14 +60,6 @@ function do_submit_auction_bids()
 }
 
 
-function get_node_public_key_hex() {
-    local NODE_ID=${1}
-    local NODE_PATH=$(get_path_to_node $NODE_ID)
-    local PUBLIC_KEY_HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    echo "${PUBLIC_KEY_HEX:2}"
-}
-
-
 function assert_new_bonded_validator() {
     local NODE_ID=${1}
     local HEX=$(get_node_public_key_hex "$NODE_ID")
@@ -86,7 +78,6 @@ function assert_node_proposed() {
     log "node-$NODE_ID created a block!"
     log "$OUTPUT"
 }
-
 
 
 # ----------------------------------------------------------------
