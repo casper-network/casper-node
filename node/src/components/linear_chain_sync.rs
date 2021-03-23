@@ -48,8 +48,7 @@ use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
-        TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
@@ -93,7 +92,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         chainspec: &Chainspec,
         storage: &Storage,
         init_hash: Option<BlockHash>,
-        highest_block_header: Option<BlockHeader>,
+        highest_block: Option<Block>,
         _genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<(Self, Effects<Event<I>>), Err>
@@ -128,9 +127,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     * chainspec.core_config.minimum_era_height,
                 chainspec.core_config.era_duration,
             );
-            let state = init_hash.map_or(State::Done(None), |init_hash| {
-                State::sync_trusted_hash(init_hash, highest_block_header)
-            });
+            let state = match init_hash {
+                Some(init_hash) => State::sync_trusted_hash(
+                    init_hash,
+                    highest_block.map(|block| block.take_header()),
+                ),
+                None => State::Done(highest_block.map(Box::new)),
+            };
             let state_key = create_state_key(&chainspec);
             let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
