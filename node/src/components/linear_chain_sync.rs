@@ -104,11 +104,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let timeout_event = effect_builder
             .set_timeout(five_minutes.into())
             .event(|_| Event::InitializeTimeout);
-        let protocol_version = ProtocolVersion::from_parts(
-            chainspec.protocol_config.version.major as u32,
-            chainspec.protocol_config.version.minor as u32,
-            chainspec.protocol_config.version.patch as u32,
-        );
+        let protocol_version = chainspec.protocol_config.version;
         if let Some(state) = read_init_state(storage, chainspec)? {
             let linear_chain_sync = LinearChainSync::from_state(
                 registry,
