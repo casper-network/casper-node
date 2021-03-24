@@ -1149,6 +1149,21 @@ impl Block {
         self.header.protocol_version
     }
 
+    /// Returns the hash of the parent block.
+    /// If the block is the first block in the linear chain returns `None`.
+    pub fn parent(&self) -> Option<&BlockHash> {
+        if self.header.is_genesis_child() {
+            None
+        } else {
+            Some(self.header.parent_hash())
+        }
+    }
+
+    /// Returns the timestamp of the block.
+    pub fn timestamp(&self) -> Timestamp {
+        self.header.timestamp()
+    }
+
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
         let actual_body_hash = self.body.hash();
