@@ -636,8 +636,8 @@ where
                         if block.protocol_version() != self.protocol_version {
                             warn!(
                                 %peer,
-                                protocol_version = ?self.protocol_version,
-                                block_version = ?block.protocol_version(),
+                                protocol_version = %self.protocol_version,
+                                block_version = %block.protocol_version(),
                                 "block protocol version mismatch",
                             );
                             // NOTE: Signal misbehaving validator to networking layer.
@@ -796,7 +796,7 @@ where
                 effects
             }
             Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
-                trace!(?next_upgrade_activation_point, "new activation point");
+                trace!(%next_upgrade_activation_point, "new activation point");
                 self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
                 Effects::new()
             }
@@ -806,7 +806,7 @@ where
                 self.handle_upgrade_shutdown(effect_builder)
             }
             Event::Shutdown(upgrade) => {
-                info!(?upgrade, "ready for shutdown");
+                info!(%upgrade, "ready for shutdown");
                 self.stop_for_upgrade = upgrade;
                 Effects::new()
             }
