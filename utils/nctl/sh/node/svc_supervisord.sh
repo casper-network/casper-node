@@ -75,8 +75,6 @@ function do_node_status_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
         supervisorctl -c "$(get_path_net_supervisord_cfg)" status all
-    else
-        log "supervisord is not running - have you started the network ?"
     fi
 }
 
