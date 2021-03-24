@@ -93,6 +93,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreateNewBlock {
         block_context: BlockContext,
         past_values: Vec<C::ConsensusValue>,
+        parent_value: Option<C::ConsensusValue>,
     },
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),

@@ -31,6 +31,7 @@ use casper_types::{PublicKey, U512};
 
 use crate::{
     components::Component,
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -96,6 +97,7 @@ pub enum Event<I> {
         era_id: EraId,
         proto_block: ProtoBlock,
         block_context: BlockContext,
+        parent: Option<Digest>,
     },
     #[from]
     ConsensusRequest(ConsensusRequest),
@@ -189,10 +191,11 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 proto_block,
                 block_context,
+                parent,
             } => write!(
                 f,
-                "New proto-block for era {:?}: {:?}, {:?}",
-                era_id, proto_block, block_context
+                "New proto-block for era {:?}: {:?}, {:?}, parent: {:?}",
+                era_id, proto_block, block_context, parent
             ),
             Event::ConsensusRequest(request) => write!(
                 f,
@@ -303,7 +306,8 @@ where
                 era_id,
                 proto_block,
                 block_context,
-            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
+                parent,
+            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context, parent),
             Event::ConsensusRequest(ConsensusRequest::HandleLinearBlock(block, responder)) => {
                 handling_es.handle_linear_chain_block(*block, responder)
             }

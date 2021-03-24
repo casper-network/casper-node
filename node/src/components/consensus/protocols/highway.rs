@@ -226,10 +226,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 block_context,
                 fork_choice,
             } => {
+                let parent_value = fork_choice
+                    .as_ref()
+                    .map(|hash| self.highway.state().block(hash).value.clone());
                 let past_values = self.non_finalized_values(fork_choice).cloned().collect();
                 vec![ProtocolOutcome::CreateNewBlock {
                     block_context,
                     past_values,
+                    parent_value,
                 }]
             }
             AvEffect::WeAreFaulty(fault) => {
