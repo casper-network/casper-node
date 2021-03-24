@@ -1150,6 +1150,11 @@ impl Block {
         self.header.height()
     }
 
+    /// The protocol version of the block.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.header.protocol_version
+    }
+
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
         let actual_body_hash = self.body.hash();
