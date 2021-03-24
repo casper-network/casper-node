@@ -771,7 +771,7 @@ impl Storage {
 
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
     /// the ancestry chain.
-    fn get_blocks_until<F, Tx: Transaction>(
+    fn get_blocks_while<F, Tx: Transaction>(
         &self,
         txn: &mut Tx,
         predicate: F,
@@ -806,18 +806,22 @@ impl Storage {
         // We're interested in deploys whose TTL hasn't expired yet.
         let ttl_expired = |block: &Block| block.timestamp().elapsed() < ttl;
         let mut deploys = Vec::new();
-        for block in self.get_blocks_until(&mut txn, ttl_expired)? {
-            for deploy_hash in block.body().deploy_hashes() {
+        for block in self.get_blocks_while(&mut txn, ttl_expired)? {
+            for deploy_hash in block
+                .body()
+                .deploy_hashes()
+                .iter()
+                .chain(block.body().transfer_hashes())
+            {
                 let deploy_header = self
                     .get_deploy_header(&mut txn, &deploy_hash)?
                     .expect("deploy to exist in storage");
+                // If block's deploy has already expired, ignore it.
+                // It may happen that deploy was not expired at the time of proposing a block but it is now.
+                if deploy_header.timestamp().elapsed() > ttl {
+                    continue;
+                }
                 deploys.push((*deploy_hash, deploy_header));
-            }
-            for transfer_hash in block.body().transfer_hashes() {
-                let deploy_header = self
-                    .get_deploy_header(&mut txn, &transfer_hash)?
-                    .expect("deploy to exist in storage");
-                deploys.push((*transfer_hash, deploy_header));
             }
         }
         Ok(deploys)
