@@ -766,7 +766,8 @@ impl Storage {
                     .get_deploy_header(&mut txn, &deploy_hash)?
                     .expect("deploy to exist in storage");
                 // If block's deploy has already expired, ignore it.
-                // It may happen that deploy was not expired at the time of proposing a block but it is now.
+                // It may happen that deploy was not expired at the time of proposing a block but it
+                // is now.
                 if deploy_header.timestamp().elapsed() > ttl {
                     continue;
                 }
