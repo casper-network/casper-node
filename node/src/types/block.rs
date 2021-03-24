@@ -269,6 +269,10 @@ impl ProtoBlock {
         &self.transfers
     }
 
+    pub(crate) fn deploys_iter(&self) -> impl Iterator<Item = &DeployHash> {
+        self.wasm_deploys().iter().chain(self.transfers().iter())
+    }
+
     /// A random bit needed for initializing a future era.
     pub(crate) fn random_bit(&self) -> bool {
         self.random_bit

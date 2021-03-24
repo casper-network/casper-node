@@ -728,6 +728,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block header from the linear block store.
+    pub(crate) async fn get_block_header_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeader {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested signatures for a given block hash.
     pub(crate) async fn get_signatures_from_storage(
         self,
