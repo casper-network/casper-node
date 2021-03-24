@@ -22,18 +22,18 @@ export NET_ID=${NET_ID:-1}
 # Main
 #######################################
 
-log "net-$NET_ID: asset tear-down begins ... please wait"
+log "asset tear-down begins ... please wait"
 
-log "... stopping nodes"
 source "$NCTL"/sh/node/stop.sh node=all
 
 if [ "$NCTL_DAEMON_TYPE" = "supervisord" ]; then
-    log "... stopping supervisord"
     do_supervisord_kill
 fi
 
-log "... deleting files"
-rm -rf "$(get_path_to_net)"
-rm -rf "$NCTL"/dumps
+if [ -d "$(get_path_to_net)" ]; then
+    log "... deleting files"
+    rm -rf "$(get_path_to_net)"
+    rm -rf "$NCTL"/dumps
+fi
 
-log "net-$NET_ID: asset tear-down complete"
+log "asset tear-down complete"
