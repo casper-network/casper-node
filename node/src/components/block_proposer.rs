@@ -98,9 +98,9 @@ impl BlockProposer {
         // load the state from storage or use a fresh instance if loading fails.
         let state_key = deploy_sets::create_storage_key(chainspec);
         let effects = effect_builder
-            .load_state::<BlockProposerDeploySets>(state_key.clone().into())
-            .event(move |sets| Event::Loaded {
-                sets,
+            .get_finalized_deploys(chainspec.deploy_config.max_ttl)
+            .event(move |finalized_deploys| Event::Loaded {
+                finalized_deploys,
                 next_finalized_block,
             });
 
@@ -143,14 +143,15 @@ where
                     deploy_config,
                 },
                 Event::Loaded {
-                    sets,
+                    finalized_deploys,
                     next_finalized_block,
                 },
             ) => {
                 let mut new_ready_state = BlockProposerReady {
-                    sets: sets
-                        .unwrap_or_default()
-                        .with_next_finalized(next_finalized_block),
+                    sets: BlockProposerDeploySets::from_finalized(
+                        finalized_deploys,
+                        next_finalized_block,
+                    ),
                     unhandled_finalized: Default::default(),
                     deploy_config: *deploy_config,
                     state_key: state_key.clone(),
@@ -255,29 +256,14 @@ impl BlockProposerReady {
                 let pruned = self.prune(Timestamp::now());
                 debug!(%pruned, "pruned deploys from buffer");
 
-                // After pruning, we store a state snapshot.
-                let mut effects = effect_builder
-                    .save_state::<BlockProposerDeploySets>(
-                        self.state_key.clone().into(),
-                        self.sets.clone(),
-                    )
-                    .ignore();
-
                 // Re-trigger timer after `PRUNE_INTERVAL`.
-                effects.extend(
-                    effect_builder
-                        .set_timeout(PRUNE_INTERVAL)
-                        .event(|_| Event::Prune),
-                );
-
-                effects
+                effect_builder
+                    .set_timeout(PRUNE_INTERVAL)
+                    .event(|_| Event::Prune)
             }
-            Event::Loaded { sets, .. } => {
+            Event::Loaded { .. } => {
                 // This should never happen, but we can just ignore the event and carry on.
-                error!(
-                    ?sets,
-                    "got loaded event for block proposer state during ready state"
-                );
+                error!("got loaded event for block proposer state during ready state");
                 Effects::new()
             }
             Event::FinalizedProtoBlock { block, mut height } => {

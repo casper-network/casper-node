@@ -5,7 +5,7 @@ use derive_more::From;
 use fmt::Display;
 use serde::{Deserialize, Serialize};
 
-use super::{BlockHeight, BlockProposerDeploySets};
+use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
     types::{DeployHash, DeployHeader, ProtoBlock},
@@ -81,8 +81,8 @@ pub enum Event {
     Request(BlockProposerRequest),
     /// The chainspec and previous sets have been successfully loaded from storage.
     Loaded {
-        /// Loaded previously stored block proposer sets.
-        sets: Option<BlockProposerDeploySets>,
+        /// Previously finalized deploys.
+        finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
     },
@@ -105,20 +105,11 @@ impl Display for Event {
         match self {
             Event::Request(req) => write!(f, "block-proposer request: {}", req),
             Event::Loaded {
-                sets: Some(sets),
                 next_finalized_block,
+                ..
             } => write!(
                 f,
-                "loaded block-proposer deploy sets: {}; expected next finalized block: {}",
-                sets, next_finalized_block
-            ),
-            Event::Loaded {
-                sets: None,
-                next_finalized_block,
-            } => write!(
-                f,
-                "loaded block-proposer deploy sets, none found in storage; \
-                expected next finalized block: {}",
+                "loaded block-proposer finalized deploys; expected next finalized block: {}",
                 next_finalized_block
             ),
             Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
