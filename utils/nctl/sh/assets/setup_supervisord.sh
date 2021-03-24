@@ -21,7 +21,7 @@ file=$PATH_TO_NET/daemon/socket/supervisord.sock ;
 
 [supervisord]
 logfile=$PATH_TO_NET/daemon/logs/supervisord.log ;
-logfile_maxbytes=50MB ;
+logfile_maxbytes=200MB ;
 logfile_backups=10 ;
 loglevel=info ;
 pidfile=$PATH_TO_NET/daemon/socket/supervisord.pid ;
@@ -51,12 +51,15 @@ command=$PATH_NODE_BIN/casper-node-launcher
 environment=CASPER_BIN_DIR="$PATH_NODE_BIN",CASPER_CONFIG_DIR="$PATH_NODE_CONFIG"
 numprocs=1
 numprocs_start=0
+startsecs=0
+stopwaitsecs=0
+stopasgroup=true
 stderr_logfile=$PATH_NODE_LOGS/stderr.log ;
 stderr_logfile_backups=5 ;
-stderr_logfile_maxbytes=50MB ;
+stderr_logfile_maxbytes=500MB ;
 stdout_logfile=$PATH_NODE_LOGS/stdout.log ;
 stdout_logfile_backups=5 ;
-stdout_logfile_maxbytes=50MB ;
+stdout_logfile_maxbytes=500MB ;
 EOM
 done
 
