@@ -40,7 +40,7 @@ use crate::{
             ProtocolOutcome, ProtocolOutcomes,
         },
         metrics::ConsensusMetrics,
-        traits::NodeIdT,
+        traits::{ConsensusValueT, NodeIdT},
         ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
@@ -707,6 +707,7 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
         block_context: BlockContext,
+        parent: Option<Digest>,
     ) -> Effects<Event<I>> {
         if !self.era_supervisor.is_bonded(era_id) {
             warn!(era = era_id.value(), "new proto block in outdated era");
@@ -721,7 +722,7 @@ where
             .cloned()
             .collect();
         let candidate_block =
-            CandidateBlock::new(proto_block, block_context.timestamp(), accusations);
+            CandidateBlock::new(proto_block, block_context.timestamp(), accusations, parent);
         self.delegate_to_era(era_id, move |consensus| {
             consensus.propose(candidate_block, block_context, Timestamp::now())
         })
@@ -988,12 +989,14 @@ where
             ProtocolOutcome::CreateNewBlock {
                 block_context,
                 past_values,
+                parent_value,
             } => {
                 let past_deploys = past_values
                     .iter()
                     .flat_map(|candidate| BlockLike::deploys(candidate.proto_block()))
                     .cloned()
                     .collect();
+                let parent = parent_value.as_ref().map(CandidateBlock::hash);
                 self.effect_builder
                     .request_proto_block(
                         block_context,
@@ -1005,6 +1008,7 @@ where
                         era_id,
                         proto_block,
                         block_context,
+                        parent,
                     })
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {

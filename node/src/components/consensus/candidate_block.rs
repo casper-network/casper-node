@@ -20,6 +20,8 @@ pub(crate) struct CandidateBlock {
     proto_block: ProtoBlock,
     timestamp: Timestamp,
     accusations: Vec<PublicKey>,
+    /// The parent candidate block in this era, or `None` if this is the first block in this era.
+    parent: Option<Digest>,
 }
 
 impl CandidateBlock {
@@ -28,11 +30,13 @@ impl CandidateBlock {
         proto_block: ProtoBlock,
         timestamp: Timestamp,
         accusations: Vec<PublicKey>,
+        parent: Option<Digest>,
     ) -> Self {
         CandidateBlock {
             proto_block,
             timestamp,
             accusations,
+            parent,
         }
     }
 
@@ -69,12 +73,13 @@ impl ConsensusValueT for CandidateBlock {
             proto_block,
             timestamp,
             accusations,
+            parent,
         } = self;
         let mut result = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
         hasher.update(proto_block.hash().inner());
-        let data = (timestamp, accusations);
+        let data = (timestamp, accusations, parent);
         hasher.update(bincode::serialize(&data).expect("should serialize candidate block data"));
         hasher.finalize_variable(|slice| {
             result.copy_from_slice(slice);
