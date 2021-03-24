@@ -1112,7 +1112,7 @@ where
                 let effect_builder = self.effect_builder;
                 effects.extend(
                     async move {
-                        match check_deploys_for_replay_and_validate_block(
+                        match check_deploys_for_replay_in_previous_eras_and_validate_block(
                             effect_builder,
                             era_id,
                             sender,
@@ -1261,7 +1261,11 @@ pub enum ReplayCheckAndValidateBlockError {
     BlockHashMissingFromStorage(BlockHash),
 }
 
-async fn check_deploys_for_replay_and_validate_block<REv, I>(
+/// Checks that a [ProtoBlock] does not have deploys we have already included in blocks in previous
+/// eras. This is done by repeatedly querying storage for deploy metadata. When metadata is found
+/// storage is queried again to get the era id for the included deploy. That era id must *not* be
+/// less than the current era, otherwise the deploy is a replay attack.
+async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
     proto_block_era_id: EraId,
     sender: I,
@@ -1280,17 +1284,29 @@ where
             None => continue,
             Some((_, DeployMetadata { execution_results })) => execution_results,
         };
+        // We have found the deploy in the database.  If it was from a previous era, it was a
+        // replay attack.  Get the block header for that deploy to check if it is provably a replay
+        // attack.
         for (block_hash, _) in execution_results {
             match effect_builder
                 .get_block_header_from_storage(block_hash)
                 .await
             {
                 None => {
+                    // The block hash referenced by the deploy does not exist.  This is
+                    // a critical database integrity failure.
                     return Err(
                         ReplayCheckAndValidateBlockError::BlockHashMissingFromStorage(block_hash),
-                    )
+                    );
                 }
                 Some(block_header) => {
+                    // If the deploy was included in a block which is from before the current era_id
+                    // then this must have been a replay attack.
+                    //
+                    // If not, then it might be this is a deploy for a block we are currently
+                    // coming to consensus, and we will rely on the immediate ancestors of the
+                    // proto_block within the current era to determine if we are facing a replay
+                    // attack.
                     if block_header.era_id() < proto_block_era_id {
                         return Ok(Event::ResolveValidity {
                             era_id: proto_block_era_id,
