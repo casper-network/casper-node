@@ -42,18 +42,15 @@ impl Default for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
+    
     /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys.
     pub(super) fn from_finalized(
-        stored_deploys: Vec<(DeployHash, DeployHeader)>,
+        finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         next_finalized_height: u64,
     ) -> BlockProposerDeploySets {
-        let mut finalized_deploys: HashMap<DeployHash, DeployHeader> = HashMap::new();
-        for (hash, header) in stored_deploys.into_iter() {
-            finalized_deploys.insert(hash, header);
-        }
         BlockProposerDeploySets {
             pending: HashMap::new(),
-            finalized_deploys,
+            finalized_deploys: finalized_deploys.into_iter().collect(),
             next_finalized: next_finalized_height,
             finalization_queue: Default::default(),
         }
