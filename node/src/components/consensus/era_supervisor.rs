@@ -1062,7 +1062,12 @@ where
                 self.era_supervisor.update_consensus_pause();
                 effects
             }
-            ProtocolOutcome::ValidateConsensusValue(sender, candidate_block, timestamp) => {
+            ProtocolOutcome::ValidateConsensusValue {
+                sender,
+                consensus_value: candidate_block,
+                timestamp,
+                ancestor_values: _ancestor_blocks,
+            } => {
                 if !self.era_supervisor.is_bonded(era_id) {
                     return Effects::new();
                 }

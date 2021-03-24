@@ -102,7 +102,12 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
-    ValidateConsensusValue(I, C::ConsensusValue, Timestamp),
+    ValidateConsensusValue {
+        sender: I,
+        consensus_value: C::ConsensusValue,
+        timestamp: Timestamp,
+        ancestor_values: Vec<C::ConsensusValue>,
+    },
     /// New direct evidence was added against the given validator.
     NewEvidence(C::ValidatorId),
     /// Send evidence about the validator from an earlier era to the peer.
