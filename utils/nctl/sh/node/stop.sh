@@ -27,6 +27,7 @@ NODE_ID=${NODE_ID:-"all"}
 
 if [ "$NODE_ID" == "all" ]; then
     do_node_stop_all
+    do_node_status_all
 else
     log "node-$NODE_ID: stopping node ... "
     do_node_stop "$NODE_ID"
