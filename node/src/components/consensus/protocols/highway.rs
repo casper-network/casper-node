@@ -308,17 +308,25 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // If the vertex contains a consensus value, request validation.
         let vertex = vv.inner();
-        if let (Some(value), Some(timestamp)) = (vertex.value(), vertex.timestamp()) {
+        if let (Some(value), Some(timestamp), Some(swunit)) =
+            (vertex.value(), vertex.timestamp(), vertex.unit())
+        {
             if value.needs_validation() {
                 self.log_proposal(vertex, "requesting proposal validation");
-                let cv = value.clone();
+                let panorama = &swunit.wire_unit().panorama;
+                let fork_choice = self.highway.state().fork_choice(panorama).cloned();
+                let ancestor_values = self.ancestors(fork_choice).cloned().collect();
+                let consensus_value = value.clone();
                 self.pending_values
                     .entry(value.hash())
                     .or_default()
                     .push(vv);
-                outcomes.push(ProtocolOutcome::ValidateConsensusValue(
-                    sender, cv, timestamp,
-                ));
+                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                    sender,
+                    consensus_value,
+                    timestamp,
+                    ancestor_values,
+                });
                 return outcomes;
             } else {
                 self.log_proposal(vertex, "proposal does not need validation");
@@ -401,6 +409,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
             let value = maybe_block.map(|block| &block.value);
             fork_choice = maybe_block.and_then(|block| block.parent().cloned());
+            value
+        })
+    }
+
+    /// Returns an iterator over all the values that are in parents of the given block.
+    fn ancestors(
+        &self,
+        mut maybe_hash: Option<C::Hash>,
+    ) -> impl Iterator<Item = &C::ConsensusValue> {
+        iter::from_fn(move || {
+            let hash = maybe_hash.take()?;
+            let block = self.highway.state().block(&hash);
+            let value = Some(&block.value);
+            maybe_hash = block.parent().cloned();
             value
         })
     }
