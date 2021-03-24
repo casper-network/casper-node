@@ -374,7 +374,7 @@ impl BlockProposerReady {
         I: IntoIterator<Item = DeployHash>,
     {
         self.finalized_deploys(deploys);
-        self.sets.next_finalized = self.next_finalized.max(height + 1);
+        self.sets.next_finalized = self.sets.next_finalized.max(height + 1);
 
         if let Some(requests) = self.request_queue.remove(&self.sets.next_finalized) {
             info!(height = %(height + 1), "handling queued requests");
