@@ -520,7 +520,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
-            chainspec_loader.initial_block_header().cloned(),
+            chainspec_loader.initial_block().cloned(),
             validator_weights,
             maybe_next_activation_point,
         )?;
