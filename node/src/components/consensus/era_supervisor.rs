@@ -62,6 +62,11 @@ use crate::{
 };
 
 pub use self::{era::Era, era_id::EraId};
+use crate::{
+    effect::requests::BlockValidationRequest,
+    types::{DeployHash, DeployMetadata},
+};
+use std::collections::BTreeSet;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -1149,7 +1154,7 @@ where
                 sender,
                 consensus_value: candidate_block,
                 timestamp,
-                ancestor_values: _ancestor_blocks,
+                ancestor_values: ancestor_blocks,
             } => {
                 if !self.era_supervisor.is_bonded(era_id) {
                     return Effects::new();
@@ -1172,16 +1177,36 @@ where
                 }
                 self.era_mut(era_id)
                     .add_candidate(candidate_block, missing_evidence);
+                let proto_block_deploys_set: BTreeSet<DeployHash> =
+                    proto_block.deploys_iter().cloned().collect();
+                for ancestor_block in ancestor_blocks {
+                    let ancestor_proto_block = ancestor_block.proto_block();
+                    for deploy in ancestor_proto_block.deploys_iter() {
+                        if proto_block_deploys_set.contains(deploy) {
+                            effects.extend(self.resolve_validity(
+                                era_id,
+                                sender,
+                                proto_block,
+                                timestamp,
+                                false,
+                            ));
+                            return effects;
+                        }
+                    }
+                }
+                let effect_builder = self.effect_builder;
                 effects.extend(
-                    self.effect_builder
-                        .validate_block(sender.clone(), proto_block, timestamp)
-                        .event(move |(valid, proto_block)| Event::ResolveValidity {
+                    async move {
+                        check_deploys_for_replay_and_validate_block(
+                            effect_builder,
                             era_id,
                             sender,
                             proto_block,
                             timestamp,
-                            valid,
-                        }),
+                        )
+                        .await
+                    }
+                    .event(std::convert::identity),
                 );
                 effects
             }
@@ -1332,4 +1357,59 @@ pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: E
     current_era
         .saturating_sub(bonded_eras(protocol_config))
         .max(protocol_config.last_activation_point)
+}
+
+async fn check_deploys_for_replay_and_validate_block<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    proto_block_era_id: EraId,
+    sender: I,
+    proto_block: ProtoBlock,
+    timestamp: Timestamp,
+) -> Event<I>
+where
+    REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
+    I: Clone + Send + 'static,
+{
+    for deploy_hash in proto_block.deploys_iter() {
+        let execution_results = match effect_builder
+            .get_deploy_and_metadata_from_storage(*deploy_hash)
+            .await
+        {
+            None => continue,
+            Some((_, DeployMetadata { execution_results })) => execution_results,
+        };
+        for (block_hash, _) in execution_results {
+            match effect_builder
+                .get_block_header_from_storage(block_hash)
+                .await
+            {
+                // TODO: Throw an error here and use fatal! elsewhere
+                None => continue,
+                Some(block_header) => {
+                    if block_header.era_id() < proto_block_era_id {
+                        return Event::ResolveValidity {
+                            era_id: proto_block_era_id,
+                            sender: sender.clone(),
+                            proto_block: proto_block.clone(),
+                            timestamp,
+                            valid: false,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    let sender_for_validate_block: I = sender.clone();
+    let (valid, proto_block) = effect_builder
+        .validate_block(sender_for_validate_block, proto_block, timestamp)
+        .await;
+
+    Event::ResolveValidity {
+        era_id: proto_block_era_id,
+        sender,
+        proto_block,
+        timestamp,
+        valid,
+    }
 }
