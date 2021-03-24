@@ -372,18 +372,7 @@ impl ChainspecLoader {
         }
 
         let debug_assert_version_match = || {
-            debug_assert!(
-                previous_protocol_version.value().major
-                    == self.chainspec.protocol_config.version.value().major
-            );
-            debug_assert!(
-                previous_protocol_version.value().minor
-                    == self.chainspec.protocol_config.version.value().minor
-            );
-            debug_assert!(
-                previous_protocol_version.value().patch
-                    == self.chainspec.protocol_config.version.value().patch
-            );
+            debug_assert!(previous_protocol_version == self.chainspec.protocol_config.version);
         };
 
         let next_upgrade_activation_point = match self.next_upgrade {

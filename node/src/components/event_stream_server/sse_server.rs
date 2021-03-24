@@ -26,7 +26,6 @@ type Id = u32;
 
 /// The "data" field of the events sent on the event stream to clients.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
-#[allow(clippy::large_enum_variant)]
 pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
@@ -40,7 +39,7 @@ pub enum SseData {
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
         deploy_hash: Box<DeployHash>,
-        account: PublicKey,
+        account: Box<PublicKey>,
         timestamp: Timestamp,
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,

@@ -32,14 +32,13 @@ pub(super) fn create_status_filter<REv: ReactorEventT>(
     warp::get()
         .and(warp::path(STATUS_API_PATH))
         .and_then(move || {
-            let api_version_cloned = api_version;
             effect_builder
                 .make_request(
                     |responder| RestRequest::GetStatus { responder },
                     QueueKind::Api,
                 )
                 .map(move |status_feed| {
-                    let body = GetStatusResult::new(status_feed, api_version_cloned);
+                    let body = GetStatusResult::new(status_feed, api_version);
                     Ok::<_, Rejection>(reply::json(&body).into_response())
                 })
         })

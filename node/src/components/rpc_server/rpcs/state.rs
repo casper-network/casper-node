@@ -41,7 +41,7 @@ static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -51,12 +51,12 @@ static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParam
         .to_string(),
 });
 static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     auction_state: AuctionState::doc_example().clone(),
 });
 

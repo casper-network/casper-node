@@ -31,7 +31,7 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().id(),
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
         block_hash: Block::doc_example().id(),
@@ -39,7 +39,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     }],
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     peers: GetStatusResult::doc_example().peers.clone(),
 });
 

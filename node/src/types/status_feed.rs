@@ -47,7 +47,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
-    GetStatusResult::new(status_feed, *DOCS_EXAMPLE_PROTOCOL_VERSION)
+    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
 
 /// Summary information from the chainspec.

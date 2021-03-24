@@ -31,7 +31,7 @@ static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),
 });
 static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy_hash: *Deploy::doc_example().id(),
 });
 

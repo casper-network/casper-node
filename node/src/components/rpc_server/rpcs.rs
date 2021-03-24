@@ -94,14 +94,8 @@ pub(super) trait RpcWithParamsExt: RpcWithParams {
             .and(filters::params::<Self::RequestParams>())
             .and_then(
                 move |response_builder: Builder, params: Self::RequestParams| {
-                    let api_version_cloned = api_version;
-                    Self::handle_request(
-                        effect_builder,
-                        response_builder,
-                        params,
-                        api_version_cloned,
-                    )
-                    .map_err(reject::custom)
+                    Self::handle_request(effect_builder, response_builder, params, api_version)
+                        .map_err(reject::custom)
                 },
             );
         let with_invalid_params = warp::path(RPC_API_PATH)
@@ -220,7 +214,6 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
     ) -> BoxedFilter<(Response<Body>,)> {
-        let api_version_cloned = api_version;
         let with_params = warp::path(RPC_API_PATH)
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
@@ -251,7 +244,7 @@ pub(super) trait RpcWithOptionalParamsExt: RpcWithOptionalParams {
             .and(filters::json_rpc())
             .and(filters::method(Self::METHOD))
             .and_then(move |response_builder: Builder| {
-                Self::handle_request(effect_builder, response_builder, None, api_version_cloned)
+                Self::handle_request(effect_builder, response_builder, None, api_version)
                     .map_err(reject::custom)
             });
         with_params

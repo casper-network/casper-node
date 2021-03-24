@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use core::str::FromStr;
+use std::str::FromStr;
 
 use datasize::DataSize;
 #[cfg(test)]

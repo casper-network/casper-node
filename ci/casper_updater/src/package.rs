@@ -1,5 +1,5 @@
-use core::str::FromStr;
 use std::{
+    convert::TryFrom,
     io::{self, Write},
     path::Path,
 };
@@ -15,7 +15,7 @@ use crate::{
     BumpVersion,
 };
 
-use casper_types::ProtocolVersion;
+use casper_types::SemVer;
 
 const CAPTURE_INDEX: usize = 2;
 
@@ -25,7 +25,7 @@ pub struct Package {
     /// This package's name as specified in its manifest.
     name: String,
     /// This package's current version as specified in its manifest.
-    current_version: ProtocolVersion,
+    current_version: SemVer,
     /// Files which must be updated if this package's version is changed, including this package's
     /// own manifest file.  The other files will often be from a different package.
     dependent_files: &'static Vec<DependentFile>,
@@ -121,8 +121,7 @@ impl Package {
 
         let name = find_value(T::name_regex());
         let version = find_value(T::version_regex());
-        let current_version =
-            ProtocolVersion::from_str(&version).expect("should parse current version");
+        let current_version = SemVer::try_from(&*version).expect("should parse current version");
 
         Package {
             name,
@@ -171,25 +170,23 @@ impl Package {
         );
     }
 
-    fn get_updated_version_from_bump(&self, bump_version: BumpVersion) -> ProtocolVersion {
+    fn get_updated_version_from_bump(&self, bump_version: BumpVersion) -> SemVer {
         match bump_version {
-            BumpVersion::Major => {
-                ProtocolVersion::from_parts(self.current_version.value().major + 1, 0, 0)
-            }
-            BumpVersion::Minor => ProtocolVersion::from_parts(
-                self.current_version.value().major,
-                self.current_version.value().minor + 1,
+            BumpVersion::Major => SemVer::new(self.current_version.major + 1, 0, 0),
+            BumpVersion::Minor => SemVer::new(
+                self.current_version.major,
+                self.current_version.minor + 1,
                 0,
             ),
-            BumpVersion::Patch => ProtocolVersion::from_parts(
-                self.current_version.value().major,
-                self.current_version.value().minor,
-                self.current_version.value().patch + 1,
+            BumpVersion::Patch => SemVer::new(
+                self.current_version.major,
+                self.current_version.minor,
+                self.current_version.patch + 1,
             ),
         }
     }
 
-    fn get_updated_version_from_user(&self) -> Option<ProtocolVersion> {
+    fn get_updated_version_from_user(&self) -> Option<SemVer> {
         loop {
             print!(
                 "Current version of {} is {}.  Enter new version (leave blank for unchanged): ",
@@ -204,7 +201,7 @@ impl Package {
                         return None;
                     }
 
-                    let new_version = match ProtocolVersion::from_str(&input) {
+                    let new_version = match SemVer::try_from(&*input) {
                         Ok(version) => version,
                         Err(error) => {
                             println!("\n{} is not a valid version: {}.", input, error);

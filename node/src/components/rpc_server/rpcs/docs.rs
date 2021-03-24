@@ -28,8 +28,8 @@ use super::{
 };
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
 
-pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<ProtocolVersion> =
-    Lazy::new(|| ProtocolVersion::from_parts(1, 0, 0));
+pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
+    ProtocolVersion::from_parts(1, 0, 0);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -90,7 +90,7 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema
 });
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
-    api_version: *DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
 });
@@ -421,7 +421,7 @@ mod tests {
     fn check_docs_example_version() {
         let chainspec = Chainspec::from_resources("production");
         assert_eq!(
-            *DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
+            DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
             "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \
             'resources/production/chainspec.toml'"
         );
