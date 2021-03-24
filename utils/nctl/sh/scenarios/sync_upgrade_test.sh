@@ -108,6 +108,7 @@ function assert_network_upgrade() {
         log "ERROR: Upgrade failed, $COUNT out of $RUNNING_COUNT upgraded successfully."
         exit 1
     fi
+    log "$COUNT out of $RUNNING_COUNT upgraded successfully!"
 }
 
 function do_send_wasm_deploys() {
