@@ -20,7 +20,7 @@ for ARGUMENT in "$@"; do
         loglevel) LOG_LEVEL=${VALUE} ;;
         hash) STATE_HASH=${VALUE} ;;
         state-source) STATE_SOURCE=${VALUE} ;;
-        *) echo "Unknown argument '${KEY}'. Use 'version', 'era' or 'loglevel'." && exit 1 ;;
+        *) echo "Unknown argument '${KEY}'. Use 'version', 'era', 'loglevel', 'hash' or 'state-source'." && exit 1 ;;
     esac
 done
 
