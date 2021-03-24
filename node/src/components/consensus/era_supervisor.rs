@@ -8,7 +8,7 @@
 mod era;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::PathBuf,
@@ -44,22 +44,20 @@ use crate::{
         ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects, Responder},
+    effect::{
+        requests::{BlockValidationRequest, StorageRequest},
+        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
+    },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
-        FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, DeployHash, DeployMetadata,
+        FinalitySignature, FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
 };
 
 pub use self::era::Era;
-use crate::{
-    effect::requests::BlockValidationRequest,
-    types::{DeployHash, DeployMetadata},
-};
-use std::collections::BTreeSet;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -1114,7 +1112,7 @@ where
                 let effect_builder = self.effect_builder;
                 effects.extend(
                     async move {
-                        check_deploys_for_replay_and_validate_block(
+                        match check_deploys_for_replay_and_validate_block(
                             effect_builder,
                             era_id,
                             sender,
@@ -1122,8 +1120,17 @@ where
                             timestamp,
                         )
                         .await
+                        {
+                            Ok(event) => Some(event),
+                            Err(error) => {
+                                effect_builder
+                                    .fatal(file!(), line!(), format!("{:?}", error))
+                                    .await;
+                                None
+                            }
+                        }
                     }
-                    .event(std::convert::identity),
+                    .map_some(std::convert::identity),
                 );
                 effects
             }
@@ -1249,13 +1256,18 @@ pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: E
         .max(protocol_config.last_activation_point)
 }
 
+#[derive(thiserror::Error, Debug, derive_more::Display)]
+pub enum ReplayCheckAndValidateBlockError {
+    BlockHashMissingFromStorage(BlockHash),
+}
+
 async fn check_deploys_for_replay_and_validate_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
     proto_block_era_id: EraId,
     sender: I,
     proto_block: ProtoBlock,
     timestamp: Timestamp,
-) -> Event<I>
+) -> Result<Event<I>, ReplayCheckAndValidateBlockError>
 where
     REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
@@ -1273,17 +1285,20 @@ where
                 .get_block_header_from_storage(block_hash)
                 .await
             {
-                // TODO: Throw an error here and use fatal! elsewhere
-                None => continue,
+                None => {
+                    return Err(
+                        ReplayCheckAndValidateBlockError::BlockHashMissingFromStorage(block_hash),
+                    )
+                }
                 Some(block_header) => {
                     if block_header.era_id() < proto_block_era_id {
-                        return Event::ResolveValidity {
+                        return Ok(Event::ResolveValidity {
                             era_id: proto_block_era_id,
                             sender: sender.clone(),
                             proto_block: proto_block.clone(),
                             timestamp,
                             valid: false,
-                        };
+                        });
                     }
                 }
             }
@@ -1295,11 +1310,11 @@ where
         .validate_block(sender_for_validate_block, proto_block, timestamp)
         .await;
 
-    Event::ResolveValidity {
+    Ok(Event::ResolveValidity {
         era_id: proto_block_era_id,
         sender,
         proto_block,
         timestamp,
         valid,
-    }
+    })
 }
