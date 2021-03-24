@@ -4,7 +4,7 @@ use casper_engine_test_support::internal::LmdbWasmTestBuilder;
 use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     system::auction::{Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
-    AsymmetricType, Key, PublicKey, U512,
+    AsymmetricType, EraId, Key, PublicKey, U512,
 };
 
 use crate::utils::ValidatorsDiff;
@@ -15,11 +15,11 @@ use crate::utils::ValidatorsDiff;
 /// - Count - the number of eras to be included in the snapshot.
 pub fn gen_snapshot(
     validators: Vec<(String, String)>,
-    starting_era_id: u64,
+    starting_era_id: EraId,
     count: u64,
 ) -> SeigniorageRecipientsSnapshot {
     let mut new_snapshot = BTreeMap::new();
-    for era_id in starting_era_id..starting_era_id + count {
+    for era_id in starting_era_id.iter(count) {
         let mut era_validators = BTreeMap::new();
         for (key_str, bonded_str) in &validators {
             let key = PublicKey::from_hex(key_str.as_bytes()).unwrap();

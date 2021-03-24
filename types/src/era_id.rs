@@ -51,6 +51,12 @@ impl EraId {
         EraId(value)
     }
 
+    /// Returns an iterator over era IDs of `num_eras` future eras starting from current.
+    pub fn iter(&self, num_eras: u64) -> impl Iterator<Item = EraId> {
+        let current_era_id = self.0;
+        (current_era_id..current_era_id + num_eras).map(EraId)
+    }
+
     /// Returns an iterator over era IDs of `num_eras` future eras starting from current, plus the
     /// provided one.
     pub fn iter_inclusive(&self, num_eras: u64) -> impl Iterator<Item = EraId> {
