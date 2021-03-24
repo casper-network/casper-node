@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -888,9 +888,9 @@ impl reactor::Reactor for Reactor {
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
-            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(peer_id)) => {
-                let event = consensus::Event::NewPeer(peer_id);
-                self.dispatch_event(effect_builder, rng, Event::Consensus(event))
+            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_peer_id)) => {
+                trace!("new peer announcement not handled in the validator reactor");
+                Effects::new()
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,

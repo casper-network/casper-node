@@ -31,12 +31,12 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, Bids, DelegationRate, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
+            self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
             ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -493,7 +493,7 @@ fn should_calculate_era_validators() {
     builder.exec(add_bid_request_1).commit().expect_success();
 
     let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
-    assert_eq!(pre_era_id, 0);
+    assert_eq!(pre_era_id, EraId::from(0));
 
     builder.run_auction(
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
@@ -501,7 +501,7 @@ fn should_calculate_era_validators() {
     );
 
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
-    assert_eq!(post_era_id, 1);
+    assert_eq!(post_era_id, EraId::from(1));
 
     let era_validators: EraValidators = builder.get_era_validators();
 
@@ -512,11 +512,15 @@ fn should_calculate_era_validators() {
     assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
-    let expected_eras: Vec<EraId> = (*first_era..=*last_era).collect();
+    let expected_eras: Vec<EraId> = {
+        let lo: u64 = (*first_era).into();
+        let hi: u64 = (*last_era).into();
+        (lo..=hi).map(EraId::from).collect()
+    };
     assert_eq!(eras, expected_eras, "Eras {:?}", eras);
 
-    assert!(post_era_id > 0);
-    let consensus_next_era_id: EraId = DEFAULT_AUCTION_DELAY + 1 + post_era_id;
+    assert!(post_era_id > EraId::from(0));
+    let consensus_next_era_id: EraId = post_era_id + DEFAULT_AUCTION_DELAY + 1;
 
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
 
@@ -636,9 +640,9 @@ fn should_get_first_seigniorage_recipients() {
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
-    assert!(era_validators.contains_key(&(DEFAULT_AUCTION_DELAY as u64 + 1)));
+    assert!(era_validators.contains_key(&(EraId::from(DEFAULT_AUCTION_DELAY).successor())));
 
-    let era_id = DEFAULT_AUCTION_DELAY - 1;
+    let era_id = EraId::from(DEFAULT_AUCTION_DELAY) - 1;
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
@@ -873,7 +877,7 @@ fn should_fail_to_get_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     assert_eq!(
-        builder.get_validator_weights(u64::max_value()),
+        builder.get_validator_weights(EraId::MAX),
         None,
         "should not have era validators for invalid era"
     );
@@ -911,7 +915,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
     assert_eq!(validator_weights[&ACCOUNT_1_PK], ACCOUNT_1_BOND.into());
 
     let era_validators: EraValidators = builder.get_era_validators();
-    assert_eq!(era_validators[&0], validator_weights);
+    assert_eq!(era_validators[&EraId::from(0)], validator_weights);
 }
 
 #[ignore]

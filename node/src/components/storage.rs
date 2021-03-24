@@ -63,13 +63,12 @@ use thiserror::Error;
 use tracing::{error, info};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{ExecutionResult, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, Transfer, Transform};
 
 use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
-    components::consensus::EraId,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -1089,7 +1088,7 @@ impl Storage {
         let switch_block = self
             .get_switch_block_by_era_id(
                 &mut read_only_lmdb_transaction,
-                EraId(switch_block_era_num),
+                EraId::from(switch_block_era_num),
             )
             .expect("LMDB panicked trying to get switch block");
         read_only_lmdb_transaction

@@ -36,10 +36,9 @@ use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use self::event::{BlockByHashResult, DeploysResult};
-use casper_types::{ProtocolVersion, PublicKey, U512};
+use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
 
 use super::{
-    consensus::EraId,
     fetcher::FetchResult,
     storage::{self, Storage},
     Component,
@@ -271,7 +270,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             self.state.new_switch_block(&block);
         }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
-            info!(era = block.header().era_id().0, "shutting down for upgrade");
+            info!(
+                era = block.header().era_id().value(),
+                "shutting down for upgrade"
+            );
             return effect_builder
                 .immediately()
                 .event(|_| Event::InitUpgradeShutdown);
@@ -357,7 +359,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
-                        era=block.header().era_id().0,
+                        era=block.header().era_id().value(),
                         "downloaded recent block. finished synchronization"
                     );
                     self.mark_done(Some(*latest_block.clone()));
@@ -367,7 +369,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
-                        era=block.header().era_id().0,
+                        era=block.header().era_id().value(),
                         "downloaded switch block of a new era. finished synchronization"
                     );
                     self.mark_done(Some(*latest_block.clone()));

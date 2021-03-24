@@ -1,11 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::{ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey};
 
-use crate::{
-    components::consensus::EraId,
-    types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp},
-};
+use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp};
 
 #[derive(Debug)]
 pub enum Event {

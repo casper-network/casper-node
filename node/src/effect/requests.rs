@@ -31,13 +31,12 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
+    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
 
 use super::Responder;
 use crate::{
     components::{
-        consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
         fetcher::FetchResult,

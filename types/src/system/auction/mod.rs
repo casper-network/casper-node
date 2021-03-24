@@ -13,7 +13,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_rational::Ratio;
 
-use crate::{account::AccountHash, PublicKey, U512};
+use crate::{account::AccountHash, EraId, PublicKey, U512};
 
 pub use bid::Bid;
 pub use constants::*;
@@ -34,9 +34,6 @@ pub type Bids = BTreeMap<PublicKey, Bid>;
 
 /// Weights of validators. "Weight" in this context means a sum of their stakes.
 pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
-
-/// Era index type.
-pub type EraId = u64;
 
 /// List of era validators
 pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;
