@@ -42,7 +42,6 @@ impl Default for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    
     /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys.
     pub(super) fn from_finalized(
         finalized_deploys: Vec<(DeployHash, DeployHeader)>,
