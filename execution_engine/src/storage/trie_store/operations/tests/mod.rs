@@ -1,3 +1,4 @@
+mod delete;
 mod keys;
 mod proptests;
 mod read;

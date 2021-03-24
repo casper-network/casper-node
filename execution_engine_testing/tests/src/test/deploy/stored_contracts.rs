@@ -9,18 +9,17 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::upgrade::ActivationPoint,
     shared::{account::Account, stored_value::StoredValue, transform::Transform},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     account::AccountHash,
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME},
-    runtime_args, ContractHash, Key, ProtocolVersion, RuntimeArgs, U512,
+    runtime_args, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
-const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
+const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const DO_NOTHING_NAME: &str = "do_nothing";
 const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";

@@ -27,7 +27,7 @@ use casper_types::{
         self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
         METHOD_SLASH,
     },
-    ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -512,7 +512,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let sem_ver = old_protocol_version.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
-    let default_activation_point = 0;
+    let default_activation_point = EraId::from(0);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
