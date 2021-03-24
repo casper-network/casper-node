@@ -283,6 +283,14 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
+    /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
+    GetFinalizedDeploys {
+        /// Maximum TTL of block we're interested in.
+        /// I.e. we don't want deploys from blocks that are older than this.
+        ttl: TimeDiff,
+        /// Responder to call with the results.
+        responder: Responder<Vec<(DeployHash, DeployHeader)>>,
+    },
     /// Store execution results for a set of deploys of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
@@ -403,6 +411,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
+            }
+            StorageRequest::GetFinalizedDeploys { ttl, .. } => {
+                write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
             }
         }
     }
