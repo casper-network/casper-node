@@ -93,6 +93,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreateNewBlock {
         block_context: BlockContext,
         past_values: Vec<C::ConsensusValue>,
+        parent_value: Option<C::ConsensusValue>,
     },
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
@@ -105,7 +106,6 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     ValidateConsensusValue {
         sender: I,
         consensus_value: C::ConsensusValue,
-        timestamp: Timestamp,
         ancestor_values: Vec<C::ConsensusValue>,
     },
     /// New direct evidence was added against the given validator.

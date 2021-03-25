@@ -42,7 +42,7 @@ use crate::{
                 ProtocolOutcome, ProtocolOutcomes,
             },
             metrics::ConsensusMetrics,
-            traits::NodeIdT,
+            traits::{ConsensusValueT, NodeIdT},
             ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
         },
         contract_runtime::EraValidatorsRequest,
@@ -775,6 +775,7 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
         block_context: BlockContext,
+        parent: Option<Digest>,
     ) -> Effects<Event<I>> {
         if !self.era_supervisor.is_bonded(era_id) {
             warn!(era = era_id.0, "new proto block in outdated era");
@@ -788,8 +789,7 @@ where
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
-        let candidate_block =
-            CandidateBlock::new(proto_block, block_context.timestamp(), accusations);
+        let candidate_block = CandidateBlock::new(proto_block, accusations, parent);
         self.delegate_to_era(era_id, move |consensus| {
             consensus.propose(candidate_block, block_context)
         })
@@ -966,7 +966,7 @@ where
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
-        timestamp: Timestamp,
+        parent: Option<Digest>,
         valid: bool,
     ) -> Effects<Event<I>> {
         self.era_supervisor.metrics.proposed_block();
@@ -980,7 +980,7 @@ where
             effects.extend(self.disconnect(sender));
         }
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.resolve_validity(&proto_block, timestamp, valid)
+            era.resolve_validity(&proto_block, parent, valid)
         } else {
             return effects;
         };
@@ -1068,12 +1068,14 @@ where
             ProtocolOutcome::CreateNewBlock {
                 block_context,
                 past_values,
+                parent_value,
             } => {
                 let past_deploys = past_values
                     .iter()
                     .flat_map(|candidate| BlockLike::deploys(candidate.proto_block()))
                     .cloned()
                     .collect();
+                let parent = parent_value.as_ref().map(CandidateBlock::hash);
                 self.effect_builder
                     .request_proto_block(
                         block_context,
@@ -1085,6 +1087,7 @@ where
                         era_id,
                         proto_block,
                         block_context,
+                        parent,
                     })
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
@@ -1114,7 +1117,6 @@ where
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.into(),
-                    timestamp,
                     era_end,
                     era_id,
                     era.start_height + height,
@@ -1148,46 +1150,46 @@ where
             ProtocolOutcome::ValidateConsensusValue {
                 sender,
                 consensus_value: candidate_block,
-                timestamp,
                 ancestor_values: ancestor_blocks,
             } => {
                 if !self.era_supervisor.is_bonded(era_id) {
                     return Effects::new();
                 }
                 let proto_block = candidate_block.proto_block().clone();
+                let timestamp = candidate_block.timestamp();
+                let parent = candidate_block.parent().cloned();
                 let missing_evidence: Vec<PublicKey> = candidate_block
                     .accusations()
                     .iter()
                     .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
                     .cloned()
                     .collect();
-                let mut effects = Effects::new();
-                for pub_key in missing_evidence.iter().cloned() {
-                    let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
-                    effects.extend(
-                        self.effect_builder
-                            .send_message(sender.clone(), msg.into())
-                            .ignore(),
-                    );
-                }
                 self.era_mut(era_id)
-                    .add_candidate(candidate_block, missing_evidence);
+                    .add_candidate(candidate_block, missing_evidence.clone());
                 let proto_block_deploys_set: BTreeSet<DeployHash> =
                     proto_block.deploys_iter().cloned().collect();
                 for ancestor_block in ancestor_blocks {
                     let ancestor_proto_block = ancestor_block.proto_block();
                     for deploy in ancestor_proto_block.deploys_iter() {
                         if proto_block_deploys_set.contains(deploy) {
-                            effects.extend(self.resolve_validity(
+                            return self.resolve_validity(
                                 era_id,
                                 sender,
                                 proto_block,
-                                timestamp,
+                                parent,
                                 false,
-                            ));
-                            return effects;
+                            );
                         }
                     }
+                }
+                let mut effects = Effects::new();
+                for pub_key in missing_evidence {
+                    let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
+                    effects.extend(
+                        self.effect_builder
+                            .send_message(sender.clone(), msg.into())
+                            .ignore(),
+                    );
                 }
                 let effect_builder = self.effect_builder;
                 effects.extend(
@@ -1198,6 +1200,7 @@ where
                             sender,
                             proto_block,
                             timestamp,
+                            parent,
                         )
                         .await
                         {
@@ -1378,6 +1381,7 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     sender: I,
     proto_block: ProtoBlock,
     timestamp: Timestamp,
+    parent: Option<Digest>,
 ) -> Result<Event<I>, ReplayCheckAndValidateBlockError>
 where
     REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
@@ -1419,7 +1423,7 @@ where
                             era_id: proto_block_era_id,
                             sender: sender.clone(),
                             proto_block: proto_block.clone(),
-                            timestamp,
+                            parent,
                             valid: false,
                         });
                     }
@@ -1430,14 +1434,14 @@ where
 
     let sender_for_validate_block: I = sender.clone();
     let (valid, proto_block) = effect_builder
-        .validate_block(sender_for_validate_block, proto_block, timestamp)
+        .validate_block(sender_for_validate_block, proto_block.clone(), timestamp)
         .await;
 
     Ok(Event::ResolveValidity {
         era_id: proto_block_era_id,
         sender,
         proto_block,
-        timestamp,
+        parent,
         valid,
     })
 }
