@@ -966,7 +966,6 @@ where
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
-        timestamp: Timestamp,
         parent: Option<Digest>,
         valid: bool,
     ) -> Effects<Event<I>> {
@@ -981,7 +980,7 @@ where
             effects.extend(self.disconnect(sender));
         }
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.resolve_validity(&proto_block, timestamp, parent, valid)
+            era.resolve_validity(&proto_block, parent, valid)
         } else {
             return effects;
         };
@@ -1177,7 +1176,6 @@ where
                                 era_id,
                                 sender,
                                 proto_block,
-                                timestamp,
                                 parent,
                                 false,
                             );
@@ -1425,7 +1423,6 @@ where
                             era_id: proto_block_era_id,
                             sender: sender.clone(),
                             proto_block: proto_block.clone(),
-                            timestamp,
                             parent,
                             valid: false,
                         });
@@ -1444,7 +1441,6 @@ where
         era_id: proto_block_era_id,
         sender,
         proto_block,
-        timestamp,
         parent,
         valid,
     })
