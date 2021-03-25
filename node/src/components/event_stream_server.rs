@@ -61,7 +61,7 @@ pub(crate) struct EventStreamServer {
 
 impl EventStreamServer {
     pub(crate) fn new(config: Config, api_version: Version) -> Result<Self, ListeningError> {
-        let address = utils::resolve_address(&config.address).map_err(|error| {
+        let required_address = utils::resolve_address(&config.address).map_err(|error| {
             warn!(
                 %error,
                 address=%config.address,
@@ -78,15 +78,15 @@ impl EventStreamServer {
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let (address, server_with_shutdown) = warp::serve(sse_filter)
-            .try_bind_with_graceful_shutdown(address, async {
+        let (actual_address, server_with_shutdown) = warp::serve(sse_filter)
+            .try_bind_with_graceful_shutdown(required_address, async {
                 shutdown_receiver.await.ok();
             })
             .map_err(|error| ListeningError::Listen {
-                address,
+                address: required_address,
                 error: Box::new(error),
             })?;
-        info!(%address, "started event stream server");
+        info!(address=%actual_address, "started event stream server");
 
         tokio::spawn(http_server::run(
             config,
