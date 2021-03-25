@@ -344,10 +344,23 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         if let (Some(value), Some(timestamp), Some(swunit)) =
             (vertex.value(), vertex.timestamp(), vertex.unit())
         {
+            let panorama = &swunit.wire_unit().panorama;
+            let fork_choice = self.highway.state().fork_choice(panorama);
+            let parent_value =
+                fork_choice.map(|hash| self.highway.state().block(hash).value.hash());
+            if timestamp != value.timestamp() || parent_value.as_ref() != value.parent() {
+                info!(
+                    timestamp = %value.timestamp(), consensus_timestamp = %timestamp,
+                    parent = ?value.parent(), consensus_parent = ?parent_value,
+                    "consensus value does not match vertex"
+                );
+                let vertices = vec![vv.inner().id()];
+                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
+                outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
+                return outcomes;
+            }
             if value.needs_validation() {
                 self.log_proposal(vertex, "requesting proposal validation");
-                let panorama = &swunit.wire_unit().panorama;
-                let fork_choice = self.highway.state().fork_choice(panorama).cloned();
                 let ancestor_values = self.ancestors(fork_choice).cloned().collect();
                 let consensus_value = value.clone();
                 self.pending_values
@@ -357,7 +370,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 outcomes.push(ProtocolOutcome::ValidateConsensusValue {
                     sender,
                     consensus_value,
-                    timestamp,
                     ancestor_values,
                 });
                 return outcomes;
@@ -440,15 +452,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
-    fn ancestors(
-        &self,
-        mut maybe_hash: Option<C::Hash>,
-    ) -> impl Iterator<Item = &C::ConsensusValue> {
+    fn ancestors<'a>(
+        &'a self,
+        mut maybe_hash: Option<&'a C::Hash>,
+    ) -> impl Iterator<Item = &'a C::ConsensusValue> {
         iter::from_fn(move || {
             let hash = maybe_hash.take()?;
-            let block = self.highway.state().block(&hash);
+            let block = self.highway.state().block(hash);
             let value = Some(&block.value);
-            maybe_hash = block.parent().cloned();
+            maybe_hash = block.parent();
             value
         })
     }

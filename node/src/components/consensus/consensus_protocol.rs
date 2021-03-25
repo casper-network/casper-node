@@ -106,7 +106,6 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     ValidateConsensusValue {
         sender: I,
         consensus_value: C::ConsensusValue,
-        timestamp: Timestamp,
         ancestor_values: Vec<C::ConsensusValue>,
     },
     /// New direct evidence was added against the given validator.
