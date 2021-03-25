@@ -57,6 +57,11 @@ impl CandidateBlock {
     pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
         &self.accusations
     }
+
+    /// Returns the parent candidate block, or `Non` if this is the first in this era.
+    pub(crate) fn parent(&self) -> Option<&Digest> {
+        self.parent.as_ref()
+    }
 }
 
 impl From<CandidateBlock> for ProtoBlock {

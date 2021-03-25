@@ -1085,33 +1085,36 @@ where
                     .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
                     .cloned()
                     .collect();
-                let mut effects = Effects::new();
-                for pub_key in missing_evidence.iter().cloned() {
-                    let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
-                    effects.extend(
-                        self.effect_builder
-                            .send_message(sender.clone(), msg.into())
-                            .ignore(),
-                    );
-                }
+                let cb_parent = candidate_block.parent().cloned();
                 self.era_mut(era_id)
-                    .add_candidate(candidate_block, missing_evidence);
+                    .add_candidate(candidate_block, missing_evidence.clone());
+                if cb_parent != ancestor_blocks.first().map(CandidateBlock::hash) {
+                    return self.resolve_validity(era_id, sender, proto_block, timestamp, false);
+                }
                 let proto_block_deploys_set: BTreeSet<DeployHash> =
                     proto_block.deploys_iter().cloned().collect();
                 for ancestor_block in ancestor_blocks {
                     let ancestor_proto_block = ancestor_block.proto_block();
                     for deploy in ancestor_proto_block.deploys_iter() {
                         if proto_block_deploys_set.contains(deploy) {
-                            effects.extend(self.resolve_validity(
+                            return self.resolve_validity(
                                 era_id,
                                 sender,
                                 proto_block,
                                 timestamp,
                                 false,
-                            ));
-                            return effects;
+                            );
                         }
                     }
+                }
+                let mut effects = Effects::new();
+                for pub_key in missing_evidence {
+                    let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
+                    effects.extend(
+                        self.effect_builder
+                            .send_message(sender.clone(), msg.into())
+                            .ignore(),
+                    );
                 }
                 let effect_builder = self.effect_builder;
                 effects.extend(
