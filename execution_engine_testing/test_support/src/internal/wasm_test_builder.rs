@@ -121,7 +121,7 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::initialize_logging();
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::default();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);

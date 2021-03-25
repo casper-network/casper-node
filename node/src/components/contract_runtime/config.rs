@@ -5,6 +5,7 @@ use casper_execution_engine::shared::utils;
 
 const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_MAX_READERS: u32 = 512;
+const DEFAULT_QUERY_DEPTH_LIMIT: u64 = 5;
 
 /// Contract runtime configuration.
 #[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize)]
@@ -21,6 +22,10 @@ pub struct Config {
     ///
     /// Defaults to 512.
     max_readers: Option<u32>,
+    /// The limit of depth of recursive global state queries.
+    ///
+    /// Defaults to 5.
+    query_depth_limit: Option<u64>,
 }
 
 impl Config {
@@ -35,6 +40,10 @@ impl Config {
     pub(crate) fn max_readers(&self) -> u32 {
         self.max_readers.unwrap_or(DEFAULT_MAX_READERS)
     }
+
+    pub(crate) fn query_depth_limit(&self) -> u64 {
+        self.query_depth_limit.unwrap_or(DEFAULT_QUERY_DEPTH_LIMIT)
+    }
 }
 
 impl Default for Config {
@@ -42,6 +51,7 @@ impl Default for Config {
         Config {
             max_global_state_size: Some(DEFAULT_MAX_GLOBAL_STATE_SIZE),
             max_readers: Some(DEFAULT_MAX_READERS),
+            query_depth_limit: Some(DEFAULT_QUERY_DEPTH_LIMIT),
         }
     }
 }
