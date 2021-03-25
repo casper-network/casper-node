@@ -213,6 +213,12 @@ impl<C: Context> ActiveValidator<C> {
                     if let Some(witness_unit) =
                         self.new_unit(panorama, timestamp, None, state, instance_id)
                     {
+                        if self
+                            .latest_unit(state)
+                            .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
+                        {
+                            info!(round_id = %r_id, "sending witness in round with no proposal");
+                        }
                         effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
                         return effects;
                     }
@@ -512,7 +518,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns the most recent unit by this validator.
-    fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
+    pub(crate) fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
             .get(self.vidx)

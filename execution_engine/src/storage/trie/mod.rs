@@ -182,6 +182,10 @@ impl PointerBlock {
                     .map(|value| (index.try_into().expect(USIZE_EXCEEDS_U8), value.to_owned()))
             })
     }
+
+    pub fn child_count(&self) -> usize {
+        self.to_indexed_pointers().count()
+    }
 }
 
 impl From<PointerBlockArray> for PointerBlock {

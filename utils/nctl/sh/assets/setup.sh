@@ -18,6 +18,8 @@ source "$NCTL"/sh/utils/main.sh
 #######################################
 function _set_accounts()
 {
+    log "... setting accounts.toml"
+
     local PATH_TO_NET
     local PATH_TO_ACCOUNTS
     local IDX
@@ -85,6 +87,8 @@ EOM
 #######################################
 function _set_accounts_from_template()
 {
+    log "... setting accounts.toml (from template)"    
+
     local ACCOUNT_KEY
     local PATH_TO_ACCOUNTS
     local PATH_TO_TEMPLATE=${1}
@@ -122,9 +126,14 @@ function _set_accounts_from_template()
 #######################################
 function _set_binaries()
 {
+    log "... setting binaries"
+
     local PATH_TO_NET
     local PATH_TO_NODE_BIN
     local PATH_TO_NODE_BIN_SEMVAR
+    local PATH_TO_CONTRACT
+    local CONTRACT
+    local IDX
 
     PATH_TO_NET="$(get_path_to_net)"
 
@@ -153,11 +162,15 @@ function _set_binaries()
     # Set client contracts.
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
 	do
-        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_NET"/bin/auction
+        PATH_TO_CONTRACT="$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT"
+        if [ -f "$PATH_TO_CONTRACT" ]; then
+            cp "$PATH_TO_CONTRACT" "$PATH_TO_NET"/bin/auction
+        fi
 	done  
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
 	do
-        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_NET"/bin/transfers
+        PATH_TO_CONTRACT="$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT"
+        cp "$PATH_TO_CONTRACT" "$PATH_TO_NET"/bin/transfers
 	done  
 }
 
@@ -169,6 +182,8 @@ function _set_binaries()
 #######################################
 function _set_chainspec()
 {
+    log "... setting chainspec.toml"
+
     local GENESIS_DELAY=${1}
     local PATH_TO_CHAINSPEC_TEMPLATE=${2}
     local PATH_TO_CHAINSPEC_FILE
@@ -200,6 +215,8 @@ function _set_chainspec()
 #######################################
 function _set_daemon()
 {
+    log "... setting daemon config"
+
     if [ "$NCTL_DAEMON_TYPE" = "supervisord" ]; then
         source "$NCTL"/sh/assets/setup_supervisord.sh
     fi
@@ -213,6 +230,8 @@ function _set_daemon()
 #######################################
 function _set_directories()
 {
+    log "... setting directories"
+
     local COUNT_NODES=${1}
     local COUNT_USERS=${2}
     local PATH_TO_NET
@@ -259,6 +278,8 @@ function _set_directories()
 #######################################
 function _set_keys()
 {
+    log "... setting cryptographic keys"
+
     "$(get_path_to_client)" keygen -f "$(get_path_to_net)"/faucet > /dev/null 2>&1
     for IDX in $(seq 1 "$(get_count_of_nodes)")
     do
@@ -275,6 +296,8 @@ function _set_keys()
 #######################################
 function _set_nodes()
 {
+    log "... setting node config"
+    
     local IDX
     local PATH_TO_FILE
     local PATH_TO_NODE
@@ -353,9 +376,8 @@ function _main()
     fi
     mkdir -p "$PATH_TO_NET"
 
-    log "net-$NET_ID: asset setup begins ... please wait"
-
-    # Set artefacts.
+    # Setup new.
+    log "asset setup begins ... please wait"
     _set_directories "$COUNT_NODES" "$COUNT_USERS"
     _set_binaries
     _set_keys
@@ -367,8 +389,7 @@ function _main()
         _set_accounts_from_template "$ACCOUNTS_PATH"
     fi
     _set_nodes
-
-    log "net-$NET_ID: asset setup complete"
+    log "asset setup complete"
 }
 
 # ----------------------------------------------------------------

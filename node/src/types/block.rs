@@ -30,14 +30,14 @@ use thiserror::Error;
 use casper_types::system::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{Item, Tag, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::consensus::{self, EraId},
+    components::consensus,
     crypto::{
         self,
         hash::{self, Digest},
@@ -102,7 +102,7 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
         proto_block,
         timestamp,
         era_report,
-        EraId(era),
+        EraId::from(era),
         era * 10,
         public_key,
     )
@@ -425,7 +425,7 @@ impl FinalizedBlock {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        FinalizedBlock::random_with_specifics(rng, EraId(era), height, is_switch)
+        FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch)
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
@@ -775,7 +775,7 @@ impl BlockHeader {
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
-        self.era_id() == EraId(0) && self.height() == 0
+        self.era_id().is_genesis() && self.height() == 0
     }
 
     // Serialize the block header.
@@ -1150,6 +1150,11 @@ impl Block {
         self.header.height()
     }
 
+    /// The protocol version of the block.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.header.protocol_version
+    }
+
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
         let actual_body_hash = self.body.hash();
@@ -1184,7 +1189,7 @@ impl Block {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        Block::random_with_specifics(rng, EraId(era), height, is_switch)
+        Block::random_with_specifics(rng, EraId::from(era), height, is_switch)
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
@@ -1234,7 +1239,7 @@ impl Display for Block {
             self.header.body_hash,
             self.header.random_bit,
             self.header.timestamp,
-            self.header.era_id.0,
+            self.header.era_id.value(),
             self.header.height,
         )?;
         if let Some(ee) = &self.header.era_end {
@@ -1623,7 +1628,7 @@ impl FinalitySignature {
         public_key: PublicKey,
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
-        bytes.extend_from_slice(&era_id.0.to_le_bytes());
+        bytes.extend_from_slice(&era_id.to_le_bytes());
         let signature = crypto::sign(bytes, &secret_key, &public_key);
         FinalitySignature {
             block_hash,
@@ -1637,7 +1642,7 @@ impl FinalitySignature {
     pub fn verify(&self) -> crypto::Result<()> {
         // NOTE: This needs to be in sync with the `new` constructor.
         let mut bytes = self.block_hash.inner().to_vec();
-        bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
+        bytes.extend_from_slice(&self.era_id.to_le_bytes());
         crypto::verify(bytes, &self.signature, &self.public_key)
     }
 }
@@ -1774,14 +1779,14 @@ mod tests {
         // Signature should be over both block hash and era id.
         let (secret_key, public_key) = crypto::generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
-        let era_id = EraId(1);
+        let era_id = EraId::from(1);
         let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key);
         assert!(fs.verify().is_ok());
         let signature = fs.signature;
         // Verify that signature includes era id.
         let fs_manufactured = FinalitySignature {
             block_hash: *block.hash(),
-            era_id: EraId(2),
+            era_id: EraId::from(2),
             signature,
             public_key,
         };

@@ -62,6 +62,7 @@ where
 impl<C: Context> Participation<C> {
     /// Creates a new `Participation` map, showing validators seen as faulty or inactive by the
     /// Highway instance.
+    #[allow(clippy::integer_arithmetic)] // We use u128 to prevent overflows in weight calculation.
     pub(crate) fn new(highway: &Highway<C>) -> Self {
         let now = Timestamp::now();
         let state = highway.state();

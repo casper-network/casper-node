@@ -34,12 +34,12 @@ use casper_execution_engine::{
     },
     shared::stored_value::StoredValue,
 };
-use casper_types::{bytesrepr::FromBytes, ProtocolVersion};
+use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::{consensus::EraId, Component},
+    components::Component,
     crypto::hash::Digest,
     effect::{
         announcements::ChainspecLoaderAnnouncement,
@@ -161,7 +161,7 @@ pub struct ChainspecLoader {
     /// The initial state root hash for this session.
     initial_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
-    initial_block_header: Option<BlockHeader>,
+    initial_block: Option<Block>,
 }
 
 impl ChainspecLoader {
@@ -245,7 +245,7 @@ impl ChainspecLoader {
             reactor_exit,
             initial_state_root_hash: Digest::default(),
             next_upgrade,
-            initial_block_header: None,
+            initial_block: None,
         };
 
         (chainspec_loader, effects)
@@ -271,7 +271,11 @@ impl ChainspecLoader {
     }
 
     pub(crate) fn initial_block_header(&self) -> Option<&BlockHeader> {
-        self.initial_block_header.as_ref()
+        self.initial_block.as_ref().map(|block| block.header())
+    }
+
+    pub(crate) fn initial_block(&self) -> Option<&Block> {
+        self.initial_block.as_ref()
     }
 
     pub(crate) fn initial_block_hash(&self) -> Option<BlockHash> {
@@ -287,7 +291,7 @@ impl ChainspecLoader {
         // it's not, we continue the era the highest block belongs to.
         self.initial_block_header()
             .map(BlockHeader::next_block_era_id)
-            .unwrap_or(EraId(0))
+            .unwrap_or_else(|| EraId::from(0))
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
@@ -309,7 +313,7 @@ impl ChainspecLoader {
     {
         let highest_block = match maybe_highest_block {
             Some(block) => {
-                self.initial_block_header = Some(block.header().clone());
+                self.initial_block = Some(*block.clone());
                 block
             }
             None => {
@@ -456,7 +460,7 @@ impl ChainspecLoader {
             new_version,
             Some(self.chainspec.wasm_config),
             Some(self.chainspec.system_costs_config),
-            Some(self.chainspec.protocol_config.activation_point.era_id().0),
+            Some(self.chainspec.protocol_config.activation_point.era_id()),
             Some(self.chainspec.core_config.validator_slots),
             Some(self.chainspec.core_config.auction_delay),
             Some(self.chainspec.core_config.locked_funds_period.millis()),

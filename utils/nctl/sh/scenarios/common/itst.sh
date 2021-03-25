@@ -159,3 +159,14 @@ function get_switch_block_equivocators() {
 function get_running_node_count {
     nctl-status | grep 'RUNNING' | wc -l
 }
+
+# Check that a certain node has produced blocks.
+function assert_node_proposed() {
+    local NODE_ID=${1}
+    local NODE_PATH=$(get_path_to_node $NODE_ID)
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
+    log_step "Waiting for node-$NODE_ID to produce a block..."
+    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    log "node-$NODE_ID created a block!"
+    log "$OUTPUT"
+}

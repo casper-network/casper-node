@@ -10,12 +10,11 @@ use std::{
 
 use serde::Serialize;
 
-use casper_types::{ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, consensus::EraId, deploy_acceptor::Error,
-        small_network::GossipedAddress,
+        chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
     },
     effect::Responder,
     types::{
@@ -204,27 +203,52 @@ where
     }
 }
 
-/// A BlockExecutor announcement.
+/// A ContractRuntime announcement.
 #[derive(Debug)]
-pub enum BlockExecutorAnnouncement {
+pub enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
-    LinearChainBlock {
-        /// The block.
-        block: Block,
-        /// The results of executing the deploys in this block.
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    },
+    LinearChainBlock(Box<LinearChainBlock>),
     /// A block was requested to be executed, but it had been executed before.
-    BlockAlreadyExecuted(Block),
+    BlockAlreadyExecuted(Box<Block>),
 }
 
-impl Display for BlockExecutorAnnouncement {
+impl ContractRuntimeAnnouncement {
+    /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
+    pub fn linear_chain_block(
+        block: Block,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    ) -> Self {
+        Self::LinearChainBlock(Box::new(LinearChainBlock {
+            block,
+            execution_results,
+        }))
+    }
+    /// Create a ContractRuntimeAnnouncement::BlockAlreadyExecuted from a Block.
+    pub fn block_already_executed(block: Block) -> Self {
+        Self::BlockAlreadyExecuted(Box::new(block))
+    }
+}
+
+/// A ContractRuntimeAnnouncement's block.
+#[derive(Debug)]
+pub struct LinearChainBlock {
+    /// The block.
+    pub block: Block,
+    /// The results of executing the deploys in this block.
+    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+}
+
+impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
-                write!(f, "created linear chain block {}", block.hash())
+            ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block) => {
+                write!(
+                    f,
+                    "created linear chain block {}",
+                    linear_chain_block.block.hash()
+                )
             }
-            BlockExecutorAnnouncement::BlockAlreadyExecuted(block) => {
+            ContractRuntimeAnnouncement::BlockAlreadyExecuted(block) => {
                 write!(f, "block had been executed before: {}", block.hash())
             }
         }

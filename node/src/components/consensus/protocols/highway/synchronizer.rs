@@ -6,11 +6,15 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use tracing::debug;
 
 use crate::{
     components::consensus::{
         consensus_protocol::ProtocolOutcome,
-        highway_core::highway::{Dependency, Highway, PreValidatedVertex, Vertex},
+        highway_core::{
+            highway::{Dependency, Highway, PreValidatedVertex, Vertex},
+            validators::ValidatorMap,
+        },
         traits::{Context, NodeIdT},
     },
     types::{TimeDiff, Timestamp},
@@ -75,6 +79,11 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     /// Drops all pending vertices other than evidence.
     pub(crate) fn retain_evidence_only(&mut self) {
         self.0.retain(|pvv, _| pvv.inner().is_evidence());
+    }
+
+    /// Returns number of unique vertices pending in the queue.
+    pub(crate) fn len(&self) -> u64 {
+        self.0.len() as u64
     }
 
     fn is_empty(&self) -> bool {
@@ -151,16 +160,34 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
+    /// The duration between two consecutive requests of the latest state.
+    request_latest_state_timeout: TimeDiff,
+    /// Instance ID of an era for which this synchronizer is constructed.
+    instance_id: C::InstanceId,
+    /// Keeps track of the lowest/oldest seen unit per validator when syncing.
+    /// Used only for logging.
+    oldest_seen_panorama: ValidatorMap<Option<u64>>,
+    /// Boolean flag indicating whether we're synchronizing current era.
+    pub(crate) current_era: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
-    pub(crate) fn new(pending_vertex_timeout: TimeDiff) -> Self {
+    pub(crate) fn new(
+        pending_vertex_timeout: TimeDiff,
+        request_latest_state_timeout: TimeDiff,
+        validator_len: usize,
+        instance_id: C::InstanceId,
+    ) -> Self {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
+            request_latest_state_timeout,
+            oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
+            instance_id,
+            current_era: true,
         }
     }
 
@@ -170,6 +197,45 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.vertices_to_be_added.remove_expired(oldest);
         Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
         Self::remove_expired(&mut self.vertex_deps, oldest);
+    }
+
+    // Returns number of elements in the `verties_to_be_added_later` queue.
+    // Every pending vertex is counted once, even if it has multiple senders.
+    fn vertices_to_be_added_later_len(&self) -> u64 {
+        self.vertices_to_be_added_later
+            .iter()
+            .map(|(_, pv)| pv.len())
+            .sum()
+    }
+
+    // Returns number of elements in `vertex_deps` queue.
+    fn vertex_deps_len(&self) -> u64 {
+        self.vertex_deps.iter().map(|(_, pv)| pv.len()).sum()
+    }
+
+    // Returns number of elements in `vertices_to_be_added` queue.
+    fn vertices_to_be_added_len(&self) -> u64 {
+        self.vertices_to_be_added.len()
+    }
+
+    pub(crate) fn log_len(&self) {
+        debug!(
+            era_id = ?self.instance_id,
+            vertices_to_be_added_later = self.vertices_to_be_added_later_len(),
+            vertex_deps = self.vertex_deps_len(),
+            vertices_to_be_added = self.vertices_to_be_added_len(),
+            "synchronizer queue lengths"
+        );
+        // All units seen have seq_number == 0.
+        let all_lowest = self
+            .oldest_seen_panorama
+            .iter()
+            .all(|entry| entry.map(|seq_num| seq_num == 0).unwrap_or(false));
+        if all_lowest {
+            debug!("all seen units while synchronization with seq_num=0");
+        } else {
+            debug!(oldest_panorama=%self.oldest_seen_panorama, "oldest seen unit per validator");
+        }
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
@@ -218,8 +284,17 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         pvv: PreValidatedVertex<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
+        self.update_last_seen(&pvv);
         let pv = PendingVertex::new(sender, pvv, now);
         self.schedule_add_vertices(iter::once(pv))
+    }
+
+    fn update_last_seen(&mut self, pvv: &PreValidatedVertex<C>) {
+        let v = pvv.inner();
+        if let (Some(v_id), Some(seq_num)) = (v.creator(), v.unit_seq_number()) {
+            let prev_seq_num = self.oldest_seen_panorama[v_id].unwrap_or(u64::MAX);
+            self.oldest_seen_panorama[v_id] = Some(prev_seq_num.min(seq_num));
+        }
     }
 
     /// Moves all vertices whose known missing dependency is now satisfied into the
@@ -274,7 +349,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     /// Adds a vertex with a known missing dependency to the queue.
-    pub(crate) fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
+    fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
         self.vertex_deps.entry(dep).or_default().push(pv)
     }
 
@@ -293,6 +368,11 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
     pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
         self.pending_vertex_timeout
+    }
+
+    /// Returns the duration between two consecutive requests of the latest state.
+    pub(crate) fn request_latest_state_timeout(&self) -> TimeDiff {
+        self.request_latest_state_timeout
     }
 
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and

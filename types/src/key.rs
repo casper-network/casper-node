@@ -24,9 +24,9 @@ use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
-    system::auction::EraId,
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, Tagged, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    DeployHash, EraId, Tagged, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+    UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -224,7 +224,7 @@ impl Key {
                 )
             }
             Key::EraInfo(era_id) => {
-                format!("{}{}", ERA_INFO_PREFIX, era_id.to_string())
+                format!("{}{}", ERA_INFO_PREFIX, era_id.value())
             }
             Key::Balance(uref_addr) => {
                 format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
@@ -258,7 +258,7 @@ impl Key {
         } else if let Ok(uref) = URef::from_formatted_str(input) {
             Ok(Key::URef(uref))
         } else if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
-            Ok(Key::EraInfo(u64::from_str(era_id_str)?))
+            Ok(Key::EraInfo(EraId::from_str(era_id_str)?))
         } else if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
             Ok(Key::Balance(URefAddr::try_from(
                 base16::decode(hex)?.as_ref(),
@@ -272,7 +272,7 @@ impl Key {
                 base16::decode(hex)?.as_ref(),
             )?)))
         } else if let Some(era_id_str) = input.strip_prefix(VALIDATORS_PREFIX) {
-            Ok(Key::EraValidators(u64::from_str(era_id_str)?))
+            Ok(Key::EraValidators(EraId::from_str(era_id_str)?))
         } else {
             Err(FromStrError::InvalidPrefix)
         }
@@ -405,7 +405,7 @@ impl From<ContractPackageHash> for Key {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct PaddedEraId(u64);
+struct PaddedEraId(EraId);
 
 impl PaddedEraId {
     const SERIALIZED_LENGTH: usize = 32;
@@ -414,7 +414,7 @@ impl PaddedEraId {
 
     const ZEROES_LENGTH: usize = Self::SERIALIZED_LENGTH - Self::U64_LE_BYTES_LENGTH;
 
-    const fn into_inner(self) -> u64 {
+    const fn into_inner(self) -> EraId {
         self.0
     }
 }
@@ -437,7 +437,7 @@ impl FromBytes for PaddedEraId {
         let mut le_bytes = [0u8; Self::U64_LE_BYTES_LENGTH];
         let (bytes, remainder) = bytesrepr::safe_split_at(bytes, Self::SERIALIZED_LENGTH)?;
         le_bytes.copy_from_slice(&bytes[Self::ZEROES_LENGTH..]);
-        Ok((PaddedEraId(<u64>::from_le_bytes(le_bytes)), remainder))
+        Ok((PaddedEraId(EraId::from_le_bytes(le_bytes)), remainder))
     }
 }
 
@@ -628,11 +628,11 @@ mod serde_helpers {
         URef(&'a URef),
         Transfer(&'a TransferAddr),
         DeployInfo(&'a DeployHash),
-        EraInfo(&'a u64),
+        EraInfo(&'a EraId),
         Balance(&'a URefAddr),
         Bid(&'a AccountHash),
         Withdraw(&'a AccountHash),
-        EraValidators(&'a u64),
+        EraValidators(&'a EraId),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -711,6 +711,7 @@ mod tests {
     use super::*;
     use crate::{
         bytesrepr::{Error, FromBytes},
+        gens::era_id_arb,
         AccessRights, URef,
     };
 
@@ -789,8 +790,11 @@ mod tests {
             format!("{}", deploy_info_key),
             format!("Key::DeployInfo({})", expected_hash)
         );
-        let era_info_key = Key::EraInfo(42);
-        assert_eq!(format!("{}", era_info_key), "Key::EraInfo(42)".to_string());
+        let era_info_key = Key::EraInfo(EraId::from(42));
+        assert_eq!(
+            format!("{}", era_info_key),
+            "Key::EraInfo(era 42)".to_string()
+        );
     }
 
     #[test]
@@ -849,7 +853,7 @@ mod tests {
         let key_deploy_info = Key::DeployInfo(DeployHash::new([42; BLAKE2B_DIGEST_LENGTH]));
         assert!(key_deploy_info.serialized_length() <= Key::max_serialized_length());
 
-        let key_era_info = Key::EraInfo(42);
+        let key_era_info = Key::EraInfo(EraId::from(42));
         assert!(key_era_info.serialized_length() <= Key::max_serialized_length());
     }
 
@@ -869,7 +873,7 @@ mod tests {
         )));
         to_string_round_trip(Key::Transfer(TransferAddr::new([42; KEY_HASH_LENGTH])));
         to_string_round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
-        to_string_round_trip(Key::EraInfo(42));
+        to_string_round_trip(Key::EraInfo(EraId::from(42)));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert!(Key::from_formatted_str(invalid_prefix).is_err());
@@ -922,7 +926,7 @@ mod tests {
             format!(r#"{{"DeployInfo":"deploy-{}"}}"#, hex_bytes)
         );
 
-        let key_era_info = Key::EraInfo(42);
+        let key_era_info = Key::EraInfo(EraId::from(42));
         assert_eq!(
             serde_json::to_string(&key_era_info).unwrap(),
             r#"{"EraInfo":"era-42"}"#.to_string()
@@ -944,7 +948,7 @@ mod tests {
         round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
         round_trip(&Key::Transfer(TransferAddr::new(array)));
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
-        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::EraInfo(EraId::from(42)));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(array)));
         round_trip(&Key::Withdraw(AccountHash::new(array)));
@@ -965,7 +969,7 @@ mod tests {
         round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
         round_trip(&Key::Transfer(TransferAddr::new(array)));
         round_trip(&Key::DeployInfo(DeployHash::new(array)));
-        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::EraInfo(EraId::from(42)));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
         round_trip(&Key::Withdraw(AccountHash::new(array)));
 
@@ -976,7 +980,7 @@ mod tests {
         round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
         round_trip(&Key::Transfer(TransferAddr::new(zeros)));
         round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
-        round_trip(&Key::EraInfo(42));
+        round_trip(&Key::EraInfo(EraId::from(42)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
@@ -984,7 +988,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn padded_era_id_serialization_roundtrip(era_id: u64) {
+        fn padded_era_id_serialization_roundtrip(era_id in era_id_arb()) {
             bytesrepr::test_serialization_roundtrip(&PaddedEraId(era_id))
         }
     }

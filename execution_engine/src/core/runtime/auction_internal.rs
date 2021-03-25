@@ -5,10 +5,10 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        AccountProvider, Auction, Bid, EraId, EraInfo, Error, MintProvider, RuntimeProvider,
+        AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
         SeigniorageRecipients, StorageProvider, SystemProvider, UnbondingPurse,
     },
-    CLTyped, CLValue, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, EraId, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;
@@ -162,7 +162,7 @@ where
         }
     }
 
-    fn record_era_info(&mut self, era_id: u64, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
         Runtime::record_era_info(self, era_id, era_info)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::RecordEraInfo))
     }
