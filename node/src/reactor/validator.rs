@@ -1000,7 +1000,7 @@ impl reactor::Reactor for Reactor {
                     }
                     ConsensusAnnouncement::DisconnectFromPeer(peer) => {
                         // TODO: handle the announcement and actually disconnect
-                        warn!(%peer, "peer deemed potentially byzantine");
+                        warn!(%peer, "peer deemed problematic, would disconnect");
                         Effects::new()
                     }
                 }
