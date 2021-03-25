@@ -1,9 +1,6 @@
-use crate::{account::AccountHash, system::auction::EraId};
+use crate::system::auction::EraId;
 
 use super::DelegationRate;
-
-/// System account hash.
-pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = EraId::new(0);
