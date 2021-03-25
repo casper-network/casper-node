@@ -142,11 +142,20 @@ where
                 responder,
                 block_timestamp,
             }) => {
-                let block_deploys = block
-                    .deploys()
+                let block_deploys = block.deploys();
+                let deploy_count = block_deploys.len();
+                // Collect the deploys in a set; this also deduplicates them.
+                let block_deploys: HashSet<_> = block_deploys
                     .iter()
                     .map(|deploy_hash| **deploy_hash)
-                    .collect::<HashSet<_>>();
+                    .collect();
+                if block_deploys.len() != deploy_count {
+                    info!(
+                        deploys = ?block.deploys(), ?sender,
+                        "received invalid block containing duplicated deploys"
+                    );
+                    return responder.respond((false, block)).ignore();
+                }
                 if block_deploys.is_empty() {
                     // If there are no deploys, return early.
                     return responder.respond((true, block)).ignore();
