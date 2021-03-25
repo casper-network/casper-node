@@ -124,6 +124,8 @@ use requests::{
     ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
+use self::announcements::BlocklistAnnouncement;
+
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
@@ -1173,11 +1175,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
     pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
     where
-        REv: From<ConsensusAnnouncement<I>>,
+        REv: From<BlocklistAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::DisconnectFromPeer(peer),
+                BlocklistAnnouncement::OffenseCommitted(peer),
                 QueueKind::Regular,
             )
             .await

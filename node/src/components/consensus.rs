@@ -33,7 +33,7 @@ use casper_types::{EraId, PublicKey, U512};
 use crate::{
     components::Component,
     effect::{
-        announcements::ConsensusAnnouncement,
+        announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
@@ -250,6 +250,7 @@ pub trait ReactorEventT<I>:
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
     + From<LinearChainRequest<I>>
+    + From<BlocklistAnnouncement<I>>
 {
 }
 
@@ -265,6 +266,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + From<LinearChainRequest<I>>
+        + From<BlocklistAnnouncement<I>>
 {
 }
 

@@ -47,9 +47,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -185,6 +186,9 @@ pub enum Event {
     /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+    /// Blocklist announcement.
+    #[from]
+    BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
 }
 
 impl ReactorEvent for Event {
@@ -292,6 +296,9 @@ impl Display for Event {
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
+            }
+            Event::BlocklistAnnouncement(ann) => {
+                write!(f, "blocklist announcement: {}", ann)
             }
         }
     }
@@ -1066,6 +1073,11 @@ impl reactor::Reactor for Reactor {
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
+            }
+            Event::BlocklistAnnouncement(peer) => {
+                // TODO: handle the announcement and actually disconnect
+                warn!(%peer, "peer deemed problematic, would disconnect");
+                Effects::new()
             }
         }
     }

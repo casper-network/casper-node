@@ -203,6 +203,26 @@ where
     }
 }
 
+/// A block-list related announcement.
+#[derive(Debug, Serialize)]
+pub enum BlocklistAnnouncement<I> {
+    /// A given peer committed a blockable offense.
+    OffenseCommitted(I),
+}
+
+impl<I> Display for BlocklistAnnouncement<I>
+where
+    I: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlocklistAnnouncement::OffenseCommitted(peer) => {
+                write!(f, "peer {} committed offense", peer)
+            }
+        }
+    }
+}
+
 /// A ContractRuntime announcement.
 #[derive(Debug)]
 pub enum ContractRuntimeAnnouncement {
