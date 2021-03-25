@@ -45,22 +45,9 @@ impl CandidateBlock {
         &self.proto_block
     }
 
-    /// Returns the candidate block's timestamp, i.e. when the block was proposed.
-    ///
-    /// This is identical to the timestamp of the Highway unit, and the timestamp of the `Block`,
-    /// if it gets finalized.
-    pub(crate) fn timestamp(&self) -> Timestamp {
-        self.timestamp
-    }
-
     /// Returns the validators accused by this block.
     pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
         &self.accusations
-    }
-
-    /// Returns the parent candidate block, or `Non` if this is the first in this era.
-    pub(crate) fn parent(&self) -> Option<&Digest> {
-        self.parent.as_ref()
     }
 }
 
@@ -94,5 +81,13 @@ impl ConsensusValueT for CandidateBlock {
 
     fn needs_validation(&self) -> bool {
         !self.proto_block.wasm_deploys().is_empty() || !self.proto_block.transfers().is_empty()
+    }
+
+    fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+
+    fn parent(&self) -> Option<&Self::Hash> {
+        self.parent.as_ref()
     }
 }
