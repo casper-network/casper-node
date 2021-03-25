@@ -244,7 +244,7 @@ pub trait ReactorEventT<I>:
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
-    + From<ConsensusAnnouncement<I>>
+    + From<ConsensusAnnouncement>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
@@ -260,7 +260,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
-        + From<ConsensusAnnouncement<I>>
+        + From<ConsensusAnnouncement>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>

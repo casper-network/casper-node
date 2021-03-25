@@ -157,7 +157,7 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 
 /// A consensus announcement.
 #[derive(Debug)]
-pub enum ConsensusAnnouncement<I> {
+pub enum ConsensusAnnouncement {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
     /// A finality signature was created.
@@ -171,14 +171,9 @@ pub enum ConsensusAnnouncement<I> {
         /// The timestamp when the evidence of the equivocation was detected.
         timestamp: Timestamp,
     },
-    /// We want to disconnect from a peer due to its transgressions.
-    DisconnectFromPeer(I),
 }
 
-impl<I> Display for ConsensusAnnouncement<I>
-where
-    I: Display,
-{
+impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusAnnouncement::Finalized(block) => {
@@ -196,9 +191,6 @@ where
                 "Validator fault with public key: {} has been identified at time: {} in era: {}",
                 public_key, timestamp, era_id,
             ),
-            ConsensusAnnouncement::DisconnectFromPeer(peer) => {
-                write!(formatter, "Consensus wanting to disconnect from {}", peer)
-            }
         }
     }
 }

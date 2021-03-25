@@ -170,7 +170,7 @@ pub enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     /// ContractRuntime announcement.
     #[from]
     ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
@@ -955,48 +955,39 @@ impl reactor::Reactor for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
-            Event::ConsensusAnnouncement(consensus_announcement) => {
-                match consensus_announcement {
-                    ConsensusAnnouncement::Finalized(block) => {
-                        let reactor_event =
-                            Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
-                                block: block.proto_block().clone(),
-                                height: block.height(),
-                            });
-                        let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+            Event::ConsensusAnnouncement(consensus_announcement) => match consensus_announcement {
+                ConsensusAnnouncement::Finalized(block) => {
+                    let reactor_event =
+                        Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
+                            block: block.proto_block().clone(),
+                            height: block.height(),
+                        });
+                    let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                        let reactor_event =
-                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                        effects
-                    }
-                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(
-                            fs, false,
-                        )),
-                    ),
-                    ConsensusAnnouncement::Fault {
-                        era_id,
-                        public_key,
-                        timestamp,
-                    } => {
-                        let reactor_event =
-                            Event::EventStreamServer(event_stream_server::Event::Fault {
-                                era_id,
-                                public_key: *public_key,
-                                timestamp,
-                            });
-                        self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                    ConsensusAnnouncement::DisconnectFromPeer(peer) => {
-                        // TODO: handle the announcement and actually disconnect
-                        warn!(%peer, "peer deemed problematic, would disconnect");
-                        Effects::new()
-                    }
+                    let reactor_event =
+                        Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                    effects
                 }
-            }
+                ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, false)),
+                ),
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => {
+                    let reactor_event =
+                        Event::EventStreamServer(event_stream_server::Event::Fault {
+                            era_id,
+                            public_key: *public_key,
+                            timestamp,
+                        });
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+            },
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::LinearChainBlock(
                 linear_chain_block,
             )) => {
