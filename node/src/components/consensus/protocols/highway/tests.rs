@@ -188,8 +188,7 @@ fn send_a_valid_wire_unit() {
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: Some(CandidateBlock::new(
-            ProtoBlock::new(vec![], vec![], false),
-            timestamp,
+            ProtoBlock::new(vec![], vec![], timestamp, false),
             vec![],
             None,
         )),
@@ -228,8 +227,8 @@ fn detect_doppelganger() {
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let timestamp = 0.into();
-    let proto_block = ProtoBlock::new(vec![], vec![], false);
-    let value = CandidateBlock::new(proto_block, timestamp, vec![], None);
+    let proto_block = ProtoBlock::new(vec![], vec![], timestamp, false);
+    let value = CandidateBlock::new(proto_block, vec![], None);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
