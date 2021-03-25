@@ -29,7 +29,7 @@ use crate::{
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
-pub const QUERY_DEPTH_LIMIT: u64 = 5;
+use super::engine_state::EngineConfig;
 
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
@@ -419,6 +419,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn query(
         &self,
         correlation_id: CorrelationId,
+        config: &EngineConfig,
         base_key: Key,
         path: &[String],
     ) -> Result<TrackingCopyQueryResult, R::Error> {
@@ -427,7 +428,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         let mut proofs = Vec::new();
 
         loop {
-            if query.depth > QUERY_DEPTH_LIMIT {
+            if query.depth > config.query_depth_limit {
                 return Ok(query.into_depth_limit_result());
             }
 
