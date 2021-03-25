@@ -187,7 +187,7 @@ where
 ///
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<(), Error> {
-    if provider.get_caller() != SYSTEM_ACCOUNT {
+    if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller);
     }
 
