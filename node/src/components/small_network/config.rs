@@ -32,6 +32,7 @@ impl Default for Config {
             isolation_reconnect_delay: TimeDiff::from_seconds(2),
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
+            block_offending_peers: false,
         }
     }
 }
@@ -60,6 +61,8 @@ pub struct Config {
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
     pub max_addr_pending_time: TimeDiff,
+    /// Enables the experimental blocklisting feature that blocks transgressing peers.
+    pub block_offending_peers: bool,
 }
 
 #[cfg(test)]

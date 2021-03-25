@@ -1065,10 +1065,8 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
-            Event::BlocklistAnnouncement(peer) => {
-                // TODO: handle the announcement and actually disconnect
-                warn!(%peer, "peer deemed problematic, would disconnect");
-                Effects::new()
+            Event::BlocklistAnnouncement(ann) => {
+                self.dispatch_event(effect_builder, rng, Event::SmallNetwork(ann.into()))
             }
         }
     }
