@@ -51,7 +51,7 @@ const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]));
+    Lazy::new(|| SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;

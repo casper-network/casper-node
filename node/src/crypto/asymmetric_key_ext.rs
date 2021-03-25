@@ -30,7 +30,7 @@ const EC_PUBLIC_KEY_OBJECT_IDENTIFIER: [u8; 7] = [42, 134, 72, 206, 61, 2, 1];
 
 static ED25519_SECRET_KEY: Lazy<SecretKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
-    SecretKey::ed25519(bytes)
+    SecretKey::ed25519(bytes).unwrap()
 });
 
 static ED25519_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
@@ -93,13 +93,13 @@ impl AsymmetricKeyExt for SecretKey {
     fn generate_ed25519() -> Result<Self, Error> {
         let mut bytes = [0u8; Self::ED25519_LENGTH];
         getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        Ok(SecretKey::ed25519(bytes))
+        Ok(SecretKey::ed25519(bytes).unwrap())
     }
 
     fn generate_secp256k1() -> Result<Self, Error> {
         let mut bytes = [0u8; Self::SECP256K1_LENGTH];
         getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        Ok(SecretKey::secp256k1(bytes))
+        Ok(SecretKey::secp256k1(bytes).unwrap())
     }
 
     fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), Error> {
@@ -289,14 +289,14 @@ impl AsymmetricKeyExt for SecretKey {
     fn random_ed25519(rng: &mut TestRng) -> Self {
         let mut bytes = [0u8; Self::ED25519_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
-        SecretKey::ed25519(bytes)
+        SecretKey::ed25519(bytes).unwrap()
     }
 
     #[cfg(test)]
     fn random_secp256k1(rng: &mut TestRng) -> Self {
         let mut bytes = [0u8; Self::SECP256K1_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
-        SecretKey::secp256k1(bytes)
+        SecretKey::secp256k1(bytes).unwrap()
     }
 
     fn doc_example() -> &'static Self {

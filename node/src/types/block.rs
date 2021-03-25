@@ -469,7 +469,7 @@ impl FinalizedBlock {
         } else {
             None
         };
-        let secret_key: SecretKey = SecretKey::ed25519(rng.gen());
+        let secret_key: SecretKey = SecretKey::ed25519(rng.gen()).unwrap();
         let public_key = PublicKey::from(&secret_key);
 
         FinalizedBlock::new(

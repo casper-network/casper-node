@@ -27,9 +27,9 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 static DELEGATOR_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([226; SecretKey::ED25519_LENGTH]));
+    Lazy::new(|| SecretKey::ed25519([226; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([227; SecretKey::ED25519_LENGTH]));
+    Lazy::new(|| SecretKey::ed25519([227; SecretKey::ED25519_LENGTH]).unwrap());
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DELEGATOR_1_SECRET_KEY));

@@ -133,15 +133,19 @@ impl SecretKey {
     pub const SECP256K1_LENGTH: usize = SECP256K1_SECRET_KEY_LENGTH;
 
     /// Constructs a new Ed25519 variant from a byte array.
-    pub fn ed25519(bytes: [u8; Self::ED25519_LENGTH]) -> Self {
-        // safe to unwrap as `SecretKey::from_bytes` can only fail if the provided slice is the
+    pub fn ed25519(bytes: [u8; Self::ED25519_LENGTH]) -> Result<Self, Error> {
+        // while it safe to unwrap as `SecretKey::from_bytes` can only fail if the provided slice is the
         // wrong length.
-        SecretKey::Ed25519(ed25519_dalek::SecretKey::from_bytes(&bytes).unwrap())
+        // We should be disciplined about unwrapping in constructors.
+        match ed25519_dalek::SecretKey::from_bytes(&bytes) {
+            Ok(key) => Ok(SecretKey::Ed25519(key)),
+            Err(error) =>  Err(Error::AsymmetricKey(error.to_string()))
+        }
     }
 
     /// Constructs a new secp256k1 variant from a byte array.
-    pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Self {
-        SecretKey::Secp256k1(bytes)
+    pub fn secp256k1(bytes: [u8; Self::SECP256K1_LENGTH]) -> Result<Self, Error> {
+        Ok(SecretKey::Secp256k1(bytes))
     }
 
     /// Exposes the secret values of the key as a byte slice.
@@ -209,8 +213,8 @@ impl Clone for SecretKey {
     fn clone(&self) -> Self {
         match self {
             SecretKey::System => SecretKey::System,
-            SecretKey::Ed25519(sk) => Self::ed25519(*sk.as_bytes()),
-            SecretKey::Secp256k1(sk) => Self::secp256k1(*sk),
+            SecretKey::Ed25519(sk) => Self::ed25519(*sk.as_bytes()).unwrap(),
+            SecretKey::Secp256k1(sk) => Self::secp256k1(*sk).unwrap(),
         }
     }
 }
@@ -283,13 +287,13 @@ impl FromBytes for SecretKey {
             ED25519_TAG => {
                 let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
                     FromBytes::from_bytes(remainder)?;
-                let secret_key = Self::ed25519(raw_bytes);
+                let secret_key = Self::ed25519(raw_bytes).unwrap();
                 Ok((secret_key, remainder))
             }
             SECP256K1_TAG => {
                 let (raw_bytes, remainder): ([u8; Self::SECP256K1_LENGTH], _) =
                     FromBytes::from_bytes(remainder)?;
-                let secret_key = Self::secp256k1(raw_bytes);
+                let secret_key = Self::secp256k1(raw_bytes).unwrap();
                 Ok((secret_key, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -416,6 +420,20 @@ impl From<SecretKey> for PublicKey {
         PublicKey::from(&secret_key)
     }
 }
+
+impl From<&Result<SecretKey, Error>> for PublicKey {
+    fn from(secret_key: &Result<SecretKey, Error>) -> Self {
+        let key = secret_key.as_ref().unwrap();
+        PublicKey::from(key)
+    }
+}
+
+impl From<Result<SecretKey, Error>> for PublicKey {
+    fn from(key: Result<SecretKey, Error>) -> Self {
+        PublicKey::from(key.unwrap())
+    }
+}
+
 
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
