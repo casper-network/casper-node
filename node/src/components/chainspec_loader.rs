@@ -93,7 +93,7 @@ impl Display for Event {
             }
             Event::CommitGenesisResult(_) => write!(formatter, "commit genesis result"),
             Event::UpgradeResult(_) => write!(formatter, "contract runtime upgrade result"),
-            Event::Request(_) => write!(formatter, "chainspec_loader request"),
+            Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
                 write!(formatter, "check for next upgrade")
             }
@@ -150,6 +150,14 @@ impl Display for NextUpgrade {
             self.activation_point.era_id()
         )
     }
+}
+
+/// Basic information about the current run of the node software.
+#[derive(Clone, Debug)]
+pub struct CurrentRunInfo {
+    pub activation_point: ActivationPoint,
+    pub protocol_version: ProtocolVersion,
+    pub initial_state_root_hash: Digest,
 }
 
 #[derive(Clone, DataSize, Debug)]
@@ -528,6 +536,14 @@ impl ChainspecLoader {
         )
     }
 
+    fn get_current_run_info(&self) -> CurrentRunInfo {
+        CurrentRunInfo {
+            activation_point: self.chainspec.protocol_config.activation_point,
+            protocol_version: self.chainspec.protocol_config.version,
+            initial_state_root_hash: self.initial_state_root_hash,
+        }
+    }
+
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
         REv: From<ChainspecLoaderAnnouncement> + Send,
@@ -594,6 +610,9 @@ where
             Event::UpgradeResult(result) => self.handle_upgrade_result(result),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
+            }
+            Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
+                responder.respond(self.get_current_run_info()).ignore()
             }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),

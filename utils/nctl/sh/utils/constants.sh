@@ -23,6 +23,7 @@ export NCTL_BASE_PORT_NETWORK=34452
 
 # Set of client side auction contracts.
 export NCTL_CONTRACTS_CLIENT_AUCTION=(
+    "activate_bid.wasm"
     "add_bid.wasm"
     "delegate.wasm"
     "undelegate.wasm"

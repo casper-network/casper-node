@@ -18,7 +18,10 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::LinearChainAnnouncement,
-        requests::{ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
@@ -342,6 +345,7 @@ where
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
         + Send,
     I: Display + Send + 'static,
 {
@@ -513,8 +517,6 @@ where
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
                 let protocol_version = self.protocol_version;
-                let initial_state_root_hash = self.initial_state_root_hash;
-                let activation_era_id = self.activation_era_id;
                 let latest_state_root_hash = self
                     .latest_block
                     .as_ref()
@@ -523,8 +525,6 @@ where
                     .is_bonded_validator(
                         fs.public_key,
                         fs.era_id,
-                        activation_era_id,
-                        initial_state_root_hash,
                         latest_state_root_hash,
                         protocol_version,
                     )
