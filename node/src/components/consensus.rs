@@ -106,7 +106,6 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
-        timestamp: Timestamp,
         parent: Option<Digest>,
         valid: bool,
     },
@@ -206,14 +205,12 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 sender,
                 proto_block,
-                timestamp,
                 parent,
                 valid,
             } => write!(
                 f,
-                "Candidate block received from {:?} at {} for {} with parent {:?} is {}: {:?}",
+                "Candidate block received from {:?} for {} with parent {:?} is {}: {:?}",
                 sender,
-                timestamp,
                 era_id,
                 parent,
                 if *valid { "valid" } else { "invalid" },
@@ -308,12 +305,9 @@ where
                 era_id,
                 sender,
                 proto_block,
-                timestamp,
                 parent,
                 valid,
-            } => {
-                handling_es.resolve_validity(era_id, sender, proto_block, timestamp, parent, valid)
-            }
+            } => handling_es.resolve_validity(era_id, sender, proto_block, parent, valid),
             Event::DeactivateEra {
                 era_id,
                 faulty_num,

@@ -119,14 +119,13 @@ impl<I> Era<I> {
     pub(crate) fn resolve_validity(
         &mut self,
         proto_block: &ProtoBlock,
-        timestamp: Timestamp,
         parent: Option<Digest>,
         valid: bool,
     ) -> Vec<CandidateBlock> {
         if valid {
-            self.accept_proto_block(proto_block, timestamp, parent)
+            self.accept_proto_block(proto_block, parent)
         } else {
-            self.reject_proto_block(proto_block, timestamp, parent)
+            self.reject_proto_block(proto_block, parent)
         }
     }
 
@@ -135,13 +134,10 @@ impl<I> Era<I> {
     pub(crate) fn accept_proto_block(
         &mut self,
         proto_block: &ProtoBlock,
-        timestamp: Timestamp,
         parent: Option<Digest>,
     ) -> Vec<CandidateBlock> {
         for pc in &mut self.candidates {
-            if pc.candidate.proto_block() == proto_block
-                && pc.candidate.timestamp() == timestamp
-                && pc.candidate.parent() == parent.as_ref()
+            if pc.candidate.proto_block() == proto_block && pc.candidate.parent() == parent.as_ref()
             {
                 pc.validated = true;
             }
@@ -154,13 +150,10 @@ impl<I> Era<I> {
     pub(crate) fn reject_proto_block(
         &mut self,
         proto_block: &ProtoBlock,
-        timestamp: Timestamp,
         parent: Option<Digest>,
     ) -> Vec<CandidateBlock> {
         let (invalid, candidates): (Vec<_>, Vec<_>) = self.candidates.drain(..).partition(|pc| {
-            pc.candidate.proto_block() == proto_block
-                && pc.candidate.timestamp() == timestamp
-                && pc.candidate.parent() == parent.as_ref()
+            pc.candidate.proto_block() == proto_block && pc.candidate.parent() == parent.as_ref()
         });
         self.candidates = candidates;
         invalid.into_iter().map(|pc| pc.candidate).collect()
