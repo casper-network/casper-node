@@ -150,6 +150,7 @@ impl Display for NextUpgrade {
     }
 }
 
+/// Basic information about the current run of the node software.
 #[derive(Clone, Debug)]
 pub struct CurrentRunInfo {
     pub activation_point: ActivationPoint,
