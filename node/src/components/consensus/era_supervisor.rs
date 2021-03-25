@@ -721,8 +721,7 @@ where
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
-        let candidate_block =
-            CandidateBlock::new(proto_block, block_context.timestamp(), accusations, parent);
+        let candidate_block = CandidateBlock::new(proto_block, accusations, parent);
         self.delegate_to_era(era_id, move |consensus| {
             consensus.propose(candidate_block, block_context, Timestamp::now())
         })
@@ -1039,7 +1038,6 @@ where
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.into(),
-                    timestamp,
                     era_end,
                     era_id,
                     era.start_height + height,

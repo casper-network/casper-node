@@ -488,7 +488,7 @@ impl BlockProposerReady {
             }
         }
 
-        ProtoBlock::new(wasm_deploys, transfers, random_bit)
+        ProtoBlock::new(wasm_deploys, transfers, block_timestamp, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
