@@ -28,7 +28,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -134,7 +134,6 @@ where
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         protocol_config: ProtocolConfig,
-        initial_state_root_hash: Digest,
         maybe_latest_block_header: Option<&BlockHeader>,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
@@ -154,11 +153,6 @@ where
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
-        let protocol_version = ProtocolVersion::from_parts(
-            protocol_config.protocol_version.major as u32,
-            protocol_config.protocol_version.minor as u32,
-            protocol_config.protocol_version.patch as u32,
-        );
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
@@ -212,12 +206,7 @@ where
                 (key_blocks, booking_blocks, Default::default())
             } else {
                 let activation_era_validators = effect_builder
-                    .get_era_validators(
-                        activation_era_id,
-                        activation_era_id,
-                        initial_state_root_hash,
-                        protocol_version,
-                    )
+                    .get_era_validators(activation_era_id)
                     .await
                     .unwrap_or_default();
                 (key_blocks, booking_blocks, activation_era_validators)
