@@ -1,9 +1,9 @@
 [[accounts]]
-public_key = "019ecde420395f4a9b70be2d4db0ab914682e04705cc2d7d3d73d958c7e69bfff8"
+public_key = "01ee8b5ec54251a9f2f92edbbf328fcdb78449ae2cca2743d591f1b7e83b6d9049"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "1866864000000000"
+bonded_amount = "1000000000"
 delegation_rate = 5
 [[accounts]]
 public_key = "01b4815d64e022127b117d25436e4b9a9d9d1338b0c6cb09db3995d4d3ac84d86b"
@@ -45,14 +45,14 @@ public_key = "012f5501236a3bd82d22ee7675e78174ee723565495fd0f43be8a011bfa6494687
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "8667224000000000"
+bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
 public_key = "014382d46e2543ab2832c04936f8c205847040426abb56065bbf7b2f7e1d33f200"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "592166000000000"
+bonded_amount = "1000000000"
 delegation_rate = 5
 [[accounts]]
 public_key = "01a849b574b01c775754db774f7243c4eae01f8919ba3d5c624282485af07b18ae"
@@ -115,7 +115,7 @@ public_key = "018f84c6fc037284f189cc8cb49f89212ff434a5eb050e48cdd164ff3890fbff69
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "9755323000000000"
+bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
 public_key = "01717c1899762ffdbd12def897ac905f1debff38e8bafb081620cb6da5a6bb1f25"
@@ -139,18 +139,18 @@ balance = "0"
 bonded_amount = "1000000000"
 delegation_rate = 8
 [[accounts]]
-public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "1780596000000000"
+bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
 public_key = "01faec72d138026edbd470d9ba1f6a05c5fabaa98da8bb41c8c92041d2f58337d2"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "8667224000000000"
+bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
 public_key = "01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80"
@@ -171,7 +171,7 @@ public_key = "01ad71484b09749a49463d3af2a8a3addd71509a92f447e9b06cbddbf60b45cbf7
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "601324000000000"
+bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
 public_key = "011117189c666f81c5160cd610ee383dc9b2d0361f004934754d39752eedc64957"
@@ -206,10 +206,10 @@ public_key = "01c7de2f333695c4db43cce8c555f74540176071a9eeb8438eb335634b9729ee6b
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "1000000000"
+bonded_amount = "970728000000000"
 delegation_rate = 7
 [[accounts]]
-public_key = "0127e7faaf1c6cba77b6deaa1acafedb620faa5acf8e87c9d5e38056e19cdab04f"
+public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
 balance = "0"
 
 [accounts.validator]
@@ -255,7 +255,7 @@ public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "8767679000000000"
+bonded_amount = "1000000000"
 delegation_rate = 7
 [[accounts]]
 public_key = "014ec8bfba46dbd592c0b44dd356abffb203330ddeced26c7522656b9bff85e7bc"
@@ -276,14 +276,14 @@ public_key = "01b32b134afdf8585b8c8181f81375a98c5ed12e145c9e6bfea33a55eeccf1fa22
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "26830137000000000"
+bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
 public_key = "017de9688caedd0718baed968179ddbe0b0532a8ef0a9a1cb9dfabe9b0f6016fa8"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "4542658000000000"
+bonded_amount = "1000000000"
 delegation_rate = 5
 [[accounts]]
 public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
@@ -304,21 +304,21 @@ public_key = "017b9a85b657e0a8c2e01bf2d80b6b2e6f8d8b4bc6d7c479f21e59dceea761710b
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "9620685000000000"
+bonded_amount = "1000000000"
 delegation_rate = 7
 [[accounts]]
 public_key = "01eedfd20f75528c50aae557d15dff5ca6379ca8401bceb8e969cd0cb1ea52ec7f"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "2535340000000000"
+bonded_amount = "2541914000000000"
 delegation_rate = 100
 [[accounts]]
 public_key = "017d940644deeb8eea3d94f62cfa65a9bea4eb2e8ec9433104bb145d73fd39e98f"
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "41589041000000000"
+bonded_amount = "1000000000"
 delegation_rate = 100
 [[accounts]]
 public_key = "0163e03c3aa2b383f9d1b2f7c69498d339dcd1061059792ce51afda49135ff7876"
@@ -332,7 +332,7 @@ public_key = "015dfd4b3f997b1eb1a7292eb501845931b8aa9869988a5caa2be79ac4f5ff8a21
 balance = "0"
 
 [accounts.validator]
-bonded_amount = "17333333000000000"
+bonded_amount = "1000000000"
 delegation_rate = 100
 [[accounts]]
 public_key = "013f4f5b2da0d7ed5cf78d5f153a5517ff203c0ed3570061476e793c81669e77d9"
@@ -377,16 +377,17 @@ balance = "0"
 bonded_amount = "1000000000"
 delegation_rate = 10
 [[accounts]]
-public_key = "01ff18c7f4ba41755073ce49e8de16d0bcd45ba9112ec235082d88ba04d32f845f"
-balance = "600000000000000000"
+public_key = "0142093cad632cc989b3e9952a4e571cab44d90a7bf9e3badd0d91c2dc2ead332a"
+balance = "0"
 
-[[accounts]]
-public_key = "011aa9d64ed8444da038d83baece4fd5229bd471ccf5cec753386ccee6514000fe"
-balance = "800000000000000000"
-
-[[accounts]]
-public_key = "01054c929d687267a30341c759b4a9cab1238cb2de65546be43dad479c50745724"
-balance = "5435485239140000000"
+[accounts.validator]
+bonded_amount = "1278629000000000"
+delegation_rate = 5
+[[delegators]]
+delegator_public_key = "01eb9c059b2624f475bb0726d8b2e382b025818dce3ec1f5ecf7f80ca708b6440e"
+balance = "0"
+validator_public_key = "0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1"
+delegated_amount = "1000000000000"
 
 [[delegators]]
 delegator_public_key = "01ebb0e23660d71a0fcd19ac6d96b9c0a95fa9081465667cb6e6626580e5804a5b"
@@ -421,7 +422,7 @@ delegated_amount = "333333500000000"
 [[delegators]]
 delegator_public_key = "0167f6eb1ab61c9432aba0db31462b3f23dccd0dbf25b9d2f6d686286b354a4a4f"
 balance = "0"
-validator_public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+validator_public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
 delegated_amount = "374280000000000"
 
 [[delegators]]
@@ -437,10 +438,28 @@ validator_public_key = "010a8ac8d23e6c57fa340c552ddf9199d9cba9166ecc0daee640053e
 delegated_amount = "569402000000000"
 
 [[delegators]]
+delegator_public_key = "01fe2573caf5a3344c85f1ac2fb81bd6eaad225e160014c2a45aded7c7784940c8"
+balance = "0"
+validator_public_key = "012dc55b77b2a9faf75dbaed15775ddfc48e60c4596608318c8b96b1900bdf1d5f"
+delegated_amount = "569402000000000"
+
+[[delegators]]
 delegator_public_key = "019893aaea11a3f0f2ee2963741f1dc6414e5af05f707d008e40f86288895e975c"
 balance = "0"
 validator_public_key = "01717c1899762ffdbd12def897ac905f1debff38e8bafb081620cb6da5a6bb1f25"
 delegated_amount = "569402000000000"
+
+[[delegators]]
+delegator_public_key = "01777ac4c7b5cd6697fb0e3163258db9bf05c25b8b5214c2b475f1015e60dcb148"
+balance = "0"
+validator_public_key = "014382d46e2543ab2832c04936f8c205847040426abb56065bbf7b2f7e1d33f200"
+delegated_amount = "592166000000000"
+
+[[delegators]]
+delegator_public_key = "01bbc0bcfb61b479c557d9e478fd590ec7aaf29807c9583884b31cb7565f94b445"
+balance = "0"
+validator_public_key = "01ad71484b09749a49463d3af2a8a3addd71509a92f447e9b06cbddbf60b45cbf7"
+delegated_amount = "601324000000000"
 
 [[delegators]]
 delegator_public_key = "01f67c12f92e8776ff20800af0c7836692540cc6dacad6aea4cf61e0cc8191e467"
@@ -457,8 +476,14 @@ delegated_amount = "702736000000000"
 [[delegators]]
 delegator_public_key = "01372cbceb4f20bfaa2955e44b337d98e5b1d52bd2bce7766443e23359b1204c06"
 balance = "0"
-validator_public_key = "019ecde420395f4a9b70be2d4db0ab914682e04705cc2d7d3d73d958c7e69bfff8"
+validator_public_key = "01ee8b5ec54251a9f2f92edbbf328fcdb78449ae2cca2743d591f1b7e83b6d9049"
 delegated_amount = "823609817600000"
+
+[[delegators]]
+delegator_public_key = "012945e0cbac47660dd84d89d30fad046c5a41682fae34f15333c7b0256a9747ff"
+balance = "0"
+validator_public_key = "01b4815d64e022127b117d25436e4b9a9d9d1338b0c6cb09db3995d4d3ac84d86b"
+delegated_amount = "836069000000000"
 
 [[delegators]]
 delegator_public_key = "013234c7da09119de9460f9b699b1a857730fe3ae80bef24d91910cea667b4e6b9"
@@ -469,14 +494,8 @@ delegated_amount = "936995290800000"
 [[delegators]]
 delegator_public_key = "0138320bc703eccf17e8129505cf1318709a2d36ff55a9e37114ca7ece8a1d52b7"
 balance = "0"
-validator_public_key = "014382d46e2543ab2832c04936f8c205847040426abb56065bbf7b2f7e1d33f200"
-delegated_amount = "941168989200000"
-
-[[delegators]]
-delegator_public_key = "01c7de2f333695c4db43cce8c555f74540176071a9eeb8438eb335634b9729ee6b"
-balance = "0"
 validator_public_key = "0145316b84fee8735291f5a29206e5211c74ab828b0382bb475a4a6e799894ea11"
-delegated_amount = "970728000000000"
+delegated_amount = "941168989200000"
 
 [[delegators]]
 delegator_public_key = "01f8684089490edcdb5feab0eee3615f26621dfd7f16419d06299466bab6fcb9f8"
@@ -487,8 +506,14 @@ delegated_amount = "1026248000000000"
 [[delegators]]
 delegator_public_key = "0168be9a3ecd4ec3fc420705a810824f10e95a8156017f32ed1a0d3cecf6c8e29d"
 balance = "0"
-validator_public_key = "0127e7faaf1c6cba77b6deaa1acafedb620faa5acf8e87c9d5e38056e19cdab04f"
+validator_public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
 delegated_amount = "1064988708400000"
+
+[[delegators]]
+delegator_public_key = "01c95237e28d2b2469ee79684d8646bcaecbc9cefb4c277da29ed9dec9f69b33"
+balance = "0"
+validator_public_key = "017f7380736731efa408c323b38a13541be1c99a4aefb0d5b59c6a4aecac494105"
+delegated_amount = "1077931000000000"
 
 [[delegators]]
 delegator_public_key = "01b04bbff56d65dc268e35bfe2932d4a3c365a4c584b0b966f46a9c297d940da04"
@@ -501,12 +526,6 @@ delegator_public_key = "0189cf6a5362829ee43e8e4d9510f386288e8a90d6e08baa0615b656
 balance = "0"
 validator_public_key = "0144118517b5ba7e7ca917d5a418c5fb8bf49e279427435d6597f59f8c5bf9ff1f"
 delegated_amount = "1196729000000000"
-
-[[delegators]]
-delegator_public_key = "0142093cad632cc989b3e9952a4e571cab44d90a7bf9e3badd0d91c2dc2ead332a"
-balance = "0"
-validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143"
-delegated_amount = "1278629000000000"
 
 [[delegators]]
 delegator_public_key = "014cfe52b8cd6ed8fc48cec019cb081b4f15cf1ff26f5c282c601a6e4332f3c27d"
@@ -533,10 +552,22 @@ validator_public_key = "01c2de71b99085b38f3ba0dece0c1e128de7fe69526beb66951b99f5
 delegated_amount = "1768864000000000"
 
 [[delegators]]
+delegator_public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+balance = "0"
+validator_public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
+delegated_amount = "1780596000000000"
+
+[[delegators]]
 delegator_public_key = "01b243a9ab89f5a2332fc505942f94f0ca26306fe162720dd6c32072f71d0798d2"
 balance = "0"
 validator_public_key = "017f7380736731efa408c323b38a13541be1c99a4aefb0d5b59c6a4aecac494105"
 delegated_amount = "1833864000000000"
+
+[[delegators]]
+delegator_public_key = "019ecde420395f4a9b70be2d4db0ab914682e04705cc2d7d3d73d958c7e69bfff8"
+balance = "0"
+validator_public_key = "01ee8b5ec54251a9f2f92edbbf328fcdb78449ae2cca2743d591f1b7e83b6d9049"
+delegated_amount = "1866864000000000"
 
 [[delegators]]
 delegator_public_key = "012ff1f06f2125cbdaa5d0baa8bdd1a1073972d623968d600feb11435a672f4ab0"
@@ -545,25 +576,25 @@ validator_public_key = "01a849b574b01c775754db774f7243c4eae01f8919ba3d5c62428248
 delegated_amount = "2100764000000000"
 
 [[delegators]]
-delegator_public_key = "015f0b5e0d025c16f39e35ed32e885c9f7f0a23d021d6909c333911eeb2311d190"
-balance = "0"
-validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143"
-delegated_amount = "2166666500000000"
-
-[[delegators]]
 delegator_public_key = "010cba0e742dc4406477b3921a3f51d0a73d897be13b8236f4401e11f42dc678f4"
 balance = "0"
 validator_public_key = "018f84c6fc037284f189cc8cb49f89212ff434a5eb050e48cdd164ff3890fbff69"
 delegated_amount = "2166666500000000"
 
 [[delegators]]
-delegator_public_key = "0131ba554e54c35fb9992f6ebdb290db6087264ad7d0687edb19b6dd998fc2e932"
+delegator_public_key = "015f0b5e0d025c16f39e35ed32e885c9f7f0a23d021d6909c333911eeb2311d190"
+balance = "0"
+validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143"
+delegated_amount = "2166666500000000"
+
+[[delegators]]
+delegator_public_key = "01e838a3cf194a4eea5b2396e201595388625b324af017788bb51302b1da27a810"
 balance = "0"
 validator_public_key = "01b32b134afdf8585b8c8181f81375a98c5ed12e145c9e6bfea33a55eeccf1fa22"
 delegated_amount = "2166666500000000"
 
 [[delegators]]
-delegator_public_key = "01e838a3cf194a4eea5b2396e201595388625b324af017788bb51302b1da27a810"
+delegator_public_key = "0131ba554e54c35fb9992f6ebdb290db6087264ad7d0687edb19b6dd998fc2e932"
 balance = "0"
 validator_public_key = "01b32b134afdf8585b8c8181f81375a98c5ed12e145c9e6bfea33a55eeccf1fa22"
 delegated_amount = "2166666500000000"
@@ -585,6 +616,12 @@ delegator_public_key = "016a0f6e2a18688f89b4262d048d57bce3df7aad70c1f5fae7be7dae
 balance = "0"
 validator_public_key = "0167e08c3b05017d329444dc7d22518ba652cecb2c54669a69e5808ebcab25e42c"
 delegated_amount = "2600000000000000"
+
+[[delegators]]
+delegator_public_key = "01c90604bec2e48eae8e86fdebecd9cc3502bf6944fcf1ec08f071e3985e063430"
+balance = "0"
+validator_public_key = "01717c1899762ffdbd12def897ac905f1debff38e8bafb081620cb6da5a6bb1f25"
+delegated_amount = "2780822000000000"
 
 [[delegators]]
 delegator_public_key = "0130e7a05a136b5fb5c05ec3d78ab4fd872240ddb2b3d8c4448fab48d45b27efa9"
@@ -613,7 +650,7 @@ delegated_amount = "3609904000000000"
 [[delegators]]
 delegator_public_key = "0133671964312ad012f760869601d4897b9f549177d1a98c8f210ee270f6b5fa7b"
 balance = "0"
-validator_public_key = "0127e7faaf1c6cba77b6deaa1acafedb620faa5acf8e87c9d5e38056e19cdab04f"
+validator_public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
 delegated_amount = "3684493200000000"
 
 [[delegators]]
@@ -649,7 +686,7 @@ delegated_amount = "3752637000000000"
 [[delegators]]
 delegator_public_key = "019470ef3d314f868e7ce50f5461129c3975ed45e3acab96282dbbd170e1b1a440"
 balance = "0"
-validator_public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+validator_public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
 delegated_amount = "4091774000000000"
 
 [[delegators]]
@@ -659,10 +696,28 @@ validator_public_key = "0144118517b5ba7e7ca917d5a418c5fb8bf49e279427435d6597f59f
 delegated_amount = "4107852000000000"
 
 [[delegators]]
+delegator_public_key = "01d9c9c23bfebaf2f610e3a6d93c751550d4f1cfda2fe8a1d5e8e2f6b0402dad29"
+balance = "0"
+validator_public_key = "018f84c6fc037284f189cc8cb49f89212ff434a5eb050e48cdd164ff3890fbff69"
+delegated_amount = "4171233000000000"
+
+[[delegators]]
 delegator_public_key = "01942a994f8bb903cdaa261482285a11acc68ed40a1e5fc65e146e4fe276f8af60"
 balance = "0"
 validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143"
 delegated_amount = "4184795000000000"
+
+[[delegators]]
+delegator_public_key = "01a68ccf92ac4d9d42b898d4dd8ddbacea4346934f81db54788f539831b8618136"
+balance = "0"
+validator_public_key = "01ee8b5ec54251a9f2f92edbbf328fcdb78449ae2cca2743d591f1b7e83b6d9049"
+delegated_amount = "4333333000000000"
+
+[[delegators]]
+delegator_public_key = "01ad831573d5d5458b1bd68bd08e40ff2369a4db6237e2fed887013da84f2c8b3f"
+balance = "0"
+validator_public_key = "01717c1899762ffdbd12def897ac905f1debff38e8bafb081620cb6da5a6bb1f25"
+delegated_amount = "4333333000000000"
 
 [[delegators]]
 delegator_public_key = "01dfa7caca2088155d24dc3c2448e2cc9a348ba18663f5317092cde5ec4502105f"
@@ -683,28 +738,10 @@ validator_public_key = "018f84c6fc037284f189cc8cb49f89212ff434a5eb050e48cdd164ff
 delegated_amount = "4333333000000000"
 
 [[delegators]]
-delegator_public_key = "01a68ccf92ac4d9d42b898d4dd8ddbacea4346934f81db54788f539831b8618136"
-balance = "0"
-validator_public_key = "019ecde420395f4a9b70be2d4db0ab914682e04705cc2d7d3d73d958c7e69bfff8"
-delegated_amount = "4333333000000000"
-
-[[delegators]]
-delegator_public_key = "01ad831573d5d5458b1bd68bd08e40ff2369a4db6237e2fed887013da84f2c8b3f"
-balance = "0"
-validator_public_key = "01717c1899762ffdbd12def897ac905f1debff38e8bafb081620cb6da5a6bb1f25"
-delegated_amount = "4333333000000000"
-
-[[delegators]]
 delegator_public_key = "015f0dc0b5ff839ba1ce85e05190019a442a13c6e5be52721003d9b52e0b73af77"
 balance = "0"
 validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143"
 delegated_amount = "4333333330000000"
-
-[[delegators]]
-delegator_public_key = "01ed392301164a763bbebe7320fff4effbba4f88705f8a409df2246b638cc231d7"
-balance = "0"
-validator_public_key = "010a78eef78966a56a633c665411388f97f850609960d5d898f3992272b8d4bcca"
-delegated_amount = "4333333500000000"
 
 [[delegators]]
 delegator_public_key = "01d12bf7dc4cdf030cbd145c85211382bace22e53b79c835ba6784a0eff149f7ef"
@@ -719,6 +756,12 @@ validator_public_key = "010a8ac8d23e6c57fa340c552ddf9199d9cba9166ecc0daee640053e
 delegated_amount = "4333333500000000"
 
 [[delegators]]
+delegator_public_key = "01fa0fa7b11fdf42aea514a88e3a2263187d2239cb8ede4bce3456689c023fc393"
+balance = "0"
+validator_public_key = "017de9688caedd0718baed968179ddbe0b0532a8ef0a9a1cb9dfabe9b0f6016fa8"
+delegated_amount = "4542658000000000"
+
+[[delegators]]
 delegator_public_key = "0115cc7743558b5da74cd37b1212da8bdc075c2499a33e1a394ae2ce3920f05d31"
 balance = "0"
 validator_public_key = "0144118517b5ba7e7ca917d5a418c5fb8bf49e279427435d6597f59f8c5bf9ff1f"
@@ -727,7 +770,7 @@ delegated_amount = "4543137000000000"
 [[delegators]]
 delegator_public_key = "0192a12fc746753edb35078c241a2570bac512f636d3cb3fee055ad9d4c1ae82b9"
 balance = "0"
-validator_public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+validator_public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
 delegated_amount = "5872836000000000"
 
 [[delegators]]
@@ -815,15 +858,45 @@ validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549
 delegated_amount = "8586795000000000"
 
 [[delegators]]
+delegator_public_key = "01ed392301164a763bbebe7320fff4effbba4f88705f8a409df2246b638cc231d7"
+balance = "0"
+validator_public_key = "01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80"
+delegated_amount = "8666667000000000"
+
+[[delegators]]
 delegator_public_key = "019426bf1f656fa65c8e1d8b514e788121c4b894cc060f6ce22c84989739356e4c"
 balance = "0"
-validator_public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+validator_public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
 delegated_amount = "8666667000000000"
+
+[[delegators]]
+delegator_public_key = "01baa42a20a89b7dab3a6f0232277d1c9d159bdddec18e2d5e67924605159bfd43"
+balance = "0"
+validator_public_key = "012f5501236a3bd82d22ee7675e78174ee723565495fd0f43be8a011bfa6494687"
+delegated_amount = "8667224000000000"
+
+[[delegators]]
+delegator_public_key = "015f065acdced524ba07b125a3325565b28f702509d3d09bae001cee972a66d53a"
+balance = "0"
+validator_public_key = "01faec72d138026edbd470d9ba1f6a05c5fabaa98da8bb41c8c92041d2f58337d2"
+delegated_amount = "8667224000000000"
+
+[[delegators]]
+delegator_public_key = "01d64c582fa65d96eeda1631a4d02575b9c261603fc39005efdcca4a3d1fe12fda"
+balance = "0"
+validator_public_key = "0149fcd9cc0986ba04d77ad48c7def4860bf6952ccb075666e579549386fd2f143"
+delegated_amount = "8767679000000000"
+
+[[delegators]]
+delegator_public_key = "0191ccaf4a29012fc8b9eed1375580a17b5cfee696cbc5c91f5426f93beb4d6a85"
+balance = "0"
+validator_public_key = "017b9a85b657e0a8c2e01bf2d80b6b2e6f8d8b4bc6d7c479f21e59dceea761710b"
+delegated_amount = "9620685000000000"
 
 [[delegators]]
 delegator_public_key = "0147a1349d67565cfb8493a6ac02e27d9ea6c42760b03bca1c8eeb3056a0d75c1a"
 balance = "0"
-validator_public_key = "0127e7faaf1c6cba77b6deaa1acafedb620faa5acf8e87c9d5e38056e19cdab04f"
+validator_public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
 delegated_amount = "9695479000000000"
 
 [[delegators]]
@@ -847,7 +920,7 @@ delegated_amount = "13776712500000000"
 [[delegators]]
 delegator_public_key = "017c6bdf6a7557fd8bbf9111acdce3bd563108a6397f4d016c36ef3f818cf3d64b"
 balance = "0"
-validator_public_key = "0127e7faaf1c6cba77b6deaa1acafedb620faa5acf8e87c9d5e38056e19cdab04f"
+validator_public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
 delegated_amount = "13863013700000000"
 
 [[delegators]]
@@ -863,9 +936,9 @@ validator_public_key = "010a8ac8d23e6c57fa340c552ddf9199d9cba9166ecc0daee640053e
 delegated_amount = "15166666900000000"
 
 [[delegators]]
-delegator_public_key = "01d2ebc5ea92af48f4b90df249a4d7d75f60c6790a5bf1a8cbbbc3f46cbb709d0f"
+delegator_public_key = "012f0507177cb1e490bb677e0432441acca28d6241a6224b71012baa42cf05a6dc"
 balance = "0"
-validator_public_key = "01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80"
+validator_public_key = "015dfd4b3f997b1eb1a7292eb501845931b8aa9869988a5caa2be79ac4f5ff8a21"
 delegated_amount = "17333333000000000"
 
 [[delegators]]
@@ -875,9 +948,9 @@ validator_public_key = "01765c9d153550285d2e6da2f4407ca8b6c5d2f94098e9794a02609d
 delegated_amount = "17333333000000000"
 
 [[delegators]]
-delegator_public_key = "012f0507177cb1e490bb677e0432441acca28d6241a6224b71012baa42cf05a6dc"
+delegator_public_key = "01d2ebc5ea92af48f4b90df249a4d7d75f60c6790a5bf1a8cbbbc3f46cbb709d0f"
 balance = "0"
-validator_public_key = "015dfd4b3f997b1eb1a7292eb501845931b8aa9869988a5caa2be79ac4f5ff8a21"
+validator_public_key = "01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80"
 delegated_amount = "17333333000000000"
 
 [[delegators]]
@@ -889,14 +962,14 @@ delegated_amount = "17333333000000000"
 [[delegators]]
 delegator_public_key = "01356542750dc229efee77e2d2b61cb6b79f01ecf801445df47b538478807d8345"
 balance = "0"
-validator_public_key = "0127e7faaf1c6cba77b6deaa1acafedb620faa5acf8e87c9d5e38056e19cdab04f"
+validator_public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
 delegated_amount = "20702055000000000"
 
 [[delegators]]
 delegator_public_key = "01a451ce6b1705f0e028f8ee24b92d2e0a20d8a6e97c9ea8c604bcf0de3bd2f563"
 balance = "0"
 validator_public_key = "01b4815d64e022127b117d25436e4b9a9d9d1338b0c6cb09db3995d4d3ac84d86b"
-delegated_amount = "21556617000000000"
+delegated_amount = "20720548000000000"
 
 [[delegators]]
 delegator_public_key = "01454c9053822d7c1d294a5a776ba851b0cdac6a46eae4474be0f2dd661f26932c"
@@ -915,6 +988,18 @@ delegator_public_key = "012d7449cde960bb5cc61c3ffc6303682eea04d93752a84cc61dfe40
 balance = "0"
 validator_public_key = "01b32b134afdf8585b8c8181f81375a98c5ed12e145c9e6bfea33a55eeccf1fa22"
 delegated_amount = "26830137000000000"
+
+[[delegators]]
+delegator_public_key = "01ab4f240c1622625ab7b944ced041380fdef9d54bc6517c379f6d8a75cbae0e5b"
+balance = "0"
+validator_public_key = "018f84c6fc037284f189cc8cb49f89212ff434a5eb050e48cdd164ff3890fbff69"
+delegated_amount = "27610959000000000"
+
+[[delegators]]
+delegator_public_key = "Bitgo"
+balance = "0"
+validator_public_key = "018f84c6fc037284f189cc8cb49f89212ff434a5eb050e48cdd164ff3890fbff69"
+delegated_amount = "30333333000000000"
 
 [[delegators]]
 delegator_public_key = "0139c59b850e9a8d26b4778918177deebfe1fcfbbcde715901914d84fdc9704e43"
@@ -943,7 +1028,7 @@ delegated_amount = "34791096000000000"
 [[delegators]]
 delegator_public_key = "010cdf3c6f2ecf000b7b6adf053d2755d3eabb41a5529aa8c1e6b1f958dc8f0b49"
 balance = "0"
-validator_public_key = "012034668d7a5844f4fce1c3672c8d54daa81adb6d230a4aeeccaa8b369f0178fc"
+validator_public_key = "01652d9fbd8dbb443af0122cd4347f4107e697306e5b90f93dbf959f7612e5e7d2"
 delegated_amount = "36527397000000000"
 
 [[delegators]]
@@ -951,6 +1036,12 @@ delegator_public_key = "016dd414ee063ec490d07aee039f7f65d51bf0e80d8f8d9265ad129a
 balance = "0"
 validator_public_key = "012bac1d0ff9240ff0b7b06d555815640497861619ca12583ddef434885416e69b"
 delegated_amount = "39866667000000000"
+
+[[delegators]]
+delegator_public_key = "01431edff6e7748d0e1d7595168e9be134851b391fdbf808660a7cb2e4efc91cf8"
+balance = "0"
+validator_public_key = "017d940644deeb8eea3d94f62cfa65a9bea4eb2e8ec9433104bb145d73fd39e98f"
+delegated_amount = "41589041000000000"
 
 [[delegators]]
 delegator_public_key = "01c7e757c775939a61c977637d76ec699a4c6c5fc21697f91d67ee9f001df69297"
@@ -995,21 +1086,9 @@ validator_public_key = "0145316b84fee8735291f5a29206e5211c74ab828b0382bb475a4a6e
 delegated_amount = "160793460000000000"
 
 [[delegators]]
-delegator_public_key = "01106d80d433f14a8ae5cff93a59101b5b33214ca5cafea4582e921a57732d2d67"
+delegator_public_key = "010b24b2974ac8dd9027a06be487c383732a5e4605d254fb017d9fce388d347e77"
 balance = "0"
-validator_public_key = "01026ca707c348ed8012ac6a1f28db031fadd6eb67203501a353b867a08c8b9a80"
-delegated_amount = "1000000000000000000"
-
-[[delegators]]
-delegator_public_key = "013eb3f903d90557e9acd032892fb88834893c7c6dd7cdcb0e0f5385c44009a04b"
-balance = "0"
-validator_public_key = "0163e03c3aa2b383f9d1b2f7c69498d339dcd1061059792ce51afda49135ff7876"
-delegated_amount = "250000000000000000"
-
-[[delegators]]
-delegator_public_key = "0119bfc0435d1af193912f13c711d2ea38d54c14a82db0d8093142bd31914c4b7a"
-balance = "0"
-validator_public_key = "01e61c8b8227afd8f7d4daece145546aa6775cf1c4ebfb6f3f56c18df558aed72d"
-delegated_amount = "250000000000000000"
+validator_public_key = "0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1"
+delegated_amount = "453839640000000000"
 
 
