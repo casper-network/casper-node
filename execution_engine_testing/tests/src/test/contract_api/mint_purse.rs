@@ -1,12 +1,11 @@
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
+    internal::{ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST, SYSTEM_ADDR},
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_types::{runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_MINT_PURSE: &str = "mint_purse.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 #[ignore]
@@ -15,11 +14,11 @@ fn should_run_mint_purse_contract() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! { "target" =>SYSTEM_ADDR, "amount" => U512::from(TRANSFER_AMOUNT) },
+        runtime_args! { "target" => *SYSTEM_ADDR, "amount" => U512::from(TRANSFER_AMOUNT) },
     )
     .build();
     let exec_request_2 =
-        ExecuteRequestBuilder::standard(SYSTEM_ADDR, CONTRACT_MINT_PURSE, RuntimeArgs::default())
+        ExecuteRequestBuilder::standard(*SYSTEM_ADDR, CONTRACT_MINT_PURSE, RuntimeArgs::default())
             .build();
 
     let mut builder = WasmTestBuilder::default();

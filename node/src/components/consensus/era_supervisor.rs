@@ -9,7 +9,7 @@ mod era;
 mod era_id;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::PathBuf,
@@ -49,13 +49,13 @@ use crate::{
     },
     crypto::hash::Digest,
     effect::{
-        requests::{ConsensusRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        requests::{BlockValidationRequest, ConsensusRequest, StorageRequest},
+        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, FinalitySignature,
-        FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, DeployHash, DeployMetadata,
+        FinalitySignature, FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -1149,7 +1149,12 @@ where
                 self.era_supervisor.update_consensus_pause();
                 effects
             }
-            ProtocolOutcome::ValidateConsensusValue(sender, candidate_block, timestamp) => {
+            ProtocolOutcome::ValidateConsensusValue {
+                sender,
+                consensus_value: candidate_block,
+                timestamp,
+                ancestor_values: ancestor_blocks,
+            } => {
                 if !self.era_supervisor.is_bonded(era_id) {
                     return Effects::new();
                 }
@@ -1171,16 +1176,45 @@ where
                 }
                 self.era_mut(era_id)
                     .add_candidate(candidate_block, missing_evidence);
+                let proto_block_deploys_set: BTreeSet<DeployHash> =
+                    proto_block.deploys_iter().cloned().collect();
+                for ancestor_block in ancestor_blocks {
+                    let ancestor_proto_block = ancestor_block.proto_block();
+                    for deploy in ancestor_proto_block.deploys_iter() {
+                        if proto_block_deploys_set.contains(deploy) {
+                            effects.extend(self.resolve_validity(
+                                era_id,
+                                sender,
+                                proto_block,
+                                timestamp,
+                                false,
+                            ));
+                            return effects;
+                        }
+                    }
+                }
+                let effect_builder = self.effect_builder;
                 effects.extend(
-                    self.effect_builder
-                        .validate_block(sender.clone(), proto_block, timestamp)
-                        .event(move |(valid, proto_block)| Event::ResolveValidity {
+                    async move {
+                        match check_deploys_for_replay_in_previous_eras_and_validate_block(
+                            effect_builder,
                             era_id,
                             sender,
                             proto_block,
                             timestamp,
-                            valid,
-                        }),
+                        )
+                        .await
+                        {
+                            Ok(event) => Some(event),
+                            Err(error) => {
+                                effect_builder
+                                    .fatal(file!(), line!(), format!("{:?}", error))
+                                    .await;
+                                None
+                            }
+                        }
+                    }
+                    .map_some(std::convert::identity),
                 );
                 effects
             }
@@ -1331,4 +1365,83 @@ pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: E
     current_era
         .saturating_sub(bonded_eras(protocol_config))
         .max(protocol_config.last_activation_point)
+}
+
+#[derive(thiserror::Error, Debug, derive_more::Display)]
+pub enum ReplayCheckAndValidateBlockError {
+    BlockHashMissingFromStorage(BlockHash),
+}
+
+/// Checks that a [ProtoBlock] does not have deploys we have already included in blocks in previous
+/// eras. This is done by repeatedly querying storage for deploy metadata. When metadata is found
+/// storage is queried again to get the era id for the included deploy. That era id must *not* be
+/// less than the current era, otherwise the deploy is a replay attack.
+async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    proto_block_era_id: EraId,
+    sender: I,
+    proto_block: ProtoBlock,
+    timestamp: Timestamp,
+) -> Result<Event<I>, ReplayCheckAndValidateBlockError>
+where
+    REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
+    I: Clone + Send + 'static,
+{
+    for deploy_hash in proto_block.deploys_iter() {
+        let execution_results = match effect_builder
+            .get_deploy_and_metadata_from_storage(*deploy_hash)
+            .await
+        {
+            None => continue,
+            Some((_, DeployMetadata { execution_results })) => execution_results,
+        };
+        // We have found the deploy in the database.  If it was from a previous era, it was a
+        // replay attack.  Get the block header for that deploy to check if it is provably a replay
+        // attack.
+        for (block_hash, _) in execution_results {
+            match effect_builder
+                .get_block_header_from_storage(block_hash)
+                .await
+            {
+                None => {
+                    // The block hash referenced by the deploy does not exist.  This is
+                    // a critical database integrity failure.
+                    return Err(
+                        ReplayCheckAndValidateBlockError::BlockHashMissingFromStorage(block_hash),
+                    );
+                }
+                Some(block_header) => {
+                    // If the deploy was included in a block which is from before the current era_id
+                    // then this must have been a replay attack.
+                    //
+                    // If not, then it might be this is a deploy for a block we are currently
+                    // coming to consensus, and we will rely on the immediate ancestors of the
+                    // proto_block within the current era to determine if we are facing a replay
+                    // attack.
+                    if block_header.era_id() < proto_block_era_id {
+                        return Ok(Event::ResolveValidity {
+                            era_id: proto_block_era_id,
+                            sender: sender.clone(),
+                            proto_block: proto_block.clone(),
+                            timestamp,
+                            valid: false,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let sender_for_validate_block: I = sender.clone();
+    let (valid, proto_block) = effect_builder
+        .validate_block(sender_for_validate_block, proto_block, timestamp)
+        .await;
+
+    Ok(Event::ResolveValidity {
+        era_id: proto_block_era_id,
+        sender,
+        proto_block,
+        timestamp,
+        valid,
+    })
 }

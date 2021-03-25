@@ -269,6 +269,10 @@ impl ProtoBlock {
         &self.transfers
     }
 
+    pub(crate) fn deploys_iter(&self) -> impl Iterator<Item = &DeployHash> {
+        self.wasm_deploys().iter().chain(self.transfers().iter())
+    }
+
     /// A random bit needed for initializing a future era.
     pub(crate) fn random_bit(&self) -> bool {
         self.random_bit
@@ -1131,6 +1135,21 @@ impl Block {
     /// The protocol version of the block.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.header.protocol_version
+    }
+
+    /// Returns the hash of the parent block.
+    /// If the block is the first block in the linear chain returns `None`.
+    pub fn parent(&self) -> Option<&BlockHash> {
+        if self.header.is_genesis_child() {
+            None
+        } else {
+            Some(self.header.parent_hash())
+        }
+    }
+
+    /// Returns the timestamp of the block.
+    pub fn timestamp(&self) -> Timestamp {
+        self.header.timestamp()
     }
 
     /// Check the integrity of a block by hashing its body and header
