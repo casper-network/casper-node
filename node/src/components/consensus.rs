@@ -209,7 +209,7 @@ impl<I: Debug> Display for Event<I> {
                 valid,
             } => write!(
                 f,
-                "Candidate block received from {:?} for {} with parent {:?} is {}: {:?}",
+                "Proto-block received from {:?} for {} with parent {:?} is {}: {:?}",
                 sender,
                 era_id,
                 parent,

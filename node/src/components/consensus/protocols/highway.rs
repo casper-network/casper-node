@@ -339,7 +339,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
         };
 
-        // If the vertex contains a consensus value, request validation.
+        // If the vertex contains a consensus value, i.e. it is a proposal, request validation.
         let vertex = vv.inner();
         if let (Some(value), Some(timestamp), Some(swunit)) =
             (vertex.value(), vertex.timestamp(), vertex.unit())
@@ -348,6 +348,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             let fork_choice = self.highway.state().fork_choice(panorama);
             let parent_value =
                 fork_choice.map(|hash| self.highway.state().block(hash).value.hash());
+            // The timestamp and parent are currently duplicated: The information in the consensus
+            // value must match the information in the Highway DAG.
             if timestamp != value.timestamp() || parent_value.as_ref() != value.parent() {
                 info!(
                     timestamp = %value.timestamp(), consensus_timestamp = %timestamp,
