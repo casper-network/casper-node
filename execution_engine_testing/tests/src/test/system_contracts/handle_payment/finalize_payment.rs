@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -17,7 +17,6 @@ const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm
 const FINALIZE_PAYMENT: &str = "finalize_payment.wasm";
 const LOCAL_REFUND_PURSE: &str = "local_refund_purse";
 
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const ACCOUNT_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_AMOUNT_SPENT: &str = "amount_spent";
@@ -31,7 +30,10 @@ fn initialize() -> InMemoryWasmTestBuilder {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => SYSTEM_ADDR, ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) },
+        runtime_args! {
+            ARG_TARGET => *SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+        },
     )
     .build();
 
