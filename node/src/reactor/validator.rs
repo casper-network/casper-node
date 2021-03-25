@@ -466,7 +466,6 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
-            chainspec_loader.initial_state_root_hash(),
             latest_block.as_ref().map(Block::header),
             maybe_next_activation_point,
             registry,

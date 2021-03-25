@@ -37,6 +37,7 @@ use casper_types::{
 use super::Responder;
 use crate::{
     components::{
+        chainspec_loader::CurrentRunInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
         fetcher::FetchResult,
@@ -936,12 +937,15 @@ pub enum ConsensusRequest {
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
+    /// Request for information about the current run.
+    GetCurrentRunInfo(Responder<CurrentRunInfo>),
 }
 
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
+            ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
         }
     }
 }

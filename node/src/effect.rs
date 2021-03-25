@@ -99,8 +99,11 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, consensus::BlockContext,
-        contract_runtime::EraValidatorsRequest, deploy_acceptor, fetcher::FetchResult,
+        chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        consensus::BlockContext,
+        contract_runtime::EraValidatorsRequest,
+        deploy_acceptor,
+        fetcher::FetchResult,
         small_network::GossipedAddress,
     },
     crypto::hash::Digest,
@@ -1254,6 +1257,18 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Gets the information about the current run of the node software.
+    pub(crate) async fn get_current_run_info(self) -> CurrentRunInfo
+    where
+        REv: From<ChainspecLoaderRequest>,
+    {
+        self.make_request(
+            ChainspecLoaderRequest::GetCurrentRunInfo,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Loads potentially previously stored state from storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.
@@ -1454,16 +1469,16 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the correct era validators set for the given era.
     /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
     /// and `activation_era_id` parameters.
-    pub(crate) async fn get_era_validators(
-        self,
-        era_id: EraId,
-        activation_era_id: EraId,
-        initial_state_root_hash: Digest,
-        protocol_version: ProtocolVersion,
-    ) -> Option<BTreeMap<PublicKey, U512>>
+    pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
+        let CurrentRunInfo {
+            activation_point,
+            protocol_version,
+            initial_state_root_hash,
+        } = self.get_current_run_info().await;
+        let activation_era_id = activation_point.era_id();
         if era_id < activation_era_id {
             // we don't support getting the validators from before the last upgrade
             return None;
@@ -1511,23 +1526,14 @@ impl<REv> EffectBuilder<REv> {
         self,
         validator: PublicKey,
         era_id: EraId,
-        activation_era_id: EraId,
-        initial_state_root_hash: Digest,
         latest_state_root_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         // try just reading the era validators first
-        let maybe_era_validators = self
-            .get_era_validators(
-                era_id,
-                activation_era_id,
-                initial_state_root_hash,
-                protocol_version,
-            )
-            .await;
+        let maybe_era_validators = self.get_era_validators(era_id).await;
         let maybe_is_currently_bonded =
             maybe_era_validators.map(|validators| validators.contains_key(&validator));
 
