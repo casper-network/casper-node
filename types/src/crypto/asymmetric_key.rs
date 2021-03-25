@@ -134,12 +134,12 @@ impl SecretKey {
 
     /// Constructs a new Ed25519 variant from a byte array.
     pub fn ed25519(bytes: [u8; Self::ED25519_LENGTH]) -> Result<Self, Error> {
-        // while it safe to unwrap as `SecretKey::from_bytes` can only fail if the provided slice is the
-        // wrong length.
+        // while it is safe to unwrap as `SecretKey::from_bytes` can only fail if the provided slice
+        // is the wrong length.
         // We should be disciplined about unwrapping in constructors.
         match ed25519_dalek::SecretKey::from_bytes(&bytes) {
             Ok(key) => Ok(SecretKey::Ed25519(key)),
-            Err(error) =>  Err(Error::AsymmetricKey(error.to_string()))
+            Err(error) => Err(Error::AsymmetricKey(error.to_string())),
         }
     }
 
@@ -433,7 +433,6 @@ impl From<Result<SecretKey, Error>> for PublicKey {
         PublicKey::from(key.unwrap())
     }
 }
-
 
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
