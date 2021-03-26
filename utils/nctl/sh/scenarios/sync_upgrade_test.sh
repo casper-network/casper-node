@@ -101,7 +101,7 @@ function assert_network_upgrade() {
     log_step "checking that entire network upgraded to $PROTO"
     CONVERTED=$(echo $PROTO | sed 's/_/./g')
     STATUS=$(nctl-view-node-status)
-    COUNT=$(grep -o "$CONVERTED" <<< $STATUS[*]  | wc -l)
+    COUNT=$(grep 'api_version' <<< $STATUS[*] | grep -o "$CONVERTED" | wc -l)
     RUNNING_COUNT=$(get_running_node_count)
 
     if [ ! "$COUNT" = "$RUNNING_COUNT" ]; then
