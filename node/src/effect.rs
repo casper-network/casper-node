@@ -76,7 +76,7 @@ use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, time};
 use tracing::error;
 #[cfg(not(feature = "fast-sync"))]
 use tracing::warn;
@@ -453,7 +453,7 @@ impl<REv> EffectBuilder<REv> {
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
-        tokio::time::delay_for(timeout).await;
+        time::sleep(timeout).await;
         Instant::now() - then
     }
 

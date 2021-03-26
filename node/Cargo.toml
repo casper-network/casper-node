@@ -13,21 +13,21 @@ default-run = "casper-node"
 
 [dependencies]
 ansi_term = "0.12.1"
-anyhow = "1.0.28"
+anyhow = "1"
 backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.13.0"
-bincode = "1.3.1"
+bincode = "1"
 blake2 = { version = "0.9.0", default-features = false }
 casper-execution-engine = { version = "0.9.3", path = "../execution_engine" }
 casper-node-macros = { version = "0.9.3", path = "../node_macros" }
 casper-types = { version = "0.9.3", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
-datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types", "tokio-types"] }
+datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 derp = "0.0.14"
-ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "serde", "u64_backend"] }
-either = "1.5.3"
+ed25519-dalek = { version = "1", default-features = false, features = ["rand", "serde", "u64_backend"] }
+either = "1"
 enum-iterator = "0.6.0"
 fs2 = "0.4.3"
 futures = "0.3.5"
@@ -38,14 +38,14 @@ hex-buffer-serde = "0.2.1"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
 http = "0.2.1"
-humantime = "2.0.1"
-hyper = "0.13.7"
+humantime = "2"
+hyper = "0.14.4"
 itertools = "0.10.0"
 jemalloc-ctl = "0.3.3"
 jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
-libp2p = { version = "0.29.1", default-features = false, features = ["deflate", "dns", "floodsub", "gossipsub", "identify", "kad", "mdns-tokio", "mplex", "noise", "ping", "request-response", "tcp-tokio", "uds", "yamux"] }
+libp2p = { version = "0.35.1", default-features = false, features = ["deflate", "dns", "floodsub", "gossipsub", "identify", "kad", "mdns", "mplex", "noise", "ping", "request-response", "tcp-tokio", "uds", "yamux"] }
 linked-hash-map = "0.5.3"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
@@ -53,8 +53,9 @@ num = { version = "0.4.0", default-features = false }
 num-derive = "0.3.0"
 num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"
-once_cell = "1.5.2"
-openssl = "0.10.29"
+num_cpus = "1"
+once_cell = "1"
+openssl = "0.10.32"
 parking_lot = "0.11.0"
 pem = "0.8.1"
 prometheus = "0.12.0"
@@ -62,47 +63,51 @@ proptest = { version = "1.0.0", optional = true }
 quanta = "0.7.2"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
-regex = "1.3.9"
+regex = "1"
 schemars = { version = "0.8.0", features = ["preserve_order"] }
 sd-notify = "0.3.0"
 semver = { version = "0.11.0", features = ["serde"] }
-serde = { version = "1.0.110", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 serde-big-array = "0.3.0"
 serde_bytes = "0.11.5"
-serde_json = "1.0.55"
+serde_json = "1"
 serde_repr = "0.1.6"
 signal-hook = "0.3.4"
-signature = "1.1.0"
-smallvec = { version = "1.6.1", features = ["serde"] }
-static_assertions = "1.1.0"
+signature = "1"
+smallvec = { version = "1", features = ["serde"] }
+static_assertions = "1"
 structopt = "0.3.14"
 sys-info = "0.8.0"
-tempfile = "3.1.0"
-thiserror = "1.0.18"
-tokio = { version = "0.2.20", features = ["blocking", "macros", "rt-threaded", "sync", "tcp", "time"] }
-tokio-openssl = "0.4.0"
-tokio-serde = { version = "0.6.1", features = ["messagepack"] }
-tokio-util = { version = "0.3.1", features = ["codec"] }
+tempfile = "3"
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-openssl = "0.6.1"
+tokio-serde = { version = "0.8.0", features = ["bincode"] }
+tokio-stream = { version = "0.1.4", features = ["sync"] }
+tokio-util = { version = "0.6.4", features = ["codec"] }
 toml = "0.5.6"
-tower = "0.3.1"
+tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
-tracing-futures = "0.2.4"
+tracing-futures = "0.2.5"
 tracing-subscriber = { version = "0.2.10", features = ["fmt", "json"] }
 uint = "0.9.0"
 untrusted = "0.7.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-warp = "0.2.4"
-warp-json-rpc = "0.2.0"
+warp = "0.3.0"
+warp-json-rpc = "0.3.0"
 wheelbuf = "0.2.0"
 
+[build-dependencies]
+vergen = "3"
+
 [dev-dependencies]
-assert_matches = "1.3.0"
+assert_matches = "1"
 fake_instant = "0.4.0"
-multihash = "0.11.4"
+multihash = "0.13.2"
 pnet = "0.27.2"
 rand_core = "0.6.2"
 rand_pcg = "0.3.0"
-tokio = { version = "0.2.20", features = ["test-util"] }
+tokio = { version = "1", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
@@ -115,5 +120,29 @@ bench = false
 doctest = false
 test = false
 
-[build-dependencies]
-vergen = "3.1.0"
+[package.metadata.deb]
+features = ["vendored-openssl"]
+revision = "0"
+depends = "curl"
+assets = [
+    ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
+    ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
+    ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
+    ["../resources/maintainer_scripts/delete_local_db.sh", "/etc/casper/delete_local_db.sh", "755"],
+    ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],
+    ["../resources/maintainer_scripts/systemd_pre_start.sh", "/etc/casper/systemd_pre_start.sh", "755"],
+    ["../resources/production/README.md", "/etc/casper/README.md", "644"],
+    ["../resources/production/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
+    ["../resources/production/config-example.toml", "/etc/casper/config-example.toml", "644"],
+    ["../resources/production/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
+]
+maintainer-scripts = "../resources/maintainer_scripts/debian"
+extended-description = """
+Package for Casper Node and Client.
+
+For information on using package, see https://github.com/CasperLabs/casper-node
+"""
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../resources/maintainer_scripts/casper_node"
+restart-after-upgrade = false

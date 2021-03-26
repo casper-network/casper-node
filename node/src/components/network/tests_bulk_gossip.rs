@@ -220,7 +220,7 @@ async fn send_large_message_across_network() {
               "Started broadcast/gossip of payloads, waiting for all nodes to receive it");
         net.settle_on(
             &mut rng,
-            others_received(dummy_payload_ids, sender.clone()),
+            others_received(dummy_payload_ids, *sender),
             timeout,
         )
         .await;
