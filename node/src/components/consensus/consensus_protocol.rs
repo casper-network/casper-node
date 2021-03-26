@@ -93,6 +93,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreateNewBlock {
         block_context: BlockContext,
         past_values: Vec<C::ConsensusValue>,
+        parent_value: Option<C::ConsensusValue>,
     },
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
@@ -102,7 +103,11 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
-    ValidateConsensusValue(I, C::ConsensusValue, Timestamp),
+    ValidateConsensusValue {
+        sender: I,
+        consensus_value: C::ConsensusValue,
+        ancestor_values: Vec<C::ConsensusValue>,
+    },
     /// New direct evidence was added against the given validator.
     NewEvidence(C::ValidatorId),
     /// Send evidence about the validator from an earlier era to the peer.
@@ -131,8 +136,8 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn handle_message(&mut self, sender: I, msg: Vec<u8>, now: Timestamp)
         -> ProtocolOutcomes<I, C>;
 
-    /// Handles new connection to a peer.
-    fn handle_new_peer(&mut self, peer_id: I) -> ProtocolOutcomes<I, C>;
+    /// Current instance of consensus protocol is latest era.
+    fn handle_is_current(&self) -> ProtocolOutcomes<I, C>;
 
     /// Triggers consensus' timer.
     fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;

@@ -1,5 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
+#![warn(clippy::integer_arithmetic)]
+
 mod candidate_block;
 mod cl_context;
 mod config;
@@ -26,16 +28,16 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{PublicKey, U512};
+use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::Component,
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            NetworkRequest, StorageRequest,
+            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+            ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -49,7 +51,7 @@ use crate::{
 use crate::effect::EffectExt;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
-pub(crate) use era_supervisor::{EraId, EraSupervisor};
+pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
@@ -80,8 +82,6 @@ pub struct ActionId(pub u8);
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
-    /// We connected to a peer.
-    NewPeer(I),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -95,6 +95,7 @@ pub enum Event<I> {
         era_id: EraId,
         proto_block: ProtoBlock,
         block_context: BlockContext,
+        parent: Option<Digest>,
     },
     #[from]
     ConsensusRequest(ConsensusRequest),
@@ -105,7 +106,7 @@ pub enum Event<I> {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
-        timestamp: Timestamp,
+        parent: Option<Digest>,
         valid: bool,
     },
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -138,11 +139,11 @@ impl Debug for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload: _ } => {
-                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+                write!(f, "Protocol {{ era_id: {:?}, .. }}", era_id)
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
                 .debug_struct("EvidenceRequest")
-                .field("era_id.0", &era_id.0)
+                .field("era_id", era_id)
                 .field("pub_key", pub_key)
                 .finish(),
         }
@@ -168,27 +169,27 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
-            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer {
                 era_id,
                 timestamp,
                 timer_id,
             } => write!(
                 f,
-                "timer (ID {}) for era {} scheduled for timestamp {}",
-                timer_id.0, era_id.0, timestamp,
+                "timer (ID {}) for {} scheduled for timestamp {}",
+                timer_id.0, era_id, timestamp,
             ),
             Event::Action { era_id, action_id } => {
-                write!(f, "action (ID {}) for era {}", action_id.0, era_id.0)
+                write!(f, "action (ID {}) for {}", action_id.0, era_id)
             }
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
+                parent,
             } => write!(
                 f,
-                "New proto-block for era {:?}: {:?}, {:?}",
-                era_id, proto_block, block_context
+                "New proto-block for era {:?}: {:?}, {:?}, parent: {:?}",
+                era_id, proto_block, block_context, parent
             ),
             Event::ConsensusRequest(request) => write!(
                 f,
@@ -204,23 +205,23 @@ impl<I: Debug> Display for Event<I> {
                 era_id,
                 sender,
                 proto_block,
-                timestamp,
+                parent,
                 valid,
             } => write!(
                 f,
-                "Proto-block received from {:?} at {} for {} is {}: {:?}",
+                "Proto-block received from {:?} for {} with parent {:?} is {}: {:?}",
                 sender,
-                timestamp,
                 era_id,
+                parent,
                 if *valid { "valid" } else { "invalid" },
-                proto_block
+                proto_block,
             ),
             Event::DeactivateEra {
                 era_id, faulty_num, ..
             } => write!(
                 f,
-                "Deactivate old era {} unless additional faults are observed; faults so far: {}",
-                era_id.0, faulty_num
+                "Deactivate old {} unless additional faults are observed; faults so far: {}",
+                era_id, faulty_num
             ),
             Event::CreateNewEra {
                 booking_block_hash,
@@ -247,7 +248,6 @@ pub trait ReactorEventT<I>:
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement<I>>
-    + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
@@ -263,7 +263,6 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement<I>>
-        + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
@@ -295,20 +294,20 @@ where
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
-            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context),
+                parent,
+            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context, parent),
             Event::BlockAdded(block) => handling_es.handle_block_added(*block),
             Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
-                timestamp,
+                parent,
                 valid,
-            } => handling_es.resolve_validity(era_id, sender, proto_block, timestamp, valid),
+            } => handling_es.resolve_validity(era_id, sender, proto_block, parent, valid),
             Event::DeactivateEra {
                 era_id,
                 faulty_num,

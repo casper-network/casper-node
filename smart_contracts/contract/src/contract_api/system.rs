@@ -7,10 +7,10 @@ use casper_types::{
     account::AccountHash,
     api_error, bytesrepr,
     system::{
-        auction::{self, EraId, EraInfo},
+        auction::{self, EraInfo},
         SystemContractType,
     },
-    ApiError, ContractHash, HashAddr, TransferResult, TransferredTo, URef, U512,
+    ApiError, ContractHash, EraId, HashAddr, TransferResult, TransferredTo, URef, U512,
     UREF_SERIALIZED_LENGTH,
 };
 

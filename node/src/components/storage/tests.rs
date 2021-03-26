@@ -4,14 +4,15 @@ use std::{borrow::Cow, collections::HashMap};
 
 use lmdb::Transaction;
 use rand::{prelude::SliceRandom, Rng};
+use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{ExecutionResult, PublicKey, SecretKey};
+use casper_types::{EraId, ExecutionResult, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{
-    components::{consensus::EraId, storage::lmdb_ext::WriteTransactionExt},
+    components::storage::lmdb_ext::WriteTransactionExt,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
@@ -45,8 +46,12 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg), None)
-        .expect("could not create storage component fixture")
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        None,
+        Version::new(1, 0, 0),
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Storage component test fixture.
@@ -61,8 +66,12 @@ fn storage_fixture_with_hard_reset(
     reset_era_id: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(&WithDir::new(harness.tmp.path(), cfg), Some(reset_era_id))
-        .expect("could not create storage component fixture")
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        Some(reset_era_id),
+        Version::new(1, 1, 0),
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Creates a random block with a specific block height.
@@ -903,12 +912,12 @@ fn should_hard_reset() {
 
     // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
     let blocks: Vec<Block> = (0..blocks_count)
-        .map(|index| {
-            let is_switch = index % blocks_per_era == blocks_per_era - 1;
+        .map(|height| {
+            let is_switch = height % blocks_per_era == blocks_per_era - 1;
             Block::random_with_specifics(
                 &mut harness.rng,
-                EraId(index as u64 / 3),
-                index as u64,
+                EraId::from(height as u64 / 3),
+                height as u64,
                 is_switch,
             )
         })
@@ -928,7 +937,7 @@ fn should_hard_reset() {
     );
 
     // Initialize a new storage with a hard reset to era 2, effectively hiding blocks 6 and 7.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(2));
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(2));
     // Check the highest block is #5.
     assert_eq!(
         Some(blocks[blocks_count - blocks_per_era].clone()),
@@ -936,7 +945,7 @@ fn should_hard_reset() {
     );
 
     // Initialize a new storage with a hard reset to era 1, effectively hiding blocks 3-7.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(1));
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(1));
     // Check the highest block is #2.
     assert_eq!(
         Some(blocks[blocks_count - (2 * blocks_per_era)].clone()),
@@ -944,7 +953,7 @@ fn should_hard_reset() {
     );
 
     // Initialize a new storage with a hard reset to era 0, effectively hiding all blocks.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId(0));
+    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(0));
     // Check the highest block is `None`.
     assert!(get_highest_block(&mut harness, &mut storage).is_none());
 }

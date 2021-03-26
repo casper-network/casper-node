@@ -6,7 +6,7 @@ use thiserror::Error;
 use casper_types::{
     bytesrepr,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    ContractHash, Key, ProtocolVersion,
+    ContractHash, EraId, Key, ProtocolVersion,
 };
 
 use crate::{
@@ -23,8 +23,6 @@ use crate::{
         protocol_data::ProtocolData,
     },
 };
-
-pub type ActivationPoint = u64;
 
 #[derive(Debug, Clone)]
 pub enum UpgradeResult {
@@ -81,7 +79,7 @@ pub struct UpgradeConfig {
     new_protocol_version: ProtocolVersion,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
-    activation_point: Option<ActivationPoint>,
+    activation_point: Option<EraId>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period_millis: Option<u64>,
@@ -98,7 +96,7 @@ impl UpgradeConfig {
         new_protocol_version: ProtocolVersion,
         wasm_config: Option<WasmConfig>,
         system_config: Option<SystemConfig>,
-        activation_point: Option<ActivationPoint>,
+        activation_point: Option<EraId>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
         new_locked_funds_period_millis: Option<u64>,
@@ -142,7 +140,7 @@ impl UpgradeConfig {
         self.system_config.as_ref()
     }
 
-    pub fn activation_point(&self) -> Option<u64> {
+    pub fn activation_point(&self) -> Option<EraId> {
         self.activation_point
     }
 

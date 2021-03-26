@@ -12,12 +12,11 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::PublicKey;
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade,
-        consensus::EraId,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
     crypto::{hash::Digest, AsymmetricKeyExt},
@@ -25,7 +24,10 @@ use crate::{
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade::new(ActivationPoint::EraId(EraId(42)), Version::new(2, 0, 1));
+    let next_upgrade = NextUpgrade::new(
+        ActivationPoint::EraId(EraId::from(42)),
+        Version::new(2, 0, 1),
+    );
     ChainspecInfo {
         name: String::from("casper-example"),
         starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),
@@ -37,7 +39,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
     let mut peers = BTreeMap::new();
-    peers.insert(node_id.clone(), socket_addr.to_string());
+    peers.insert(*node_id, socket_addr.to_string());
     let status_feed = StatusFeed::<NodeId> {
         last_added_block: Some(Block::doc_example().clone()),
         peers,

@@ -3,13 +3,13 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, UpgradeConfig},
+    core::engine_state::UpgradeConfig,
     shared::{
         newtypes::Blake2bHash, stored_value::StoredValue, system_config::SystemConfig,
         wasm_config::WasmConfig,
     },
 };
-use casper_types::{Key, ProtocolVersion};
+use casper_types::{EraId, Key, ProtocolVersion};
 
 #[derive(Default)]
 pub struct UpgradeRequestBuilder {
@@ -18,7 +18,7 @@ pub struct UpgradeRequestBuilder {
     new_protocol_version: ProtocolVersion,
     new_wasm_config: Option<WasmConfig>,
     new_system_config: Option<SystemConfig>,
-    activation_point: Option<ActivationPoint>,
+    activation_point: Option<EraId>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period_millis: Option<u64>,
@@ -92,8 +92,8 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_activation_point(mut self, height: u64) -> Self {
-        self.activation_point = Some(height);
+    pub fn with_activation_point(mut self, activation_point: EraId) -> Self {
+        self.activation_point = Some(activation_point);
         self
     }
 

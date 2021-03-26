@@ -1,58 +1,39 @@
-use std::{convert::Infallible, time::Duration};
-
-use futures::{
-    future::{self, select},
-    FutureExt,
-};
-use hyper::server::{conn::AddrIncoming, Builder};
+use futures::{future, Future, FutureExt};
 use semver::Version;
 use tokio::{
     select,
-    sync::{mpsc, oneshot},
+    sync::{broadcast, mpsc, oneshot},
+    task,
 };
-use tower::builder::ServiceBuilder;
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
 use super::{
-    sse_server::{self, BroadcastChannelMessage, ServerSentEvent},
+    sse_server::{BroadcastChannelMessage, NewSubscriberInfo, ServerSentEvent},
     Config, SseData,
 };
 
 /// Run the HTTP server.
 ///
-/// `data_receiver` will provide the server with local events which should then be sent to all
-/// subscribed clients.
+/// * `server_with_shutdown` is the actual server as a future which can be gracefully shut down.
+/// * `server_shutdown_sender` is the channel by which the server will be notified to shut down.
+/// * `data_receiver` will provide the server with local events which should then be sent to all
+///   subscribed clients.
+/// * `broadcaster` is used by the server to send events to each subscribed client after receiving
+///   them via the `data_receiver`.
+/// * `new_subscriber_info_receiver` is used to notify the server of the details of a new client
+///   having subscribed to the event stream.  It allows the server to populate that client's stream
+///   with the requested number of historical events.
 pub(super) async fn run(
     config: Config,
     api_version: Version,
-    builder: Builder<AddrIncoming>,
+    server_with_shutdown: impl Future<Output = ()> + Send + 'static,
+    server_shutdown_sender: oneshot::Sender<()>,
     mut data_receiver: mpsc::UnboundedReceiver<SseData>,
+    broadcaster: broadcast::Sender<BroadcastChannelMessage>,
+    mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
-    // Event stream channels and filter.
-    let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
-        sse_server::create_channels_and_filter(config.broadcast_channel_size);
-
-    let service = warp_json_rpc::service(sse_filter);
-
-    // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
-    let make_svc =
-        hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
-
-    let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-
-    let make_svc = ServiceBuilder::new()
-        .rate_limit(config.qps_limit, Duration::from_secs(1))
-        .service(make_svc);
-
-    let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started HTTP server");
-
-    let server_with_shutdown = server.with_graceful_shutdown(async {
-        shutdown_receiver.await.ok();
-    });
-
-    let server_joiner = tokio::spawn(server_with_shutdown);
+    let server_joiner = task::spawn(server_with_shutdown);
 
     // Initialize the index and buffer for the SSEs.
     let mut event_index = 0_u32;
@@ -113,11 +94,11 @@ pub(super) async fn run(
 
     // Wait for the event stream future to exit, which will only happen if the last `data_sender`
     // paired with `data_receiver` is dropped.  `server_joiner` will never return here.
-    let _ = select(server_joiner, event_stream_fut.boxed()).await;
+    let _ = future::select(server_joiner, event_stream_fut.boxed()).await;
 
     // Kill the event-stream handlers, and shut down the server.
     let _ = broadcaster.send(BroadcastChannelMessage::Shutdown);
-    let _ = shutdown_sender.send(());
+    let _ = server_shutdown_sender.send(());
 
     trace!("Event stream server stopped");
 }

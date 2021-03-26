@@ -80,6 +80,7 @@ where
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
             round_success_meter: Default::default(),
+            request_latest_state_timeout: "10sec".parse().unwrap(),
         },
     };
     // Timestamp of the genesis era start and test start.
@@ -95,7 +96,11 @@ where
         0,
         start_timestamp,
     );
-    // We expect only the vertex purge timer, participation log timer and `Ping` outcomes.
+    // We expect for messages:
+    // * log participation timer,
+    // * log synchronizer queue length timer,
+    // * purge synchronizer queue timer,
+    // * inactivity timer,
     // If there are more, the tests might need to handle them.
     assert_eq!(4, outcomes.len());
     hw_proto
@@ -197,9 +202,9 @@ fn send_a_valid_wire_unit() {
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: Some(CandidateBlock::new(
-            ProtoBlock::new(vec![], vec![], false),
-            now,
+            ProtoBlock::new(vec![], vec![], now, false),
             vec![],
+            None,
         )),
         seq_number,
         timestamp: now,
@@ -257,7 +262,8 @@ fn detect_doppelganger() {
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let now = Timestamp::zero();
-    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), now, vec![]);
+    let proto_block = ProtoBlock::new(vec![], vec![], now, false);
+    let value = CandidateBlock::new(proto_block, vec![], None);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,

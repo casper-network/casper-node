@@ -43,6 +43,8 @@ alias nctl-clean-logs='source $NCTL/sh/node/clean_logs.sh'
 alias nctl-interactive='source $NCTL/sh/node/interactive.sh'
 alias nctl-join='source $NCTL/sh/node/join.sh'
 alias nctl-leave='source $NCTL/sh/node/leave.sh'
+alias nctl-ports='lsof -i tcp | grep casper-no | grep LISTEN | sort'
+alias nctl-processes='ps -aux | grep "$NCTL" | less'
 alias nctl-restart='source $NCTL/sh/node/restart.sh'
 alias nctl-rotate='source $NCTL/sh/misc/rotate_nodeset.sh'
 alias nctl-start='source $NCTL/sh/node/start.sh'
@@ -112,6 +114,7 @@ alias nctl-transfer-wasm-batch-dispatch='source $NCTL/sh/contracts-transfers/do_
 alias nctl-transfer-wasm-batch-prepare='source $NCTL/sh/contracts-transfers/do_prepare_wasm_batch.sh'
 
 # Contracts #2: Auction.
+alias nctl-auction-activate='source $NCTL/sh/contracts-auction/do_bid_activate.sh'
 alias nctl-auction-bid='source $NCTL/sh/contracts-auction/do_bid.sh'
 alias nctl-auction-withdraw='source $NCTL/sh/contracts-auction/do_bid_withdraw.sh'
 alias nctl-auction-delegate='source $NCTL/sh/contracts-auction/do_delegate.sh'

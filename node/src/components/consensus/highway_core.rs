@@ -43,4 +43,4 @@ mod evidence;
 #[cfg(test)]
 pub(crate) mod highway_testing;
 
-pub(crate) use state::{round_id, State, Weight};
+pub(crate) use state::{State, Weight};

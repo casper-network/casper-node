@@ -26,15 +26,16 @@ use casper_types::{
     },
     system::{
         self,
-        auction::{self, Auction, EraId, EraInfo},
+        auction::{self, Auction, EraInfo},
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
         SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef, U128, U256, U512,
+    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef, U128,
+    U256, U512,
 };
 
 use crate::{

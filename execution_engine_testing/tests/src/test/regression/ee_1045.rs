@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, TIMESTAMP_MILLIS_INCREMENT,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -14,7 +14,6 @@ use casper_execution_engine::{
     shared::motes::Motes,
 };
 use casper_types::{
-    account::AccountHash,
     runtime_args,
     system::auction::{DelegationRate, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -46,8 +45,6 @@ static ACCOUNT_4_PK: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_4_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_4_BOND: u64 = 200_000;
-
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 #[ignore]
 #[test]
@@ -105,7 +102,7 @@ fn should_run_ee_1045_squash_validators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -132,7 +129,7 @@ fn should_run_ee_1045_squash_validators() {
             ARG_VALIDATOR_PUBLIC_KEYS => round_1_validator_squash.clone(),
         };
         ExecuteRequestBuilder::contract_call_by_hash(
-            SYSTEM_ADDR,
+            *SYSTEM_ADDR,
             auction_contract,
             METHOD_SLASH,
             args,
@@ -145,7 +142,7 @@ fn should_run_ee_1045_squash_validators() {
             ARG_VALIDATOR_PUBLIC_KEYS => round_2_validator_squash.clone(),
         };
         ExecuteRequestBuilder::contract_call_by_hash(
-            SYSTEM_ADDR,
+            *SYSTEM_ADDR,
             auction_contract,
             METHOD_SLASH,
             args,

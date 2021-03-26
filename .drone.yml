@@ -9,11 +9,6 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
-  - name: verify-genesis-checksums
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
-
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
@@ -34,7 +29,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit --ignore RUSTSEC-2020-0123 --ignore RUSTSEC-2020-0146
+      - cargo audit
 
 trigger:
   branch:
@@ -262,13 +257,43 @@ steps:
   image: casperlabs/node-build-u1804
   # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
   commands:
-    - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
     CL_VAULT_HOST:
       from_secret: vault_host
+  when:
+    branch:
+      - master
+      - dev
+      - "release-*"
+    event:
+      - push
+
+- name: publish-repo-test
+  image: casperlabs/aptly:latest
+  failure: ignore
+  environment:
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: APTLY_SECRET_KEY
+    AWS_ACCESS_KEY_ID:
+      from_secret: APTLY_KEY_ID
+  settings:
+    repo_name:
+      from_secret: APTLY_REPO_NAME
+    region:
+      from_secret: APTLY_REGION
+    gpg_key:
+      from_secret: APTLY_GPG_KEY
+    gpg_pass:
+      from_secret: APTLY_GPG_PASS
+    distribution_id:
+      from_secret: APTLY_DISTRIBUTION_ID
+    acl: 'public-read'
+    prefix: 'releases'
+    deb_path: './target/debian'
+    deb_name: '*.deb'
   when:
     branch:
       - master
@@ -431,7 +456,7 @@ steps:
     email:
       from_secret: npm_email
     folder:
-    - "smart_contracts/contract-as"
+    - "smart_contracts/contract_as"
     fail_on_version_conflict:
     - true
     access:

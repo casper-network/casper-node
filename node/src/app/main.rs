@@ -47,10 +47,11 @@ fn main() -> anyhow::Result<()> {
     // The exit code is determined in a block to ensure that all acquired resources are dropped
     // before exiting with the given exit code.
     let exit_code = {
-        let mut runtime = Builder::new()
-            .threaded_scheduler()
+        let num_cpus = num_cpus::get();
+        let runtime = Builder::new_multi_thread()
             .enable_all()
-            .max_threads(MAX_THREAD_COUNT)
+            .worker_threads(num_cpus)
+            .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
             .build()
             .unwrap();
 

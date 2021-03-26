@@ -1,3 +1,5 @@
+#![allow(clippy::integer_arithmetic)] // In tests, overflows panic anyway.
+
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
@@ -53,6 +55,14 @@ impl ConsensusValueT for ConsensusValue {
         let mut hasher = DefaultHasher::new();
         std::hash::Hash::hash(&self, &mut hasher);
         hasher.finish()
+    }
+
+    fn timestamp(&self) -> Timestamp {
+        0.into() // Not relevant for highway_core tests.
+    }
+
+    fn parent(&self) -> Option<&Self::Hash> {
+        None // Not relevant for highway_core tests.
     }
 }
 

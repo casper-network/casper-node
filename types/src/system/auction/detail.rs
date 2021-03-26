@@ -109,7 +109,7 @@ where
     Ok(read_from(provider, ERA_ID_KEY)?)
 }
 
-pub fn set_era_id<P>(provider: &mut P, era_id: u64) -> Result<(), Error>
+pub fn set_era_id<P>(provider: &mut P, era_id: EraId) -> Result<(), Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -149,7 +149,7 @@ where
 
     let mut ret = BTreeMap::new();
 
-    for era_id in current_era_id..=(current_era_id + auction_delay) {
+    for era_id in current_era_id.iter_inclusive(auction_delay) {
         let recipient = match provider.read_era_validators(era_id)? {
             Some(recipient) => recipient,
             None => return Err(Error::ValidatorNotFound),
@@ -191,7 +191,7 @@ where
 ///
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<(), Error> {
-    if provider.get_caller() != SYSTEM_ACCOUNT {
+    if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller);
     }
 

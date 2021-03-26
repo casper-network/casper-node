@@ -44,11 +44,10 @@ use casper_types::{
     },
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    EntryPointType, EntryPoints, EraId, Key, Parameter, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, URef, U512,
 };
 
-use super::SYSTEM_ACCOUNT_ADDR;
 use crate::{
     core::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig},
@@ -249,7 +248,7 @@ impl GenesisAccount {
     /// The account hash for the account.
     pub fn account_hash(&self) -> AccountHash {
         match self {
-            GenesisAccount::System => SYSTEM_ACCOUNT_ADDR,
+            GenesisAccount::System => PublicKey::System.to_account_hash(),
             GenesisAccount::Account { public_key, .. } => public_key.to_account_hash(),
             GenesisAccount::Delegator {
                 delegator_public_key,
@@ -751,13 +750,15 @@ where
 
         let protocol_data = ProtocolData::default();
 
+        let system_account_addr = PublicKey::System.to_account_hash();
+
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+            Account::create(system_account_addr, named_keys, purse)
         };
 
-        let key = Key::Account(SYSTEM_ACCOUNT_ADDR);
+        let key = Key::Account(system_account_addr);
         let value = { StoredValue::Account(virtual_system_account.clone()) };
 
         tracking_copy.borrow_mut().write(key, value);
@@ -1164,8 +1165,8 @@ where
         &self,
         validators: &BTreeMap<PublicKey, Bid>,
         auction_delay: u64,
-    ) -> BTreeMap<u64, SeigniorageRecipients> {
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
+    ) -> BTreeMap<EraId, SeigniorageRecipients> {
+        let initial_snapshot_range = INITIAL_ERA_ID.iter_inclusive(auction_delay);
 
         let mut seigniorage_recipients = SeigniorageRecipients::new();
         for (era_validator, founding_validator) in validators {

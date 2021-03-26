@@ -14,7 +14,9 @@ use crate::{
     components::consensus::{
         candidate_block::CandidateBlock, cl_context::ClContext,
         consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
+        traits::ConsensusValueT,
     },
+    crypto::hash::Digest,
     types::{ProtoBlock, Timestamp},
 };
 
@@ -117,13 +119,13 @@ impl<I> Era<I> {
     pub(crate) fn resolve_validity(
         &mut self,
         proto_block: &ProtoBlock,
-        timestamp: Timestamp,
+        parent: Option<Digest>,
         valid: bool,
     ) -> Vec<CandidateBlock> {
         if valid {
-            self.accept_proto_block(proto_block, timestamp)
+            self.accept_proto_block(proto_block, parent)
         } else {
-            self.reject_proto_block(proto_block, timestamp)
+            self.reject_proto_block(proto_block, parent)
         }
     }
 
@@ -132,10 +134,11 @@ impl<I> Era<I> {
     pub(crate) fn accept_proto_block(
         &mut self,
         proto_block: &ProtoBlock,
-        timestamp: Timestamp,
+        parent: Option<Digest>,
     ) -> Vec<CandidateBlock> {
         for pc in &mut self.candidates {
-            if pc.candidate.proto_block() == proto_block && pc.candidate.timestamp() == timestamp {
+            if pc.candidate.proto_block() == proto_block && pc.candidate.parent() == parent.as_ref()
+            {
                 pc.validated = true;
             }
         }
@@ -147,10 +150,10 @@ impl<I> Era<I> {
     pub(crate) fn reject_proto_block(
         &mut self,
         proto_block: &ProtoBlock,
-        timestamp: Timestamp,
+        parent: Option<Digest>,
     ) -> Vec<CandidateBlock> {
         let (invalid, candidates): (Vec<_>, Vec<_>) = self.candidates.drain(..).partition(|pc| {
-            pc.candidate.proto_block() == proto_block && pc.candidate.timestamp() == timestamp
+            pc.candidate.proto_block() == proto_block && pc.candidate.parent() == parent.as_ref()
         });
         self.candidates = candidates;
         invalid.into_iter().map(|pc| pc.candidate).collect()
@@ -240,12 +243,12 @@ where
         };
 
         consensus_heap_size
-            + start_time.estimate_heap_size()
-            + start_height.estimate_heap_size()
-            + candidates.estimate_heap_size()
-            + newly_slashed.estimate_heap_size()
-            + slashed.estimate_heap_size()
-            + accusations.estimate_heap_size()
-            + validators.estimate_heap_size()
+            .saturating_add(start_time.estimate_heap_size())
+            .saturating_add(start_height.estimate_heap_size())
+            .saturating_add(candidates.estimate_heap_size())
+            .saturating_add(newly_slashed.estimate_heap_size())
+            .saturating_add(slashed.estimate_heap_size())
+            .saturating_add(accusations.estimate_heap_size())
+            .saturating_add(validators.estimate_heap_size())
     }
 }

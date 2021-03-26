@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use casper_node_macros::reactor;
 use futures::FutureExt;
+use semver::Version;
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
@@ -73,6 +74,7 @@ reactor!(Reactor {
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
             chainspec_loader.hard_reset_to_start_of_era(),
+            Version::new(1, 0, 0),
         );
         deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec());
         deploy_fetcher = Fetcher::<Deploy>("deploy", cfg.fetcher_config, registry);
@@ -293,19 +295,19 @@ async fn should_fetch_from_local() {
     store_deploy(&deploy, node_to_store_on, &mut network, None, &mut rng).await;
 
     // Try to fetch the deploy from a node that holds it.
-    let node_id = &node_ids[0];
+    let node_id = node_ids[0];
     let deploy_hash = *deploy.id();
     let fetched = Arc::new(Mutex::new((false, None)));
     network
         .process_injected_effect_on(
-            node_id,
-            fetch_deploy(deploy_hash, node_id.clone(), Arc::clone(&fetched)),
+            &node_id,
+            fetch_deploy(deploy_hash, node_id, Arc::clone(&fetched)),
         )
         .await;
 
     let expected_result = Some(FetchResult::FromStorage(Box::new(deploy)));
     assert_settled(
-        node_id,
+        &node_id,
         deploy_hash,
         expected_result,
         fetched,
@@ -334,27 +336,24 @@ async fn should_fetch_from_peer() {
     let deploy = Deploy::random(&mut rng);
 
     // Store deploy on a node.
-    let node_with_deploy = &node_ids[0];
-    store_deploy(&deploy, node_with_deploy, &mut network, None, &mut rng).await;
+    let node_with_deploy = node_ids[0];
+    store_deploy(&deploy, &node_with_deploy, &mut network, None, &mut rng).await;
 
-    let node_without_deploy = &node_ids[1];
+    let node_without_deploy = node_ids[1];
     let deploy_hash = *deploy.id();
     let fetched = Arc::new(Mutex::new((false, None)));
 
     // Try to fetch the deploy from a node that does not hold it; should get from peer.
     network
         .process_injected_effect_on(
-            node_without_deploy,
-            fetch_deploy(deploy_hash, node_with_deploy.clone(), Arc::clone(&fetched)),
+            &node_without_deploy,
+            fetch_deploy(deploy_hash, node_with_deploy, Arc::clone(&fetched)),
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(
-        Box::new(deploy),
-        node_with_deploy.clone(),
-    ));
+    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), node_with_deploy));
     assert_settled(
-        node_without_deploy,
+        &node_without_deploy,
         deploy_hash,
         expected_result,
         fetched,
@@ -383,8 +382,8 @@ async fn should_timeout_fetch_from_peer() {
     let deploy = Deploy::random(&mut rng);
     let deploy_hash = *deploy.id();
 
-    let holding_node = node_ids[0].clone();
-    let requesting_node = node_ids[1].clone();
+    let holding_node = node_ids[0];
+    let requesting_node = node_ids[1];
 
     // Store deploy on holding node.
     store_deploy(&deploy, &holding_node, &mut network, None, &mut rng).await;
@@ -394,7 +393,7 @@ async fn should_timeout_fetch_from_peer() {
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_hash, holding_node.clone(), Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, holding_node, Arc::clone(&fetched)),
         )
         .await;
 

@@ -76,36 +76,33 @@ use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
-use tokio::sync::Semaphore;
-use tracing::{error, warn};
+use tokio::{sync::Semaphore, time};
+use tracing::error;
+#[cfg(not(feature = "fast-sync"))]
+use tracing::warn;
 
 use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
         MAX_PAYMENT,
     },
-    shared::{
-        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
-        transform::Transform,
-    },
-    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
-    system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
-    U512,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    Transfer, U512,
 };
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade,
-        consensus::{BlockContext, EraId},
+        chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        consensus::BlockContext,
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -122,14 +119,14 @@ use crate::{
     utils::Source,
 };
 use announcements::{
-    BlockExecutorAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     NetworkAnnouncement, RpcServerAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
+    BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+    ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -456,7 +453,7 @@ impl<REv> EffectBuilder<REv> {
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
-        tokio::time::delay_for(timeout).await;
+        time::sleep(timeout).await;
         Instant::now() - then
     }
 
@@ -673,14 +670,11 @@ impl<REv> EffectBuilder<REv> {
         block: Block,
         execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
-        REv: From<BlockExecutorAnnouncement>,
+        REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::LinearChainBlock {
-                    block,
-                    execution_results,
-                },
+                ContractRuntimeAnnouncement::linear_chain_block(block, execution_results),
                 QueueKind::Regular,
             )
             .await
@@ -689,11 +683,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announce that a block had been executed before.
     pub(crate) async fn announce_block_already_executed(self, block: Block)
     where
-        REv: From<BlockExecutorAnnouncement>,
+        REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                BlockExecutorAnnouncement::BlockAlreadyExecuted(block),
+                ContractRuntimeAnnouncement::block_already_executed(block),
                 QueueKind::Regular,
             )
             .await
@@ -731,6 +725,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block header from the linear block store.
+    pub(crate) async fn get_block_header_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeader {
                 block_hash,
                 responder,
             },
@@ -1097,11 +1109,11 @@ impl<REv> EffectBuilder<REv> {
     /// Passes a finalized proto-block to the block executor component to execute it.
     pub(crate) async fn execute_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<BlockExecutorRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
         self.0
             .schedule(
-                BlockExecutorRequest::ExecuteBlock(finalized_block),
+                ContractRuntimeRequest::ExecuteBlock(finalized_block),
                 QueueKind::Regular,
             )
             .await
@@ -1265,11 +1277,24 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Gets the information about the current run of the node software.
+    pub(crate) async fn get_current_run_info(self) -> CurrentRunInfo
+    where
+        REv: From<ChainspecLoaderRequest>,
+    {
+        self.make_request(
+            ChainspecLoaderRequest::GetCurrentRunInfo,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Loads potentially previously stored state from storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.
     ///
     /// If an error occurs during state loading or no data is found, returns `None`.
+    #[allow(unused)]
     pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
     where
         REv: From<StateStoreRequest>,
@@ -1296,12 +1321,28 @@ impl<REv> EffectBuilder<REv> {
         })
     }
 
+    /// Retrieves finalized deploys from blocks that were created more recently than the TTL.
+    pub(crate) async fn get_finalized_deploys(
+        self,
+        ttl: TimeDiff,
+    ) -> Vec<(DeployHash, DeployHeader)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            move |responder| StorageRequest::GetFinalizedDeploys { ttl, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Save state to storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.
     ///
     /// Returns whether or not storing the state was successful. A component that requires state to
     /// be successfully stored should check the return value and act accordingly.
+    #[cfg(not(feature = "fast-sync"))]
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
         REv: From<StateStoreRequest>,
@@ -1326,45 +1367,6 @@ impl<REv> EffectBuilder<REv> {
                 false
             }
         }
-    }
-
-    /// Requests an execution of deploys using Contract Runtime.
-    pub(crate) async fn request_execute(
-        self,
-        execute_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        let execute_request = Box::new(execute_request);
-        self.make_request(
-            |responder| ContractRuntimeRequest::Execute {
-                execute_request,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a commit of effects on the Contract Runtime component.
-    pub(crate) async fn request_commit(
-        self,
-        state_root_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<CommitResult, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
     }
 
     /// Requests a query be executed on the Contract Runtime component.
@@ -1504,16 +1506,16 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the correct era validators set for the given era.
     /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
     /// and `activation_era_id` parameters.
-    pub(crate) async fn get_era_validators(
-        self,
-        era_id: EraId,
-        activation_era_id: EraId,
-        initial_state_root_hash: Digest,
-        protocol_version: ProtocolVersion,
-    ) -> Option<BTreeMap<PublicKey, U512>>
+    pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
+        let CurrentRunInfo {
+            activation_point,
+            protocol_version,
+            initial_state_root_hash,
+        } = self.get_current_run_info().await;
+        let activation_era_id = activation_point.era_id();
         if era_id < activation_era_id {
             // we don't support getting the validators from before the last upgrade
             return None;
@@ -1547,7 +1549,7 @@ impl<REv> EffectBuilder<REv> {
             self.get_era_validators_from_contract_runtime(req)
                 .await
                 .ok()
-                .and_then(|era_validators| era_validators.get(&era_id.0).cloned())
+                .and_then(|era_validators| era_validators.get(&era_id).cloned())
         } else {
             // in other eras, we just use the validators from the key block
             self.get_key_block_for_era_id_from_storage(era_id)
@@ -1561,23 +1563,14 @@ impl<REv> EffectBuilder<REv> {
         self,
         validator: PublicKey,
         era_id: EraId,
-        activation_era_id: EraId,
-        initial_state_root_hash: Digest,
         latest_state_root_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
     ) -> Result<bool, GetEraValidatorsError>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         // try just reading the era validators first
-        let maybe_era_validators = self
-            .get_era_validators(
-                era_id,
-                activation_era_id,
-                initial_state_root_hash,
-                protocol_version,
-            )
-            .await;
+        let maybe_era_validators = self.get_era_validators(era_id).await;
         let maybe_is_currently_bonded =
             maybe_era_validators.map(|validators| validators.contains_key(&validator));
 
@@ -1640,7 +1633,7 @@ impl<REv> EffectBuilder<REv> {
                 .into_iter()
                 // we would get None for era 0 and that would make it seem like the entire
                 // function failed
-                .filter(|era_id| *era_id != EraId(0))
+                .filter(|era_id| !era_id.is_genesis())
                 .map(|era_id| {
                     self.get_key_block_for_era_id_from_storage(era_id)
                         .map(move |maybe_block| {

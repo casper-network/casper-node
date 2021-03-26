@@ -79,8 +79,10 @@ impl<REv> ReactorEventT for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
+    #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
     /// The task handle which will only join once the server loop has exited.
+    #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 }
 

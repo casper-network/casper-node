@@ -32,7 +32,7 @@ pub(super) fn new_behaviors(
         max_value_bytes: 0,
         ..Default::default()
     };
-    let memory_store = MemoryStore::with_config(our_peer_id.clone(), memory_store_config);
+    let memory_store = MemoryStore::with_config(our_peer_id, memory_store_config);
 
     let protocol_id = ProtocolId::new(chainspec, KADEMLIA_PROTOCOL_NAME_INNER);
     let mut kademlia_config = KademliaConfig::default();

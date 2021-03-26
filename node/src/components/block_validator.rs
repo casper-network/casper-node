@@ -10,7 +10,7 @@
 mod keyed_counter;
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     convert::Infallible,
     fmt::Debug,
     sync::Arc,
@@ -18,6 +18,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Display, From};
+use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::info;
 
@@ -30,6 +31,7 @@ use crate::{
     types::{BlockLike, Chainspec, Deploy, DeployHash, Timestamp},
     NodeRng,
 };
+use casper_types::bytesrepr::ToBytes;
 use keyed_counter::KeyedCounter;
 
 use super::fetcher::FetchResult;
@@ -42,8 +44,11 @@ pub enum Event<T, I> {
     Request(BlockValidationRequest<T, I>),
 
     /// A deploy has been successfully found.
-    #[display(fmt = "deploy {} found", _0)]
-    DeployFound(DeployHash),
+    #[display(fmt = "deploy {} found", deploy_hash)]
+    DeployFound {
+        deploy_hash: DeployHash,
+        deploy_size: usize,
+    },
 
     /// A request to find a specific deploy, potentially from a peer, failed.
     #[display(fmt = "deploy {} missing", _0)]
@@ -59,6 +64,9 @@ pub enum Event<T, I> {
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidationState<T, I> {
+    /// Total running size of the deploys in the block, which is used to validate against the
+    /// chainspec's deploy.max_block_size.
+    deploy_size_running_total: usize,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
     missing_deploys: HashSet<DeployHash>,
     /// A list of responders that are awaiting an answer.
@@ -103,7 +111,7 @@ pub(crate) struct BlockValidator<T, I> {
 impl<T, I> BlockValidator<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static + Send,
+    I: Clone + Debug + Send + 'static + Send,
 {
     /// Creates a new block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
@@ -112,6 +120,24 @@ where
             validation_states: HashMap::new(),
             in_flight: KeyedCounter::default(),
         }
+    }
+
+    /// Prints a log message about an invalid block with duplicated deploys.
+    fn log_block_with_replay(&self, sender: I, block: &T) {
+        let mut deploy_counts = BTreeMap::new();
+        for deploy_hash in block.deploys() {
+            *deploy_counts.entry(*deploy_hash).or_default() += 1;
+        }
+        let duplicates = deploy_counts
+            .into_iter()
+            .filter_map(|(deploy_hash, count): (DeployHash, usize)| {
+                (count > 1).then(|| format!("{} * {:?}", count, deploy_hash))
+            })
+            .join(", ");
+        info!(
+            ?sender, %duplicates,
+            "received invalid block containing duplicated deploys"
+        );
     }
 }
 
@@ -142,11 +168,17 @@ where
                 responder,
                 block_timestamp,
             }) => {
-                let block_deploys = block
-                    .deploys()
+                let block_deploys = block.deploys();
+                let deploy_count = block_deploys.len();
+                // Collect the deploys in a set; this also deduplicates them.
+                let block_deploys: HashSet<_> = block_deploys
                     .iter()
                     .map(|deploy_hash| **deploy_hash)
-                    .collect::<HashSet<_>>();
+                    .collect();
+                if block_deploys.len() != deploy_count {
+                    self.log_block_with_replay(sender, &block);
+                    return responder.respond((false, block)).ignore();
+                }
                 if block_deploys.is_empty() {
                     // If there are no deploys, return early.
                     return responder.respond((true, block)).ignore();
@@ -194,6 +226,7 @@ where
                         effects.extend(fetch_effects);
 
                         entry.insert(BlockValidationState {
+                            deploy_size_running_total: 0,
                             missing_deploys,
                             responders: smallvec![responder],
                             sources: VecDeque::new(), /* This is empty b/c we create the first
@@ -203,26 +236,54 @@ where
                     }
                 }
             }
-            Event::DeployFound(deploy_hash) => {
+            Event::DeployFound {
+                deploy_hash,
+                deploy_size,
+            } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
                 self.in_flight.dec(&deploy_hash);
 
+                // If a deploy is received for a given block that makes that block invalid somehow,
+                // mark it for removal.
+                let mut invalid = Vec::new();
+
+                let max_block_size = self.chainspec.deploy_config.max_block_size as usize;
+
                 // Our first pass updates all validation states, crossing off the found deploy.
-                for state in self.validation_states.values_mut() {
-                    state.missing_deploys.remove(&deploy_hash);
+                for (key, state) in self.validation_states.iter_mut() {
+                    if state.missing_deploys.remove(&deploy_hash) {
+                        let valid_new_total = state
+                            .deploy_size_running_total
+                            .checked_add(deploy_size)
+                            .filter(|new_total| *new_total <= max_block_size);
+
+                        match valid_new_total {
+                            Some(new_total) => state.deploy_size_running_total = new_total,
+                            None => {
+                                // Notify everyone still waiting on it that all is lost.
+                                info!(block=?key, %deploy_hash, %max_block_size, "block size exceeded");
+                                invalid.push(key.clone());
+                            }
+                        }
+                    }
                 }
 
                 // Now we remove all states that have finished and notify the requestors.
                 self.validation_states.retain(|key, state| {
+                    if invalid.contains(key) {
+                        state.responders.drain(..).for_each(|responder| {
+                            effects.extend(responder.respond((false, key.clone())).ignore());
+                        });
+                        return false;
+                    }
                     if state.missing_deploys.is_empty() {
                         // This one is done and valid.
                         state.responders.drain(..).for_each(|responder| {
                             effects.extend(responder.respond((true, key.clone())).ignore());
                         });
-                        false
-                    } else {
-                        true
+                        return false;
                     }
+                    true
                 });
             }
             Event::DeployMissing(deploy_hash) => {
@@ -326,7 +387,11 @@ where
                 .header()
                 .is_valid(&chainspec.deploy_config, block_timestamp)
             {
-                Event::DeployFound(deploy_hash)
+                let deploy_size = deploy.serialized_length();
+                Event::DeployFound {
+                    deploy_hash,
+                    deploy_size,
+                }
             } else {
                 Event::DeployInvalid(deploy_hash)
             }
