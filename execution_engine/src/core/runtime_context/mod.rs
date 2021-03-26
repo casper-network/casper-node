@@ -31,6 +31,7 @@ use crate::{
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
+pub mod mocks;
 #[cfg(test)]
 mod tests;
 
@@ -718,7 +719,7 @@ where
     /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
     /// Intuition about the return value sense is to answer the question 'are we
     /// allowed to continue?'
-    pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
+    pub fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
         // gas charge overflow protection
