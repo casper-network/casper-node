@@ -10,7 +10,7 @@
 mod keyed_counter;
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     convert::Infallible,
     fmt::Debug,
     sync::Arc,
@@ -18,6 +18,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Display, From};
+use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::info;
 
@@ -110,7 +111,7 @@ pub(crate) struct BlockValidator<T, I> {
 impl<T, I> BlockValidator<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static + Send,
+    I: Clone + Debug + Send + 'static + Send,
 {
     /// Creates a new block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
@@ -119,6 +120,24 @@ where
             validation_states: HashMap::new(),
             in_flight: KeyedCounter::default(),
         }
+    }
+
+    /// Prints a log message about an invalid block with duplicated deploys.
+    fn log_block_with_replay(&self, sender: I, block: &T) {
+        let mut deploy_counts = BTreeMap::new();
+        for deploy_hash in block.deploys() {
+            *deploy_counts.entry(*deploy_hash).or_default() += 1;
+        }
+        let duplicates = deploy_counts
+            .into_iter()
+            .filter_map(|(deploy_hash, count): (DeployHash, usize)| {
+                (count > 1).then(|| format!("{} * {:?}", count, deploy_hash))
+            })
+            .join(", ");
+        info!(
+            ?sender, %duplicates,
+            "received invalid block containing duplicated deploys"
+        );
     }
 }
 
@@ -157,10 +176,7 @@ where
                     .map(|deploy_hash| **deploy_hash)
                     .collect();
                 if block_deploys.len() != deploy_count {
-                    info!(
-                        deploys = ?block.deploys(), ?sender,
-                        "received invalid block containing duplicated deploys"
-                    );
+                    self.log_block_with_replay(sender, &block);
                     return responder.respond((false, block)).ignore();
                 }
                 if block_deploys.is_empty() {
