@@ -1,9 +1,11 @@
-use alloc::{format, string::String, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{
-    array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
-    num::ParseIntError,
     str::FromStr,
 };
 
@@ -16,13 +18,14 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, AccountHashBytes, TryFromSliceForAccountHashError},
+    account::{self, AccountHash, AccountHashBytes, ACCOUNT_HASH_FORMATTED_STRING_PREFIX},
     bytesrepr::{self, Error, FromBytes, ToBytes},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, EraId, Tagged, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-    UREF_ADDR_LENGTH,
+    DeployHash, EraId, Tagged, TransferAddr, TransferFromStrError, DEPLOY_HASH_LENGTH,
+    TRANSFER_ADDR_FORMATTED_STRING_PREFIX, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    UREF_FORMATTED_STRING_PREFIX,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -111,36 +114,28 @@ pub enum Key {
 
 #[derive(Debug)]
 pub enum FromStrError {
-    InvalidPrefix,
-    Hex(base16::DecodeError),
-    Account(TryFromSliceForAccountHashError),
-    Hash(TryFromSliceError),
-    AccountHash(account::FromStrError),
+    Account(account::FromStrError),
+    Hash(String),
     URef(uref::FromStrError),
-    EraId(ParseIntError),
-}
-
-impl From<base16::DecodeError> for FromStrError {
-    fn from(error: base16::DecodeError) -> Self {
-        FromStrError::Hex(error)
-    }
-}
-
-impl From<TryFromSliceForAccountHashError> for FromStrError {
-    fn from(error: TryFromSliceForAccountHashError) -> Self {
-        FromStrError::Account(error)
-    }
-}
-
-impl From<TryFromSliceError> for FromStrError {
-    fn from(error: TryFromSliceError) -> Self {
-        FromStrError::Hash(error)
-    }
+    Transfer(TransferFromStrError),
+    DeployInfo(String),
+    EraInfo(String),
+    Balance(String),
+    Bid(String),
+    Withdraw(String),
+    EraValidators(String),
+    UnknownPrefix,
 }
 
 impl From<account::FromStrError> for FromStrError {
     fn from(error: account::FromStrError) -> Self {
-        FromStrError::AccountHash(error)
+        FromStrError::Account(error)
+    }
+}
+
+impl From<TransferFromStrError> for FromStrError {
+    fn from(error: TransferFromStrError) -> Self {
+        FromStrError::Transfer(error)
     }
 }
 
@@ -150,24 +145,24 @@ impl From<uref::FromStrError> for FromStrError {
     }
 }
 
-impl From<ParseIntError> for FromStrError {
-    fn from(error: ParseIntError) -> Self {
-        FromStrError::EraId(error)
-    }
-}
-
 impl Display for FromStrError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
-            FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
-            FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
-            FromStrError::AccountHash(error) => {
-                write!(f, "account hash from string error: {:?}", error)
+            FromStrError::Account(error) => write!(f, "account-key from string error: {}", error),
+            FromStrError::Hash(error) => write!(f, "hash-key from string error: {}", error),
+            FromStrError::URef(error) => write!(f, "uref-key from string error: {}", error),
+            FromStrError::Transfer(error) => write!(f, "transfer-key from string error: {}", error),
+            FromStrError::DeployInfo(error) => {
+                write!(f, "deploy-info-key from string error: {}", error)
             }
-            FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
-            FromStrError::EraId(error) => write!(f, "era id from string error: {}", error),
+            FromStrError::EraInfo(error) => write!(f, "era-info-key from string error: {}", error),
+            FromStrError::Balance(error) => write!(f, "balance-key from string error: {}", error),
+            FromStrError::Bid(error) => write!(f, "bid-key from string error: {}", error),
+            FromStrError::Withdraw(error) => write!(f, "withdraw-key from string error: {}", error),
+            FromStrError::EraValidators(error) => {
+                write!(f, "era-validators-key from string error: {}", error)
+            }
+            FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
 }
@@ -239,39 +234,73 @@ impl Key {
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a `Key`.
     pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
-        if let Ok(account_hash) = AccountHash::from_formatted_str(input) {
-            Ok(Key::Account(account_hash))
-        } else if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
-            Ok(Key::Hash(HashAddr::try_from(
-                base16::decode(hex)?.as_ref(),
-            )?))
-        } else if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
-            Ok(Key::DeployInfo(DeployHash::new(
-                <[u8; DEPLOY_HASH_LENGTH]>::try_from(base16::decode(hex)?.as_ref())?,
-            )))
-        } else if let Ok(transfer_addr) = TransferAddr::from_formatted_str(input) {
-            Ok(Key::Transfer(transfer_addr))
-        } else if let Ok(uref) = URef::from_formatted_str(input) {
-            Ok(Key::URef(uref))
-        } else if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
-            Ok(Key::EraInfo(EraId::from_str(era_id_str)?))
-        } else if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
-            Ok(Key::Balance(URefAddr::try_from(
-                base16::decode(hex)?.as_ref(),
-            )?))
-        } else if let Some(hex) = input.strip_prefix(BID_PREFIX) {
-            Ok(Key::Bid(AccountHash::new(AccountHashBytes::try_from(
-                base16::decode(hex)?.as_ref(),
-            )?)))
-        } else if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
-            Ok(Key::Withdraw(AccountHash::new(AccountHashBytes::try_from(
-                base16::decode(hex)?.as_ref(),
-            )?)))
-        } else if let Some(era_id_str) = input.strip_prefix(VALIDATORS_PREFIX) {
-            Ok(Key::EraValidators(EraId::from_str(era_id_str)?))
-        } else {
-            Err(FromStrError::InvalidPrefix)
+        if input.starts_with(ACCOUNT_HASH_FORMATTED_STRING_PREFIX) {
+            let account_hash = AccountHash::from_formatted_str(input)?;
+            return Ok(Key::Account(account_hash));
         }
+
+        if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
+            let addr =
+                base16::decode(hex).map_err(|error| FromStrError::Hash(error.to_string()))?;
+            let hash_addr = HashAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::Hash(error.to_string()))?;
+            return Ok(Key::Hash(hash_addr));
+        }
+
+        if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
+            let hash =
+                base16::decode(hex).map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
+            let hash_array = <[u8; DEPLOY_HASH_LENGTH]>::try_from(hash.as_ref())
+                .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
+            return Ok(Key::DeployInfo(DeployHash::new(hash_array)));
+        }
+
+        if input.starts_with(TRANSFER_ADDR_FORMATTED_STRING_PREFIX) {
+            let transfer_addr = TransferAddr::from_formatted_str(input)?;
+            return Ok(Key::Transfer(transfer_addr));
+        }
+
+        if input.starts_with(UREF_FORMATTED_STRING_PREFIX) {
+            let uref = URef::from_formatted_str(input)?;
+            return Ok(Key::URef(uref));
+        }
+
+        if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
+            let era_id = EraId::from_str(era_id_str)
+                .map_err(|error| FromStrError::EraInfo(error.to_string()))?;
+            return Ok(Key::EraInfo(era_id));
+        }
+
+        if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
+            let addr =
+                base16::decode(hex).map_err(|error| FromStrError::Balance(error.to_string()))?;
+            let uref_addr = URefAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::Balance(error.to_string()))?;
+            return Ok(Key::Balance(uref_addr));
+        }
+
+        if let Some(hex) = input.strip_prefix(BID_PREFIX) {
+            let hash = base16::decode(hex).map_err(|error| FromStrError::Bid(error.to_string()))?;
+            let account_hash = AccountHashBytes::try_from(hash.as_ref())
+                .map_err(|error| FromStrError::Bid(error.to_string()))?;
+            return Ok(Key::Bid(AccountHash::new(account_hash)));
+        }
+
+        if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
+            let hash =
+                base16::decode(hex).map_err(|error| FromStrError::Withdraw(error.to_string()))?;
+            let account_hash = AccountHashBytes::try_from(hash.as_ref())
+                .map_err(|error| FromStrError::Withdraw(error.to_string()))?;
+            return Ok(Key::Withdraw(AccountHash::new(account_hash)));
+        }
+
+        if let Some(era_id_str) = input.strip_prefix(VALIDATORS_PREFIX) {
+            let era_id = EraId::from_str(era_id_str)
+                .map_err(|error| FromStrError::EraValidators(error.to_string()))?;
+            return Ok(Key::EraValidators(era_id));
+        }
+
+        Err(FromStrError::UnknownPrefix)
     }
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Account`], otherwise returns
@@ -545,7 +574,7 @@ impl FromBytes for Key {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..8) {
+        match rng.gen_range(0..10) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
