@@ -286,13 +286,6 @@ balance = "0"
 bonded_amount = "1000000000"
 delegation_rate = 5
 [[accounts]]
-public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631120a7ece06"
-balance = "0"
-
-[accounts.validator]
-bonded_amount = "1000000000"
-delegation_rate = 7
-[[accounts]]
 public_key = "01b1c48c69eeb5339ae43be062dee21c46d61346b9ee1f83d4e924000833c5a3e4"
 balance = "0"
 
@@ -510,7 +503,7 @@ validator_public_key = "01d904f8135553a4810487b0d754f9f1c8efb1ee91c96f36e92b9631
 delegated_amount = "1064988708400000"
 
 [[delegators]]
-delegator_public_key = "01c95237e28d2b2469ee79684d8646bcaecbc9cefb4c277da29ed9dec9f69b33"
+delegator_public_key = "010e7b14719461b8fdc67c9c4770acd4f1b1249ce18d758cc951708c2400fa721e"
 balance = "0"
 validator_public_key = "017f7380736731efa408c323b38a13541be1c99a4aefb0d5b59c6a4aecac494105"
 delegated_amount = "1077931000000000"
