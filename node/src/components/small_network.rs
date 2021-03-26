@@ -500,7 +500,7 @@ where
                     return Effects::new();
                 }
 
-                debug!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
+                info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {

@@ -54,7 +54,7 @@ function do_render()
         log "node #$NODE_ID :: status: N/A"
     else
         log "node #$NODE_ID :: status:"
-        echo "$NODE_API_RESPONSE" | jq
+        echo "$NODE_API_RESPONSE" | jq '.'
     fi
 }
 

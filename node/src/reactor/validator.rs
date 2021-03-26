@@ -466,7 +466,6 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
-            chainspec_loader.initial_state_root_hash(),
             latest_block.as_ref().map(Block::header),
             maybe_next_activation_point,
             registry,
@@ -500,6 +499,10 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
             small_network_effects,
+        ));
+        effects.extend(reactor::wrap_effects(
+            Event::ChainspecLoader,
+            chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
         Ok((
@@ -956,12 +959,7 @@ impl reactor::Reactor for Reactor {
                                 block: block.proto_block().clone(),
                                 height: block.height(),
                             });
-                        let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-
-                        let reactor_event =
-                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                        effects
+                        self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
                         effect_builder,
@@ -983,9 +981,9 @@ impl reactor::Reactor for Reactor {
                             });
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
-                    ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                    ConsensusAnnouncement::DisconnectFromPeer(peer) => {
                         // TODO: handle the announcement and actually disconnect
-                        warn!("Disconnecting from a given peer not yet implemented.");
+                        warn!(%peer, "peer deemed problematic, would disconnect");
                         Effects::new()
                     }
                 }

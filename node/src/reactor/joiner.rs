@@ -520,7 +520,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             &storage,
             init_hash,
-            chainspec_loader.initial_block_header().cloned(),
+            chainspec_loader.initial_block().cloned(),
             validator_weights,
             maybe_next_activation_point,
         )?;
@@ -528,6 +528,10 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::LinearChainSync,
             init_sync_effects,
+        ));
+        effects.extend(reactor::wrap_effects(
+            Event::ChainspecLoader,
+            chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
         Ok((
@@ -825,9 +829,6 @@ impl reactor::Reactor for Reactor {
                 );
                 let reactor_event =
                     Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                let reactor_event =
-                    Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
