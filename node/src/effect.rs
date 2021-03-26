@@ -77,7 +77,9 @@ use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::sync::Semaphore;
-use tracing::{error, warn};
+use tracing::error;
+#[cfg(not(feature = "fast-sync"))]
+use tracing::warn;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -731,6 +733,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block header from the linear block store.
+    pub(crate) async fn get_block_header_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeader {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested signatures for a given block hash.
     pub(crate) async fn get_signatures_from_storage(
         self,
@@ -1274,6 +1294,7 @@ impl<REv> EffectBuilder<REv> {
     /// Key must be a unique key across the the application, as all keys share a common namespace.
     ///
     /// If an error occurs during state loading or no data is found, returns `None`.
+    #[allow(unused)]
     pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
     where
         REv: From<StateStoreRequest>,
@@ -1300,12 +1321,28 @@ impl<REv> EffectBuilder<REv> {
         })
     }
 
+    /// Retrieves finalized deploys from blocks that were created more recently than the TTL.
+    pub(crate) async fn get_finalized_deploys(
+        self,
+        ttl: TimeDiff,
+    ) -> Vec<(DeployHash, DeployHeader)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            move |responder| StorageRequest::GetFinalizedDeploys { ttl, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Save state to storage.
     ///
     /// Key must be a unique key across the the application, as all keys share a common namespace.
     ///
     /// Returns whether or not storing the state was successful. A component that requires state to
     /// be successfully stored should check the return value and act accordingly.
+    #[cfg(not(feature = "fast-sync"))]
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
         REv: From<StateStoreRequest>,

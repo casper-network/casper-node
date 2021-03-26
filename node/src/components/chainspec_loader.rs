@@ -16,6 +16,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -55,6 +56,8 @@ use crate::{
     utils::{self, Loadable},
     NodeRng,
 };
+
+const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -236,7 +239,7 @@ impl ChainspecLoader {
         // In case this is a version which should be immediately replaced by the next version, don't
         // create any effects so we exit cleanly for an upgrade without touching the storage
         // component.  Otherwise create effects which will allow us to initialize properly.
-        let effects = if should_stop {
+        let mut effects = if should_stop {
             Effects::new()
         } else {
             effect_builder
@@ -245,6 +248,13 @@ impl ChainspecLoader {
                     maybe_highest_block: highest_block.map(Box::new),
                 })
         };
+
+        // Start regularly checking for the next upgrade.
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
 
         let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
 
@@ -258,6 +268,20 @@ impl ChainspecLoader {
         };
 
         (chainspec_loader, effects)
+    }
+
+    /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
+    /// validator reactors' constructors to start the recurring task of checking for upgrades.  The
+    /// recurring tasks of the previous reactors will be cancelled when the relevant reactor is
+    /// destroyed during transition.
+    pub(crate) fn start_checking_for_upgrades<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event>
+    where
+        REv: From<ChainspecLoaderAnnouncement> + Send,
+    {
+        self.check_for_next_upgrade(effect_builder)
     }
 
     pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
@@ -550,7 +574,7 @@ impl ChainspecLoader {
     {
         let root_dir = self.root_dir.clone();
         let current_version = self.chainspec.protocol_config.version;
-        async move {
+        let mut effects = async move {
             let maybe_next_upgrade =
                 task::spawn_blocking(move || next_upgrade(root_dir, current_version))
                     .await
@@ -564,7 +588,15 @@ impl ChainspecLoader {
                     .await
             }
         }
-        .ignore()
+        .ignore();
+
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
+
+        effects
     }
 
     fn handle_got_next_upgrade(&mut self, next_upgrade: NextUpgrade) -> Effects<Event> {

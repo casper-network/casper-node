@@ -9,7 +9,7 @@ use casper_engine_test_support::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-        TIMESTAMP_MILLIS_INCREMENT,
+        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -49,7 +49,6 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
 const ADD_BID_AMOUNT_2: u64 = 47_500;
@@ -264,7 +263,7 @@ fn should_run_delegate_and_undelegate() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -444,7 +443,7 @@ fn should_calculate_era_validators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -602,7 +601,7 @@ fn should_get_first_seigniorage_recipients() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -750,7 +749,7 @@ fn should_release_founder_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE / 10)
         },
     )
@@ -987,7 +986,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 
     // Fund additional accounts
     for target in &[
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         *NON_FOUNDER_VALIDATOR_2_ADDR,
     ] {
@@ -1071,7 +1070,7 @@ fn undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
@@ -1195,7 +1194,7 @@ fn fully_undelegated_funds_should_be_released() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
@@ -1320,7 +1319,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1568,7 +1567,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1825,7 +1824,7 @@ fn should_handle_evictions() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
@@ -2337,7 +2336,7 @@ fn should_not_undelegate_vfta_holder_stake() {
             *DEFAULT_ACCOUNT_ADDR,
             CONTRACT_TRANSFER_TO_ACCOUNT,
             runtime_args! {
-                ARG_TARGET => SYSTEM_ADDR,
+                ARG_TARGET => *SYSTEM_ADDR,
                 ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
             },
         )
@@ -2520,7 +2519,7 @@ fn should_release_vfta_holder_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
         },
     )
@@ -2643,7 +2642,7 @@ fn should_reset_delegators_stake_after_slashing() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
@@ -2802,7 +2801,7 @@ fn should_reset_delegators_stake_after_slashing() {
     assert!(validator_2_delegator_stakes_1 > U512::zero());
 
     let slash_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         auction_hash,
         auction::METHOD_SLASH,
         runtime_args! {
@@ -2849,7 +2848,7 @@ fn should_reset_delegators_stake_after_slashing() {
     );
 
     let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         auction_hash,
         auction::METHOD_SLASH,
         runtime_args! {

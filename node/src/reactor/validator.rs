@@ -497,6 +497,10 @@ impl reactor::Reactor for Reactor {
             Event::SmallNetwork,
             small_network_effects,
         ));
+        effects.extend(reactor::wrap_effects(
+            Event::ChainspecLoader,
+            chainspec_loader.start_checking_for_upgrades(effect_builder),
+        ));
 
         Ok((
             Reactor {
@@ -952,12 +956,7 @@ impl reactor::Reactor for Reactor {
                                 block: block.proto_block().clone(),
                                 height: block.height(),
                             });
-                        let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-
-                        let reactor_event =
-                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                        effects
+                        self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
                         effect_builder,
