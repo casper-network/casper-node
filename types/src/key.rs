@@ -742,6 +742,30 @@ mod tests {
         AccessRights, URef,
     };
 
+    const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
+    const HASH_KEY: Key = Key::Hash([42; 32]);
+    const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
+    const TRANSFER_KEY: Key = Key::Transfer(TransferAddr::new([42; 32]));
+    const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::new([42; 32]));
+    const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
+    const BALANCE_KEY: Key = Key::Balance([42; 32]);
+    const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
+    const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
+    const ERA_VALIDATORS_KEY: Key = Key::EraValidators(EraId::new(42));
+    const KEYS: [Key; 10] = [
+        ACCOUNT_KEY,
+        HASH_KEY,
+        UREF_KEY,
+        TRANSFER_KEY,
+        DEPLOY_INFO_KEY,
+        ERA_INFO_KEY,
+        BALANCE_KEY,
+        BID_KEY,
+        WITHDRAW_KEY,
+        ERA_VALIDATORS_KEY,
+    ];
+    const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
     }
@@ -789,38 +813,42 @@ mod tests {
 
     #[test]
     fn should_display_key() {
-        let expected_hash = core::iter::repeat("0").take(64).collect::<String>();
-        let addr_array = [0u8; 32];
-        let account_hash = AccountHash::new(addr_array);
-        let account_key = Key::Account(account_hash);
         assert_eq!(
-            format!("{}", account_key),
-            format!("Key::Account({})", expected_hash)
+            format!("{}", ACCOUNT_KEY),
+            format!("Key::Account({})", HEX_STRING)
         );
-        let uref_key = Key::URef(URef::new(addr_array, AccessRights::READ));
         assert_eq!(
-            format!("{}", uref_key),
-            format!("Key::URef({}, READ)", expected_hash)
+            format!("{}", HASH_KEY),
+            format!("Key::Hash({})", HEX_STRING)
         );
-        let hash_key = Key::Hash(addr_array);
         assert_eq!(
-            format!("{}", hash_key),
-            format!("Key::Hash({})", expected_hash)
+            format!("{}", UREF_KEY),
+            format!("Key::URef({}, READ)", HEX_STRING)
         );
-        let transfer_key = Key::Transfer(TransferAddr::new(addr_array));
         assert_eq!(
-            format!("{}", transfer_key),
-            format!("Key::Transfer({})", expected_hash)
+            format!("{}", TRANSFER_KEY),
+            format!("Key::Transfer({})", HEX_STRING)
         );
-        let deploy_info_key = Key::DeployInfo(DeployHash::new(addr_array));
         assert_eq!(
-            format!("{}", deploy_info_key),
-            format!("Key::DeployInfo({})", expected_hash)
+            format!("{}", DEPLOY_INFO_KEY),
+            format!("Key::DeployInfo({})", HEX_STRING)
         );
-        let era_info_key = Key::EraInfo(EraId::from(42));
         assert_eq!(
-            format!("{}", era_info_key),
+            format!("{}", ERA_INFO_KEY),
             "Key::EraInfo(era 42)".to_string()
+        );
+        assert_eq!(
+            format!("{}", BALANCE_KEY),
+            format!("Key::Balance({})", HEX_STRING)
+        );
+        assert_eq!(format!("{}", BID_KEY), format!("Key::Bid({})", HEX_STRING));
+        assert_eq!(
+            format!("{}", WITHDRAW_KEY),
+            format!("Key::Withdraw({})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ERA_VALIDATORS_KEY),
+            "Key::EraValidators(era 42)".to_string()
         );
     }
 
@@ -865,126 +893,133 @@ mod tests {
 
     #[test]
     fn key_max_serialized_length() {
-        let key_account = Key::Account(AccountHash::new([42; BLAKE2B_DIGEST_LENGTH]));
-        assert!(key_account.serialized_length() <= Key::max_serialized_length());
-
-        let key_hash = Key::Hash([42; KEY_HASH_LENGTH]);
-        assert!(key_hash.serialized_length() <= Key::max_serialized_length());
-
-        let key_uref = Key::URef(URef::new([42; BLAKE2B_DIGEST_LENGTH], AccessRights::READ));
-        assert!(key_uref.serialized_length() <= Key::max_serialized_length());
-
-        let key_transfer = Key::Transfer(TransferAddr::new([42; BLAKE2B_DIGEST_LENGTH]));
-        assert!(key_transfer.serialized_length() <= Key::max_serialized_length());
-
-        let key_deploy_info = Key::DeployInfo(DeployHash::new([42; BLAKE2B_DIGEST_LENGTH]));
-        assert!(key_deploy_info.serialized_length() <= Key::max_serialized_length());
-
-        let key_era_info = Key::EraInfo(EraId::from(42));
-        assert!(key_era_info.serialized_length() <= Key::max_serialized_length());
-    }
-
-    fn to_string_round_trip(key: Key) {
-        let string = key.to_formatted_string();
-        let parsed_key = Key::from_formatted_str(&string).unwrap();
-        assert_eq!(key, parsed_key);
+        let mut got_max = false;
+        for key in &KEYS {
+            assert!(key.serialized_length() <= Key::max_serialized_length());
+            if key.serialized_length() == Key::max_serialized_length() {
+                got_max = true;
+            }
+        }
+        assert!(
+            got_max,
+            "None of the Key variants has a serialized_length equal to \
+            Key::max_serialized_length(), so Key::max_serialized_length() should be reduced"
+        );
     }
 
     #[test]
-    fn key_from_str() {
-        to_string_round_trip(Key::Account(AccountHash::new([42; BLAKE2B_DIGEST_LENGTH])));
-        to_string_round_trip(Key::Hash([42; KEY_HASH_LENGTH]));
-        to_string_round_trip(Key::URef(URef::new(
-            [255; BLAKE2B_DIGEST_LENGTH],
-            AccessRights::READ,
-        )));
-        to_string_round_trip(Key::Transfer(TransferAddr::new([42; KEY_HASH_LENGTH])));
-        to_string_round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
-        to_string_round_trip(Key::EraInfo(EraId::from(42)));
+    fn should_parse_key_from_str() {
+        for key in &KEYS {
+            let string = key.to_formatted_string();
+            let parsed_key = Key::from_formatted_str(&string).unwrap();
+            assert_eq!(*key, parsed_key);
+        }
+    }
+
+    #[test]
+    fn should_fail_to_parse_key_from_str() {
+        assert!(
+            Key::from_formatted_str(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
+                .unwrap_err()
+                .to_string()
+                .starts_with("account-key from string error: ")
+        );
+        assert!(Key::from_formatted_str(HASH_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("hash-key from string error: "));
+        assert!(Key::from_formatted_str(UREF_FORMATTED_STRING_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("uref-key from string error: "));
+        assert!(
+            Key::from_formatted_str(TRANSFER_ADDR_FORMATTED_STRING_PREFIX)
+                .unwrap_err()
+                .to_string()
+                .starts_with("transfer-key from string error: ")
+        );
+        assert!(Key::from_formatted_str(DEPLOY_INFO_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("deploy-info-key from string error: "));
+        assert!(Key::from_formatted_str(ERA_INFO_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("era-info-key from string error: "));
+        assert!(Key::from_formatted_str(BALANCE_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("balance-key from string error: "));
+        assert!(Key::from_formatted_str(BID_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("bid-key from string error: "));
+        assert!(Key::from_formatted_str(WITHDRAW_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("withdraw-key from string error: "));
+        assert!(Key::from_formatted_str(VALIDATORS_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("era-validators-key from string error: "));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(Key::from_formatted_str(invalid_prefix).is_err());
+        assert_eq!(
+            Key::from_formatted_str(invalid_prefix)
+                .unwrap_err()
+                .to_string(),
+            "unknown prefix for key"
+        );
 
-        let invalid_prefix = "hash0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(Key::from_formatted_str(invalid_prefix).is_err());
+        let missing_hyphen_prefix =
+            "hash0000000000000000000000000000000000000000000000000000000000000000";
+        assert_eq!(
+            Key::from_formatted_str(missing_hyphen_prefix)
+                .unwrap_err()
+                .to_string(),
+            "unknown prefix for key"
+        );
 
-        let short_addr = "00000000000000000000000000000000000000000000000000000000000000";
-        assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, short_addr)).is_err());
-
-        let long_addr = "000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, long_addr)).is_err());
-
-        let invalid_hex = "000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(Key::from_formatted_str(&format!("{}{}", HASH_PREFIX, invalid_hex)).is_err());
+        let no_prefix = "0000000000000000000000000000000000000000000000000000000000000000";
+        assert_eq!(
+            Key::from_formatted_str(no_prefix).unwrap_err().to_string(),
+            "unknown prefix for key"
+        );
     }
 
     #[test]
     fn key_to_json() {
-        let array = [42; BLAKE2B_DIGEST_LENGTH];
-        let hex_bytes = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+        let expected_json = [
+            format!(r#"{{"Account":"account-hash-{}"}}"#, HEX_STRING),
+            format!(r#"{{"Hash":"hash-{}"}}"#, HEX_STRING),
+            format!(r#"{{"URef":"uref-{}-001"}}"#, HEX_STRING),
+            format!(r#"{{"Transfer":"transfer-{}"}}"#, HEX_STRING),
+            format!(r#"{{"DeployInfo":"deploy-{}"}}"#, HEX_STRING),
+            r#"{"EraInfo":"era-42"}"#.to_string(),
+            format!(r#"{{"Balance":"balance-{}"}}"#, HEX_STRING),
+            format!(r#"{{"Bid":"bid-{}"}}"#, HEX_STRING),
+            format!(r#"{{"Withdraw":"withdraw-{}"}}"#, HEX_STRING),
+            r#"{"EraValidators":"validator-era-42"}"#.to_string(),
+        ];
 
-        let key_account = Key::Account(AccountHash::new(array));
         assert_eq!(
-            serde_json::to_string(&key_account).unwrap(),
-            format!(r#"{{"Account":"account-hash-{}"}}"#, hex_bytes)
+            KEYS.len(),
+            expected_json.len(),
+            "There should be exactly one expected JSON string per test key"
         );
 
-        let key_hash = Key::Hash(array);
-        assert_eq!(
-            serde_json::to_string(&key_hash).unwrap(),
-            format!(r#"{{"Hash":"hash-{}"}}"#, hex_bytes)
-        );
-
-        let key_uref = Key::URef(URef::new(array, AccessRights::READ));
-        assert_eq!(
-            serde_json::to_string(&key_uref).unwrap(),
-            format!(r#"{{"URef":"uref-{}-001"}}"#, hex_bytes)
-        );
-
-        let key_transfer = Key::Transfer(TransferAddr::new(array));
-        assert_eq!(
-            serde_json::to_string(&key_transfer).unwrap(),
-            format!(r#"{{"Transfer":"transfer-{}"}}"#, hex_bytes)
-        );
-
-        let key_deploy_info = Key::DeployInfo(DeployHash::new(array));
-        assert_eq!(
-            serde_json::to_string(&key_deploy_info).unwrap(),
-            format!(r#"{{"DeployInfo":"deploy-{}"}}"#, hex_bytes)
-        );
-
-        let key_era_info = Key::EraInfo(EraId::from(42));
-        assert_eq!(
-            serde_json::to_string(&key_era_info).unwrap(),
-            r#"{"EraInfo":"era-42"}"#.to_string()
-        );
-
-        let key_validators_info = Key::EraValidators(EraId::from(42));
-        assert_eq!(
-            serde_json::to_string(&key_validators_info).unwrap(),
-            r#"{"EraValidators":"validator-era-42"}"#.to_string()
-        );
+        for (key, expected_json_key) in KEYS.iter().zip(expected_json.iter()) {
+            assert_eq!(serde_json::to_string(key).unwrap(), *expected_json_key);
+        }
     }
 
     #[test]
     fn serialization_roundtrip_bincode() {
-        let round_trip = |key: &Key| {
+        for key in &KEYS {
             let encoded = bincode::serialize(key).unwrap();
             let decoded = bincode::deserialize(&encoded).unwrap();
             assert_eq!(key, &decoded);
-        };
-
-        let array = [42; BLAKE2B_DIGEST_LENGTH];
-
-        round_trip(&Key::Account(AccountHash::new(array)));
-        round_trip(&Key::Hash(array));
-        round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
-        round_trip(&Key::Transfer(TransferAddr::new(array)));
-        round_trip(&Key::DeployInfo(DeployHash::new(array)));
-        round_trip(&Key::EraInfo(EraId::from(42)));
-        round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
-        round_trip(&Key::Bid(AccountHash::new(array)));
-        round_trip(&Key::Withdraw(AccountHash::new(array)));
+        }
     }
 
     #[test]
@@ -995,17 +1030,9 @@ mod tests {
             assert_eq!(key, &decoded);
         };
 
-        let array = [42; BLAKE2B_DIGEST_LENGTH];
-
-        round_trip(&Key::Account(AccountHash::new(array)));
-        round_trip(&Key::Hash(array));
-        round_trip(&Key::URef(URef::new(array, AccessRights::READ)));
-        round_trip(&Key::Transfer(TransferAddr::new(array)));
-        round_trip(&Key::DeployInfo(DeployHash::new(array)));
-        round_trip(&Key::EraInfo(EraId::from(42)));
-        round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
-        round_trip(&Key::Withdraw(AccountHash::new(array)));
-        round_trip(&Key::EraValidators(EraId::from(42)));
+        for key in &KEYS {
+            round_trip(key);
+        }
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
 
