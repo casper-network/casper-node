@@ -129,6 +129,8 @@ use requests::{
     ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
+use self::announcements::BlocklistAnnouncement;
+
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
@@ -1145,9 +1147,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_block<I>(self, finalized_block: FinalizedBlock)
+    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
     where
-        REv: From<ConsensusAnnouncement<I>>,
+        REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
@@ -1158,11 +1160,11 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a finality signature has been created.
-    pub(crate) async fn announce_created_finality_signature<I>(
+    pub(crate) async fn announce_created_finality_signature(
         self,
         finality_signature: FinalitySignature,
     ) where
-        REv: From<ConsensusAnnouncement<I>>,
+        REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
@@ -1173,13 +1175,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// An equivocation has been detected.
-    pub(crate) async fn announce_fault_event<I>(
+    pub(crate) async fn announce_fault_event(
         self,
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
     ) where
-        REv: From<ConsensusAnnouncement<I>>,
+        REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
@@ -1196,11 +1198,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
     pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
     where
-        REv: From<ConsensusAnnouncement<I>>,
+        REv: From<BlocklistAnnouncement<I>>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::DisconnectFromPeer(peer),
+                BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
             )
             .await

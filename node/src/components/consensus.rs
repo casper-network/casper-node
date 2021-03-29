@@ -34,7 +34,7 @@ use crate::{
     components::Component,
     crypto::hash::Digest,
     effect::{
-        announcements::ConsensusAnnouncement,
+        announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
@@ -247,12 +247,13 @@ pub trait ReactorEventT<I>:
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
-    + From<ConsensusAnnouncement<I>>
+    + From<ConsensusAnnouncement>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
     + From<LinearChainRequest<I>>
+    + From<BlocklistAnnouncement<I>>
 {
 }
 
@@ -262,12 +263,13 @@ impl<REv, I> ReactorEventT<I> for REv where
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
-        + From<ConsensusAnnouncement<I>>
+        + From<ConsensusAnnouncement>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + From<LinearChainRequest<I>>
+        + From<BlocklistAnnouncement<I>>
 {
 }
 

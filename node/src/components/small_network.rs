@@ -90,7 +90,7 @@ use crate::{
         network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
     },
     effect::{
-        announcements::NetworkAnnouncement,
+        announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
@@ -1034,6 +1034,10 @@ where
             }
             Event::PeerAddressReceived(gossiped_address) => {
                 self.connect_to_peer_if_required(gossiped_address.into())
+            }
+            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(ref peer_id)) => {
+                warn!(%peer_id, "adding peer to blocklist after transgression");
+                self.remove(effect_builder, peer_id, true)
             }
         }
     }
