@@ -210,6 +210,7 @@ impl<C: Context> Highway<C> {
             &self.state,
             unit_hash_file,
             target_ftt,
+            self.instance_id,
         );
         self.active_validator = Some(av);
         effects
@@ -920,7 +921,8 @@ pub(crate) mod tests {
 
         // Ping by validator that is not bonded, with an index that is outside of boundaries of the
         // state.
-        let ping: Vertex<TestContext> = Vertex::Ping(Ping::new(DAN, now, &DAN_SEC));
+        let ping: Vertex<TestContext> =
+            Vertex::Ping(Ping::new(DAN, now, TEST_INSTANCE_ID, &DAN_SEC));
         assert!(
             DAN.0 >= WEIGHTS.len() as u32,
             "should use validator that is not bonded"
