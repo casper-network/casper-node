@@ -199,7 +199,7 @@ impl Display for ConsensusAnnouncement {
 #[derive(Debug, Serialize)]
 pub enum BlocklistAnnouncement<I> {
     /// A given peer committed a blockable offense.
-    OffenseCommitted(I),
+    OffenseCommitted(Box<I>),
 }
 
 impl<I> Display for BlocklistAnnouncement<I>

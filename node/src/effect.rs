@@ -1202,7 +1202,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.0
             .schedule(
-                BlocklistAnnouncement::OffenseCommitted(peer),
+                BlocklistAnnouncement::OffenseCommitted(Box::new(peer)),
                 QueueKind::Regular,
             )
             .await
