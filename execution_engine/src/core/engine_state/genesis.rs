@@ -897,22 +897,22 @@ where
 
         // Make sure all delegators have corresponding genesis validator entries
         for (validator_public_key, delegator_public_key, _balance, delegated_amount) in
-            genesis_delegators.clone().into_iter()
+            genesis_delegators.iter()
         {
             if delegated_amount.is_zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
-                    public_key: delegator_public_key.clone(),
+                    public_key: (*delegator_public_key).clone(),
                 });
             }
 
             let orphan_condition = genesis_validators.iter().find(|genesis_validator| {
-                genesis_validator.public_key() == validator_public_key.clone()
+                genesis_validator.public_key() == (*validator_public_key).clone()
             });
 
             if orphan_condition.is_none() {
                 return Err(GenesisError::OrphanedDelegator {
-                    validator_public_key: validator_public_key.clone(),
-                    delegator_public_key: delegator_public_key.clone(),
+                    validator_public_key: (*validator_public_key).clone(),
+                    delegator_public_key: (*delegator_public_key).clone(),
                 });
             }
         }
@@ -958,30 +958,30 @@ where
                         delegator_public_key,
                         _delegator_balance,
                         &delegator_delegated_amount,
-                    ) in genesis_delegators.clone().into_iter()
+                    ) in genesis_delegators.iter()
                     {
-                        if validator_public_key.clone() == public_key.clone() {
+                        if (*validator_public_key).clone() == public_key.clone() {
                             let purse_uref = self.create_purse(
                                 delegator_delegated_amount.value(),
                                 DeployHash::new(delegator_public_key.to_account_hash().value()),
                             )?;
 
                             let delegator = Delegator::locked(
-                                delegator_public_key.clone(),
+                                (*delegator_public_key).clone(),
                                 delegator_delegated_amount.value(),
                                 purse_uref,
-                                validator_public_key.clone(),
+                                (*validator_public_key).clone(),
                                 release_timestamp_millis,
                             );
 
                             if bid
                                 .delegators_mut()
-                                .insert(delegator_public_key.clone(), delegator)
+                                .insert((*delegator_public_key).clone(), delegator)
                                 .is_some()
                             {
                                 return Err(GenesisError::DuplicatedDelegatorEntry {
-                                    validator_public_key: validator_public_key.clone(),
-                                    delegator_public_key: delegator_public_key.clone(),
+                                    validator_public_key: (*validator_public_key).clone(),
+                                    delegator_public_key: (*delegator_public_key).clone(),
                                 });
                             }
                         }

@@ -1,9 +1,9 @@
 use std::result;
 
 use base64::DecodeError;
-use ed25519_dalek::ed25519::Error as SignatureError;
 use hex::FromHexError;
 use pem::PemError;
+use signature::Error as SignatureError;
 use thiserror::Error;
 
 use crate::utils::{ReadFileError, WriteFileError};
@@ -58,6 +58,10 @@ pub enum Error {
     /// Error related to the underlying signature crate
     #[error("Error in signature")]
     Signature(SignatureError),
+
+    /// Error in generating random seed for cryptographic operations.
+    #[error("Failure in the generation of a random seed")]
+    RNGFailure,
 }
 
 impl From<PemError> for Error {

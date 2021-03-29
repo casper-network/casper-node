@@ -162,11 +162,7 @@ impl AsymmetricType for SecretKey {
 
 impl From<SecretKey> for Vec<u8> {
     fn from(secret_key: SecretKey) -> Vec<u8> {
-        match secret_key {
-            SecretKey::System => Vec::new(),
-            SecretKey::Ed25519(key) => key.as_ref().into(),
-            SecretKey::Secp256k1(key) => key.to_bytes().as_slice().into(),
-        }
+        Vec::<u8>::from(&secret_key)
     }
 }
 
@@ -361,13 +357,19 @@ impl From<SecretKey> for PublicKey {
     }
 }
 
-impl From<PublicKey> for Vec<u8> {
-    fn from(public_key: PublicKey) -> Self {
+impl From<&PublicKey> for Vec<u8> {
+    fn from(public_key: &PublicKey) -> Self {
         match public_key {
             PublicKey::System => Vec::new(),
             PublicKey::Ed25519(key) => key.to_bytes().into(),
             PublicKey::Secp256k1(key) => key.to_bytes().into(),
         }
+    }
+}
+
+impl From<PublicKey> for Vec<u8> {
+    fn from(public_key: PublicKey) -> Self {
+        Vec::<u8>::from(&public_key)
     }
 }
 
@@ -377,7 +379,7 @@ impl Debug for PublicKey {
             formatter,
             "PublicKey::{}({})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self.clone()))
+            HexFmt(Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -388,7 +390,7 @@ impl Display for PublicKey {
             formatter,
             "PubKey::{}({:10})",
             self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self.clone()))
+            HexFmt(Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -404,7 +406,7 @@ impl Ord for PublicKey {
         let self_tag = self.tag();
         let other_tag = other.tag();
         if self_tag == other_tag {
-            Into::<Vec<u8>>::into(self.clone()).cmp(&Into::<Vec<u8>>::into(other.clone()))
+            Into::<Vec<u8>>::into(self).cmp(&Into::<Vec<u8>>::into(other))
         } else {
             self_tag.cmp(&other_tag)
         }
@@ -417,7 +419,7 @@ impl Ord for PublicKey {
 impl Hash for PublicKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.tag().hash(state);
-        Into::<Vec<u8>>::into(self.clone()).hash(state);
+        Into::<Vec<u8>>::into(self).hash(state);
     }
 }
 
@@ -747,13 +749,19 @@ impl<'de> Deserialize<'de> for Signature {
     }
 }
 
-impl From<Signature> for Vec<u8> {
-    fn from(signature: Signature) -> Self {
+impl From<&Signature> for Vec<u8> {
+    fn from(signature: &Signature) -> Self {
         match signature {
             Signature::System => Vec::new(),
             Signature::Ed25519(signature) => signature.to_bytes().into(),
             Signature::Secp256k1(signature) => signature.as_ref().into(),
         }
+    }
+}
+
+impl From<Signature> for Vec<u8> {
+    fn from(signature: Signature) -> Self {
+        Vec::<u8>::from(&signature)
     }
 }
 
@@ -796,10 +804,8 @@ mod detail {
         fn from(secret_key: &SecretKey) -> Self {
             match secret_key {
                 SecretKey::System => AsymmetricTypeAsBytes::System,
-                key @ SecretKey::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.clone().into()),
-                key @ SecretKey::Secp256k1(_) => {
-                    AsymmetricTypeAsBytes::Secp256k1(key.clone().into())
-                }
+                key @ SecretKey::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.into()),
+                key @ SecretKey::Secp256k1(_) => AsymmetricTypeAsBytes::Secp256k1(key.into()),
             }
         }
     }
@@ -808,10 +814,8 @@ mod detail {
         fn from(public_key: &PublicKey) -> Self {
             match public_key {
                 PublicKey::System => AsymmetricTypeAsBytes::System,
-                key @ PublicKey::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.clone().into()),
-                key @ PublicKey::Secp256k1(_) => {
-                    AsymmetricTypeAsBytes::Secp256k1(key.clone().into())
-                }
+                key @ PublicKey::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.into()),
+                key @ PublicKey::Secp256k1(_) => AsymmetricTypeAsBytes::Secp256k1(key.into()),
             }
         }
     }
@@ -820,10 +824,8 @@ mod detail {
         fn from(signature: &Signature) -> Self {
             match signature {
                 Signature::System => AsymmetricTypeAsBytes::System,
-                key @ Signature::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.clone().into()),
-                key @ Signature::Secp256k1(_) => {
-                    AsymmetricTypeAsBytes::Secp256k1(key.clone().into())
-                }
+                key @ Signature::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.into()),
+                key @ Signature::Secp256k1(_) => AsymmetricTypeAsBytes::Secp256k1(key.into()),
             }
         }
     }
