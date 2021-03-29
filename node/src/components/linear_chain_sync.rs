@@ -36,7 +36,7 @@ use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use self::event::{BlockByHashResult, DeploysResult};
-use casper_types::{PublicKey, U512};
+use casper_types::{ProtocolVersion, PublicKey, U512};
 
 use super::{
     consensus::EraId,
@@ -48,8 +48,7 @@ use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
-        TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock, TimeDiff,
     },
     NodeRng,
 };
@@ -80,6 +79,8 @@ pub(crate) struct LinearChainSync<I> {
     shortest_era: TimeDiff,
     /// Flag indicating whether we managed to sync at least one block.
     started_syncing: bool,
+    /// The protocol version the node is currently running with.
+    protocol_version: ProtocolVersion,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
@@ -91,7 +92,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         chainspec: &Chainspec,
         storage: &Storage,
         init_hash: Option<BlockHash>,
-        highest_block_header: Option<BlockHeader>,
+        highest_block: Option<Block>,
         _genesis_validator_weights: BTreeMap<PublicKey, U512>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<(Self, Effects<Event<I>>), Err>
@@ -104,12 +105,18 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let timeout_event = effect_builder
             .set_timeout(five_minutes.into())
             .event(|_| Event::InitializeTimeout);
+        let protocol_version = ProtocolVersion::from_parts(
+            chainspec.protocol_config.version.major as u32,
+            chainspec.protocol_config.version.minor as u32,
+            chainspec.protocol_config.version.patch as u32,
+        );
         if let Some(state) = read_init_state(storage, chainspec)? {
             let linear_chain_sync = LinearChainSync::from_state(
                 registry,
                 chainspec,
                 state,
                 next_upgrade_activation_point,
+                protocol_version,
             )?;
             Ok((linear_chain_sync, timeout_event))
         } else {
@@ -120,9 +127,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     * chainspec.core_config.minimum_era_height,
                 chainspec.core_config.era_duration,
             );
-            let state = init_hash.map_or(State::None, |init_hash| {
-                State::sync_trusted_hash(init_hash, highest_block_header)
-            });
+            let state = match init_hash {
+                Some(init_hash) => State::sync_trusted_hash(
+                    init_hash,
+                    highest_block.map(|block| block.take_header()),
+                ),
+                None => State::Done(highest_block.map(Box::new)),
+            };
             let state_key = create_state_key(&chainspec);
             let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
@@ -134,6 +145,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 acceptable_drift,
                 shortest_era,
                 started_syncing: false,
+                protocol_version,
             };
             Ok((linear_chain_sync, timeout_event))
         }
@@ -145,6 +157,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         chainspec: &Chainspec,
         state: State,
         next_upgrade_activation_point: Option<ActivationPoint>,
+        protocol_version: ProtocolVersion,
     ) -> Result<Self, prometheus::Error> {
         let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
@@ -164,6 +177,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             acceptable_drift,
             shortest_era,
             started_syncing: false,
+            protocol_version,
         })
     }
 
@@ -179,7 +193,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        matches!(self.state, State::None | State::Done(_))
+        matches!(self.state, State::Done(_))
     }
 
     /// Returns `true` if we should stop for upgrade.
@@ -582,6 +596,11 @@ where
                         // We shouldn't get invalid data from the storage.
                         // If we do, it's a bug.
                         assert_eq!(block.height(), block_height, "Block height mismatch.");
+                        assert_eq!(
+                            block.protocol_version(),
+                            self.protocol_version,
+                            "block protocol version mismatch"
+                        );
                         trace!(%block_height, "Linear block found in the local storage.");
                         // When syncing descendants of a trusted hash, we might have some of
                         // them in our local storage. If that's the case, just continue.
@@ -600,6 +619,24 @@ where
                                 got_parent = %block.header().parent_hash(),
                                 expected_parent = %self.latest_block().unwrap().hash(),
                                 "block mismatch",
+                            );
+                            // NOTE: Signal misbehaving validator to networking layer.
+                            self.peers.ban(&peer);
+                            return self.handle_event(
+                                effect_builder,
+                                rng,
+                                Event::GetBlockHeightResult(
+                                    block_height,
+                                    BlockByHeightResult::Absent(peer),
+                                ),
+                            );
+                        }
+                        if block.protocol_version() != self.protocol_version {
+                            warn!(
+                                %peer,
+                                protocol_version = ?self.protocol_version,
+                                block_version = ?block.protocol_version(),
+                                "block protocol version mismatch",
                             );
                             // NOTE: Signal misbehaving validator to networking layer.
                             self.peers.ban(&peer);

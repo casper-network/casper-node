@@ -226,10 +226,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 block_context,
                 fork_choice,
             } => {
+                let parent_value = fork_choice
+                    .as_ref()
+                    .map(|hash| self.highway.state().block(hash).value.clone());
                 let past_values = self.non_finalized_values(fork_choice).cloned().collect();
                 vec![ProtocolOutcome::CreateNewBlock {
                     block_context,
                     past_values,
+                    parent_value,
                 }]
             }
             AvEffect::WeAreFaulty(fault) => {
@@ -306,19 +310,44 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
         };
 
-        // If the vertex contains a consensus value, request validation.
+        // If the vertex contains a consensus value, i.e. it is a proposal, request validation.
         let vertex = vv.inner();
-        if let (Some(value), Some(timestamp)) = (vertex.value(), vertex.timestamp()) {
+        if let (Some(value), Some(timestamp), Some(swunit)) =
+            (vertex.value(), vertex.timestamp(), vertex.unit())
+        {
+            let panorama = &swunit.wire_unit().panorama;
+            let fork_choice = self.highway.state().fork_choice(panorama);
+            let parent_value =
+                fork_choice.map(|hash| self.highway.state().block(hash).value.hash());
+            // The timestamp and parent are currently duplicated: The information in the consensus
+            // value must match the information in the Highway DAG.
+            if timestamp != value.timestamp() || parent_value.as_ref() != value.parent() {
+                info!(
+                    timestamp = %value.timestamp(), consensus_timestamp = %timestamp,
+                    parent = ?value.parent(), consensus_parent = ?parent_value,
+                    "consensus value does not match vertex"
+                );
+                let vertices = vec![vv.inner().id()];
+                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
+                outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
+                return outcomes;
+            }
             if value.needs_validation() {
-                let cv = value.clone();
+                self.log_proposal(vertex, "requesting proposal validation");
+                let ancestor_values = self.ancestors(fork_choice).cloned().collect();
+                let consensus_value = value.clone();
                 self.pending_values
                     .entry(value.hash())
                     .or_default()
                     .push(vv);
-                outcomes.push(ProtocolOutcome::ValidateConsensusValue(
-                    sender, cv, timestamp,
-                ));
+                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                    sender,
+                    consensus_value,
+                    ancestor_values,
+                });
                 return outcomes;
+            } else {
+                self.log_proposal(vertex, "proposal does not need validation");
             }
         }
 
@@ -361,6 +390,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
             return vec![];
         }
+        self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         // Check whether we should change the round exponent.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
@@ -401,6 +431,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         })
     }
 
+    /// Returns an iterator over all the values that are in parents of the given block.
+    fn ancestors<'a>(
+        &'a self,
+        mut maybe_hash: Option<&'a C::Hash>,
+    ) -> impl Iterator<Item = &'a C::ConsensusValue> {
+        iter::from_fn(move || {
+            let hash = maybe_hash.take()?;
+            let block = self.highway.state().block(hash);
+            let value = Some(&block.value);
+            maybe_hash = block.parent();
+            value
+        })
+    }
+
     /// Prints a log statement listing the inactive and faulty validators.
     fn log_participation(&self) {
         let instance_id = self.highway.instance_id();
@@ -414,6 +458,29 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.finality_detector
             .last_finalized()
             .map_or(false, is_switch)
+    }
+
+    /// Prints a log message if the vertex is a proposal unit. Otherwise returns `false`.
+    fn log_proposal(&self, vertex: &Vertex<C>, msg: &str) -> bool {
+        let (wire_unit, hash) = match vertex.unit() {
+            Some(swu) if swu.wire_unit().value.is_some() => (swu.wire_unit(), swu.hash()),
+            _ => return false, // Not a proposal.
+        };
+        let creator = if let Some(creator) = self.highway.validators().id(wire_unit.creator) {
+            creator
+        } else {
+            error!(?wire_unit, "{}: invalid creator", msg);
+            return true;
+        };
+        info!(
+            %hash,
+            ?creator,
+            creator_index = wire_unit.creator.0,
+            timestamp = %wire_unit.timestamp,
+            round_exp = wire_unit.round_exp,
+            "{}", msg
+        );
+        true
     }
 }
 
@@ -504,7 +571,9 @@ where
                     _ => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        trace!("received a valid vertex");
+                        if !self.log_proposal(pvv.inner(), "received a proposal") {
+                            trace!("received a valid vertex");
+                        }
                         self.synchronizer.schedule_add_vertex(sender, pvv, now)
                     }
                 }
@@ -670,19 +739,19 @@ where
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&value.hash());
+            warn!(?value, ?dropped_vertices, "consensus value is invalid");
+            let dropped_vertex_ids = dropped_vertices
+                .into_iter()
+                .flatten()
+                .map(|vv| {
+                    self.log_proposal(vv.inner(), "dropping invalid proposal");
+                    vv.inner().id()
+                })
+                .collect();
             // recursively remove vertices depending on the dropped ones
-            warn!(
-                ?value,
-                ?dropped_vertices,
-                "consensus value is invalid; dropping dependent vertices"
-            );
-            let _faulty_senders = self.synchronizer.drop_dependent_vertices(
-                dropped_vertices
-                    .into_iter()
-                    .flatten()
-                    .map(|vv| vv.inner().id())
-                    .collect(),
-            );
+            let _faulty_senders = self
+                .synchronizer
+                .drop_dependent_vertices(dropped_vertex_ids);
             // We don't disconnect from the faulty senders here: The block validator considers the
             // value "invalid" even if it just couldn't download the deploys, which could just be
             // because the original sender went offline.

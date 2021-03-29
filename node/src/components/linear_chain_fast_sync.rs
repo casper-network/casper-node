@@ -51,7 +51,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         _chainspec: &Chainspec,
         _storage: &Storage,
         init_hash: Option<BlockHash>,
-        _highest_block_header: Option<BlockHeader>,
+        _highest_block: Option<Block>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
         _next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<(Self, Effects<Event<I>>), Err>
