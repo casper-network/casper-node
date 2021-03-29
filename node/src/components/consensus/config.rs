@@ -1,8 +1,7 @@
 use datasize::DataSize;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::SecretKey;
+use casper_types::{ProtocolVersion, SecretKey};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
@@ -44,7 +43,7 @@ pub(crate) struct ProtocolConfig {
     pub(crate) unbonding_delay: u64,
     /// The network protocol version.
     #[data_size(skip)]
-    pub(crate) protocol_version: Version,
+    pub(crate) protocol_version: ProtocolVersion,
     /// The first era ID after the last upgrade
     pub(crate) last_activation_point: EraId,
     /// Name of the network.
@@ -63,7 +62,7 @@ impl From<&Chainspec> for ProtocolConfig {
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,
             unbonding_delay: chainspec.core_config.unbonding_delay,
-            protocol_version: chainspec.protocol_config.version.clone(),
+            protocol_version: chainspec.protocol_config.version,
             last_activation_point: chainspec.protocol_config.activation_point.era_id(),
             name: chainspec.network_config.name.clone(),
             genesis_timestamp: chainspec

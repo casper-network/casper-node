@@ -2,7 +2,6 @@
 
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
     broadcast::{self, error::RecvError},
@@ -18,7 +17,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
 use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp};
 
@@ -34,7 +33,7 @@ pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
     #[data_size(skip)]
-    ApiVersion(Version),
+    ApiVersion(ProtocolVersion),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
@@ -43,7 +42,7 @@ pub enum SseData {
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
         deploy_hash: Box<DeployHash>,
-        account: PublicKey,
+        account: Box<PublicKey>,
         timestamp: Timestamp,
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
@@ -71,7 +70,7 @@ pub(super) struct ServerSentEvent {
 
 impl ServerSentEvent {
     /// The first event sent to every subscribing client.
-    pub(super) fn initial_event(client_api_version: Version) -> Self {
+    pub(super) fn initial_event(client_api_version: ProtocolVersion) -> Self {
         ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),

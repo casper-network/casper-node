@@ -54,7 +54,6 @@ use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -244,7 +243,7 @@ impl Storage {
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
-        version: Version,
+        protocol_version: ProtocolVersion,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -292,11 +291,6 @@ impl Storage {
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
-        let protocol_version = ProtocolVersion::from_parts(
-            version.major as u32,
-            version.minor as u32,
-            version.patch as u32,
-        );
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {

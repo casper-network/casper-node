@@ -200,7 +200,6 @@ mod tests {
 
     use num_rational::Ratio;
     use once_cell::sync::Lazy;
-    use semver::Version;
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
@@ -210,7 +209,7 @@ mod tests {
         stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, U512};
+    use casper_types::{EraId, ProtocolVersion, U512};
 
     use super::*;
     use crate::{
@@ -297,7 +296,10 @@ mod tests {
 
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
-            assert_eq!(spec.protocol_config.version, Version::from((0, 9, 0)));
+            assert_eq!(
+                spec.protocol_config.version,
+                ProtocolVersion::from_parts(0, 9, 0)
+            );
             assert_eq!(
                 spec.protocol_config.activation_point.genesis_timestamp(),
                 Some(Timestamp::from(1600454700000))
@@ -320,7 +322,10 @@ mod tests {
                 );
             }
         } else {
-            assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
+            assert_eq!(
+                spec.protocol_config.version,
+                ProtocolVersion::from_parts(1, 0, 0)
+            );
             assert_eq!(
                 spec.protocol_config.activation_point.era_id(),
                 EraId::from(1)

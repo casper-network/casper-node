@@ -28,12 +28,13 @@ mod sse_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
-use semver::Version;
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
 use tracing::{info, warn};
+
+use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
@@ -60,7 +61,10 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(config: Config, api_version: Version) -> Result<Self, ListeningError> {
+    pub(crate) fn new(
+        config: Config,
+        api_version: ProtocolVersion,
+    ) -> Result<Self, ListeningError> {
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
             warn!(
                 %error,
@@ -133,7 +137,7 @@ where
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash: Box::new(deploy_hash),
-                account: *deploy_header.account(),
+                account: Box::new(*deploy_header.account()),
                 timestamp: deploy_header.timestamp(),
                 ttl: deploy_header.ttl(),
                 dependencies: deploy_header.dependencies().clone(),
