@@ -56,6 +56,7 @@ impl ValidatorSecret for TestSecret {
 pub(crate) const ALICE_SEC: TestSecret = TestSecret(0);
 pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
 pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
+pub(crate) const DAN_SEC: TestSecret = TestSecret(3);
 
 impl ConsensusValueT for u32 {
     fn needs_validation(&self) -> bool {
