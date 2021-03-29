@@ -843,12 +843,12 @@ impl FromBytes for BlockHeader {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BlockHeaderWithMetadata {
+pub struct BlockHeaderAndMetadata {
     pub block_header: BlockHeader,
     pub block_signatures: BlockSignatures,
 }
 
-impl Display for BlockHeaderWithMetadata {
+impl Display for BlockHeaderAndMetadata {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{} and {}", self.block_header, self.block_signatures)
     }

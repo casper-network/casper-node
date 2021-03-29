@@ -6,7 +6,7 @@ mod candidate_block;
 mod cl_context;
 mod config;
 mod consensus_protocol;
-mod era_supervisor;
+pub(crate) mod era_supervisor;
 #[macro_use]
 mod highway_core;
 mod metrics;

@@ -75,7 +75,7 @@ use crate::{
     fatal,
     reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
+        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderAndMetadata, BlockSignatures, Deploy,
         DeployHash, DeployHeader, DeployMetadata, TimeDiff,
     },
     utils::WithDir,
@@ -376,7 +376,6 @@ impl Storage {
     /// Reads from the state storage DB.
     /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
     /// May also fail with storage errors.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
     where
         K: AsRef<[u8]>,
@@ -391,7 +390,6 @@ impl Storage {
     }
 
     /// Deletes value living under the key from the state storage DB.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
     where
         K: AsRef<[u8]>,
@@ -699,6 +697,16 @@ impl Storage {
             StorageRequest::GetFinalizedDeploys { ttl, responder } => {
                 responder.respond(self.get_finalized_deploys(ttl)?).ignore()
             }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
+                responder,
+            } => {
+                let result = self.get_block_header_and_metadata_by_height(
+                    &mut self.env.begin_ro_txn()?,
+                    block_height,
+                )?;
+                responder.respond(result).ignore()
+            }
         })
     }
 
@@ -707,7 +715,7 @@ impl Storage {
         &self,
         tx: &mut Tx,
         height: u64,
-    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+    ) -> Result<Option<BlockHeaderAndMetadata>, Error> {
         let block_hash = match self.block_height_index.get(&height) {
             None => return Ok(None),
             Some(block_hash) => block_hash,
@@ -720,7 +728,7 @@ impl Storage {
             None => BlockSignatures::new(*block_hash, block_header.era_id()),
             Some(signatures) => signatures,
         };
-        Ok(Some(BlockHeaderWithMetadata {
+        Ok(Some(BlockHeaderAndMetadata {
             block_header,
             block_signatures,
         }))
@@ -730,7 +738,7 @@ impl Storage {
     pub fn read_block_header_and_finality_signatures_by_height(
         &self,
         height: u64,
-    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+    ) -> Result<Option<BlockHeaderAndMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
         let maybe_block_header_and_finality_signatures =
             self.get_block_header_and_metadata_by_height(&mut txn, height)?;

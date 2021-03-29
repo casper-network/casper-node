@@ -46,7 +46,7 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
+#[derive(DataSize, PartialEq, Eq, Serialize, Debug, Clone)]
 pub struct Chainspec {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,

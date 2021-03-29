@@ -5,12 +5,15 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Represents a 32-byte BLAKE2b hash digest
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize, DataSize,
+)]
 pub struct Blake2bHash([u8; Blake2bHash::LENGTH]);
 
 impl Blake2bHash {

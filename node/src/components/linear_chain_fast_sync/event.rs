@@ -12,6 +12,10 @@ pub enum Event<I> {
     NewPeerConnected(I),
     BlockHandled(Box<Block>),
     GotUpgradeActivationPoint(ActivationPoint),
+    InitUpgradeShutdown,
+    /// An event instructing us to shutdown if we haven't downloaded any blocks.
+    InitializeTimeout,
+    Shutdown(bool),
 }
 
 #[derive(Debug)]
@@ -64,6 +68,13 @@ where
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
+            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiatied"),
+            Event::Shutdown(upgrade) => write!(
+                f,
+                "linear chain sync is ready for shutdown. upgrade: {}",
+                upgrade
+            ),
+            Event::InitializeTimeout => write!(f, "Initialize timeout"),
         }
     }
 }

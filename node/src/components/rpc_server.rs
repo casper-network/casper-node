@@ -207,7 +207,7 @@ where
                 maybe_id: Some(BlockIdentifier::Height(height)),
                 responder,
             }) => effect_builder
-                .get_block_at_height_with_metadata_from_storage(height)
+                .get_block_and_metadata_by_height_from_storage(height)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Height(height)),
                     result: Box::new(result),
