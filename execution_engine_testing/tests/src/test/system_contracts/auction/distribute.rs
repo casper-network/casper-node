@@ -8,7 +8,7 @@ use casper_engine_test_support::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
-        TIMESTAMP_MILLIS_INCREMENT,
+        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -32,7 +32,6 @@ const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
     SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
@@ -172,7 +171,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -279,7 +278,7 @@ fn should_distribute_delegation_rate_zero() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -410,7 +409,7 @@ fn should_withdraw_bids_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -517,7 +516,7 @@ fn should_withdraw_bids_after_distribute() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -684,7 +683,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -791,7 +790,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     };
 
     let distribute_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -890,7 +889,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert!(total_supply_2 > initial_supply);
 
     let distribute_request_2 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1062,7 +1061,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1171,7 +1170,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     };
 
     let distribute_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1280,7 +1279,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     };
 
     let distribute_request_2 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1453,7 +1452,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1560,7 +1559,7 @@ fn should_distribute_delegation_rate_half() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1649,7 +1648,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1756,7 +1755,7 @@ fn should_distribute_delegation_rate_full() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1850,7 +1849,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1957,7 +1956,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2052,7 +2051,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2161,7 +2160,7 @@ fn should_distribute_by_factor() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2263,7 +2262,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2372,7 +2371,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2475,7 +2474,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2584,7 +2583,7 @@ fn should_distribute_by_factor_uneven() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2687,7 +2686,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2865,7 +2864,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3013,7 +3012,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -3191,7 +3190,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3371,7 +3370,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -3561,7 +3560,7 @@ fn should_increase_total_supply_after_distribute() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3594,7 +3593,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -3701,7 +3700,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3783,7 +3782,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,

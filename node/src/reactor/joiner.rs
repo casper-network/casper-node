@@ -460,11 +460,11 @@ impl reactor::Reactor for Reactor {
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            protocol_version.clone(),
+            *protocol_version,
         )?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), protocol_version.clone())?;
+            EventStreamServer::new(config.event_stream_server.clone(), *protocol_version)?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
@@ -493,7 +493,7 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new(
             &registry,
-            protocol_version.clone(),
+            *protocol_version,
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -528,6 +528,10 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::LinearChainSync,
             init_sync_effects,
+        ));
+        effects.extend(reactor::wrap_effects(
+            Event::ChainspecLoader,
+            chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
         Ok((
@@ -825,9 +829,6 @@ impl reactor::Reactor for Reactor {
                 );
                 let reactor_event =
                     Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                let reactor_event =
-                    Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }

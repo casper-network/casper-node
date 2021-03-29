@@ -6,7 +6,8 @@ use casper_engine_test_support::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
         DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, TIMESTAMP_MILLIS_INCREMENT,
+        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, SYSTEM_ADDR,
+        TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -48,7 +49,6 @@ const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";
 
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DELEGATION_RATE: DelegationRate = 42;
 
 #[ignore]
@@ -62,7 +62,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" => *SYSTEM_ADDR,
             "amount" => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -170,7 +170,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     assert_eq!(unbond_era_2, unbond_era_1);
 
     let exec_request_5 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         auction,
         METHOD_SLASH,
         runtime_args! {
@@ -365,7 +365,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" => *SYSTEM_ADDR,
             "amount" => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -539,7 +539,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => SYSTEM_ADDR,
+            "target" => *SYSTEM_ADDR,
             "amount" => U512::from(TRANSFER_AMOUNT)
         },
     )

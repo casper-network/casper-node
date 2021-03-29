@@ -91,8 +91,6 @@ use crate::{
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
-pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
@@ -974,7 +972,7 @@ where
             };
 
             let system_account = Account::new(
-                SYSTEM_ACCOUNT_ADDR,
+                PublicKey::System.to_account_hash(),
                 Default::default(),
                 URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
                 Default::default(),
@@ -1183,7 +1181,7 @@ where
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
         let system_account = Account::new(
-            SYSTEM_ACCOUNT_ADDR,
+            PublicKey::System.to_account_hash(),
             Default::default(),
             URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
             Default::default(),
@@ -1735,9 +1733,9 @@ where
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+            Account::create(PublicKey::System.to_account_hash(), named_keys, purse)
         };
-        let authorization_keys = BTreeSet::from_iter(vec![SYSTEM_ACCOUNT_ADDR]);
+        let authorization_keys = BTreeSet::from_iter(vec![PublicKey::System.to_account_hash()]);
         let blocktime = BlockTime::default();
         let deploy_hash = {
             // seeds address generator w/ protocol version
@@ -1858,14 +1856,16 @@ where
         self.system_contract_cache
             .initialize_with_protocol_data(&protocol_data, &system_module);
 
+        let system_account_addr = PublicKey::System.to_account_hash();
+
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+            Account::create(system_account_addr, named_keys, purse)
         };
         let authorization_keys = {
             let mut ret = BTreeSet::new();
-            ret.insert(SYSTEM_ACCOUNT_ADDR);
+            ret.insert(system_account_addr);
             ret
         };
         let mut named_keys = auction_contract.named_keys().to_owned();

@@ -675,7 +675,8 @@ pub(crate) mod tests {
             highway_core::{
                 evidence::{Evidence, EvidenceError},
                 highway::{
-                    Dependency, Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit,
+                    vertex::Ping, Dependency, Highway, SignedWireUnit, UnitError, Vertex,
+                    VertexError, WireUnit,
                 },
                 highway_testing::TEST_INSTANCE_ID,
                 state::{tests::*, Panorama, State},
@@ -903,5 +904,28 @@ pub(crate) mod tests {
             Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
             validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)
         );
+    }
+
+    #[test]
+    fn invalid_ping_ndrs1077_regression() {
+        let now: Timestamp = 500.into();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let highway = Highway {
+            instance_id: TEST_INSTANCE_ID,
+            validators: test_validators(),
+            state,
+            active_validator: None,
+        };
+
+        // Ping by validator that is not bonded, with an index that is outside of boundaries of the
+        // state.
+        let ping: Vertex<TestContext> = Vertex::Ping(Ping::new(DAN, now, &DAN_SEC));
+        assert!(
+            DAN.0 >= WEIGHTS.len() as u32,
+            "should use validator that is not bonded"
+        );
+        // Verify that sending a Ping from a non-existing validator does not panic.
+        assert_eq!(highway.has_vertex(&ping), false);
     }
 }

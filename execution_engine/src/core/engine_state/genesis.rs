@@ -48,7 +48,6 @@ use casper_types::{
     PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 
-use super::SYSTEM_ACCOUNT_ADDR;
 use crate::{
     core::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig},
@@ -249,7 +248,7 @@ impl GenesisAccount {
     /// The account hash for the account.
     pub fn account_hash(&self) -> AccountHash {
         match self {
-            GenesisAccount::System => SYSTEM_ACCOUNT_ADDR,
+            GenesisAccount::System => PublicKey::System.to_account_hash(),
             GenesisAccount::Account { public_key, .. } => public_key.to_account_hash(),
             GenesisAccount::Delegator {
                 delegator_public_key,
@@ -753,13 +752,15 @@ where
 
         let protocol_data = ProtocolData::default();
 
+        let system_account_addr = PublicKey::System.to_account_hash();
+
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+            Account::create(system_account_addr, named_keys, purse)
         };
 
-        let key = Key::Account(SYSTEM_ACCOUNT_ADDR);
+        let key = Key::Account(system_account_addr);
         let value = { StoredValue::Account(virtual_system_account.clone()) };
 
         tracking_copy.borrow_mut().write(key, value);

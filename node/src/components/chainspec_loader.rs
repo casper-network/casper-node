@@ -16,12 +16,12 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use datasize::DataSize;
 use derive_more::From;
 use schemars::JsonSchema;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
@@ -57,6 +57,8 @@ use crate::{
     NodeRng,
 };
 
+const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
 pub enum Event {
@@ -75,7 +77,7 @@ pub enum Event {
     /// If the result of checking for an upgrade is successful, it is passed here.
     GotNextUpgrade(NextUpgrade),
     /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
-    PutToStorage { version: Version },
+    PutToStorage { version: ProtocolVersion },
 }
 
 impl Display for Event {
@@ -94,7 +96,7 @@ impl Display for Event {
             }
             Event::CommitGenesisResult(_) => write!(formatter, "commit genesis result"),
             Event::UpgradeResult(_) => write!(formatter, "contract runtime upgrade result"),
-            Event::Request(_) => write!(formatter, "chainspec_loader request"),
+            Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
                 write!(formatter, "check for next upgrade")
             }
@@ -114,11 +116,14 @@ pub struct NextUpgrade {
     activation_point: ActivationPoint,
     #[data_size(skip)]
     #[schemars(with = "String")]
-    protocol_version: Version,
+    protocol_version: ProtocolVersion,
 }
 
 impl NextUpgrade {
-    pub(crate) fn new(activation_point: ActivationPoint, protocol_version: Version) -> Self {
+    pub(crate) fn new(
+        activation_point: ActivationPoint,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         NextUpgrade {
             activation_point,
             protocol_version,
@@ -148,6 +153,14 @@ impl Display for NextUpgrade {
             self.activation_point.era_id()
         )
     }
+}
+
+/// Basic information about the current run of the node software.
+#[derive(Clone, Debug)]
+pub struct CurrentRunInfo {
+    pub activation_point: ActivationPoint,
+    pub protocol_version: ProtocolVersion,
+    pub initial_state_root_hash: Digest,
 }
 
 #[derive(Clone, DataSize, Debug)]
@@ -209,8 +222,7 @@ impl ChainspecLoader {
             })
             .to_path_buf();
 
-        let next_upgrade =
-            next_upgrade(root_dir.clone(), chainspec.protocol_config.version.clone());
+        let next_upgrade = next_upgrade(root_dir.clone(), chainspec.protocol_config.version);
 
         // If the next activation point is the same as the current chainspec one, we've installed
         // two new versions, where the first which we're currently running should be immediately
@@ -227,7 +239,7 @@ impl ChainspecLoader {
         // In case this is a version which should be immediately replaced by the next version, don't
         // create any effects so we exit cleanly for an upgrade without touching the storage
         // component.  Otherwise create effects which will allow us to initialize properly.
-        let effects = if should_stop {
+        let mut effects = if should_stop {
             Effects::new()
         } else {
             effect_builder
@@ -236,6 +248,13 @@ impl ChainspecLoader {
                     maybe_highest_block: highest_block.map(Box::new),
                 })
         };
+
+        // Start regularly checking for the next upgrade.
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
 
         let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
 
@@ -249,6 +268,20 @@ impl ChainspecLoader {
         };
 
         (chainspec_loader, effects)
+    }
+
+    /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
+    /// validator reactors' constructors to start the recurring task of checking for upgrades.  The
+    /// recurring tasks of the previous reactors will be cancelled when the relevant reactor is
+    /// destroyed during transition.
+    pub(crate) fn start_checking_for_upgrades<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event>
+    where
+        REv: From<ChainspecLoaderAnnouncement> + Send,
+    {
+        self.check_for_next_upgrade(effect_builder)
     }
 
     pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
@@ -375,18 +408,7 @@ impl ChainspecLoader {
         }
 
         let debug_assert_version_match = || {
-            debug_assert!(
-                previous_protocol_version.value().major as u64
-                    == self.chainspec.protocol_config.version.major
-            );
-            debug_assert!(
-                previous_protocol_version.value().minor as u64
-                    == self.chainspec.protocol_config.version.minor
-            );
-            debug_assert!(
-                previous_protocol_version.value().patch as u64
-                    == self.chainspec.protocol_config.version.patch
-            );
+            debug_assert!(previous_protocol_version == self.chainspec.protocol_config.version);
         };
 
         let next_upgrade_activation_point = match self.next_upgrade {
@@ -426,11 +448,7 @@ impl ChainspecLoader {
         block: &Block,
         previous_version: ProtocolVersion,
     ) -> Box<UpgradeConfig> {
-        let new_version = ProtocolVersion::from_parts(
-            self.chainspec.protocol_config.version.major as u32,
-            self.chainspec.protocol_config.version.minor as u32,
-            self.chainspec.protocol_config.version.patch as u32,
-        );
+        let new_version = self.chainspec.protocol_config.version;
         let global_state_update = self
             .chainspec
             .protocol_config
@@ -542,13 +560,21 @@ impl ChainspecLoader {
         )
     }
 
+    fn get_current_run_info(&self) -> CurrentRunInfo {
+        CurrentRunInfo {
+            activation_point: self.chainspec.protocol_config.activation_point,
+            protocol_version: self.chainspec.protocol_config.version,
+            initial_state_root_hash: self.initial_state_root_hash,
+        }
+    }
+
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
         REv: From<ChainspecLoaderAnnouncement> + Send,
     {
         let root_dir = self.root_dir.clone();
-        let current_version = self.chainspec.protocol_config.version.clone();
-        async move {
+        let current_version = self.chainspec.protocol_config.version;
+        let mut effects = async move {
             let maybe_next_upgrade =
                 task::spawn_blocking(move || next_upgrade(root_dir, current_version))
                     .await
@@ -562,7 +588,15 @@ impl ChainspecLoader {
                     .await
             }
         }
-        .ignore()
+        .ignore();
+
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
+
+        effects
     }
 
     fn handle_got_next_upgrade(&mut self, next_upgrade: NextUpgrade) -> Effects<Event> {
@@ -609,6 +643,9 @@ where
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }
+            Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
+                responder.respond(self.get_current_run_info()).ignore()
+            }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
             Event::PutToStorage { version } => {
@@ -639,7 +676,7 @@ impl UpgradePoint {
     }
 }
 
-fn dir_name_from_version(version: &Version) -> PathBuf {
+fn dir_name_from_version(version: &ProtocolVersion) -> PathBuf {
     PathBuf::from(version.to_string().replace(".", "_"))
 }
 
@@ -647,10 +684,14 @@ fn dir_name_from_version(version: &Version) -> PathBuf {
 /// after `current_version`.
 ///
 /// Subdir names should be semvers with dots replaced with underscores.
-fn next_installed_version(dir: &Path, current_version: &Version) -> Result<Version, Error> {
-    let max_version = Version::new(u64::max_value(), u64::max_value(), u64::max_value());
+fn next_installed_version(
+    dir: &Path,
+    current_version: &ProtocolVersion,
+) -> Result<ProtocolVersion, Error> {
+    let max_version =
+        ProtocolVersion::from_parts(u32::max_value(), u32::max_value(), u32::max_value());
 
-    let mut next_version = max_version.clone();
+    let mut next_version = max_version;
     let mut read_version = false;
     for entry in fs::read_dir(dir).map_err(|error| Error::ReadDir {
         dir: dir.to_path_buf(),
@@ -669,7 +710,7 @@ fn next_installed_version(dir: &Path, current_version: &Version) -> Result<Versi
             None => continue,
         };
 
-        let version = match Version::from_str(&subdir_name) {
+        let version = match ProtocolVersion::from_str(&subdir_name) {
             Ok(version) => version,
             Err(error) => {
                 trace!(%error, path=%path.display(), "failed to get a version");
@@ -690,7 +731,7 @@ fn next_installed_version(dir: &Path, current_version: &Version) -> Result<Versi
     }
 
     if next_version == max_version {
-        next_version = current_version.clone();
+        next_version = *current_version;
     }
 
     Ok(next_version)
@@ -699,7 +740,7 @@ fn next_installed_version(dir: &Path, current_version: &Version) -> Result<Versi
 /// Uses `next_installed_version()` to find the next versioned subdir.  If it exists, reads the
 /// UpgradePoint file from there and returns its version and activation point.  Returns `None` if
 /// there is no greater version available, or if any step errors.
-fn next_upgrade(dir: PathBuf, current_version: Version) -> Option<NextUpgrade> {
+fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUpgrade> {
     let next_version = match next_installed_version(&dir, &current_version) {
         Ok(version) => version,
         Err(error) => {
@@ -742,27 +783,30 @@ mod tests {
     fn should_get_next_installed_version() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let get_next_version = |current_version: &Version| {
+        let get_next_version = |current_version: &ProtocolVersion| {
             next_installed_version(tempdir.path(), current_version).unwrap()
         };
 
-        let mut current = Version::new(0, 0, 0);
-        let mut next_version = Version::new(1, 0, 0);
+        let mut current = ProtocolVersion::from_parts(0, 0, 0);
+        let mut next_version = ProtocolVersion::from_parts(1, 0, 0);
         fs::create_dir(tempdir.path().join("1_0_0")).unwrap();
         assert_eq!(get_next_version(&current), next_version);
         current = next_version;
 
-        next_version = Version::new(1, 2, 3);
+        next_version = ProtocolVersion::from_parts(1, 2, 3);
         fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
         assert_eq!(get_next_version(&current), next_version);
-        current = next_version.clone();
+        current = next_version;
 
         fs::create_dir(tempdir.path().join("1_0_3")).unwrap();
         assert_eq!(get_next_version(&current), next_version);
 
         fs::create_dir(tempdir.path().join("2_2_2")).unwrap();
         fs::create_dir(tempdir.path().join("3_3_3")).unwrap();
-        assert_eq!(get_next_version(&current), Version::new(2, 2, 2));
+        assert_eq!(
+            get_next_version(&current),
+            ProtocolVersion::from_parts(2, 2, 2)
+        );
     }
 
     #[test]
@@ -771,7 +815,7 @@ mod tests {
 
         // Executes `next_installed_version()` and asserts the resulting error as a string starts
         // with the given text.
-        let min_version = Version::new(0, 0, 0);
+        let min_version = ProtocolVersion::from_parts(0, 0, 0);
         let assert_error_starts_with = |path: &Path, expected: String| {
             let error_msg = next_installed_version(path, &min_version)
                 .unwrap_err()
@@ -814,15 +858,19 @@ mod tests {
         fs::create_dir(tempdir.path().join("1_2_3")).unwrap();
         assert_eq!(
             next_installed_version(tempdir.path(), &min_version).unwrap(),
-            Version::new(1, 2, 3)
+            ProtocolVersion::from_parts(1, 2, 3)
         );
     }
 
     /// Creates the appropriate subdir in `root_dir`, and adds a random chainspec.toml with the
     /// protocol_config.version field set to `version`.
-    fn install_chainspec(rng: &mut TestRng, root_dir: &Path, version: &Version) -> Chainspec {
+    fn install_chainspec(
+        rng: &mut TestRng,
+        root_dir: &Path,
+        version: &ProtocolVersion,
+    ) -> Chainspec {
         let mut chainspec = Chainspec::random(rng);
-        chainspec.protocol_config.version = version.clone();
+        chainspec.protocol_config.version = *version;
 
         let subdir = root_dir.join(dir_name_from_version(&version));
         fs::create_dir(&subdir).unwrap();
@@ -840,14 +888,14 @@ mod tests {
     fn should_get_next_upgrade() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let next_point = |current_version: &Version| {
-            next_upgrade(tempdir.path().to_path_buf(), current_version.clone()).unwrap()
+        let next_point = |current_version: &ProtocolVersion| {
+            next_upgrade(tempdir.path().to_path_buf(), *current_version).unwrap()
         };
 
         let mut rng = crate::new_rng();
 
-        let mut current = Version::new(0, 9, 9);
-        let v1_0_0 = Version::new(1, 0, 0);
+        let mut current = ProtocolVersion::from_parts(0, 9, 9);
+        let v1_0_0 = ProtocolVersion::from_parts(1, 0, 0);
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
         assert_eq!(
             next_point(&current),
@@ -855,7 +903,7 @@ mod tests {
         );
 
         current = v1_0_0;
-        let v1_0_3 = Version::new(1, 0, 3);
+        let v1_0_3 = ProtocolVersion::from_parts(1, 0, 3);
         let chainspec_v1_0_3 = install_chainspec(&mut rng, tempdir.path(), &v1_0_3);
         assert_eq!(
             next_point(&current),
@@ -867,15 +915,15 @@ mod tests {
     fn should_not_get_old_or_invalid_upgrade() {
         let tempdir = tempfile::tempdir().expect("should create temp dir");
 
-        let maybe_next_point = |current_version: &Version| {
-            next_upgrade(tempdir.path().to_path_buf(), current_version.clone())
+        let maybe_next_point = |current_version: &ProtocolVersion| {
+            next_upgrade(tempdir.path().to_path_buf(), *current_version)
         };
 
         let mut rng = crate::new_rng();
 
         // Check we return `None` if there are no version subdirs.
-        let v1_0_0 = Version::new(1, 0, 0);
-        let mut current = v1_0_0.clone();
+        let v1_0_0 = ProtocolVersion::from_parts(1, 0, 0);
+        let mut current = v1_0_0;
         assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if current_version == next_version.
@@ -883,13 +931,13 @@ mod tests {
         assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if current_version > next_version.
-        current = Version::new(2, 0, 0);
+        current = ProtocolVersion::from_parts(2, 0, 0);
         assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if we find an upgrade file where the protocol_config.version field
         // doesn't match the subdir name.
-        let v0_9_9 = Version::new(0, 9, 9);
-        current = v0_9_9.clone();
+        let v0_9_9 = ProtocolVersion::from_parts(0, 9, 9);
+        current = v0_9_9;
         assert!(maybe_next_point(&current).is_some());
 
         let mut chainspec_v0_9_9 = chainspec_v1_0_0;

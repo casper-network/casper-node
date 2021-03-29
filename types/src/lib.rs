@@ -76,7 +76,7 @@ pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use runtime_args::{NamedArg, RuntimeArgs};
-pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
+pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use tagged::Tagged;
 pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH};
 pub use transfer_result::{TransferResult, TransferredTo};

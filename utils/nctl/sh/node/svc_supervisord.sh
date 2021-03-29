@@ -61,6 +61,7 @@ function do_node_status()
     
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
         NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
+        # True is necessary due to supervisorctl exiting 3
         supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME" || true
     fi
 }
@@ -73,7 +74,8 @@ function do_node_status()
 function do_node_status_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" status all
+        # True is necessary due to supervisorctl exiting 3
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" status all || true
     fi
 }
 

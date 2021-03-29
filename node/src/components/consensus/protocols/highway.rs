@@ -255,10 +255,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 block_context,
                 fork_choice,
             } => {
+                let parent_value = fork_choice
+                    .as_ref()
+                    .map(|hash| self.highway.state().block(hash).value.clone());
                 let past_values = self.non_finalized_values(fork_choice).cloned().collect();
                 vec![ProtocolOutcome::CreateNewBlock {
                     block_context,
                     past_values,
+                    parent_value,
                 }]
             }
             AvEffect::WeAreFaulty(fault) => {
@@ -335,19 +339,41 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
         };
 
-        // If the vertex contains a consensus value, request validation.
+        // If the vertex contains a consensus value, i.e. it is a proposal, request validation.
         let vertex = vv.inner();
-        if let (Some(value), Some(timestamp)) = (vertex.value(), vertex.timestamp()) {
+        if let (Some(value), Some(timestamp), Some(swunit)) =
+            (vertex.value(), vertex.timestamp(), vertex.unit())
+        {
+            let panorama = &swunit.wire_unit().panorama;
+            let fork_choice = self.highway.state().fork_choice(panorama);
+            let parent_value =
+                fork_choice.map(|hash| self.highway.state().block(hash).value.hash());
+            // The timestamp and parent are currently duplicated: The information in the consensus
+            // value must match the information in the Highway DAG.
+            if timestamp != value.timestamp() || parent_value.as_ref() != value.parent() {
+                info!(
+                    timestamp = %value.timestamp(), consensus_timestamp = %timestamp,
+                    parent = ?value.parent(), consensus_parent = ?parent_value,
+                    "consensus value does not match vertex"
+                );
+                let vertices = vec![vv.inner().id()];
+                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
+                outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
+                return outcomes;
+            }
             if value.needs_validation() {
                 self.log_proposal(vertex, "requesting proposal validation");
-                let cv = value.clone();
+                let ancestor_values = self.ancestors(fork_choice).cloned().collect();
+                let consensus_value = value.clone();
                 self.pending_values
                     .entry(value.hash())
                     .or_default()
                     .push(vv);
-                outcomes.push(ProtocolOutcome::ValidateConsensusValue(
-                    sender, cv, timestamp,
-                ));
+                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                    sender,
+                    consensus_value,
+                    ancestor_values,
+                });
                 return outcomes;
             } else {
                 self.log_proposal(vertex, "proposal does not need validation");
@@ -423,6 +449,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
             let value = maybe_block.map(|block| &block.value);
             fork_choice = maybe_block.and_then(|block| block.parent().cloned());
+            value
+        })
+    }
+
+    /// Returns an iterator over all the values that are in parents of the given block.
+    fn ancestors<'a>(
+        &'a self,
+        mut maybe_hash: Option<&'a C::Hash>,
+    ) -> impl Iterator<Item = &'a C::ConsensusValue> {
+        iter::from_fn(move || {
+            let hash = maybe_hash.take()?;
+            let block = self.highway.state().block(hash);
+            let value = Some(&block.value);
+            maybe_hash = block.parent();
             value
         })
     }

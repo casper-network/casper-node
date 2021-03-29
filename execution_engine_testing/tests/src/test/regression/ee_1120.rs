@@ -4,7 +4,9 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
+    internal::{
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, SYSTEM_ADDR,
+    },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
@@ -12,7 +14,7 @@ use casper_execution_engine::{
     shared::motes::Motes,
 };
 use casper_types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    account::AccountHash,
     runtime_args,
     system::auction::{
         Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
@@ -52,7 +54,6 @@ static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
         .into()
 });
 
-static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]));
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));

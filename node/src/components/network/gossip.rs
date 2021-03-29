@@ -3,20 +3,18 @@
 
 use datasize::DataSize;
 use libp2p::{
-    core::{ProtocolName, PublicKey},
-    gossipsub::{Gossipsub, GossipsubConfigBuilder, MessageAuthenticity, Topic, ValidationMode},
+    core::PublicKey,
+    gossipsub::{
+        Gossipsub, GossipsubConfigBuilder, IdentTopic, MessageAuthenticity, ValidationMode,
+    },
     PeerId,
 };
 use once_cell::sync::Lazy;
 
-use super::{Config, Error, PayloadT, ProtocolId};
+use super::{Config, Error, PayloadT};
 use crate::types::Chainspec;
 
-/// The inner portion of the `ProtocolId` for the gossip behavior.  A standard prefix and suffix
-/// will be applied to create the full protocol name.
-const PROTOCOL_NAME_INNER: &str = "validator/gossip";
-
-pub(super) static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("all".into()));
+pub(super) static TOPIC: Lazy<IdentTopic> = Lazy::new(|| IdentTopic::new("all".to_string()));
 
 #[derive(DataSize, Debug)]
 pub(super) struct GossipMessage(pub Vec<u8>);
@@ -46,19 +44,25 @@ impl From<GossipMessage> for Vec<u8> {
 /// Constructs a new libp2p behavior suitable for gossiping.
 pub(super) fn new_behavior(
     config: &Config,
-    chainspec: &Chainspec,
+    _chainspec: &Chainspec,
     our_public_key: PublicKey,
 ) -> Gossipsub {
-    let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
-    let gossipsub_config = GossipsubConfigBuilder::new()
-        .protocol_id(protocol_id.protocol_name().to_vec())
+    let gossipsub_config = GossipsubConfigBuilder::default()
+        // TODO - consider not using the default protocol ID prefix.
+        // .protocol_id(ProtocolId::new(chainspec, "validator/gossip").protocol_name().to_vec())
         .heartbeat_interval(config.gossip_heartbeat_interval.into())
         .max_transmit_size(config.max_gossip_message_size as usize)
         .duplicate_cache_time(config.gossip_duplicate_cache_timeout.into())
         .validation_mode(ValidationMode::Permissive)
-        .build();
+        .build()
+        .unwrap_or_else(|error| panic!("should construct gossipsub config: {}", error));
     let our_peer_id = PeerId::from(our_public_key);
-    let mut gossipsub = Gossipsub::new(MessageAuthenticity::Author(our_peer_id), gossipsub_config);
-    gossipsub.subscribe(TOPIC.clone());
+    // TODO - remove `expect`
+    let mut gossipsub = Gossipsub::new(MessageAuthenticity::Author(our_peer_id), gossipsub_config)
+        .expect("should construct a new gossipsub behavior");
+    // TODO - remove `expect`
+    gossipsub
+        .subscribe(&*TOPIC)
+        .expect("should subscribe to topic");
     gossipsub
 }

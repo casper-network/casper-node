@@ -47,9 +47,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -169,7 +170,7 @@ pub enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     /// ContractRuntime announcement.
     #[from]
     ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
@@ -185,6 +186,9 @@ pub enum Event {
     /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+    /// Blocklist announcement.
+    #[from]
+    BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
 }
 
 impl ReactorEvent for Event {
@@ -292,6 +296,9 @@ impl Display for Event {
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
+            }
+            Event::BlocklistAnnouncement(ann) => {
+                write!(f, "blocklist announcement: {}", ann)
             }
         }
     }
@@ -422,15 +429,12 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let rpc_server = RpcServer::new(
-            config.rpc_server.clone(),
-            effect_builder,
-            protocol_version.clone(),
-        )?;
+        let rpc_server =
+            RpcServer::new(config.rpc_server.clone(), effect_builder, *protocol_version)?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            protocol_version.clone(),
+            *protocol_version,
         )?;
 
         let deploy_acceptor =
@@ -466,7 +470,6 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
-            chainspec_loader.initial_state_root_hash(),
             latest_block.as_ref().map(Block::header),
             maybe_next_activation_point,
             registry,
@@ -485,7 +488,7 @@ impl reactor::Reactor for Reactor {
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChain::new(
             &registry,
-            protocol_version.clone(),
+            *protocol_version,
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
@@ -500,6 +503,10 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
             small_network_effects,
+        ));
+        effects.extend(reactor::wrap_effects(
+            Event::ChainspecLoader,
+            chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
         Ok((
@@ -948,48 +955,34 @@ impl reactor::Reactor for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
-            Event::ConsensusAnnouncement(consensus_announcement) => {
-                match consensus_announcement {
-                    ConsensusAnnouncement::Finalized(block) => {
-                        let reactor_event =
-                            Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
-                                block: block.proto_block().clone(),
-                                height: block.height(),
-                            });
-                        let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-
-                        let reactor_event =
-                            Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                        effects
-                    }
-                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(
-                            fs, false,
-                        )),
-                    ),
-                    ConsensusAnnouncement::Fault {
-                        era_id,
-                        public_key,
-                        timestamp,
-                    } => {
-                        let reactor_event =
-                            Event::EventStreamServer(event_stream_server::Event::Fault {
-                                era_id,
-                                public_key: *public_key,
-                                timestamp,
-                            });
-                        self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                    ConsensusAnnouncement::DisconnectFromPeer(peer) => {
-                        // TODO: handle the announcement and actually disconnect
-                        warn!(%peer, "peer deemed problematic, would disconnect");
-                        Effects::new()
-                    }
+            Event::ConsensusAnnouncement(consensus_announcement) => match consensus_announcement {
+                ConsensusAnnouncement::Finalized(block) => {
+                    let reactor_event =
+                        Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
+                            block: block.proto_block().clone(),
+                            height: block.height(),
+                        });
+                    self.dispatch_event(effect_builder, rng, reactor_event)
                 }
-            }
+                ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, false)),
+                ),
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => {
+                    let reactor_event =
+                        Event::EventStreamServer(event_stream_server::Event::Fault {
+                            era_id,
+                            public_key: *public_key,
+                            timestamp,
+                        });
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+            },
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::LinearChainBlock(
                 linear_chain_block,
             )) => {
@@ -1066,6 +1059,9 @@ impl reactor::Reactor for Reactor {
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
+            }
+            Event::BlocklistAnnouncement(ann) => {
+                self.dispatch_event(effect_builder, rng, Event::SmallNetwork(ann.into()))
             }
         }
     }

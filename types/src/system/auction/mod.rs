@@ -305,7 +305,7 @@ pub trait Auction:
     ///
     /// This can be only invoked through a system call.
     fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
-        if self.get_caller() != SYSTEM_ACCOUNT {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
 
@@ -352,7 +352,7 @@ pub trait Auction:
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
     ) -> Result<(), Error> {
-        if self.get_caller() != SYSTEM_ACCOUNT {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
 
@@ -444,7 +444,7 @@ pub trait Auction:
     /// Mint and distribute seigniorage rewards to validators and their delegators,
     /// according to `reward_factors` returned by the consensus component.
     fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error> {
-        if self.get_caller() != SYSTEM_ACCOUNT {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
 

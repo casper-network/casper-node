@@ -11,9 +11,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        genesis::GenesisValidator, GenesisAccount, RewardItem, SYSTEM_ACCOUNT_ADDR,
-    },
+    core::engine_state::{genesis::GenesisValidator, GenesisAccount, RewardItem},
     shared::motes::Motes,
 };
 use casper_types::{
@@ -69,7 +67,10 @@ fn should_run_ee_1152_regression_test() {
     let fund_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => SYSTEM_ACCOUNT_ADDR, ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) },
+        runtime_args! {
+            ARG_TARGET => PublicKey::System.to_account_hash(),
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)
+        },
     )
     .build();
 

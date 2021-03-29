@@ -1,8 +1,4 @@
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     convert::TryFrom,
@@ -35,7 +31,7 @@ const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
-const VALIDATORS_PREFIX: &str = "validator-era-id";
+const VALIDATORS_PREFIX: &str = "validator-era-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -236,7 +232,7 @@ impl Key {
                 format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
             }
             Key::EraValidators(era_id) => {
-                format!("{}{}", VALIDATORS_PREFIX, era_id.to_string())
+                format!("{}{}", VALIDATORS_PREFIX, era_id.value())
             }
         }
     }
@@ -663,6 +659,7 @@ mod serde_helpers {
         Balance(URefAddr),
         Bid(AccountHash),
         Withdraw(AccountHash),
+        EraValidators(EraId),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -677,6 +674,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
+                BinaryDeserHelper::EraValidators(era_id) => Key::EraValidators(era_id),
             }
         }
     }
@@ -931,6 +929,12 @@ mod tests {
             serde_json::to_string(&key_era_info).unwrap(),
             r#"{"EraInfo":"era-42"}"#.to_string()
         );
+
+        let key_validators_info = Key::EraValidators(EraId::from(42));
+        assert_eq!(
+            serde_json::to_string(&key_validators_info).unwrap(),
+            r#"{"EraValidators":"validator-era-42"}"#.to_string()
+        );
     }
 
     #[test]
@@ -972,6 +976,7 @@ mod tests {
         round_trip(&Key::EraInfo(EraId::from(42)));
         round_trip(&Key::Balance(URef::new(array, AccessRights::READ).addr()));
         round_trip(&Key::Withdraw(AccountHash::new(array)));
+        round_trip(&Key::EraValidators(EraId::from(42)));
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
 
@@ -980,10 +985,11 @@ mod tests {
         round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
         round_trip(&Key::Transfer(TransferAddr::new(zeros)));
         round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
-        round_trip(&Key::EraInfo(EraId::from(42)));
+        round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
+        round_trip(&Key::EraValidators(EraId::from(0)));
     }
 
     proptest! {

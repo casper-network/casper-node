@@ -37,6 +37,7 @@ use casper_types::{
 use super::Responder;
 use crate::{
     components::{
+        chainspec_loader::CurrentRunInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
         fetcher::FetchResult,
@@ -277,6 +278,14 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
+    /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
+    GetFinalizedDeploys {
+        /// Maximum TTL of block we're interested in.
+        /// I.e. we don't want deploys from blocks that are older than this.
+        ttl: TimeDiff,
+        /// Responder to call with the results.
+        responder: Responder<Vec<(DeployHash, DeployHeader)>>,
+    },
     /// Store execution results for a set of deploys of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
@@ -397,6 +406,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
+            }
+            StorageRequest::GetFinalizedDeploys { ttl, .. } => {
+                write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
             }
         }
     }
@@ -936,12 +948,15 @@ pub enum ConsensusRequest {
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
+    /// Request for information about the current run.
+    GetCurrentRunInfo(Responder<CurrentRunInfo>),
 }
 
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
+            ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
         }
     }
 }

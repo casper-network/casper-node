@@ -13,7 +13,6 @@ use casper_execution_engine::{
     core::engine_state::{
         genesis::{ExecConfig, GenesisAccount, GenesisValidator},
         run_genesis_request::RunGenesisRequest,
-        SYSTEM_ACCOUNT_ADDR,
     },
     shared::{motes::Motes, stored_value::StoredValue},
 };
@@ -100,7 +99,7 @@ fn should_run_genesis() {
     builder.run_genesis(&run_genesis_request);
 
     let system_account = builder
-        .get_account(SYSTEM_ACCOUNT_ADDR)
+        .get_account(PublicKey::System.to_account_hash())
         .expect("system account should exist");
 
     let account_1 = builder

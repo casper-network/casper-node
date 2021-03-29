@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, SYSTEM_ADDR,
         TIMESTAMP_MILLIS_INCREMENT,
     },
     MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -26,7 +26,6 @@ const ARG_AMOUNT: &str = "amount";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 static FAUCET: Lazy<PublicKey> = Lazy::new(|| {
     SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH])
@@ -126,7 +125,7 @@ fn validator_scores_should_reflect_delegates() {
         *FAUCET_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
