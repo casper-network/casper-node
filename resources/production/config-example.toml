@@ -120,9 +120,6 @@ initial_gossip_delay = '5s'
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
 
-# Block peers that commit offenses in consensus or elsewhere. Currently still experimental.
-block_offending_peers = false
-
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
