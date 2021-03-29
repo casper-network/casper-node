@@ -397,7 +397,7 @@ balance = "1000000000000000000"
 
 [[accounts]]
 public_key = "01054c929d687267a30341c759b4a9cab1238cb2de65546be43dad479c50745724"
-balance = "4567107089640000000"
+balance = "4564329384340000000"
 
 [[delegators]]
 delegator_public_key = "01eb9c059b2624f475bb0726d8b2e382b025818dce3ec1f5ecf7f80ca708b6440e"
@@ -1345,6 +1345,6 @@ delegated_amount = "160793460000000000"
 delegator_public_key = "010b24b2974ac8dd9027a06be487c383732a5e4605d254fb017d9fce388d347e77"
 balance = "0"
 validator_public_key = "0190c434129ecbaeb34d33185ab6bf97c3c493fc50121a56a9ed8c4c52855b5ac1"
-delegated_amount = "451061934700000000"
+delegated_amount = "453839640000000000"
 
 
