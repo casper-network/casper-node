@@ -178,7 +178,7 @@ where
     }
 
     /// Lock all queues in a well-defined order to avoid deadlocks conditions.
-    async fn lock_queues<'a>(&'a self) -> Vec<(K, MutexGuard<'a, VecDeque<I>>)> {
+    async fn lock_queues(&self) -> Vec<(K, MutexGuard<'_, VecDeque<I>>)> {
         let mut locks = Vec::new();
         for kind in K::into_enum_iter() {
             let queue_guard = self
