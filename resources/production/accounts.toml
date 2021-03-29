@@ -531,7 +531,7 @@ validator_public_key = "014382d46e2543ab2832c04936f8c205847040426abb56065bbf7b2f
 delegated_amount = "941168989200000"
 
 [[delegators]]
-delegator_public_key = "01f8684089490edcdb5feab0eee3615f26621dfd7f16419d06299466bab6fcb9f8"
+delegator_public_key = "019b51d1b374644628d7741f6c0980654fbdace31208268b9db736d2f5e42cc83a"
 balance = "0"
 validator_public_key = "01ba1dcfbe8dba48b88674bb007c000391c0ea36b5d80570c113a42a9823d702c2"
 delegated_amount = "1026248000000000"
