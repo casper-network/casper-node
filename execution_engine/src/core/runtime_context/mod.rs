@@ -17,12 +17,12 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
     DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, KeyTag, Phase, ProtocolVersion,
-    RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
+    PublicKey, RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, SYSTEM_ACCOUNT_ADDR},
+        engine_state::execution_effect::ExecutionEffect,
         execution::{AddressGenerator, Error},
         tracking_copy::{AddResult, TrackingCopy},
         Address,
@@ -768,7 +768,7 @@ where
     where
         T: Into<Gas>,
     {
-        if self.account.account_hash() == SYSTEM_ACCOUNT_ADDR {
+        if self.account.account_hash() == PublicKey::System.to_account_hash() {
             // Don't try to charge a system account for calling a system contract's entry point.
             // This will make sure that (for example) calling a mint's transfer from within auction
             // wouldn't try to incur cost to system account.

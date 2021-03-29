@@ -42,10 +42,16 @@ impl Default for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    pub(super) fn with_next_finalized(self, next_finalized: BlockHeight) -> Self {
+    /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys.
+    pub(super) fn from_finalized(
+        finalized_deploys: Vec<(DeployHash, DeployHeader)>,
+        next_finalized_height: u64,
+    ) -> BlockProposerDeploySets {
         BlockProposerDeploySets {
-            next_finalized,
-            ..self
+            pending: HashMap::new(),
+            finalized_deploys: finalized_deploys.into_iter().collect(),
+            next_finalized: next_finalized_height,
+            finalization_queue: Default::default(),
         }
     }
 }

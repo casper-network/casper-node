@@ -49,7 +49,7 @@ fn test_filter_without_params(
         .map(|builder: Builder| builder.success(()).unwrap())
 }
 
-type ServerJoiner = Option<Arc<Mutex<JoinHandle<Result<(), hyper::error::Error>>>>>;
+type ServerJoiner = Option<Arc<Mutex<JoinHandle<Result<(), hyper::Error>>>>>;
 
 struct MockServerHandle {
     graceful_shutdown: Option<oneshot::Sender<()>>,
@@ -280,7 +280,7 @@ mod get_balance {
     use casper_client::ValidateResponseError;
     use casper_types::URefFromStrError;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_arguments() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
@@ -295,7 +295,7 @@ mod get_balance {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_empty_arguments() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
@@ -308,7 +308,7 @@ mod get_balance {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_empty_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
@@ -321,7 +321,7 @@ mod get_balance {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_empty_purse_uref() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
@@ -330,7 +330,7 @@ mod get_balance {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_bad_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
@@ -347,7 +347,7 @@ mod get_balance {
 mod get_state_root_hash {
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_block_id() {
         let server_handle =
             MockServerHandle::spawn::<GetStateRootHashParams>(GetStateRootHash::METHOD);
@@ -359,19 +359,19 @@ mod get_state_root_hash {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_empty_block_id() {
         let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         assert_eq!(server_handle.get_state_root_hash(""), Ok(()));
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_block_height() {
         let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         assert_eq!(server_handle.get_state_root_hash("1"), Ok(()));
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_bad_block_id() {
         let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         let input = "<not a real block id>";
@@ -392,7 +392,7 @@ mod get_block {
     // in this case, the error means that the request was sent successfully, but due to to the
     // mock implementation fails to validate
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_block_hash() {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
@@ -403,7 +403,7 @@ mod get_block {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_block_height() {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
@@ -414,7 +414,7 @@ mod get_block {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_empty_block_hash() {
         let server_handle = MockServerHandle::spawn_without_params(GetBlock::METHOD);
         assert_eq!(
@@ -425,7 +425,7 @@ mod get_block {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_invalid_block_id() {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         match server_handle.get_block("<not a valid hash>") {
@@ -441,7 +441,7 @@ mod get_item {
 
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
 
@@ -456,7 +456,7 @@ mod get_item {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_invalid_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
@@ -469,7 +469,7 @@ mod get_item {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_invalid_key() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
@@ -478,7 +478,7 @@ mod get_item {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_empty_key() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
@@ -495,7 +495,7 @@ mod get_item {
 mod get_deploy {
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_with_valid_hash() {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
@@ -505,7 +505,7 @@ mod get_deploy {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_invalid_hash() {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
@@ -524,7 +524,7 @@ mod get_auction_info {
 
     use casper_node::rpcs::{state::GetAuctionInfo, RpcWithoutParams};
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed() {
         let server_handle = MockServerHandle::spawn_without_params(GetAuctionInfo::METHOD);
         assert_eq!(server_handle.get_auction_info(), Ok(()));
@@ -569,7 +569,7 @@ mod make_deploy {
 mod send_deploy {
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_with_bad_deploy_file_path() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         if let Err(ErrWrapper(Error::IoError { context, .. })) =
@@ -579,7 +579,7 @@ mod send_deploy {
         }
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed_for_file() {
         let temp_dir = TempDir::new()
             .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
@@ -782,7 +782,7 @@ mod keygen_generate_files {
 mod put_deploy {
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_send_put_deploy() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         assert_eq!(
@@ -800,7 +800,7 @@ mod rate_limit {
     use super::*;
     use casper_node::types::Timestamp;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn client_should_should_be_rate_limited_to_approx_1_qps() {
         // Transfer uses PutDeployParams + PutDeploy
         let server_handle = Arc::new(MockServerHandle::spawn::<PutDeployParams>(
@@ -847,7 +847,7 @@ mod rate_limit {
 mod transfer {
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed() {
         // Transfer uses PutDeployParams + PutDeploy
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
@@ -865,7 +865,7 @@ mod transfer {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn should_fail_if_both_target_purse_and_target_account_are_excluded() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         assert_eq!(

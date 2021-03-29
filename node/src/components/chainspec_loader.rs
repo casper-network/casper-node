@@ -16,6 +16,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -57,6 +58,8 @@ use crate::{
     NodeRng,
 };
 
+const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
 pub enum Event {
@@ -94,7 +97,7 @@ impl Display for Event {
             }
             Event::CommitGenesisResult(_) => write!(formatter, "commit genesis result"),
             Event::UpgradeResult(_) => write!(formatter, "contract runtime upgrade result"),
-            Event::Request(_) => write!(formatter, "chainspec_loader request"),
+            Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
                 write!(formatter, "check for next upgrade")
             }
@@ -148,6 +151,14 @@ impl Display for NextUpgrade {
             self.activation_point.era_id()
         )
     }
+}
+
+/// Basic information about the current run of the node software.
+#[derive(Clone, Debug)]
+pub struct CurrentRunInfo {
+    pub activation_point: ActivationPoint,
+    pub protocol_version: ProtocolVersion,
+    pub initial_state_root_hash: Digest,
 }
 
 #[derive(Clone, DataSize, Debug)]
@@ -227,7 +238,7 @@ impl ChainspecLoader {
         // In case this is a version which should be immediately replaced by the next version, don't
         // create any effects so we exit cleanly for an upgrade without touching the storage
         // component.  Otherwise create effects which will allow us to initialize properly.
-        let effects = if should_stop {
+        let mut effects = if should_stop {
             Effects::new()
         } else {
             effect_builder
@@ -236,6 +247,13 @@ impl ChainspecLoader {
                     maybe_highest_block: highest_block.map(Box::new),
                 })
         };
+
+        // Start regularly checking for the next upgrade.
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
 
         let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
 
@@ -249,6 +267,20 @@ impl ChainspecLoader {
         };
 
         (chainspec_loader, effects)
+    }
+
+    /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
+    /// validator reactors' constructors to start the recurring task of checking for upgrades.  The
+    /// recurring tasks of the previous reactors will be cancelled when the relevant reactor is
+    /// destroyed during transition.
+    pub(crate) fn start_checking_for_upgrades<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event>
+    where
+        REv: From<ChainspecLoaderAnnouncement> + Send,
+    {
+        self.check_for_next_upgrade(effect_builder)
     }
 
     pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
@@ -542,13 +574,27 @@ impl ChainspecLoader {
         )
     }
 
+    fn get_current_run_info(&self) -> CurrentRunInfo {
+        let version = &self.chainspec.protocol_config.version;
+        let protocol_version = ProtocolVersion::from_parts(
+            version.major as u32,
+            version.minor as u32,
+            version.patch as u32,
+        );
+        CurrentRunInfo {
+            activation_point: self.chainspec.protocol_config.activation_point,
+            protocol_version,
+            initial_state_root_hash: self.initial_state_root_hash,
+        }
+    }
+
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
         REv: From<ChainspecLoaderAnnouncement> + Send,
     {
         let root_dir = self.root_dir.clone();
         let current_version = self.chainspec.protocol_config.version.clone();
-        async move {
+        let mut effects = async move {
             let maybe_next_upgrade =
                 task::spawn_blocking(move || next_upgrade(root_dir, current_version))
                     .await
@@ -562,7 +608,15 @@ impl ChainspecLoader {
                     .await
             }
         }
-        .ignore()
+        .ignore();
+
+        effects.extend(
+            effect_builder
+                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .event(|_| Event::CheckForNextUpgrade),
+        );
+
+        effects
     }
 
     fn handle_got_next_upgrade(&mut self, next_upgrade: NextUpgrade) -> Effects<Event> {
@@ -608,6 +662,9 @@ where
             Event::UpgradeResult(result) => self.handle_upgrade_result(result),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
+            }
+            Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
+                responder.respond(self.get_current_run_info()).ignore()
             }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
