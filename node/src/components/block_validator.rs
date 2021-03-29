@@ -13,6 +13,7 @@ use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     convert::Infallible,
     fmt::Debug,
+    hash::Hash,
     sync::Arc,
 };
 
@@ -28,13 +29,33 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Chainspec, Deploy, DeployHash, Timestamp},
+    types::{Block, Chainspec, Deploy, DeployHash, ProtoBlock, Timestamp},
     NodeRng,
 };
 use casper_types::bytesrepr::ToBytes;
 use keyed_counter::KeyedCounter;
 
 use super::fetcher::FetchResult;
+
+// TODO: Consider removing this trait.
+pub trait BlockLike: Eq + Hash {
+    fn deploys(&self) -> Vec<&DeployHash>;
+}
+
+impl BlockLike for Block {
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+            .collect()
+    }
+}
+
+impl BlockLike for ProtoBlock {
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploys_iter().collect()
+    }
+}
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]

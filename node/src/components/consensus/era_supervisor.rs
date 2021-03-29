@@ -50,7 +50,7 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockLike, DeployHash, DeployMetadata,
+        ActivationPoint, Block, BlockHash, BlockHeader, DeployHash, DeployMetadata,
         FinalitySignature, FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
@@ -981,7 +981,7 @@ where
             } => {
                 let past_deploys = past_values
                     .iter()
-                    .flat_map(|candidate| BlockLike::deploys(candidate.proto_block()))
+                    .flat_map(|candidate| candidate.proto_block().deploys_iter())
                     .cloned()
                     .collect();
                 let parent = parent_value.as_ref().map(CandidateBlock::hash);
@@ -1316,7 +1316,7 @@ where
 
     let sender_for_validate_block: I = sender.clone();
     let (valid, proto_block) = effect_builder
-        .validate_block(sender_for_validate_block, proto_block.clone(), timestamp)
+        .validate_proto_block(sender_for_validate_block, proto_block.clone(), timestamp)
         .await;
 
     Ok(Event::ResolveValidity {
