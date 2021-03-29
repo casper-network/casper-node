@@ -519,13 +519,14 @@ impl<C: Context> State<C> {
     /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
     /// ping we have already received, we drop it without forwarding it to our peers.
     pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
-        self.pings[creator] + self.params.max_round_length() > timestamp
+        self.pings.has(creator) && self.pings[creator] + self.params.max_round_length() > timestamp
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
     /// lengths old.
     pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
-        self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
+        self.pings.has(vidx)
+            && self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing

@@ -202,6 +202,11 @@ impl<T> ValidatorMap<T> {
             .map(|(idx, value)| (ValidatorIndex(idx as u32), value))
     }
 
+    /// Returns `true` if `self` has an entry for validator number `idx`.
+    pub(crate) fn has(&self, idx: ValidatorIndex) -> bool {
+        self.0.len() > idx.0 as usize
+    }
+
     /// Returns an iterator over all validator indices.
     pub(crate) fn keys(&self) -> impl Iterator<Item = ValidatorIndex> {
         (0..self.len()).map(|idx| ValidatorIndex(idx as u32))
