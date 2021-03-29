@@ -102,7 +102,7 @@ where
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash: Box::new(deploy_hash),
-                account: *deploy_header.account(),
+                account: deploy_header.account().clone(),
                 timestamp: deploy_header.timestamp(),
                 ttl: deploy_header.ttl(),
                 dependencies: deploy_header.dependencies().clone(),

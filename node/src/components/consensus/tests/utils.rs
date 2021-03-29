@@ -2,7 +2,7 @@ use num::Zero;
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, AsymmetricType, PublicKey, SecretKey, U512};
 
 use crate::{
     types::{
@@ -13,11 +13,11 @@ use crate::{
 };
 
 pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap());
 pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY));
 
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.

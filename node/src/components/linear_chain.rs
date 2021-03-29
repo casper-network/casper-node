@@ -225,7 +225,7 @@ impl<I> LinearChain<I> {
 
     // Checks if we have already enqueued that finality signature.
     fn has_finality_signature(&self, fs: &FinalitySignature) -> bool {
-        let creator = fs.public_key;
+        let creator = fs.public_key.clone();
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
             .get(&creator)
@@ -276,7 +276,7 @@ impl<I> LinearChain<I> {
                 continue;
             }
             known_signatures.insert_proof(
-                signature.to_inner().public_key,
+                signature.to_inner().public_key.clone(),
                 signature.to_inner().signature,
             );
             if signature.is_local() {
@@ -298,11 +298,11 @@ impl<I> LinearChain<I> {
             block_hash,
             public_key,
             ..
-        } = fs;
+        } = fs.clone();
         debug!(%block_hash, %public_key, "received new finality signature");
         let sigs = self
             .pending_finality_signatures
-            .entry(public_key)
+            .entry(public_key.clone())
             .or_default();
         // Limit the memory we use for storing unknown signatures from each validator.
         if sigs.len() >= MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
@@ -451,7 +451,7 @@ where
                     public_key,
                     era_id,
                     ..
-                } = *fs;
+                } = *fs.clone();
                 if let Some(latest_block) = self.latest_block.as_ref() {
                     // If it's a switch block it has already forgotten its own era's validators,
                     // unbonded some old validators, and determined new ones. In that case, we
@@ -476,12 +476,12 @@ where
                     }
                 }
                 if self.has_finality_signature(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key.clone(),
                         "finality signature already pending");
                     return Effects::new();
                 }
                 if self.signature_cache.known_signature(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key.clone(),
                         "finality signature is already known");
                     return Effects::new();
                 }
@@ -527,7 +527,7 @@ where
                     .map(|block| *block.header().state_root_hash());
                 effect_builder
                     .is_bonded_validator(
-                        fs.public_key,
+                        fs.public_key.clone(),
                         fs.era_id,
                         activation_era_id,
                         initial_state_root_hash,
@@ -535,7 +535,7 @@ where
                         protocol_version,
                     )
                     .result(
-                        |is_bonded| Event::IsBonded(maybe_signatures, fs, is_bonded),
+                        move |is_bonded| Event::IsBonded(maybe_signatures, fs, is_bonded),
                         |error| {
                             error!(%error, "checking in future eras returned an error.");
                             panic!("couldn't check if validator is bonded")

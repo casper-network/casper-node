@@ -135,24 +135,30 @@ mod tests {
     use crate::{
         bytesrepr,
         system::auction::{EraId, UnbondingPurse},
-        AccessRights, PublicKey, SecretKey, URef, U512,
+        AccessRights, AsymmetricType, PublicKey, SecretKey, URef, U512,
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);
     const ERA_OF_WITHDRAWAL: EraId = EraId::MAX;
 
-    static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
-        Lazy::new(|| SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into());
-    static UNBONDER_PUBLIC_KEY: Lazy<PublicKey> =
-        Lazy::new(|| SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into());
+    static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into()
+    });
+    static UNBONDER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into()
+    });
     static AMOUNT: Lazy<U512> = Lazy::new(|| U512::max_value() - 1);
 
     #[test]
     fn serialization_roundtrip() {
         let unbonding_purse = UnbondingPurse {
             bonding_purse: BONDING_PURSE,
-            validator_public_key: *VALIDATOR_PUBLIC_KEY,
-            unbonder_public_key: *UNBONDER_PUBLIC_KEY,
+            validator_public_key: VALIDATOR_PUBLIC_KEY.clone(),
+            unbonder_public_key: UNBONDER_PUBLIC_KEY.clone(),
             era_of_creation: ERA_OF_WITHDRAWAL,
             amount: *AMOUNT,
         };
@@ -163,8 +169,8 @@ mod tests {
     fn should_be_validator_condition() {
         let validator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
-            *VALIDATOR_PUBLIC_KEY,
-            *VALIDATOR_PUBLIC_KEY,
+            VALIDATOR_PUBLIC_KEY.clone(),
+            VALIDATOR_PUBLIC_KEY.clone(),
             ERA_OF_WITHDRAWAL,
             *AMOUNT,
         );
@@ -175,8 +181,8 @@ mod tests {
     fn should_be_delegator_condition() {
         let delegator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
-            *VALIDATOR_PUBLIC_KEY,
-            *UNBONDER_PUBLIC_KEY,
+            VALIDATOR_PUBLIC_KEY.clone(),
+            UNBONDER_PUBLIC_KEY.clone(),
             ERA_OF_WITHDRAWAL,
             *AMOUNT,
         );

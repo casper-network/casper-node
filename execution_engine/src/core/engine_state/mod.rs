@@ -439,7 +439,7 @@ where
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
-                    exec_request.proposer,
+                    exec_request.proposer.clone(),
                 ),
                 _ => self.deploy(
                     correlation_id,
@@ -448,7 +448,7 @@ where
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
-                    exec_request.proposer,
+                    exec_request.proposer.clone(),
                 ),
             };
             match result {
@@ -1803,7 +1803,7 @@ where
             if let Some(StoredValue::Bid(bid)) =
                 tracking_copy.get(correlation_id, key).map_err(Into::into)?
             {
-                bids.insert(*bid.validator_public_key(), *bid);
+                bids.insert(bid.validator_public_key().clone(), *bid);
             };
         }
 
@@ -1980,7 +1980,7 @@ where
                         step_request
                             .evict_items
                             .iter()
-                            .map(|item| item.validator_id)
+                            .map(|item| item.validator_id.clone())
                             .collect::<Vec<PublicKey>>(),
                     )?;
                     Ok(())

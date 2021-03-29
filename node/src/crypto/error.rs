@@ -1,6 +1,7 @@
 use std::result;
 
 use base64::DecodeError;
+use ed25519_dalek::ed25519::Error as SignatureError;
 use hex::FromHexError;
 use pem::PemError;
 use thiserror::Error;
@@ -53,6 +54,10 @@ pub enum Error {
     /// Error trying to manipulate the system key.
     #[error("invalid operation on system key: {0}")]
     System(String),
+
+    /// Error related to the underlying signature crate
+    #[error("Error in signature")]
+    Signature(SignatureError),
 }
 
 impl From<PemError> for Error {
@@ -67,6 +72,7 @@ impl From<crypto::Error> for Error {
             crypto::Error::AsymmetricKey(string) => Error::AsymmetricKey(string),
             crypto::Error::FromHex(error) => Error::FromHex(error),
             crypto::Error::FromBase64(error) => Error::FromBase64(error),
+            crypto::Error::SignatureError(error) => Error::Signature(error),
         }
     }
 }

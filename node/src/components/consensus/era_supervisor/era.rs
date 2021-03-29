@@ -160,7 +160,7 @@ impl<I> Era<I> {
     pub(crate) fn add_accusations(&mut self, accusations: &[PublicKey]) {
         for pub_key in accusations {
             if !self.slashed.contains(pub_key) {
-                self.accusations.insert(*pub_key);
+                self.accusations.insert(pub_key.clone());
             }
         }
     }

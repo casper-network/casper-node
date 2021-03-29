@@ -8,7 +8,7 @@ use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{EraId, ExecutionResult, PublicKey, SecretKey};
+use casper_types::{AsymmetricType, EraId, ExecutionResult, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{
@@ -297,7 +297,8 @@ fn test_get_block_header_and_finality_signatures_by_height() {
     let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
 
     {
-        let alice_secret_key = SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]).unwrap();
+        let alice_secret_key =
+            SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,
@@ -312,7 +313,7 @@ fn test_get_block_header_and_finality_signatures_by_height() {
     }
 
     {
-        let bob_secret_key = SecretKey::ed25519([2; SecretKey::ED25519_LENGTH]).unwrap();
+        let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,

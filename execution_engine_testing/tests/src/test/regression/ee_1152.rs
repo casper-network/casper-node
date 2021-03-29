@@ -19,7 +19,7 @@ use casper_execution_engine::{
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    AsymmetricType, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -27,9 +27,9 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 static DELEGATOR_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([226; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes([226; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([227; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes([227; SecretKey::ED25519_LENGTH]).unwrap());
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DELEGATOR_1_SECRET_KEY));
@@ -43,7 +43,7 @@ const DELEGATE_AMOUNT: u64 = 1_234_567;
 fn should_run_ee_1152_regression_test() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_STAKE.into()),
@@ -51,7 +51,7 @@ fn should_run_ee_1152_regression_test() {
             )),
         );
         let validator_2 = GenesisAccount::account(
-            *DELEGATOR_1,
+            DELEGATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_STAKE.into()),
@@ -94,8 +94,8 @@ fn should_run_ee_1152_regression_test() {
         auction_hash,
         auction::METHOD_DELEGATE,
         runtime_args! {
-            auction::ARG_DELEGATOR => *DELEGATOR_1,
-            auction::ARG_VALIDATOR => *VALIDATOR_1,
+            auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(DELEGATE_AMOUNT),
         },
     )
@@ -106,8 +106,8 @@ fn should_run_ee_1152_regression_test() {
         auction_hash,
         auction::METHOD_UNDELEGATE,
         runtime_args! {
-            auction::ARG_DELEGATOR => *DELEGATOR_1,
-            auction::ARG_VALIDATOR => *VALIDATOR_1,
+            auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(DELEGATE_AMOUNT),
         },
     )

@@ -6,12 +6,10 @@
 use ed25519_dalek::ExpandedSecretKey;
 use k256::ecdsa::{
     signature::{Signer, Verifier},
-    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
-    VerifyingKey as Secp256k1PublicKey,
+    Signature as Secp256k1Signature, VerifyingKey as Secp256k1PublicKey,
 };
 #[cfg(test)]
 use k256::elliptic_curve::sec1::ToEncodedPoint;
-use signature::Signature as _Signature;
 
 use casper_types::{PublicKey, SecretKey, Signature};
 
@@ -39,11 +37,10 @@ pub fn sign<T: AsRef<[u8]>>(
         (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(public_key)) => {
             let expanded_secret_key = ExpandedSecretKey::from(secret_key);
             let signature = expanded_secret_key.sign(message.as_ref(), public_key);
-            Signature::Ed25519(signature.to_bytes())
+            Signature::Ed25519(signature)
         }
-        (SecretKey::Secp256k1(secret_key_bytes), PublicKey::Secp256k1(_public_key)) => {
-            let signer =
-                Secp256k1SecretKey::from_bytes(secret_key_bytes).expect("should construct signer");
+        (SecretKey::Secp256k1(secret_key), PublicKey::Secp256k1(_public_key)) => {
+            let signer = secret_key;
             let signature: Secp256k1Signature = signer
                 .try_sign(message.as_ref())
                 .expect("should create signature");
@@ -64,25 +61,10 @@ pub fn verify<T: AsRef<[u8]>>(
             "signatures based on the system key cannot be verified",
         ))),
         (Signature::Ed25519(signature), PublicKey::Ed25519(public_key)) => public_key
-            .verify_strict(
-                message.as_ref(),
-                &ed25519_dalek::Signature::from_bytes(signature).map_err(|_| {
-                    Error::AsymmetricKey(format!(
-                        "failed to construct Ed25519 signature from {:?}",
-                        &signature[..]
-                    ))
-                })?,
-            )
+            .verify_strict(message.as_ref(), signature)
             .map_err(|_| Error::AsymmetricKey(String::from("failed to verify Ed25519 signature"))),
-        (Signature::Secp256k1(signature), PublicKey::Secp256k1(public_key_bytes)) => {
-            let verifier =
-                Secp256k1PublicKey::from_sec1_bytes(public_key_bytes).map_err(|error| {
-                    Error::AsymmetricKey(format!(
-                        "failed to create secp256k1 public key: {}.  Bytes: {:?}",
-                        error, public_key_bytes
-                    ))
-                })?;
-
+        (Signature::Secp256k1(signature), PublicKey::Secp256k1(public_key)) => {
+            let verifier: &Secp256k1PublicKey = public_key;
             verifier
                 .verify(message.as_ref(), signature)
                 .map_err(|error| {
@@ -113,6 +95,7 @@ mod tests {
 
     use super::*;
     use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
+    use casper_types::bytesrepr::ToBytes;
 
     type OpenSSLSecretKey = PKey<Private>;
     type OpenSSLPublicKey = PKey<Public>;
@@ -121,20 +104,20 @@ mod tests {
         // Try to/from bincode.
         let serialized = bincode::serialize(&secret_key).unwrap();
         let deserialized: SecretKey = bincode::deserialize(&serialized).unwrap();
-        assert_eq!(secret_key.as_slice(), deserialized.as_slice());
+        assert_eq!(secret_key.to_bytes(), deserialized.to_bytes());
         assert_eq!(secret_key.tag(), deserialized.tag());
 
         // Try to/from JSON.
         let serialized = serde_json::to_vec_pretty(&secret_key).unwrap();
         let deserialized: SecretKey = serde_json::from_slice(&serialized).unwrap();
-        assert_eq!(secret_key.as_slice(), deserialized.as_slice());
+        assert_eq!(secret_key.to_bytes(), deserialized.to_bytes());
         assert_eq!(secret_key.tag(), deserialized.tag());
     }
 
     fn secret_key_der_roundtrip(secret_key: SecretKey) {
         let der_encoded = secret_key.to_der().unwrap();
         let decoded = SecretKey::from_der(&der_encoded).unwrap();
-        assert_eq!(secret_key.as_slice(), decoded.as_slice());
+        assert_eq!(secret_key.to_bytes(), decoded.to_bytes());
         assert_eq!(secret_key.tag(), decoded.tag());
 
         // Ensure malformed encoded version fails to decode.
@@ -144,7 +127,10 @@ mod tests {
     fn secret_key_pem_roundtrip(secret_key: SecretKey) {
         let pem_encoded = secret_key.to_pem().unwrap();
         let decoded = SecretKey::from_pem(pem_encoded.as_bytes()).unwrap();
-        assert_eq!(secret_key.as_slice(), decoded.as_slice());
+        assert_eq!(
+            Into::<Vec<u8>>::into(secret_key.clone()),
+            Into::<Vec<u8>>::into(decoded.clone())
+        );
         assert_eq!(secret_key.tag(), decoded.tag());
 
         // Check PEM-encoded can be decoded by openssl.
@@ -157,7 +143,7 @@ mod tests {
     fn known_secret_key_to_pem(known_key_hex: &str, known_key_pem: &str, expected_tag: u8) {
         let key_bytes = hex::decode(known_key_hex).unwrap();
         let decoded = SecretKey::from_pem(known_key_pem.as_bytes()).unwrap();
-        assert_eq!(key_bytes, decoded.as_slice());
+        assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded.clone()));
         assert_eq!(expected_tag, decoded.tag());
     }
 
@@ -167,7 +153,7 @@ mod tests {
 
         secret_key.to_file(&path).unwrap();
         let decoded = SecretKey::from_file(&path).unwrap();
-        assert_eq!(secret_key.as_slice(), decoded.as_slice());
+        assert_eq!(secret_key.to_bytes(), decoded.to_bytes());
         assert_eq!(secret_key.tag(), decoded.tag());
     }
 
@@ -216,7 +202,7 @@ mod tests {
     fn known_public_key_to_pem(known_key_hex: &str, known_key_pem: &str) {
         let key_bytes = hex::decode(known_key_hex).unwrap();
         let decoded = PublicKey::from_pem(known_key_pem.as_bytes()).unwrap();
-        assert_eq!(key_bytes, decoded.as_ref());
+        assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded));
     }
 
     fn public_key_file_roundtrip(public_key: PublicKey) {
@@ -276,8 +262,8 @@ mod tests {
         hasher.finish()
     }
 
-    fn check_ord_and_hash<T: Ord + PartialOrd + Hash + Copy>(low: T, high: T) {
-        let low_copy = low;
+    fn check_ord_and_hash<T: Clone + Ord + PartialOrd + Hash>(low: T, high: T) {
+        let low_copy = low.clone();
 
         assert_eq!(hash(&low), hash(&low_copy));
         assert_ne!(hash(&low), hash(&high));
@@ -372,8 +358,8 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
             let mut rng = crate::new_rng();
             let public_key = PublicKey::random_ed25519(&mut rng);
             let bytes: Vec<u8> = iter::once(rng.gen())
-                .chain(public_key.as_ref().iter().copied())
-                .collect();
+                .chain(Into::<Vec<u8>>::into(public_key))
+                .collect::<Vec<u8>>();
 
             assert!(PublicKey::ed25519_from_bytes(&bytes[..]).is_err());
             assert!(PublicKey::ed25519_from_bytes(&bytes[2..]).is_err());
@@ -458,17 +444,17 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
 
         #[test]
         fn public_key_traits() {
-            let public_key_low = PublicKey::ed25519([1; PUBLIC_KEY_LENGTH]).unwrap();
-            let public_key_high = PublicKey::ed25519([3; PUBLIC_KEY_LENGTH]).unwrap();
+            let public_key_low = PublicKey::ed25519_from_bytes([1; PUBLIC_KEY_LENGTH]).unwrap();
+            let public_key_high = PublicKey::ed25519_from_bytes([3; PUBLIC_KEY_LENGTH]).unwrap();
             check_ord_and_hash(public_key_low, public_key_high)
         }
 
         #[test]
         fn public_key_to_account_hash() {
-            let public_key_high = PublicKey::ed25519([255; PUBLIC_KEY_LENGTH]).unwrap();
+            let public_key_high = PublicKey::ed25519_from_bytes([255; PUBLIC_KEY_LENGTH]).unwrap();
             assert_ne!(
                 public_key_high.to_account_hash().as_ref(),
-                public_key_high.as_ref()
+                Into::<Vec<u8>>::into(public_key_high)
             );
         }
 
@@ -529,12 +515,15 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         #[test]
         fn secret_key_from_bytes() {
             // Secret key should be `SecretKey::SECP256K1_LENGTH` bytes.
-            let bytes = [0; SECRET_KEY_LENGTH + 1];
+            // The k256 library will ensure that a byte stream of a length not equal to
+            // `SECP256K1_LENGTH` will fail due to an assertion internal to the library.
+            // We can check that invalid byte streams e.g [0;32] does not generate a valid key.
+            let bytes = [0; SECRET_KEY_LENGTH];
             assert!(SecretKey::secp256k1_from_bytes(&bytes[..]).is_err());
-            assert!(SecretKey::secp256k1_from_bytes(&bytes[2..]).is_err());
 
-            // Check the same bytes but of the right length succeeds.
-            assert!(SecretKey::secp256k1_from_bytes(&bytes[1..]).is_ok());
+            // Check that a valid byte stream produces a valid key
+            let bytes = [1; SECRET_KEY_LENGTH];
+            assert!(SecretKey::secp256k1_from_bytes(&bytes[..]).is_ok());
         }
 
         #[test]
@@ -585,8 +574,8 @@ Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let mut rng = crate::new_rng();
             let public_key = PublicKey::random_secp256k1(&mut rng);
             let bytes: Vec<u8> = iter::once(rng.gen())
-                .chain(public_key.as_ref().iter().copied())
-                .collect();
+                .chain(Into::<Vec<u8>>::into(public_key))
+                .collect::<Vec<u8>>();
 
             assert!(PublicKey::secp256k1_from_bytes(&bytes[..]).is_err());
             assert!(PublicKey::secp256k1_from_bytes(&bytes[2..]).is_err());
@@ -681,7 +670,9 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let mut rng = crate::new_rng();
             let public_key1 = PublicKey::random_secp256k1(&mut rng);
             let public_key2 = PublicKey::random_secp256k1(&mut rng);
-            if public_key1.as_ref() < public_key2.as_ref() {
+            if Into::<Vec<u8>>::into(public_key1.clone())
+                < Into::<Vec<u8>>::into(public_key2.clone())
+            {
                 check_ord_and_hash(public_key1, public_key2)
             } else {
                 check_ord_and_hash(public_key2, public_key1)
@@ -692,7 +683,10 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         fn public_key_to_account_hash() {
             let mut rng = crate::new_rng();
             let public_key = PublicKey::random_secp256k1(&mut rng);
-            assert_ne!(public_key.to_account_hash().as_ref(), public_key.as_ref());
+            assert_ne!(
+                public_key.to_account_hash().as_ref(),
+                Into::<Vec<u8>>::into(public_key)
+            );
         }
 
         #[test]
@@ -759,9 +753,12 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         let secp256k1_public_key = secp256k1_secret_key.public_key();
 
         // Construct a CL secret key and public key from that (which will be a compressed key).
-        let secret_key = SecretKey::Secp256k1(secret_key_bytes);
+        let secret_key = SecretKey::secp256k1_from_bytes(secret_key_bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
-        assert_eq!(public_key.as_ref().len(), PublicKey::SECP256K1_LENGTH);
+        assert_eq!(
+            Into::<Vec<u8>>::into(public_key.clone()).len(),
+            PublicKey::SECP256K1_LENGTH
+        );
         assert_ne!(
             secp256k1_public_key
                 .to_encoded_point(false)

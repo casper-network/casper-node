@@ -8,8 +8,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs,
-    SecretKey, Transfer, TransferAddr, U512,
+    account::AccountHash, runtime_args, AccessRights, AsymmetricType, DeployHash, PublicKey,
+    RuntimeArgs, SecretKey, Transfer, TransferAddr, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -25,9 +25,12 @@ const TRANSFER_ARG_TARGETS: &str = "targets";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_STORED: &str = "transfer_purse_to_accounts_stored.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL: &str = "transfer_purse_to_accounts_subcall.wasm";
 
-static ALICE_KEY: Lazy<PublicKey> = Lazy::new(|| SecretKey::ed25519([3; 32]).into());
-static BOB_KEY: Lazy<PublicKey> = Lazy::new(|| SecretKey::ed25519([5; 32]).into());
-static CAROL_KEY: Lazy<PublicKey> = Lazy::new(|| SecretKey::ed25519([7; 32]).into());
+static ALICE_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([3; 32]).unwrap().into());
+static BOB_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([5; 32]).unwrap().into());
+static CAROL_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([7; 32]).unwrap().into());
 
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE_KEY));
 static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));

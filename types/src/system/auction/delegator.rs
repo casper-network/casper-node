@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Delegator {
@@ -189,19 +189,28 @@ impl FromBytes for Delegator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, system::auction::Delegator, AccessRights, SecretKey, URef, U512};
+    use crate::{
+        bytesrepr, system::auction::Delegator, AccessRights, AsymmetricType, PublicKey, SecretKey,
+        URef, U512,
+    };
 
     #[test]
     fn serialization_roundtrip() {
         let staked_amount = U512::one();
         let bonding_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-        let delegator_public_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
-        let validator_public_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
+        let delegator_public_key: PublicKey =
+            SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+                .unwrap()
+                .into();
+        let validator_public_key: PublicKey =
+            SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
+                .unwrap()
+                .into();
         let unlocked_delegator = Delegator::unlocked(
-            delegator_public_key,
+            delegator_public_key.clone(),
             staked_amount,
             bonding_purse,
-            validator_public_key,
+            validator_public_key.clone(),
         );
         bytesrepr::test_serialization_roundtrip(&unlocked_delegator);
 

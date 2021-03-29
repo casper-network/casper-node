@@ -24,7 +24,7 @@ use casper_types::{
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    AsymmetricType, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";
@@ -34,8 +34,11 @@ const ACCESS_KEY: &str = "access";
 const CONTRACT_EE_1129_REGRESSION: &str = "ee_1129_regression.wasm";
 const ARG_AMOUNT: &str = "amount";
 
-static VALIDATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(10_001));
@@ -46,7 +49,7 @@ static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_00
 fn should_run_ee_1129_underfunded_delegate_call() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -71,8 +74,8 @@ fn should_run_ee_1129_underfunded_delegate_call() {
     let deploy_hash = [42; 32];
 
     let args = runtime_args! {
-        auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        auction::ARG_VALIDATOR => *VALIDATOR_1,
+        auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
         auction::ARG_AMOUNT => bid_amount,
     };
 
@@ -111,7 +114,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 fn should_run_ee_1129_underfunded_add_bid_call() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             None,
         );
@@ -135,7 +138,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     let delegation_rate: DelegationRate = 10;
 
     let args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => *VALIDATOR_1,
+            auction::ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => amount,
             auction::ARG_DELEGATION_RATE => delegation_rate,
     };
