@@ -296,10 +296,11 @@ where
             .await;
 
         // TODO: This is racy if someone is calling `pop` at the same time.
-        // TODO: Use `acquire_many` as soon as tokio has been upgraded.
-        for _ in 0..events.len() {
-            self.total.acquire().await.expect("should acquire").forget();
-        }
+        self.total
+            .acquire_many(events.len() as u32)
+            .await
+            .expect("could not acquire tickets during drain")
+            .forget();
 
         events
     }
