@@ -36,15 +36,15 @@ locked_funds_period = '90days'
 unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
-# Annual issuance: 6%
+# Annual issuance: 8%
 # Minimum round exponent: 16
 # Ticks per year: 31536000000
 #
-# (1+0.06)^((2^16)/31536000000)-1 is expressed as a fractional number below
+# (1+0.08)^((2^16)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.06)**((2**16)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [97, 801053466]
+# Fraction((1 + 0.08)**((2**16)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [147, 919121747]
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
