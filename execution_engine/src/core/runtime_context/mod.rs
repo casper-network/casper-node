@@ -27,7 +27,10 @@ use crate::{
         tracking_copy::{AddResult, TrackingCopy},
         Address,
     },
-    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{
+        account::Account, gas::Gas, gas_counter::GasCounter, newtypes::CorrelationId,
+        stored_value::StoredValue,
+    },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
@@ -95,8 +98,7 @@ pub struct RuntimeContext<'a, R> {
     base_key: Key,
     blocktime: BlockTime,
     deploy_hash: DeployHash,
-    gas_limit: Gas,
-    gas_counter: Gas,
+    gas_counter: GasCounter,
     hash_address_generator: Rc<RefCell<AddressGenerator>>,
     uref_address_generator: Rc<RefCell<AddressGenerator>>,
     transfer_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -125,8 +127,7 @@ where
         base_key: Key,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
-        gas_limit: Gas,
-        gas_counter: Gas,
+        gas_counter: GasCounter,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
         uref_address_generator: Rc<RefCell<AddressGenerator>>,
         transfer_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -147,7 +148,6 @@ where
             blocktime,
             deploy_hash,
             base_key,
-            gas_limit,
             gas_counter,
             hash_address_generator,
             uref_address_generator,
@@ -313,15 +313,11 @@ where
         Rc::clone(&self.tracking_copy)
     }
 
-    pub fn gas_limit(&self) -> Gas {
-        self.gas_limit
+    pub fn gas_counter(&self) -> &GasCounter {
+        &self.gas_counter
     }
 
-    pub fn gas_counter(&self) -> Gas {
-        self.gas_counter
-    }
-
-    pub fn set_gas_counter(&mut self, new_gas_counter: Gas) {
+    pub fn set_gas_counter(&mut self, new_gas_counter: GasCounter) {
         self.gas_counter = new_gas_counter;
     }
 
@@ -719,24 +715,14 @@ where
     /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
     /// Intuition about the return value sense is to answer the question 'are we
     /// allowed to continue?'
-    pub fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
-        let prev = self.gas_counter();
-        let gas_limit = self.gas_limit();
-        // gas charge overflow protection
-        match prev.checked_add(amount) {
-            None => {
-                self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
-            }
-            Some(val) if val > gas_limit => {
-                self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
-            }
-            Some(val) => {
-                self.set_gas_counter(val);
-                Ok(())
-            }
-        }
+    pub fn charge_gas(&mut self, amount: u64) -> Result<(), Error> {
+        self.gas_counter.add(amount)?;
+        Ok(())
+    }
+
+    pub fn charge_gas_large(&mut self, amount: Gas) -> Result<(), Error> {
+        self.gas_counter.add_large(amount)?;
+        Ok(())
     }
 
     /// Checks if we are calling a system contract.
@@ -761,22 +747,18 @@ where
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
-        self.charge_gas(gas_cost)
+        self.charge_gas_large(gas_cost)
     }
 
     /// Charges gas for using a host system contract's entrypoint.
-    pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), Error>
-    where
-        T: Into<Gas>,
-    {
+    pub(crate) fn charge_system_contract_call(&mut self, call_cost: u64) -> Result<(), Error> {
         if self.account.account_hash() == SYSTEM_ACCOUNT_ADDR {
             // Don't try to charge a system account for calling a system contract's entry point.
             // This will make sure that (for example) calling a mint's transfer from within auction
             // wouldn't try to incur cost to system account.
             return Ok(());
         }
-        let amount: Gas = call_cost.into();
-        self.charge_gas(amount)
+        self.charge_gas(call_cost)
     }
 
     /// Writes data to global state with a measurement

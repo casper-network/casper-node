@@ -24,7 +24,10 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopy,
     },
-    shared::{account::Account, gas::Gas, newtypes::CorrelationId, stored_value::StoredValue},
+    shared::{
+        account::Account, gas::Gas, gas_counter::GasCounter, newtypes::CorrelationId,
+        stored_value::StoredValue,
+    },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
@@ -136,7 +139,7 @@ impl Executor {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
-        let gas_counter: Gas = Gas::default();
+        let gas_counter = GasCounter::new(gas_limit, Gas::default());
         let transfers = Vec::default();
 
         // Snapshot of effects before execution, so in case of error
@@ -154,7 +157,6 @@ impl Executor {
             base_key,
             blocktime,
             deploy_hash,
-            gas_limit,
             gas_counter,
             hash_address_generator,
             uref_address_generator,
@@ -191,7 +193,7 @@ impl Executor {
                     return ExecutionResult::Success {
                         effect: runtime.context().effect(),
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: runtime.context().gas_counter().used(),
                     };
                 }
                 Err(error) => {
@@ -199,7 +201,7 @@ impl Executor {
                         error: error.into(),
                         effect: effects_snapshot,
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: runtime.context().gas_counter().used(),
                     };
                 }
             }
@@ -215,7 +217,7 @@ impl Executor {
                     return ExecutionResult::Success {
                         effect: runtime.context().effect(),
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: runtime.context().gas_counter().used(),
                     };
                 }
                 Err(error) => {
@@ -223,7 +225,7 @@ impl Executor {
                         error: error.into(),
                         effect: effects_snapshot,
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: runtime.context().gas_counter().used(),
                     };
                 }
             }
@@ -239,7 +241,7 @@ impl Executor {
                     return ExecutionResult::Success {
                         effect: runtime.context().effect(),
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: runtime.context().gas_counter().used(),
                     }
                 }
                 Err(error) => {
@@ -247,14 +249,14 @@ impl Executor {
                         error: error.into(),
                         effect: effects_snapshot,
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: runtime.context().gas_counter().used(),
                     }
                 }
             }
         }
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
-            runtime.context().gas_counter(),
+            runtime.context().gas_counter().used(),
             effects_snapshot,
             runtime.context().transfers().to_owned()
         );
@@ -262,7 +264,7 @@ impl Executor {
         ExecutionResult::Success {
             effect: runtime.context().effect(),
             transfers: runtime.context().transfers().to_owned(),
-            cost: runtime.context().gas_counter(),
+            cost: runtime.context().gas_counter().used(),
         }
     }
 
@@ -341,13 +343,13 @@ impl Executor {
             Ok(()) => ExecutionResult::Success {
                 effect: runtime.context().effect(),
                 transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                cost: runtime.context().gas_counter().used(),
             },
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
                 effect: effects_snapshot,
                 transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                cost: runtime.context().gas_counter().used(),
             },
         }
     }
@@ -601,7 +603,7 @@ impl Executor {
             extract_access_rights_from_keys(keys)
         };
 
-        let gas_counter = Gas::default();
+        let gas_counter = GasCounter::new(gas_limit, Gas::default());
         let transfers = Vec::default();
 
         let runtime_context = RuntimeContext::new(
@@ -615,7 +617,6 @@ impl Executor {
             base_key,
             blocktime,
             deploy_hash,
-            gas_limit,
             gas_counter,
             hash_address_generator,
             uref_address_generator,
@@ -732,14 +733,14 @@ impl DirectSystemContractCall {
                 Ok(ret) => ExecutionResult::Success {
                     effect: runtime.context().effect(),
                     transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
+                    cost: runtime.context().gas_counter().used(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
                     error: Error::CLValue(error).into(),
                     effect: execution_effect,
                     transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
+                    cost: runtime.context().gas_counter().used(),
                 }
                 .take_without_ret(),
             },
@@ -747,7 +748,7 @@ impl DirectSystemContractCall {
                 error: error.into(),
                 effect: execution_effect,
                 transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                cost: runtime.context().gas_counter().used(),
             }
             .take_without_ret(),
         }

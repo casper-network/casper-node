@@ -49,7 +49,7 @@ use crate::{
     },
     shared::{
         account::Account,
-        gas::Gas,
+        gas_counter::GasCounter,
         host_function_costs::{Cost, HostFunction},
         stored_value::StoredValue,
         wasm_config::WasmConfig,
@@ -1000,23 +1000,23 @@ where
         self.context.protocol_data()
     }
 
-    fn gas(&mut self, amount: Gas) -> Result<(), Error> {
+    fn gas(&mut self, amount: u64) -> Result<(), Error> {
         self.context.charge_gas(amount)
     }
 
-    fn gas_counter(&self) -> Gas {
+    fn gas_counter(&self) -> &GasCounter {
         self.context.gas_counter()
     }
 
-    fn set_gas_counter(&mut self, new_gas_counter: Gas) {
+    fn set_gas_counter(&mut self, new_gas_counter: GasCounter) {
         self.context.set_gas_counter(new_gas_counter);
     }
 
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
-        T: Into<Gas>,
+        T: Into<u64>,
     {
-        self.context.charge_system_contract_call(amount)
+        self.context.charge_system_contract_call(amount.into())
     }
 
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
@@ -1317,7 +1317,6 @@ where
         let base_key = self.protocol_data().mint().into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
-        let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
         let hash_address_generator = self.context.hash_address_generator();
         let uref_address_generator = self.context.uref_address_generator();
@@ -1338,8 +1337,7 @@ where
             base_key,
             blocktime,
             deploy_hash,
-            gas_limit,
-            gas_counter,
+            *gas_counter,
             hash_address_generator,
             uref_address_generator,
             transfer_address_generator,
@@ -1427,7 +1425,9 @@ where
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
         // contract.
-        self.gas(mint_runtime.gas_counter() - gas_counter)?;
+        let gas_diff = mint_runtime.gas_counter().used() - gas_counter.used();
+        debug_assert!(gas_diff.value() <= U512::from(u64::MAX));
+        self.gas(gas_diff.value().as_u64())?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
@@ -1462,7 +1462,6 @@ where
         let base_key = self.protocol_data().handle_payment().into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
-        let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
         let fn_store_id = self.context.hash_address_generator();
         let address_generator = self.context.uref_address_generator();
@@ -1483,8 +1482,7 @@ where
             base_key,
             blocktime,
             deploy_hash,
-            gas_limit,
-            gas_counter,
+            *gas_counter,
             fn_store_id,
             address_generator,
             transfer_address_generator,
@@ -1545,7 +1543,9 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
-        self.gas(runtime.gas_counter() - gas_counter)?;
+        let gas_diff = runtime.gas_counter().used() - gas_counter.used();
+        debug_assert!(gas_diff.value() <= U512::from(u64::MAX));
+        self.gas(gas_diff.value().as_u64())?;
 
         let ret = result?;
         let urefs = extract_urefs(&ret)?;
@@ -1561,7 +1561,7 @@ where
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
-        let gas_counter = self.gas_counter();
+        let gas_counter = *self.gas_counter();
         let amount: U512 =
             Self::get_named_argument(&self.context.args(), standard_payment::ARG_AMOUNT)?;
         let result = self.pay(amount).map_err(Self::reverter);
@@ -1589,7 +1589,6 @@ where
         let base_key = self.protocol_data().auction().into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
-        let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
         let fn_store_id = self.context.hash_address_generator();
         let address_generator = self.context.uref_address_generator();
@@ -1610,8 +1609,7 @@ where
             base_key,
             blocktime,
             deploy_hash,
-            gas_limit,
-            gas_counter,
+            *gas_counter,
             fn_store_id,
             address_generator,
             transfer_address_generator,
@@ -1761,7 +1759,11 @@ where
         };
 
         // Charge for the gas spent during execution in an isolated runtime.
-        self.gas(runtime.gas_counter() - gas_counter)?;
+        // Assumes that gas spent does not exceed u64::MAX which as all system contract costs are
+        // u32.
+        let gas_diff = runtime.gas_counter().used() - gas_counter.used();
+        debug_assert!(gas_diff.value() <= U512::from(u64::MAX));
+        self.gas(gas_diff.value().as_u64())?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
@@ -2043,8 +2045,7 @@ where
             base_key,
             self.context.get_blocktime(),
             self.context.get_deploy_hash(),
-            self.context.gas_limit(),
-            self.context.gas_counter(),
+            *self.context.gas_counter(),
             self.context.hash_address_generator(),
             self.context.uref_address_generator(),
             self.context.transfer_address_generator(),
@@ -2069,7 +2070,7 @@ where
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
         // counter from there to our counter
-        self.context.set_gas_counter(runtime.context.gas_counter());
+        self.context.set_gas_counter(*runtime.context.gas_counter());
 
         {
             let transfers = self.context.transfers_mut();
@@ -2729,7 +2730,7 @@ where
         &mut self,
         mint_contract_hash: ContractHash,
     ) -> Result<U512, Error> {
-        let gas_counter = self.gas_counter();
+        let gas_counter = *self.gas_counter();
         let call_result = self.call_contract(
             mint_contract_hash,
             mint::METHOD_READ_BASE_ROUND_REWARD,
@@ -2744,7 +2745,7 @@ where
     /// Calls the `mint` method on the mint contract at the given mint
     /// contract key
     fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
-        let gas_counter = self.gas_counter();
+        let gas_counter = *self.gas_counter();
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
             runtime_args.insert(mint::ARG_AMOUNT, amount)?;
@@ -2764,7 +2765,7 @@ where
         mint_contract_hash: ContractHash,
         amount: U512,
     ) -> Result<(), Error> {
-        let gas_counter = self.gas_counter();
+        let gas_counter = *self.gas_counter();
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
             runtime_args.insert(mint::ARG_AMOUNT, amount)?;
@@ -2784,7 +2785,7 @@ where
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
-        let gas_counter = self.gas_counter();
+        let gas_counter = *self.gas_counter();
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
         self.set_gas_counter(gas_counter);
@@ -2818,7 +2819,7 @@ where
             runtime_args
         };
 
-        let gas_counter = self.gas_counter();
+        let gas_counter = *self.gas_counter();
         let call_result =
             self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values);
         self.set_gas_counter(gas_counter);
@@ -3343,7 +3344,7 @@ where
         T: AsRef<[Cost]> + Copy,
     {
         let cost = host_function.calculate_gas_cost(weights);
-        self.gas(cost)?;
+        self.context.charge_gas_large(cost)?;
         Ok(())
     }
 }

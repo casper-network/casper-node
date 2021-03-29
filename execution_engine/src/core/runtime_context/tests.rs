@@ -22,7 +22,10 @@ use crate::{
         execution::{AddressGenerator, Error},
         runtime::extract_access_rights_from_keys,
     },
-    shared::{gas::Gas, newtypes::CorrelationId, stored_value::StoredValue, transform::Transform},
+    shared::{
+        gas::Gas, gas_counter::GasCounter, newtypes::CorrelationId, stored_value::StoredValue,
+        transform::Transform,
+    },
     storage::global_state::in_memory::InMemoryGlobalStateView,
 };
 
@@ -247,6 +250,7 @@ fn contract_key_addable_valid() {
         StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref)).unwrap());
 
     let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let gas_counter = GasCounter::new(Gas::new(U512::from(GAS_LIMIT)), Gas::default());
 
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
@@ -259,8 +263,7 @@ fn contract_key_addable_valid() {
         contract_key,
         BlockTime::new(0),
         DeployHash::new(DEPLOY_HASH),
-        Gas::new(U512::from(GAS_LIMIT)),
-        Gas::default(),
+        gas_counter,
         Rc::new(RefCell::new(hash_address_generator)),
         Rc::new(RefCell::new(uref_address_generator)),
         Rc::new(RefCell::new(transfer_address_generator)),
@@ -321,6 +324,8 @@ fn contract_key_addable_invalid() {
     let named_uref_tuple = StoredValue::CLValue(CLValue::from_t((uref_name, uref)).unwrap());
 
     let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let gas_counter = GasCounter::new(Gas::new(U512::from(GAS_LIMIT)), Gas::default());
+
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
         EntryPointType::Session,
@@ -332,8 +337,7 @@ fn contract_key_addable_invalid() {
         other_contract_key,
         BlockTime::new(0),
         DeployHash::new(DEPLOY_HASH),
-        Gas::default(),
-        Gas::default(),
+        gas_counter,
         Rc::new(RefCell::new(hash_address_generator)),
         Rc::new(RefCell::new(uref_address_generator)),
         Rc::new(RefCell::new(transfer_address_generator)),
@@ -756,9 +760,9 @@ fn should_meter_for_gas_storage_write() {
         .calculate_gas_cost(value.serialized_length());
 
     let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
-        let gas_before = rc.gas_counter();
+        let gas_before = rc.gas_counter().used();
         rc.metered_write_gs(uref, value).expect("should write");
-        let gas_after = rc.gas_counter();
+        let gas_after = rc.gas_counter().used();
         Ok((gas_before, gas_after))
     })
     .expect("should run test");
@@ -770,7 +774,10 @@ fn should_meter_for_gas_storage_write() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_write_cost);
+    assert_eq!(
+        gas_usage_after,
+        gas_usage_before + expected_write_cost,
+    );
 }
 
 #[test]
@@ -788,9 +795,9 @@ fn should_meter_for_gas_storage_add() {
     let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
         rc.metered_write_gs(uref, value.clone())
             .expect("should write");
-        let gas_before = rc.gas_counter();
+        let gas_before = rc.gas_counter().used();
         rc.metered_add_gs(uref, value).expect("should add");
-        let gas_after = rc.gas_counter();
+        let gas_after = rc.gas_counter().used();
         Ok((gas_before, gas_after))
     })
     .expect("should run test");
@@ -802,5 +809,8 @@ fn should_meter_for_gas_storage_add() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_add_cost);
+    assert_eq!(
+        gas_usage_after,
+        gas_usage_before + Gas::from(expected_add_cost)
+    );
 }

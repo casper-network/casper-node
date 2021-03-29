@@ -21,6 +21,7 @@ use crate::{
         account::{Account, AssociatedKeys},
         additive_map::AdditiveMap,
         gas::Gas,
+        gas_counter::GasCounter,
         newtypes::CorrelationId,
         stored_value::StoredValue,
         transform::Transform,
@@ -34,7 +35,7 @@ use crate::{
     },
 };
 
-pub const GAS_LIMIT: u64 = 500_000_000_000_000u64;
+pub const GAS_LIMIT: u64 = u64::MAX;
 
 pub static TEST_PROTOCOL_DATA: Lazy<ProtocolData> = Lazy::new(ProtocolData::default);
 
@@ -105,8 +106,7 @@ pub fn mock_runtime_context<'a>(
         base_key,
         BlockTime::new(0),
         DeployHash::new([1u8; 32]),
-        Gas::new(U512::from(GAS_LIMIT)),
-        Gas::default(),
+        GasCounter::new(Gas::new(U512::from(GAS_LIMIT)), Gas::default()),
         Rc::new(RefCell::new(hash_address_generator)),
         Rc::new(RefCell::new(uref_address_generator)),
         Rc::new(RefCell::new(transfer_address_generator)),
