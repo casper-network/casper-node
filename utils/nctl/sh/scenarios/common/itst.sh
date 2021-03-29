@@ -157,7 +157,8 @@ function get_switch_block_equivocators() {
 }
 
 function get_running_node_count {
-    nctl-status | grep 'RUNNING' | wc -l
+    local RUNNING_COUNT=$(nctl-status | grep 'RUNNING' | wc -l)
+    echo "$RUNNING_COUNT"
 }
 
 # Check that a certain node has produced blocks.

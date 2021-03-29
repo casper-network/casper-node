@@ -38,7 +38,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
     let mut peers = BTreeMap::new();
-    peers.insert(node_id.clone(), socket_addr.to_string());
+    peers.insert(*node_id, socket_addr.to_string());
     let status_feed = StatusFeed::<NodeId> {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
