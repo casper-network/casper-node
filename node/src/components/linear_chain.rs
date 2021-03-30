@@ -1,11 +1,7 @@
 mod event;
+mod signature_cache;
 
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    convert::Infallible,
-    fmt::Display,
-    marker::PhantomData,
-};
+use std::{collections::HashMap, convert::Infallible, fmt::Display, marker::PhantomData};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -31,67 +27,11 @@ use crate::{
 };
 
 pub use event::Event;
+use signature_cache::SignatureCache;
 
 /// The maximum number of finality signatures from a single validator we keep in memory while
 /// waiting for their block.
 const MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR: usize = 1000;
-
-#[derive(DataSize, Debug)]
-struct SignatureCache {
-    curr_era: EraId,
-    signatures: HashMap<BlockHash, BlockSignatures>,
-}
-
-impl SignatureCache {
-    fn new() -> Self {
-        SignatureCache {
-            curr_era: EraId::from(0),
-            signatures: Default::default(),
-        }
-    }
-
-    fn get(&mut self, hash: &BlockHash, _era_id: EraId) -> Option<BlockSignatures> {
-        self.signatures.get(hash).cloned()
-    }
-
-    fn insert(&mut self, block_signature: BlockSignatures) {
-        // We optimistically assume that most of the signatures that arrive in close temporal
-        // proximity refer to the same era.
-        if self.curr_era < block_signature.era_id {
-            self.signatures.clear();
-            self.curr_era = block_signature.era_id;
-        }
-        match self.signatures.entry(block_signature.block_hash) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().proofs.extend(block_signature.proofs);
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(block_signature);
-            }
-        }
-    }
-
-    /// Get signatures from the cache to be updated.
-    /// If there are no signatures, create an empty signature to be updated.
-    fn get_known_signatures(&self, block_hash: &BlockHash, block_era: EraId) -> BlockSignatures {
-        match self.signatures.get(block_hash) {
-            Some(signatures) => signatures.clone(),
-            None => BlockSignatures::new(*block_hash, block_era),
-        }
-    }
-
-    /// Returns whether finality signature is known already.
-    fn known_signature(&self, fs: &FinalitySignature) -> bool {
-        let FinalitySignature {
-            block_hash,
-            public_key,
-            ..
-        } = fs;
-        self.signatures
-            .get(block_hash)
-            .map_or(false, |bs| bs.has_proof(public_key))
-    }
-}
 
 #[derive(DataSize, Debug)]
 enum Signature {
