@@ -2,20 +2,22 @@
 
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
-    broadcast::{self, RecvError},
+    broadcast::{self, error::RecvError},
     mpsc,
+};
+use tokio_stream::wrappers::{
+    errors::BroadcastStreamRecvError, BroadcastStream, UnboundedReceiverStream,
 };
 use tracing::{error, info, trace};
 use warp::{
     filters::BoxedFilter,
-    sse::{self, ServerSentEvent as WarpServerSentEvent},
+    sse::{self, Event as WarpServerSentEvent},
     Filter, Reply,
 };
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
 use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp};
 
@@ -31,7 +33,7 @@ pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
     #[data_size(skip)]
-    ApiVersion(Version),
+    ApiVersion(ProtocolVersion),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
@@ -40,7 +42,7 @@ pub enum SseData {
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
         deploy_hash: Box<DeployHash>,
-        account: PublicKey,
+        account: Box<PublicKey>,
         timestamp: Timestamp,
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
@@ -68,7 +70,7 @@ pub(super) struct ServerSentEvent {
 
 impl ServerSentEvent {
     /// The first event sent to every subscribing client.
-    pub(super) fn initial_event(client_api_version: Version) -> Self {
+    pub(super) fn initial_event(client_api_version: ProtocolVersion) -> Self {
         ServerSentEvent {
             id: None,
             data: SseData::ApiVersion(client_api_version),
@@ -167,29 +169,30 @@ pub(super) fn create_channels_and_filter(
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
-) -> impl Stream<Item = Result<impl WarpServerSentEvent, RecvError>> + 'static {
-    initial_events
+) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
+    UnboundedReceiverStream::new(initial_events)
         .map(|event| Ok(BroadcastChannelMessage::ServerSentEvent(event)))
-        .chain(ongoing_events)
+        .chain(BroadcastStream::new(ongoing_events))
         .map(|result| {
             trace!(?result);
             match result {
                 Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
                     match (event.id, &event.data) {
-                        (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
+                        (None, &SseData::ApiVersion { .. }) => Ok(WarpServerSentEvent::default()
+                            .json_data(event.data)
+                            .unwrap_or_default()),
                         (Some(id), &SseData::BlockAdded { .. })
                         | (Some(id), &SseData::DeployProcessed { .. })
                         | (Some(id), &SseData::FinalitySignature(_))
-                        | (Some(id), &SseData::Fault { .. }) => {
-                            Ok((sse::id(id), sse::json(event.data)).boxed())
-                        }
+                        | (Some(id), &SseData::Fault { .. }) => Ok(WarpServerSentEvent::default()
+                            .json_data(event.data)
+                            .unwrap_or_default()
+                            .id(id.to_string())),
                         _ => unreachable!("only ApiVersion may have no event ID"),
                     }
                 }
-                Ok(BroadcastChannelMessage::Shutdown) | Err(RecvError::Closed) => {
-                    Err(RecvError::Closed)
-                }
-                Err(RecvError::Lagged(amount)) => {
+                Ok(BroadcastChannelMessage::Shutdown) => Err(RecvError::Closed),
+                Err(BroadcastStreamRecvError::Lagged(amount)) => {
                     info!(
                         "client lagged by {} events - dropping event stream connection to client",
                         amount

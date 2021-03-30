@@ -774,10 +774,7 @@ fn should_meter_for_gas_storage_write() {
         gas_usage_before
     );
 
-    assert_eq!(
-        gas_usage_after,
-        gas_usage_before + expected_write_cost,
-    );
+    assert_eq!(gas_usage_after, gas_usage_before + expected_write_cost,);
 }
 
 #[test]

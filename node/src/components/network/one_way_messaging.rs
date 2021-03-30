@@ -68,7 +68,7 @@ impl Outgoing {
 
         match &destination {
             NodeId::P2p(destination) => Ok(Outgoing {
-                destination: destination.clone(),
+                destination: *destination,
                 message: serialized_message,
             }),
             destination => {

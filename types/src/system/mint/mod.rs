@@ -7,14 +7,12 @@ mod system_provider;
 
 use num_rational::Ratio;
 
-use crate::{account::AccountHash, Key, URef, U512};
+use crate::{account::AccountHash, Key, PublicKey, URef, U512};
 
 pub use crate::system::mint::{
     constants::*, error::Error, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider, system_provider::SystemProvider,
 };
-
-const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
@@ -23,7 +21,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
         let caller = self.get_caller();
         let is_empty_purse = initial_balance.is_zero();
-        if !is_empty_purse && caller != SYSTEM_ACCOUNT {
+        if !is_empty_purse && caller != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidNonEmptyPurseCreation);
         }
 
@@ -54,7 +52,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
         // only system may reduce total supply
         let caller = self.get_caller();
-        if caller != SYSTEM_ACCOUNT {
+        if caller != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
 

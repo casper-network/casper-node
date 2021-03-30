@@ -9,7 +9,6 @@ use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
 use prometheus::{IntGauge, Registry};
-use semver::Version;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
@@ -19,7 +18,10 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         announcements::LinearChainAnnouncement,
-        requests::{ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
@@ -197,18 +199,13 @@ pub(crate) struct LinearChain<I> {
 impl<I> LinearChain<I> {
     pub fn new(
         registry: &Registry,
-        protocol_version: Version,
+        protocol_version: ProtocolVersion,
         initial_state_root_hash: Digest,
         auction_delay: u64,
         unbonding_delay: u64,
         activation_era_id: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
-        let protocol_version = ProtocolVersion::from_parts(
-            protocol_version.major as u32,
-            protocol_version.minor as u32,
-            protocol_version.patch as u32,
-        );
         Ok(LinearChain {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),
@@ -348,6 +345,7 @@ where
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
         + Send,
     I: Display + Send + 'static,
 {
@@ -519,8 +517,6 @@ where
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
                 let protocol_version = self.protocol_version;
-                let initial_state_root_hash = self.initial_state_root_hash;
-                let activation_era_id = self.activation_era_id;
                 let latest_state_root_hash = self
                     .latest_block
                     .as_ref()
@@ -529,8 +525,6 @@ where
                     .is_bonded_validator(
                         fs.public_key,
                         fs.era_id,
-                        activation_era_id,
-                        initial_state_root_hash,
                         latest_state_root_hash,
                         protocol_version,
                     )

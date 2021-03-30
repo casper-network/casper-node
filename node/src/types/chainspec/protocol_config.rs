@@ -1,13 +1,17 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::str::FromStr;
+
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    ProtocolVersion,
+};
 
 use super::{ActivationPoint, GlobalStateUpdate};
 #[cfg(test)]
@@ -16,7 +20,7 @@ use crate::testing::TestRng;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {
     #[data_size(skip)]
-    pub(crate) version: Version,
+    pub(crate) version: ProtocolVersion,
     /// Whether we need to clear latest blocks back to the switch block just before the activation
     /// point or not.
     pub(crate) hard_reset: bool,
@@ -31,10 +35,10 @@ pub struct ProtocolConfig {
 impl ProtocolConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let protocol_version = Version::new(
+        let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(0..10),
-            rng.gen::<u8>() as u64,
-            rng.gen::<u8>() as u64,
+            rng.gen::<u8>() as u32,
+            rng.gen::<u8>() as u32,
         );
         let activation_point = ActivationPoint::random(rng);
 
@@ -68,8 +72,8 @@ impl ToBytes for ProtocolConfig {
 impl FromBytes for ProtocolConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (protocol_version_string, remainder) = String::from_bytes(bytes)?;
-        let protocol_version =
-            Version::parse(&protocol_version_string).map_err(|_| bytesrepr::Error::Formatting)?;
+        let protocol_version = ProtocolVersion::from_str(&protocol_version_string)
+            .map_err(|_| bytesrepr::Error::Formatting)?;
         let (hard_reset, remainder) = bool::from_bytes(remainder)?;
         let (activation_point, remainder) = ActivationPoint::from_bytes(remainder)?;
         let (global_state_update, remainder) = Option::<GlobalStateUpdate>::from_bytes(remainder)?;

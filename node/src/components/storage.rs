@@ -54,7 +54,6 @@ use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -77,7 +76,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployMetadata,
+        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
@@ -244,7 +243,7 @@ impl Storage {
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
-        version: Version,
+        protocol_version: ProtocolVersion,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -292,11 +291,6 @@ impl Storage {
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
-        let protocol_version = ProtocolVersion::from_parts(
-            version.major as u32,
-            version.minor as u32,
-            version.patch as u32,
-        );
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
@@ -458,15 +452,7 @@ impl Storage {
             StorageRequest::GetHighestBlock { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
-                    .respond(
-                        self.block_height_index
-                            .keys()
-                            .last()
-                            .and_then(|&height| {
-                                self.get_block_by_height(&mut txn, height).transpose()
-                            })
-                            .transpose()?,
-                    )
+                    .respond(self.get_highest_block(&mut txn)?)
                     .ignore()
             }
             StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
@@ -710,6 +696,9 @@ impl Storage {
                     self.get_finality_signatures(&mut self.env.begin_ro_txn()?, &block_hash)?;
                 responder.respond(result).ignore()
             }
+            StorageRequest::GetFinalizedDeploys { ttl, responder } => {
+                responder.respond(self.get_finalized_deploys(ttl)?).ignore()
+            }
         })
     }
 
@@ -759,6 +748,78 @@ impl Storage {
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
             .transpose()
+    }
+
+    /// Retrieves the highest block from the storage, if one exists.
+    /// May return an LMDB error.
+    fn get_highest_block<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+    ) -> Result<Option<Block>, LmdbExtError> {
+        self.block_height_index
+            .keys()
+            .last()
+            .and_then(|&height| self.get_block_by_height(txn, height).transpose())
+            .transpose()
+    }
+
+    /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
+    /// the ancestry chain.
+    fn get_blocks_while<F, Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        predicate: F,
+    ) -> Result<Vec<Block>, LmdbExtError>
+    where
+        F: Fn(&Block) -> bool,
+    {
+        let mut next_block = self.get_highest_block(txn)?;
+        let mut blocks = Vec::new();
+        loop {
+            match next_block {
+                None => break,
+                Some(block) if !predicate(&block) => break,
+                Some(block) => {
+                    next_block = match block.parent() {
+                        None => None,
+                        Some(parent_hash) => self.get_single_block(txn, &parent_hash)?,
+                    };
+                    blocks.push(block);
+                }
+            }
+        }
+        Ok(blocks)
+    }
+
+    /// Returns the vector of deploys whose TTL hasn't expired yet.
+    fn get_finalized_deploys(
+        &self,
+        ttl: TimeDiff,
+    ) -> Result<Vec<(DeployHash, DeployHeader)>, LmdbExtError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        // We're interested in deploys whose TTL hasn't expired yet.
+        let ttl_expired = |block: &Block| block.timestamp().elapsed() < ttl;
+        let mut deploys = Vec::new();
+        for block in self.get_blocks_while(&mut txn, ttl_expired)? {
+            for deploy_hash in block
+                .body()
+                .deploy_hashes()
+                .iter()
+                .chain(block.body().transfer_hashes())
+            {
+                let deploy_header = self
+                    .get_deploy_header(&mut txn, &deploy_hash)?
+                    .expect("deploy to exist in storage");
+                // If block's deploy has already expired, ignore it.
+                // It may happen that deploy was not expired at the time of proposing a block but it
+                // is now.
+                if deploy_header.timestamp().elapsed() > ttl {
+                    continue;
+                }
+                deploys.push((*deploy_hash, deploy_header));
+            }
+        }
+        Ok(deploys)
     }
 
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
@@ -863,6 +924,16 @@ impl Storage {
             .iter()
             .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
             .collect()
+    }
+
+    /// Returns the deploy's header.
+    fn get_deploy_header<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        deploy_hash: &DeployHash,
+    ) -> Result<Option<DeployHeader>, LmdbExtError> {
+        let maybe_deploy: Option<Deploy> = txn.get_value(self.deploy_db, deploy_hash)?;
+        Ok(maybe_deploy.map(|deploy| deploy.header().clone()))
     }
 
     /// Retrieves deploy metadata associated with deploy.

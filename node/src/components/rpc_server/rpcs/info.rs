@@ -10,12 +10,11 @@ use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -32,7 +31,7 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().id(),
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
         block_hash: Block::doc_example().id(),
@@ -40,7 +39,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     }],
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     peers: GetStatusResult::doc_example().peers.clone(),
 });
 
@@ -74,7 +73,7 @@ pub struct JsonExecutionResult {
 pub struct GetDeployResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The deploy.
     pub deploy: Deploy,
     /// The map of block hash to execution result.
@@ -101,7 +100,7 @@ impl RpcWithParamsExt for GetDeploy {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Try to get the deploy and metadata from storage.
@@ -153,7 +152,7 @@ impl RpcWithParamsExt for GetDeploy {
 pub struct GetPeersResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,
 }
@@ -176,7 +175,7 @@ impl RpcWithoutParamsExt for GetPeers {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let peers = effect_builder
@@ -208,7 +207,7 @@ impl RpcWithoutParamsExt for GetStatus {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the status.

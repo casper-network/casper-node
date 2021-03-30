@@ -11,7 +11,6 @@ use std::{
 };
 
 pub use config::Config;
-use semver::Version;
 use smallvec::SmallVec;
 
 pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
@@ -49,8 +48,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, BlockHeader, BlockLike, Chainspec, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock, NodeId,
+        Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
+        NodeId,
     },
     utils::WithDir,
     NodeRng, StorageConfig,
@@ -652,7 +651,7 @@ impl ContractRuntime {
     pub(crate) fn new(
         initial_state_root_hash: Digest,
         initial_block_header: Option<&BlockHeader>,
-        protocol_version: Version,
+        protocol_version: ProtocolVersion,
         storage_config: WithDir<StorageConfig>,
         contract_runtime_config: &Config,
         registry: &Registry,
@@ -685,11 +684,7 @@ impl ContractRuntime {
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
         Ok(ContractRuntime {
             initial_state,
-            protocol_version: ProtocolVersion::from_parts(
-                protocol_version.major as u32,
-                protocol_version.minor as u32,
-                protocol_version.patch as u32,
-            ),
+            protocol_version,
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
             engine_state,
@@ -704,11 +699,7 @@ impl ContractRuntime {
     ) -> Result<GenesisResult, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
-        let protocol_version = ProtocolVersion::from_parts(
-            chainspec.protocol_config.version.major as u32,
-            chainspec.protocol_config.version.minor as u32,
-            chainspec.protocol_config.version.patch as u32,
-        );
+        let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = chainspec.as_ref().into();
         self.engine_state.commit_genesis(
@@ -769,9 +760,8 @@ impl ContractRuntime {
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
             .proto_block()
-            .deploys()
-            .iter()
-            .map(|hash| **hash)
+            .deploys_iter()
+            .copied()
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
             let result_event = move |_| {
