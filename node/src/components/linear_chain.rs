@@ -54,8 +54,6 @@ pub enum Event<I> {
     PutBlockResult {
         /// The block.
         block: Box<Block>,
-        /// The deploys' execution results.
-        execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     /// The result of requesting finality signatures from storage to add pending signatures.
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
@@ -413,18 +411,20 @@ where
                         .put_signatures_to_storage(signatures)
                         .ignore(),
                 );
-                effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
-                    move |_| Event::PutBlockResult {
-                        block,
-                        execution_results,
-                    },
-                ));
+                let block_to_store = block.clone();
+                effects.extend(
+                    async move {
+                        let block_hash = *block_to_store.hash();
+                        effect_builder.put_block_to_storage(block_to_store).await;
+                        effect_builder
+                            .put_execution_results_to_storage(block_hash, execution_results)
+                            .await;
+                    }
+                    .event(move |_| Event::PutBlockResult { block }),
+                );
                 effects
             }
-            Event::PutBlockResult {
-                block,
-                execution_results,
-            } => {
+            Event::PutBlockResult { block } => {
                 self.latest_block = Some(*block.clone());
 
                 let completion_duration =
@@ -437,11 +437,7 @@ where
                 let era_id = block.header().era_id();
                 let height = block.header().height();
                 info!(%block_hash, %era_id, %height, "linear chain block stored");
-                let mut effects = effect_builder
-                    .put_execution_results_to_storage(block_hash, execution_results)
-                    .ignore();
-                effects.extend(effect_builder.announce_block_added(block).ignore());
-                effects
+                effect_builder.announce_block_added(block).ignore()
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
                 let FinalitySignature {
