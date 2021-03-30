@@ -361,6 +361,7 @@ impl<C: Context> Ping<C> {
     pub(crate) fn validate(
         &self,
         validators: &Validators<C::ValidatorId>,
+        our_instance_id: &C::InstanceId,
     ) -> Result<(), VertexError> {
         let Ping {
             creator,
@@ -368,6 +369,9 @@ impl<C: Context> Ping<C> {
             instance_id,
             signature,
         } = self;
+        if instance_id != our_instance_id {
+            return Err(PingError::InstanceId.into());
+        }
         let v_id = validators.id(self.creator).ok_or(PingError::Creator)?;
         let hash = Self::hash(*creator, *timestamp, *instance_id);
         if !C::verify_signature(&hash, v_id, signature) {

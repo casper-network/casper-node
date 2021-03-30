@@ -50,6 +50,8 @@ pub(crate) enum PingError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
+    #[error("The ping is for a different consensus protocol instance.")]
+    InstanceId,
 }
 
 /// A vertex that has passed initial validation.
@@ -554,7 +556,7 @@ impl<C: Context> Highway<C> {
                 }
                 Ok(())
             }
-            Vertex::Ping(ping) => ping.validate(&self.validators),
+            Vertex::Ping(ping) => ping.validate(&self.validators, &self.instance_id),
         }
     }
 
