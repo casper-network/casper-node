@@ -30,7 +30,7 @@ function main() {
     assert_new_bonded_validator "6"
     log "The new node has bonded in."
     # 6. Assert that the new bonded validator is producing blocks.
-    assert_node_proposed "6"
+    assert_node_proposed "6" "180"
 
 
     log "------------------------------------------------------------"
