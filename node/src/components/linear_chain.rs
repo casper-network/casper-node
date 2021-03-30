@@ -1,11 +1,12 @@
 mod event;
+mod metrics;
 mod signature_cache;
 
 use std::{collections::HashMap, convert::Infallible, fmt::Display, marker::PhantomData};
 
 use datasize::DataSize;
 use itertools::Itertools;
-use prometheus::{IntGauge, Registry};
+use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, ProtocolVersion, PublicKey};
@@ -23,10 +24,11 @@ use crate::{
     },
     protocol::Message,
     types::{Block, BlockByHeight, BlockHash, BlockSignatures, FinalitySignature, Timestamp},
-    unregister_metric, NodeRng,
+    NodeRng,
 };
 
 pub use event::Event;
+use metrics::LinearChainMetrics;
 use signature_cache::SignatureCache;
 
 /// The maximum number of finality signatures from a single validator we keep in memory while
@@ -473,32 +475,5 @@ where
                 Effects::new()
             }
         }
-    }
-}
-
-#[derive(Debug)]
-struct LinearChainMetrics {
-    block_completion_duration: IntGauge,
-    /// Prometheus registry used to publish metrics.
-    registry: Registry,
-}
-
-impl LinearChainMetrics {
-    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let block_completion_duration = IntGauge::new(
-            "block_completion_duration",
-            "duration of time from consensus through execution for a block",
-        )?;
-        registry.register(Box::new(block_completion_duration.clone()))?;
-        Ok(Self {
-            block_completion_duration,
-            registry: registry.clone(),
-        })
-    }
-}
-
-impl Drop for LinearChainMetrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.block_completion_duration);
     }
 }
