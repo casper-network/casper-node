@@ -420,7 +420,7 @@ where
                 let block_to_store = block.clone();
                 effects.extend(
                     async move {
-                        let block_hash = block_to_store.hash().clone();
+                        let block_hash = *block_to_store.hash();
                         effect_builder.put_block_to_storage(block_to_store).await;
                         effect_builder
                             .put_execution_results_to_storage(block_hash, execution_results)
