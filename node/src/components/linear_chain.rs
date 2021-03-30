@@ -14,7 +14,6 @@ use casper_types::{EraId, ProtocolVersion, PublicKey};
 
 use super::Component;
 use crate::{
-    crypto::hash::Digest,
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
@@ -44,7 +43,6 @@ pub(crate) struct LinearChain<I> {
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, Signature>>,
     signature_cache: SignatureCache,
-    initial_state_root_hash: Digest,
     activation_era_id: EraId,
     /// Current protocol version of the network.
     protocol_version: ProtocolVersion,
@@ -60,7 +58,6 @@ impl<I> LinearChain<I> {
     pub fn new(
         registry: &Registry,
         protocol_version: ProtocolVersion,
-        initial_state_root_hash: Digest,
         auction_delay: u64,
         unbonding_delay: u64,
         activation_era_id: EraId,
@@ -70,7 +67,6 @@ impl<I> LinearChain<I> {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),
             signature_cache: SignatureCache::new(),
-            initial_state_root_hash,
             activation_era_id,
             protocol_version,
             auction_delay,
