@@ -32,6 +32,8 @@ pub use config::Config;
 pub use event::{Event, FetchResult};
 use metrics::FetcherMetrics;
 
+use self::event::ItemResponders;
+
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub trait ReactorEventT<T>:
     From<Event<T>>
@@ -62,8 +64,23 @@ where
 {
 }
 
+pub enum Signal<T, I> {
+    Found(FetchResult<T, I>),
+    Timeout,
+    Error,
+    AbsentRemotely,
+}
+
+impl<T, I> Signal<T, I> {
+    fn is_timeout(&self) -> bool {
+        matches!(self, Signal::Timeout)
+    }
+}
+
 pub trait ItemFetcher<T: Item + 'static> {
-    fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
+    fn metrics(&mut self) -> &FetcherMetrics;
+
+    fn responders(&mut self) -> &mut HashMap<T::Id, ItemResponders<T>>;
 
     fn peer_timeout(&self) -> Duration;
 
@@ -103,7 +120,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn got_from_storage(&mut self, item: T, peer: NodeId) -> Effects<Event<T>> {
         self.signal(
             item.id(),
-            Some(FetchResult::FromStorage(Box::new(item))),
+            Signal::Found(FetchResult::FromStorage(Box::new(item))),
             peer,
         )
     }
@@ -130,34 +147,45 @@ pub trait ItemFetcher<T: Item + 'static> {
             }
             Err(error) => {
                 error!("failed to construct get request: {}", error);
-                self.signal(id, None, peer)
+                self.signal(id, Signal::Error, peer)
             }
         }
     }
 
     /// Handles signalling responders with the item or `None`.
-    fn signal(
-        &mut self,
-        id: T::Id,
-        result: Option<FetchResult<T, NodeId>>,
-        peer: NodeId,
-    ) -> Effects<Event<T>> {
+    fn signal(&mut self, id: T::Id, result: Signal<T, NodeId>, peer: NodeId) -> Effects<Event<T>> {
         let mut effects = Effects::new();
         let mut all_responders = self.responders().remove(&id).unwrap_or_default();
+        let metrics: &FetcherMetrics = self.metrics();
         match result {
-            Some(ret) => {
+            Signal::Found(ret) => {
                 // signal all responders waiting for this item
                 for (_, responders) in all_responders {
                     for responder in responders {
                         effects.extend(responder.respond(Some(ret.clone())).ignore());
                     }
                 }
+                if ret.is_from_peer() {
+                    metrics.found_on_peer.inc()
+                }
+                if ret.is_from_storage() {
+                    metrics.found_in_storage.inc()
+                }
             }
-            None => {
+            other => {
                 // remove only the peer specific responders for this id
                 if let Some(responders) = all_responders.remove(&peer) {
                     for responder in responders {
                         effects.extend(responder.respond(None).ignore());
+                        // Only if there's still a responder waiting for the item we increment the
+                        // metric. Otherwise we will count every request as
+                        // timed out, even if the item had been fetched. We increment the metric for
+                        // every responder as that's how many requests were made in the first place
+                        // – since requests are duplicated we will request the same item multiple
+                        // times.
+                        if other.is_timeout() {
+                            self.metrics().timeouts.inc();
+                        }
                     }
                 }
                 if !all_responders.is_empty() {
@@ -221,6 +249,10 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
                 maybe_item: Box::new(results.pop().expect("can only contain one result")),
             })
     }
+
+    fn metrics(&mut self) -> &FetcherMetrics {
+        &self.metrics
+    }
 }
 
 impl ItemFetcher<Block> for Fetcher<Block> {
@@ -248,6 +280,10 @@ impl ItemFetcher<Block> for Fetcher<Block> {
                 maybe_item: Box::new(result),
             })
     }
+
+    fn metrics(&mut self) -> &FetcherMetrics {
+        &self.metrics
+    }
 }
 
 impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
@@ -274,6 +310,10 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
                 peer,
                 maybe_item: Box::new(result.map(Into::into)),
             })
+    }
+
+    fn metrics(&mut self) -> &FetcherMetrics {
+        &self.metrics
     }
 }
 
@@ -303,6 +343,10 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
                 peer,
                 maybe_item: Box::new(maybe_trie),
             })
+    }
+
+    fn metrics(&mut self) -> &FetcherMetrics {
+        &self.metrics
     }
 }
 
@@ -343,7 +387,11 @@ where
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();
-                        self.signal(item.id(), Some(FetchResult::FromPeer(item, peer)), peer)
+                        self.signal(
+                            item.id(),
+                            Signal::Found(FetchResult::FromPeer(item, peer)),
+                            peer,
+                        )
                     }
                     Source::Client | Source::Ourself => {
                         // TODO - we could possibly also handle this case
@@ -355,12 +403,11 @@ where
             Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
                 info!(%id, %peer, "element absent on the remote node");
-                self.signal(id, None, peer)
+                self.signal(id, Signal::AbsentRemotely, peer)
             }
             Event::TimeoutPeer { id, peer } => {
                 info!(%id, %peer, "request timed out");
-                self.metrics.timeouts.inc();
-                self.signal(id, None, peer)
+                self.signal(id, Signal::Timeout, peer)
             }
         }
     }

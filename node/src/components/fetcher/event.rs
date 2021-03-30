@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
 use datasize::DataSize;
 use serde::Serialize;
@@ -16,7 +19,19 @@ pub enum FetchResult<T, I> {
     FromPeer(Box<T>, I),
 }
 
+impl<T, I> FetchResult<T, I> {
+    pub fn is_from_storage(&self) -> bool {
+        matches!(self, FetchResult::FromStorage(_))
+    }
+
+    pub fn is_from_peer(&self) -> bool {
+        matches!(self, FetchResult::FromPeer(_, _))
+    }
+}
+
 pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T, NodeId>>>;
+
+pub(crate) type ItemResponders<T> = HashMap<NodeId, Vec<FetchResponder<T>>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
