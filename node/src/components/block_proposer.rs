@@ -17,6 +17,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use itertools::Itertools;
 use prometheus::{self, Registry};
 use tracing::{debug, error, info, trace, warn};
 
@@ -266,9 +267,9 @@ impl BlockProposerReady {
                 error!("got loaded event for block proposer state during ready state");
                 Effects::new()
             }
-            Event::FinalizedProtoBlock { block, mut height } => {
-                let (_, mut deploys, transfers, _) = block.destructure();
-                deploys.extend(transfers);
+            Event::FinalizedBlock(block) => {
+                let deploys = block.deploys_transfers_iter().copied().collect_vec();
+                let mut height = block.height();
 
                 if height > self.sets.next_finalized {
                     debug!(

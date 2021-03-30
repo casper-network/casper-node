@@ -957,10 +957,7 @@ impl reactor::Reactor for Reactor {
             Event::ConsensusAnnouncement(consensus_announcement) => match consensus_announcement {
                 ConsensusAnnouncement::Finalized(block) => {
                     let reactor_event =
-                        Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
-                            block: block.proto_block().clone(),
-                            height: block.height(),
-                        });
+                        Event::BlockProposer(block_proposer::Event::FinalizedBlock(block));
                     self.dispatch_event(effect_builder, rng, reactor_event)
                 }
                 ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
