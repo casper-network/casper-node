@@ -1,5 +1,6 @@
 mod event;
 mod metrics;
+mod signature;
 mod signature_cache;
 
 use std::{collections::HashMap, convert::Infallible, fmt::Display, marker::PhantomData};
@@ -27,6 +28,7 @@ use crate::{
     NodeRng,
 };
 
+use self::signature::Signature;
 pub use event::Event;
 use metrics::LinearChainMetrics;
 use signature_cache::SignatureCache;
@@ -34,31 +36,6 @@ use signature_cache::SignatureCache;
 /// The maximum number of finality signatures from a single validator we keep in memory while
 /// waiting for their block.
 const MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR: usize = 1000;
-
-#[derive(DataSize, Debug)]
-enum Signature {
-    Local(Box<FinalitySignature>),
-    External(Box<FinalitySignature>),
-}
-
-impl Signature {
-    fn to_inner(&self) -> &FinalitySignature {
-        match self {
-            Signature::Local(fs) => fs,
-            Signature::External(fs) => fs,
-        }
-    }
-
-    fn take(self) -> Box<FinalitySignature> {
-        match self {
-            Signature::Local(fs) | Signature::External(fs) => fs,
-        }
-    }
-
-    fn is_local(&self) -> bool {
-        matches!(self, Signature::Local(_))
-    }
-}
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
