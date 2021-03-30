@@ -804,6 +804,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests the block header at the given height.
+    pub(crate) async fn get_block_header_at_height_from_storage(
+        self,
+        height: u64,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAtHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Requests the block at the given height.
     pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
     where
@@ -828,6 +843,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests the header of the switch block at the given era ID.
+    pub(crate) async fn get_switch_block_header_at_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Requests the switch block at the given era ID.
     pub(crate) async fn get_switch_block_at_era_id_from_storage(
         self,
@@ -841,6 +871,20 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    /// Requests the key block header for the given era ID, ie. the header of the switch block at
+    /// the era before (if one exists).
+    pub(crate) async fn get_key_block_header_for_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        let era_before = era_id.checked_sub(1)?;
+        self.get_switch_block_header_at_era_id_from_storage(era_before)
+            .await
     }
 
     /// Requests the key block for the given era ID, ie. the switch block at the era before
@@ -1551,20 +1595,22 @@ impl<REv> EffectBuilder<REv> {
             // we use the initial_state_root_hash passed from the chainspec loader
             let root_hash = if era_id.is_genesis() {
                 // genesis era - use block at height 0
-                self.get_block_at_height_from_storage(0)
+                self.get_block_header_at_height_from_storage(0)
                     .await
-                    .map(|block| *block.state_root_hash())
+                    .map(|hdr| *hdr.state_root_hash())
                     .unwrap_or(initial_state_root_hash)
             } else {
                 // non-genesis - calculate the height based on the key block; if there is no key
                 // block, default to the initial_state_root_hash
-                let maybe_key_block = self.get_key_block_for_era_id_from_storage(era_id).await;
-                match maybe_key_block {
+                let maybe_key_block_header = self
+                    .get_key_block_header_for_era_id_from_storage(era_id)
+                    .await;
+                match maybe_key_block_header {
                     None => initial_state_root_hash,
-                    Some(key_block) => self
-                        .get_block_at_height_from_storage(key_block.height() + 1)
+                    Some(kb_hdr) => self
+                        .get_block_header_at_height_from_storage(kb_hdr.height() + 1)
                         .await
-                        .map(|block| *block.state_root_hash())
+                        .map(|hdr| *hdr.state_root_hash())
                         // default to the initial_state_root_hash if there is no block above the
                         // key block for the era
                         .unwrap_or(initial_state_root_hash),
@@ -1577,9 +1623,9 @@ impl<REv> EffectBuilder<REv> {
                 .and_then(|era_validators| era_validators.get(&era_id).cloned())
         } else {
             // in other eras, we just use the validators from the key block
-            self.get_key_block_for_era_id_from_storage(era_id)
+            self.get_key_block_header_for_era_id_from_storage(era_id)
                 .await
-                .and_then(|key_block| key_block.header().next_era_validator_weights().cloned())
+                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned())
         }
     }
 
