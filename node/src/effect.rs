@@ -1600,21 +1600,21 @@ impl<REv> EffectBuilder<REv> {
                     .map(|hdr| *hdr.state_root_hash())
                     .unwrap_or(initial_state_root_hash)
             } else {
-                // non-genesis - calculate the height based on the key block; if there is no key
-                // block, default to the initial_state_root_hash
+                // non-genesis - calculate the height based on the key block
                 let maybe_key_block_header = self
                     .get_key_block_header_for_era_id_from_storage(era_id)
                     .await;
+                // this has to be a match because `Option::and_then` can't deal with async closures
                 match maybe_key_block_header {
-                    None => initial_state_root_hash,
-                    Some(kb_hdr) => self
-                        .get_block_header_at_height_from_storage(kb_hdr.height() + 1)
-                        .await
-                        .map(|hdr| *hdr.state_root_hash())
-                        // default to the initial_state_root_hash if there is no block above the
-                        // key block for the era
-                        .unwrap_or(initial_state_root_hash),
+                    None => None,
+                    Some(kb_hdr) => {
+                        self.get_block_header_at_height_from_storage(kb_hdr.height() + 1)
+                            .await
+                    }
                 }
+                // default to the initial_state_root_hash if there was no key block or no block
+                // above the key block for the era
+                .map_or(initial_state_root_hash, |hdr| *hdr.state_root_hash())
             };
             let req = EraValidatorsRequest::new(root_hash.into(), protocol_version);
             self.get_era_validators_from_contract_runtime(req)
