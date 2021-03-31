@@ -237,6 +237,12 @@ where
                     self.linear_chain_state.remove_from_pending_fs(&*fs);
                     Effects::new()
                 } else {
+                    signatures.insert_proof(fs.public_key, fs.signature);
+                    // Cache the results in case we receive the same finality signature before we
+                    // manage to store it in the database.
+                    self.linear_chain_state
+                        .cache_signatures(*signatures.clone());
+                    debug!(hash=%signatures.block_hash, "storing finality signatures");
                     let mut effects = effect_builder
                         .announce_finality_signature(fs.clone())
                         .ignore();
@@ -247,12 +253,6 @@ where
                             effects.extend(effect_builder.broadcast_message(message).ignore());
                         }
                     };
-                    signatures.insert_proof(fs.public_key, fs.signature);
-                    // Cache the results in case we receive the same finality signature before we
-                    // manage to store it in the database.
-                    self.linear_chain_state
-                        .cache_signatures(*signatures.clone());
-                    debug!(hash=%signatures.block_hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
                             .put_signatures_to_storage(*signatures)
