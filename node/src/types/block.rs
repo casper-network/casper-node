@@ -140,7 +140,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key);
+    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key).unwrap();
     block_signature.insert_proof(public_key, signature);
 
     JsonBlock::new(block, block_signature)
@@ -1616,7 +1616,7 @@ impl FinalitySignature {
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.to_le_bytes());
-        let signature = crypto::sign(bytes, &secret_key, &public_key);
+        let signature = crypto::sign(bytes, &secret_key, &public_key).unwrap();
         FinalitySignature {
             block_hash,
             era_id,

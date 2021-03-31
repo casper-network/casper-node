@@ -6,8 +6,7 @@
 use ed25519_dalek::ExpandedSecretKey;
 use k256::ecdsa::{
     signature::{Signer, Verifier},
-    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
-    VerifyingKey as Secp256k1PublicKey,
+    SigningKey as Secp256k1SecretKey, VerifyingKey as Secp256k1PublicKey,
 };
 #[cfg(test)]
 use k256::elliptic_curve::sec1::ToEncodedPoint;
@@ -31,25 +30,29 @@ pub fn sign<T: AsRef<[u8]>>(
     message: T,
     secret_key: &SecretKey,
     public_key: &PublicKey,
-) -> Signature {
+) -> Result<Signature> {
     match (secret_key, public_key) {
-        (SecretKey::System, PublicKey::System) => {
-            panic!("cannot create signature with system keys",)
-        }
+        (SecretKey::System, PublicKey::System) => Err(Error::System(
+            "cannot create signature with system keys".to_string(),
+        )),
         (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(public_key)) => {
             let expanded_secret_key = ExpandedSecretKey::from(secret_key);
             let signature = expanded_secret_key.sign(message.as_ref(), public_key);
-            Signature::Ed25519(signature.to_bytes())
+            Ok(Signature::Ed25519(signature.to_bytes()))
         }
         (SecretKey::Secp256k1(secret_key_bytes), PublicKey::Secp256k1(_public_key)) => {
             let signer =
                 Secp256k1SecretKey::from_bytes(secret_key_bytes).expect("should construct signer");
-            let signature: Secp256k1Signature = signer
-                .try_sign(message.as_ref())
-                .expect("should create signature");
-            Signature::Secp256k1(signature)
+            match signer.try_sign(message.as_ref()) {
+                Ok(signature) => Ok(Signature::Secp256k1(signature)),
+                Err(_) => Err(Error::AsymmetricKey(
+                    "failed to generate signature".to_string(),
+                )),
+            }
         }
-        _ => panic!("secret and public key types must match"),
+        _ => Err(Error::AsymmetricKey(
+            "secret and public key types must match".to_string(),
+        )),
     }
 }
 
@@ -427,7 +430,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let secret_key = SecretKey::random_ed25519(&mut rng);
             let public_key = PublicKey::from(&secret_key);
             let data = b"data";
-            let signature = sign(data, &secret_key, &public_key);
+            let signature = sign(data, &secret_key, &public_key).unwrap();
             super::signature_serialization_roundtrip(signature);
         }
 
@@ -452,7 +455,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let secret_key = SecretKey::random_ed25519(&mut rng);
             let public_key = PublicKey::from(&secret_key);
             let data = b"data";
-            let signature = sign(data, &secret_key, &public_key);
+            let signature = sign(data, &secret_key, &public_key).unwrap();
             signature_hex_roundtrip(signature);
         }
 
@@ -489,7 +492,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let wrong_type_public_key = PublicKey::random_secp256k1(&mut rng);
 
             let message = b"message";
-            let signature = sign(message, &secret_key, &public_key);
+            let signature = sign(message, &secret_key, &public_key).unwrap();
 
             assert!(verify(message, &signature, &public_key).is_ok());
             assert!(verify(message, &signature, &other_public_key).is_err());
@@ -503,7 +506,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let ed25519_secret_key = SecretKey::random_ed25519(&mut rng);
             let public_key = PublicKey::from(&ed25519_secret_key);
             let data = b"data";
-            let signature = sign(data, &ed25519_secret_key, &public_key);
+            let signature = sign(data, &ed25519_secret_key, &public_key).unwrap();
             bytesrepr::test_serialization_roundtrip(&signature);
         }
     }
@@ -641,7 +644,7 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let secret_key = SecretKey::random_secp256k1(&mut rng);
             let public_key = PublicKey::from(&secret_key);
             let data = b"data";
-            let signature = sign(data, &secret_key, &public_key);
+            let signature = sign(data, &secret_key, &public_key).unwrap();
             super::signature_serialization_roundtrip(signature);
         }
 
@@ -651,7 +654,7 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let secret_key = SecretKey::random_secp256k1(&mut rng);
             let public_key = PublicKey::from(&secret_key);
             let data = b"data";
-            let signature = sign(data, &secret_key, &public_key);
+            let signature = sign(data, &secret_key, &public_key).unwrap();
             bytesrepr::test_serialization_roundtrip(&signature);
         }
 
@@ -672,7 +675,7 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let secret_key = SecretKey::random_secp256k1(&mut rng);
             let public_key = PublicKey::from(&secret_key);
             let data = b"data";
-            let signature = sign(data, &secret_key, &public_key);
+            let signature = sign(data, &secret_key, &public_key).unwrap();
             signature_hex_roundtrip(signature);
         }
 
@@ -731,8 +734,9 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         let other_secp256k1_public_key = PublicKey::random_secp256k1(&mut rng);
 
         let message = b"message";
-        let ed25519_signature = sign(message, &ed25519_secret_key, &ed25519_public_key);
-        let secp256k1_signature = sign(message, &secp256k1_secret_key, &secp256k1_public_key);
+        let ed25519_signature = sign(message, &ed25519_secret_key, &ed25519_public_key).unwrap();
+        let secp256k1_signature =
+            sign(message, &secp256k1_secret_key, &secp256k1_public_key).unwrap();
 
         assert!(verify(message, &ed25519_signature, &ed25519_public_key).is_ok());
         assert!(verify(message, &secp256k1_signature, &secp256k1_public_key).is_ok());

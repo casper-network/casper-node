@@ -43,7 +43,7 @@ impl ValidatorSecret for Keypair {
     type Signature = Signature;
 
     fn sign(&self, hash: &Digest) -> Signature {
-        crypto::sign(hash, self.secret_key.as_ref(), &self.public_key)
+        crypto::sign(hash, self.secret_key.as_ref(), &self.public_key).unwrap()
     }
 }
 

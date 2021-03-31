@@ -537,7 +537,7 @@ impl Deploy {
     /// Adds a signature of this deploy's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
         let signer = PublicKey::from(secret_key);
-        let signature = crypto::sign(&self.hash, secret_key, &signer);
+        let signature = crypto::sign(&self.hash, secret_key, &signer).unwrap();
         let approval = Approval { signer, signature };
         self.approvals.push(approval);
     }

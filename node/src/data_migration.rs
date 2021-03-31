@@ -83,6 +83,10 @@ pub enum Error {
     /// Error loading the chainspec.
     #[error("error loading chainspec: {0}")]
     LoadChainspec(chainspec::Error),
+
+    /// Error in generating a cryptographic signature
+    #[error("error in creating a cryptographic signature: {0}")]
+    Signature(crypto::Error),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -170,7 +174,8 @@ fn write_post_migration_info(
 
     // Sign the info.
     let public_key = PublicKey::from(secret_key);
-    let signature = crypto::sign(&serialized_info, secret_key, &public_key);
+    let signature = crypto::sign(&serialized_info, secret_key, &public_key)
+        .map_err(Error::Signature)?;
     let signed_info = SignedPostMigrationInfo {
         serialized_info,
         signature,
