@@ -35,8 +35,9 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
-use self::event::{BlockByHashResult, DeploysResult};
 use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
+
+use self::event::{BlockByHashResult, DeploysResult};
 
 use super::{
     fetcher::FetchResult,
@@ -46,9 +47,7 @@ use super::{
 use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
-    types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock, TimeDiff,
-    },
+    types::{ActivationPoint, Block, BlockHash, Chainspec, FinalizedBlock, TimeDiff},
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -873,30 +872,14 @@ where
         .fetch_block_by_height(block_height, peer.clone())
         .map_or_else(
             move |fetch_result| match fetch_result {
-                FetchResult::FromPeer(result, _) => match *result {
-                    BlockByHeight::Absent(ret_height) => {
-                        warn!(
-                            "Fetcher returned result for invalid height. Expected {}, got {}",
-                            block_height, ret_height
-                        );
-                        Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(peer))
-                    }
-                    BlockByHeight::Block(block) => Event::GetBlockHeightResult(
-                        block_height,
-                        BlockByHeightResult::FromPeer(block, peer),
-                    ),
-                },
-                FetchResult::FromStorage(result) => match *result {
-                    BlockByHeight::Absent(_) => {
-                        // Fetcher should try downloading the block from a peer
-                        // when it can't find it in the storage.
-                        panic!("Should not return `Absent` in `FromStorage`.")
-                    }
-                    BlockByHeight::Block(block) => Event::GetBlockHeightResult(
-                        block_height,
-                        BlockByHeightResult::FromStorage(block),
-                    ),
-                },
+                FetchResult::FromPeer(result, _) => Event::GetBlockHeightResult(
+                    block_height,
+                    BlockByHeightResult::FromPeer(Box::new(result.block), peer),
+                ),
+                FetchResult::FromStorage(result) => Event::GetBlockHeightResult(
+                    block_height,
+                    BlockByHeightResult::FromStorage(Box::new(result.block)),
+                ),
             },
             move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
         )

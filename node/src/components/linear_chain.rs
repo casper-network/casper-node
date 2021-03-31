@@ -20,7 +20,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::{BlockByHeight, FinalitySignature, Timestamp},
+    types::{FinalitySignature, Timestamp},
     NodeRng,
 };
 
@@ -57,34 +57,24 @@ where
                 }
             }
             .ignore(),
-            Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
+            Event::Request(LinearChainRequest::BlockWithMetadataAtHeight(height, sender)) => {
                 async move {
-                    let block = effect_builder
-                        .get_block_at_height_from_storage(height)
-                        .await;
-                    responder.respond(block).await
+                    if let Some(block_with_metadata) = effect_builder
+                        .get_block_at_height_with_metadata_from_storage(height)
+                        .await
+                    {
+                        match Message::new_get_response(&block_with_metadata) {
+                            Ok(message) => effect_builder.send_message(sender, message).await,
+                            Err(error) => {
+                                error!("failed to create get-response {}", error);
+                            }
+                        }
+                    } else {
+                        debug!("failed to get {} for {}", height, sender);
+                    };
                 }
                 .ignore()
             }
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => async move {
-                let block_by_height = match effect_builder
-                    .get_block_at_height_from_storage(height)
-                    .await
-                {
-                    None => {
-                        debug!("failed to get {} for {}", height, sender);
-                        BlockByHeight::Absent(height)
-                    }
-                    Some(block) => BlockByHeight::new(block),
-                };
-                match Message::new_get_response(&block_by_height) {
-                    Ok(message) => effect_builder.send_message(sender, message).await,
-                    Err(error) => {
-                        error!("failed to create get-response {}", error);
-                    }
-                }
-            }
-            .ignore(),
             Event::NewLinearChainBlock {
                 block,
                 execution_results,

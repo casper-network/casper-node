@@ -75,8 +75,8 @@ use crate::{
     fatal,
     reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
+        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
+        BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployMetadata, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
@@ -613,13 +613,18 @@ impl Storage {
                     };
                 // Check that the hash of the block retrieved is correct.
                 assert_eq!(&block_hash, block.hash());
-                let signatures = match self.get_finality_signatures(&mut txn, &block_hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.header().era_id()),
-                };
-                assert!(signatures.verify().is_ok());
-
-                responder.respond(Some((block, signatures))).ignore()
+                let finality_signatures =
+                    match self.get_finality_signatures(&mut txn, &block_hash)? {
+                        Some(signatures) => signatures,
+                        None => BlockSignatures::new(block_hash, block.header().era_id()),
+                    };
+                assert!(finality_signatures.verify().is_ok());
+                responder
+                    .respond(Some(BlockWithMetadata {
+                        block,
+                        finality_signatures,
+                    }))
+                    .ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
@@ -635,15 +640,20 @@ impl Storage {
                     };
 
                 let hash = block.hash();
-                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
-                responder.respond(Some((block, signatures))).ignore()
+                responder
+                    .respond(Some(BlockWithMetadata {
+                        block,
+                        finality_signatures,
+                    }))
+                    .ignore()
             }
             StorageRequest::GetHighestBlockWithMetadata { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
-                let highest_block: Block = if let Some(block) = self
+                let block: Block = if let Some(block) = self
                     .block_height_index
                     .keys()
                     .last()
@@ -654,13 +664,16 @@ impl Storage {
                 } else {
                     return Ok(responder.respond(None).ignore());
                 };
-                let hash = highest_block.hash();
-                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
+                let hash = block.hash();
+                let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.header().era_id()),
+                    None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
                 responder
-                    .respond(Some((highest_block, signatures)))
+                    .respond(Some(BlockWithMetadata {
+                        block,
+                        finality_signatures,
+                    }))
                     .ignore()
             }
             StorageRequest::PutBlockSignatures {

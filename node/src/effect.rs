@@ -109,12 +109,11 @@ use crate::{
         small_network::GossipedAddress,
     },
     crypto::hash::Digest,
-    effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockSignatures, Chainspec, ChainspecInfo,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        ProtoBlock, TimeDiff, Timestamp,
+        Block, BlockHash, BlockHeader, BlockSignatures, BlockWithMetadata, Chainspec,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, ProtoBlock, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -469,18 +468,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| MetricsRequest::RenderNodeMetricsText { responder },
             QueueKind::Api,
-        )
-        .await
-    }
-
-    /// Retrieves block at `height` from the Linear Chain component.
-    pub(crate) async fn get_block_at_height_local<I>(self, height: u64) -> Option<Block>
-    where
-        REv: From<LinearChainRequest<I>>,
-    {
-        self.make_request(
-            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
-            QueueKind::Regular,
         )
         .await
     }
@@ -971,7 +958,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -989,7 +976,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -1006,7 +993,7 @@ impl<REv> EffectBuilder<REv> {
     /// Get the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -1064,9 +1051,9 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_height: u64,
         peer: I,
-    ) -> Option<FetchResult<BlockByHeight, I>>
+    ) -> Option<FetchResult<BlockWithMetadata, I>>
     where
-        REv: From<FetcherRequest<I, BlockByHeight>>,
+        REv: From<FetcherRequest<I, BlockWithMetadata>>,
         I: Send + 'static,
     {
         self.make_request(

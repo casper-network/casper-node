@@ -23,7 +23,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, Deploy, DeployHash, Item, NodeId},
+    types::{Block, BlockHash, BlockWithMetadata, Deploy, DeployHash, Item, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -250,10 +250,10 @@ impl ItemFetcher<Block> for Fetcher<Block> {
     }
 }
 
-impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
+impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
     fn responders(
         &mut self,
-    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockByHeight>>>> {
+    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockWithMetadata>>>> {
         &mut self.responders
     }
 
@@ -261,18 +261,18 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv: ReactorEventT<BlockByHeight>>(
+    fn get_from_storage<REv: ReactorEventT<BlockWithMetadata>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         id: u64,
         peer: NodeId,
-    ) -> Effects<Event<BlockByHeight>> {
+    ) -> Effects<Event<BlockWithMetadata>> {
         effect_builder
-            .get_block_at_height_from_storage(id)
+            .get_block_at_height_with_metadata_from_storage(id)
             .event(move |result| Event::GetFromStorageResult {
                 id,
                 peer,
-                maybe_item: Box::new(result.map(Into::into)),
+                maybe_item: Box::new(result),
             })
     }
 }

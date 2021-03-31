@@ -726,7 +726,7 @@ impl reactor::Reactor for Reactor {
                                 LinearChainRequest::BlockRequest(block_hash, sender),
                             ))
                         }
-                        Tag::BlockByHeight => {
+                        Tag::BlockAndMetadataByHeight => {
                             let height = match bincode::deserialize(&serialized_id) {
                                 Ok(block_by_height) => block_by_height,
                                 Err(error) => {
@@ -738,7 +738,7 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
                             Event::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockAtHeight(height, sender),
+                                LinearChainRequest::BlockWithMetadataAtHeight(height, sender),
                             ))
                         }
                         Tag::GossipedAddress => {
@@ -851,7 +851,7 @@ impl reactor::Reactor for Reactor {
                             );
                             return Effects::new();
                         }
-                        Tag::BlockByHeight => {
+                        Tag::BlockAndMetadataByHeight => {
                             error!(
                                 "cannot handle get response for block-by-height from {}",
                                 sender

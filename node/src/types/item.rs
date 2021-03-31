@@ -38,7 +38,7 @@ pub enum Tag {
     /// A gossiped public listening address.
     GossipedAddress,
     /// A block requested by its height in the linear chain.
-    BlockByHeight,
+    BlockAndMetadataByHeight,
     /// A block header requested by its hash.
     BlockHeaderByHash,
     /// A block header and its finality signatures requested by its height in the linear chain.

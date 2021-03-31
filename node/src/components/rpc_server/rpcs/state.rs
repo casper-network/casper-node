@@ -31,7 +31,7 @@ use crate::{
     },
     types::{
         json_compatibility::{AuctionState, StoredValue},
-        Block,
+        Block, BlockWithMetadata,
     },
 };
 
@@ -336,7 +336,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                             error_msg,
                         ))?);
                     }
-                    Some((block, _)) => block,
+                    Some(BlockWithMetadata { block, .. }) => block,
                 }
             };
 

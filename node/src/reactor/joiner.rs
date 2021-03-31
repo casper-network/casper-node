@@ -68,7 +68,7 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
         ProtoBlock, Tag, Timestamp,
     },
     utils::{Source, WithDir},
@@ -123,7 +123,7 @@ pub enum Event {
 
     /// Linear chain (by height) fetcher event.
     #[from]
-    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockByHeight>),
+    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
 
     /// Deploy fetcher event.
     #[from]
@@ -160,7 +160,9 @@ pub enum Event {
 
     /// Linear chain block by height fetcher request.
     #[from]
-    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, BlockByHeight>),
+    BlockByHeightFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<NodeId, BlockWithMetadata>,
+    ),
 
     /// Deploy fetcher request.
     #[from]
@@ -344,7 +346,7 @@ pub struct Reactor {
     deploy_fetcher: Fetcher<Deploy>,
     linear_chain: linear_chain::LinearChain<NodeId>,
     // Handles request for linear chain block by height.
-    block_by_height_fetcher: Fetcher<BlockByHeight>,
+    block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     pub(super) block_header_with_metadata_fetcher: Fetcher<BlockHeaderWithMetadata>,
     #[data_size(skip)]
@@ -618,10 +620,10 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
                 }
                 Message::GetResponse {
-                    tag: Tag::BlockByHeight,
+                    tag: Tag::BlockAndMetadataByHeight,
                     serialized_item,
                 } => {
-                    let block_at_height: BlockByHeight =
+                    let block_with_metadata_at_height: BlockWithMetadata =
                         match bincode::deserialize(&serialized_item) {
                             Ok(maybe_block) => maybe_block,
                             Err(err) => {
@@ -630,15 +632,9 @@ impl reactor::Reactor for Reactor {
                             }
                         };
 
-                    let event = match block_at_height {
-                        BlockByHeight::Absent(block_height) => fetcher::Event::AbsentRemotely {
-                            id: block_height,
-                            peer: sender,
-                        },
-                        BlockByHeight::Block(block) => fetcher::Event::GotRemotely {
-                            item: Box::new(BlockByHeight::Block(block)),
-                            source: Source::Peer(sender),
-                        },
+                    let event = fetcher::Event::GotRemotely {
+                        item: Box::new(block_with_metadata_at_height),
+                        source: Source::Peer(sender),
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }

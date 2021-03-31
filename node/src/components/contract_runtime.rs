@@ -524,7 +524,7 @@ where
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
                         debug!(?finalized_block, "execute block");
                         effect_builder
-                            .get_block_at_height_local(finalized_block.height())
+                            .get_block_at_height_from_storage(finalized_block.height())
                             .event(move |maybe_block| {
                                 maybe_block.map(Box::new).map_or_else(
                                     || Event::BlockIsNew(Box::new(finalized_block)),
@@ -966,7 +966,7 @@ impl ContractRuntime {
             // Read it from the storage.
             let height = finalized_block.height();
             effect_builder
-                .get_block_at_height_local(height - 1)
+                .get_block_at_height_from_storage(height - 1)
                 .event(|parent| {
                     Event::Result(Box::new(ContractRuntimeResult::GetParentResult {
                         finalized_block,
