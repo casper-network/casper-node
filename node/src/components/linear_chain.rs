@@ -126,6 +126,9 @@ where
             } => {
                 // New linear chain block received. Collect any pending finality signatures that
                 // were waiting for that block.
+                // TODO: Replace with `self.linear_chain_state.new_block(block)`
+                // and have that method do what `collect_ending_finality_signatures` +
+                // `cache_signatures` do.
                 let (signatures, mut effects) =
                     self.linear_chain_state.collect_pending_finality_signatures(
                         block.hash(),
@@ -135,14 +138,10 @@ where
                 // Cache the signature as we expect more finality signatures for the new block to
                 // arrive soon.
                 self.linear_chain_state.cache_signatures(signatures.clone());
-                effects.extend(
-                    effect_builder
-                        .put_signatures_to_storage(signatures)
-                        .ignore(),
-                );
                 let block_to_store = block.clone();
                 effects.extend(
                     async move {
+                        effect_builder.put_signatures_to_storage(signatures).await;
                         let block_hash = *block_to_store.hash();
                         effect_builder.put_block_to_storage(block_to_store).await;
                         effect_builder
@@ -174,14 +173,19 @@ where
                     .linear_chain_state
                     .add_pending_finality_signature(*fs.clone(), gossiped)
                 {
+                    // If we did not add the signature it means it's either incorrect or we already
+                    // know it.
                     return Effects::new();
                 }
                 match self.linear_chain_state.get_signatures(&block_hash) {
+                    // Not found in the cache, look in the storage.
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
                         .event(move |maybe_signatures| {
-                            let maybe_box_signatures = maybe_signatures.map(Box::new);
-                            Event::GetStoredFinalitySignaturesResult(fs, maybe_box_signatures)
+                            Event::GetStoredFinalitySignaturesResult(
+                                fs,
+                                maybe_signatures.map(Box::new),
+                            )
                         }),
                     Some(signatures) => effect_builder.immediately().event(move |_| {
                         Event::GetStoredFinalitySignaturesResult(fs, Some(Box::new(signatures)))
@@ -268,7 +272,7 @@ where
                 // next era.
                 Effects::new()
             }
-            Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
+            Event::IsBonded(_, fs, false) => {
                 self.linear_chain_state.remove_from_pending_fs(&fs);
                 // Unknown validator.
                 let FinalitySignature {
