@@ -842,7 +842,7 @@ impl FromBytes for BlockHeader {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct BlockHeaderWithMetadata {
     pub block_header: BlockHeader,
     pub block_signatures: BlockSignatures,

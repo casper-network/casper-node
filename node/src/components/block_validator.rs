@@ -21,21 +21,20 @@ use datasize::DataSize;
 use derive_more::{Display, From};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
-use tracing::info;
+use tracing::{info, warn};
+
+use casper_types::bytesrepr::ToBytes;
 
 use crate::{
-    components::Component,
+    components::{fetcher::FetchedData, Component},
     effect::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{Block, Chainspec, Deploy, DeployHash, ProtoBlock, Timestamp},
     NodeRng,
 };
-use casper_types::bytesrepr::ToBytes;
 use keyed_counter::KeyedCounter;
-
-use super::fetcher::FetchResult;
 
 // TODO: Consider removing this trait.
 pub trait BlockLike: Eq + Hash {
@@ -400,26 +399,29 @@ where
         + From<FetcherRequest<I, Deploy>>
         + Send,
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + PartialEq + Eq + 'static,
+    I: Clone + Debug + Send + PartialEq + Eq + 'static,
 {
-    let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
-        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
-            if deploy
-                .header()
-                .is_valid(&chainspec.deploy_config, block_timestamp)
-            {
-                let deploy_size = deploy.serialized_length();
-                Event::DeployFound {
-                    deploy_hash,
-                    deploy_size,
+    async move {
+        match effect_builder.fetch::<Deploy, I>(deploy_hash, sender).await {
+            Ok(FetchedData::FromStorage(deploy)) | Ok(FetchedData::FromPeer(deploy)) => {
+                if deploy
+                    .header()
+                    .is_valid(&chainspec.deploy_config, block_timestamp)
+                {
+                    let deploy_size = deploy.serialized_length();
+                    Event::DeployFound {
+                        deploy_hash,
+                        deploy_size,
+                    }
+                } else {
+                    Event::DeployInvalid(deploy_hash)
                 }
-            } else {
-                Event::DeployInvalid(deploy_hash)
+            }
+            Err(error) => {
+                warn!("Error fetching deploy: {}", error);
+                Event::DeployMissing(deploy_hash)
             }
         }
-    };
-
-    effect_builder
-        .fetch_deploy(deploy_hash, sender)
-        .map_or_else(validate_deploy, move || Event::DeployMissing(deploy_hash))
+    }
+    .event(std::convert::identity)
 }

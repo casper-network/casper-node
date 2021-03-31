@@ -861,23 +861,22 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub enum FetcherRequest<I, T: Item> {
-    /// Return the specified item if it exists, else `None`.
-    Fetch {
-        /// The ID of the item to be retrieved.
-        id: T::Id,
-        /// The peer id of the peer to be asked if the item is not held locally
-        peer: I,
-        /// Responder to call with the result.
-        responder: Responder<Option<FetchResult<T, I>>>,
-    },
+pub struct FetcherRequest<I, T>
+where
+    T: Item,
+    I: Debug + Eq,
+{
+    /// The ID of the item to be retrieved.
+    pub id: T::Id,
+    /// The peer id of the peer to be asked if the item is not held locally
+    pub peer: I,
+    /// Responder to call with the result.
+    pub responder: Responder<FetchResult<T, I>>,
 }
 
-impl<I, T: Item> Display for FetcherRequest<I, T> {
+impl<I: Display + Debug + Eq, T: Item> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
-        }
+        write!(formatter, "request item by id {}", self.id)
     }
 }
 

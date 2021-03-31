@@ -208,11 +208,11 @@ fn fetch_deploy(
 ) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
     move |effect_builder: EffectBuilder<ReactorEvent>| {
         effect_builder
-            .fetch_deploy(deploy_hash, node_id)
-            .then(move |maybe_deploy| async move {
+            .fetch::<Deploy, NodeId>(deploy_hash, node_id)
+            .then(move |deploy| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
-                result.1 = maybe_deploy;
+                result.1 = Some(deploy);
             })
             .ignore()
     }
@@ -306,7 +306,7 @@ async fn should_fetch_from_local() {
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromStorage(Box::new(deploy)));
+    let expected_result = Some(Ok(FetchedData::FromStorage(Box::new(deploy))));
     assert_settled(
         &node_id,
         deploy_hash,
@@ -352,7 +352,7 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), node_with_deploy));
+    let expected_result = Some(Ok(FetchedData::FromPeer(Box::new(deploy))));
     assert_settled(
         &node_without_deploy,
         deploy_hash,

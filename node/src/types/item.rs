@@ -48,7 +48,7 @@ pub enum Tag {
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
 /// furthermore allows generic network messages to include this type due to the provision of the
 /// type-identifying `TAG`.
-pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
+pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq {
     /// The type of ID of the item.
     type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
     /// The tag representing the type of the item.

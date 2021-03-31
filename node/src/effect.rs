@@ -1004,61 +1004,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy using the `DeployFetcher`.
-    pub(crate) async fn fetch_deploy<I>(
-        self,
-        deploy_hash: DeployHash,
-        peer: I,
-    ) -> Option<FetchResult<Deploy, I>>
+    /// Fetch an item from a fetcher.
+    pub(crate) async fn fetch<T, I>(self, id: T::Id, peer: I) -> FetchResult<T, I>
     where
-        REv: From<FetcherRequest<I, Deploy>>,
-        I: Send + 'static,
+        REv: From<FetcherRequest<I, T>>,
+        T: Item + 'static,
+        I: Debug + Eq + Send + 'static,
     {
         self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: deploy_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested block using the `BlockFetcher`
-    pub(crate) async fn fetch_block<I>(
-        self,
-        block_hash: BlockHash,
-        peer: I,
-    ) -> Option<FetchResult<Block, I>>
-    where
-        REv: From<FetcherRequest<I, Block>>,
-        I: Send + 'static,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a linear chain block at `block_height`.
-    pub(crate) async fn fetch_block_by_height<I>(
-        self,
-        block_height: u64,
-        peer: I,
-    ) -> Option<FetchResult<BlockWithMetadata, I>>
-    where
-        REv: From<FetcherRequest<I, BlockWithMetadata>>,
-        I: Send + 'static,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_height,
+            |responder| FetcherRequest {
+                id,
                 peer,
                 responder,
             },

@@ -29,7 +29,13 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem, str::FromStr};
+use std::{
+    collections::BTreeMap,
+    convert::Infallible,
+    fmt::{Debug, Display},
+    mem,
+    str::FromStr,
+};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -40,14 +46,16 @@ use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
 use self::event::{BlockByHashResult, DeploysResult};
 
 use super::{
-    fetcher::FetchResult,
     storage::{self, Storage},
     Component,
 };
 use crate::{
-    effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
+    components::fetcher::FetchedData,
+    effect::{EffectBuilder, EffectExt, Effects},
     fatal,
-    types::{ActivationPoint, Block, BlockHash, Chainspec, FinalizedBlock, TimeDiff},
+    types::{
+        ActivationPoint, Block, BlockHash, BlockWithMetadata, Chainspec, FinalizedBlock, TimeDiff,
+    },
     NodeRng,
 };
 use event::BlockByHeightResult;
@@ -202,7 +210,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         block: &Block,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Debug + Send + Eq + 'static,
         REv: ReactorEventT<I>,
     {
         self.peers.reset(rng);
@@ -255,7 +263,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         block: Block,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Debug + Eq + Send + 'static,
         REv: ReactorEventT<I>,
     {
         let height = block.height();
@@ -396,7 +404,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Debug + Eq + Send + 'static,
         REv: ReactorEventT<I>,
     {
         let peer = self.peers.random_unsafe();
@@ -445,7 +453,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         block: &Block,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Debug + Eq + Send + 'static,
         REv: ReactorEventT<I>,
     {
         self.peers.reset(rng);
@@ -477,7 +485,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<I>>
     where
-        I: Send + 'static,
+        I: Debug + Eq + Send + 'static,
         REv: ReactorEventT<I>,
     {
         if self.state.is_done() || self.state.is_none() {
@@ -523,7 +531,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
 impl<I, REv> Component<REv> for LinearChainSync<I>
 where
-    I: Display + Clone + Send + PartialEq + 'static,
+    I: Debug + Display + Clone + Eq + Send + PartialEq + 'static,
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
@@ -817,7 +825,7 @@ where
     }
 }
 
-fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
+fn fetch_block_deploys<I: Debug + Clone + Eq + Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block: Block,
@@ -837,7 +845,7 @@ where
         })
 }
 
-fn fetch_block_by_hash<I: Clone + Send + 'static, REv>(
+fn fetch_block_by_hash<I: Clone + Eq + Debug + Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_hash: BlockHash,
@@ -845,21 +853,31 @@ fn fetch_block_by_hash<I: Clone + Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    let cloned = peer.clone();
-    effect_builder.fetch_block(block_hash, peer).map_or_else(
-        move |fetch_result| match fetch_result {
-            FetchResult::FromStorage(block) => {
+    async move {
+        let peer_to_fetch_from = peer.clone();
+        match effect_builder
+            .fetch::<Block, I>(block_hash, peer_to_fetch_from)
+            .await
+        {
+            Ok(FetchedData::FromStorage(block)) => {
                 Event::GetBlockHashResult(block_hash, BlockByHashResult::FromStorage(block))
             }
-            FetchResult::FromPeer(block, peer) => {
+            Ok(FetchedData::FromPeer(block)) => {
                 Event::GetBlockHashResult(block_hash, BlockByHashResult::FromPeer(block, peer))
             }
-        },
-        move || Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(cloned)),
-    )
+            Err(error) => {
+                warn!(
+                    "Could not get block with hash {:?} from peer {:?}: {}",
+                    block_hash, peer, error
+                );
+                Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(peer))
+            }
+        }
+    }
+    .event(std::convert::identity)
 }
 
-fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
+fn fetch_block_at_height<I: Debug + Eq + Send + Clone + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_height: u64,
@@ -867,22 +885,30 @@ fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    let cloned = peer.clone();
-    effect_builder
-        .fetch_block_by_height(block_height, peer.clone())
-        .map_or_else(
-            move |fetch_result| match fetch_result {
-                FetchResult::FromPeer(result, _) => Event::GetBlockHeightResult(
-                    block_height,
-                    BlockByHeightResult::FromPeer(Box::new(result.block), peer),
-                ),
-                FetchResult::FromStorage(result) => Event::GetBlockHeightResult(
-                    block_height,
-                    BlockByHeightResult::FromStorage(Box::new(result.block)),
-                ),
-            },
-            move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
-        )
+    async move {
+        let peer_to_fetch_from = peer.clone();
+        match effect_builder
+            .fetch::<BlockWithMetadata, I>(block_height, peer_to_fetch_from)
+            .await
+        {
+            Ok(FetchedData::FromStorage(result)) => Event::GetBlockHeightResult(
+                block_height,
+                BlockByHeightResult::FromStorage(Box::new(result.block)),
+            ),
+            Ok(FetchedData::FromPeer(result)) => Event::GetBlockHeightResult(
+                block_height,
+                BlockByHeightResult::FromPeer(Box::new(result.block), peer),
+            ),
+            Err(error) => {
+                warn!(
+                    "Could not get block with height {} from peer {:?}: {}",
+                    block_height, peer, error
+                );
+                Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(peer))
+            }
+        }
+    }
+    .event(std::convert::identity)
 }
 
 /// Returns key in the database, under which the LinearChainSync's state is stored.
