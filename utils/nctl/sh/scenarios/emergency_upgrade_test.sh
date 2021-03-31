@@ -10,8 +10,9 @@ source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 set -e
 
 #######################################
-# Runs an integration tests that tries to sync a new node
-# with an upgraded network.
+# Runs an integration tests that performs an emergency restart on the network.
+# It also simulates social consensus on replacing the original validators (nodes 1-5)
+# with a completely new set (nodes 6-10).
 #
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing. Default=300 seconds.

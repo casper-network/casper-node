@@ -19,16 +19,16 @@ pub fn gen_snapshot(
     count: u64,
 ) -> SeigniorageRecipientsSnapshot {
     let mut new_snapshot = BTreeMap::new();
+    let mut era_validators = BTreeMap::new();
+    for (key_str, bonded_str) in &validators {
+        let key = PublicKey::from_hex(key_str.as_bytes()).unwrap();
+        let bonded_amount = U512::from_dec_str(bonded_str).unwrap();
+        let seigniorage_recipient =
+            SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());
+        let _ = era_validators.insert(key, seigniorage_recipient);
+    }
     for era_id in starting_era_id.iter(count) {
-        let mut era_validators = BTreeMap::new();
-        for (key_str, bonded_str) in &validators {
-            let key = PublicKey::from_hex(key_str.as_bytes()).unwrap();
-            let bonded_amount = U512::from_dec_str(bonded_str).unwrap();
-            let seigniorage_recipient =
-                SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());
-            let _ = era_validators.insert(key, seigniorage_recipient);
-        }
-        let _ = new_snapshot.insert(era_id, era_validators);
+        let _ = new_snapshot.insert(era_id, era_validators.clone());
     }
 
     new_snapshot
@@ -40,7 +40,7 @@ pub fn find_large_bids(
     builder: &mut LmdbWasmTestBuilder,
     new_snapshot: &SeigniorageRecipientsSnapshot,
 ) -> BTreeSet<PublicKey> {
-    let max_bid = new_snapshot
+    let min_bid = new_snapshot
         .values()
         .next()
         .unwrap()
@@ -51,7 +51,7 @@ pub fn find_large_bids(
     builder
         .get_bids()
         .into_iter()
-        .filter(|(_pkey, bid)| bid.staked_amount() >= max_bid)
+        .filter(|(_pkey, bid)| bid.staked_amount() >= min_bid)
         .map(|(pkey, _bid)| pkey)
         .collect()
 }
@@ -61,7 +61,7 @@ pub fn find_large_bids(
 /// - remove the bids of the old validators that are no longer validators,
 /// - remove all the bids that are larger than the smallest bid among the new validators
 /// (necessary, because such bidders would outbid the validators decided by the social consensus).
-pub fn fix_bids(
+pub fn generate_entries_removing_bids(
     builder: &mut LmdbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
     new_snapshot: &SeigniorageRecipientsSnapshot,
@@ -98,8 +98,9 @@ pub fn fix_bids(
         .collect()
 }
 
-/// Removes pending withdraws of all the old validators that cease to be validators.
-pub fn fix_withdraws(
+/// Generates the writes to the global state that will remove the pending withdraws of all the old
+/// validators that will cease to be validators.
+pub fn generate_entries_removing_withdraws(
     builder: &mut LmdbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
 ) -> BTreeMap<Key, StoredValue> {

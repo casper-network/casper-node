@@ -8,7 +8,9 @@ mod auction_utils;
 mod utils;
 
 use crate::{
-    auction_utils::{fix_bids, fix_withdraws, gen_snapshot},
+    auction_utils::{
+        gen_snapshot, generate_entries_removing_bids, generate_entries_removing_withdraws,
+    },
     utils::{hash_from_str, validators_diff},
 };
 
@@ -93,12 +95,14 @@ fn main() {
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 
     // Print the writes fixing the bids.
-    for (key, value) in fix_bids(&mut test_builder, &validators_diff, &new_snapshot) {
+    for (key, value) in
+        generate_entries_removing_bids(&mut test_builder, &validators_diff, &new_snapshot)
+    {
         print_entry(&key, &value);
     }
 
     // Print the writes removing the no longer valid withdraws.
-    for (key, value) in fix_withdraws(&mut test_builder, &validators_diff) {
+    for (key, value) in generate_entries_removing_withdraws(&mut test_builder, &validators_diff) {
         print_entry(&key, &value);
     }
 }
