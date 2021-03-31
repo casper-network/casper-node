@@ -5,10 +5,13 @@ mod signature;
 mod signature_cache;
 mod state;
 
+use datasize::DataSize;
 use std::{convert::Infallible, fmt::Display};
 
+use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
+use self::metrics::LinearChainMetrics;
 use super::Component;
 use crate::{
     effect::{
@@ -23,11 +26,41 @@ use crate::{
     types::{BlockByHeight, FinalitySignature, Timestamp},
     NodeRng,
 };
+use casper_types::{EraId, ProtocolVersion};
 
 pub use event::Event;
-pub(crate) use state::LinearChain;
+use state::LinearChain;
 
-impl<I, REv> Component<REv> for LinearChain<I>
+#[derive(DataSize, Debug)]
+pub(crate) struct LinearChainComponent<I> {
+    linear_chain_state: LinearChain<I>,
+    #[data_size(skip)]
+    metrics: LinearChainMetrics,
+}
+
+impl<I> LinearChainComponent<I> {
+    pub(crate) fn new(
+        registry: &Registry,
+        protocol_version: ProtocolVersion,
+        auction_delay: u64,
+        unbonding_delay: u64,
+        activation_era_id: EraId,
+    ) -> Result<Self, prometheus::Error> {
+        let metrics = LinearChainMetrics::new(registry)?;
+        let linear_chain_state = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            activation_era_id,
+        );
+        Ok(LinearChainComponent {
+            linear_chain_state,
+            metrics,
+        })
+    }
+}
+
+impl<I, REv> Component<REv> for LinearChainComponent<I>
 where
     REv: From<StorageRequest>
         + From<NetworkRequest<I, Message>>
@@ -91,14 +124,15 @@ where
             } => {
                 // New linear chain block received. Collect any pending finality signatures that
                 // were waiting for that block.
-                let (signatures, mut effects) = self.collect_pending_finality_signatures(
-                    block.hash(),
-                    block.header().era_id(),
-                    effect_builder,
-                );
+                let (signatures, mut effects) =
+                    self.linear_chain_state.collect_pending_finality_signatures(
+                        block.hash(),
+                        block.header().era_id(),
+                        effect_builder,
+                    );
                 // Cache the signature as we expect more finality signatures for the new block to
                 // arrive soon.
-                self.cache_signatures(signatures.clone());
+                self.linear_chain_state.cache_signatures(signatures.clone());
                 effects.extend(
                     effect_builder
                         .put_signatures_to_storage(signatures)
@@ -118,7 +152,7 @@ where
                 effects
             }
             Event::PutBlockResult { block } => {
-                self.set_latest_block(*block.clone());
+                self.linear_chain_state.set_latest_block(*block.clone());
 
                 let completion_duration =
                     Timestamp::now().millis() - block.header().timestamp().millis();
@@ -134,10 +168,13 @@ where
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
                 let FinalitySignature { block_hash, .. } = *fs;
-                if !self.add_pending_finality_signature(*fs.clone(), gossiped) {
+                if !self
+                    .linear_chain_state
+                    .add_pending_finality_signature(*fs.clone(), gossiped)
+                {
                     return Effects::new();
                 }
-                match self.get_signatures(&block_hash) {
+                match self.linear_chain_state.get_signatures(&block_hash) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
                         .event(move |maybe_signatures| {
@@ -156,17 +193,18 @@ where
                             expected=%signatures.era_id, got=%fs.era_id,
                             "finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
-                        self.remove_from_pending_fs(&*fs);
+                        self.linear_chain_state.remove_from_pending_fs(&*fs);
                         return Effects::new();
                     }
                     // Populate cache so that next finality signatures don't have to read from the
                     // storage. If signature is already from cache then this will be a noop.
-                    self.cache_signatures(*signatures.clone());
+                    self.linear_chain_state.cache_signatures(*signatures.clone());
                 }
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
-                let protocol_version = self.current_protocol_version();
+                let protocol_version = self.linear_chain_state.current_protocol_version();
                 let latest_state_root_hash = self
+                .linear_chain_state
                     .latest_block()
                     .as_ref()
                     .map(|block| *block.header().state_root_hash());
@@ -195,13 +233,13 @@ where
                     .any(|sig| *sig == &fs.signature);
                 // If new, gossip and store.
                 if signature_known {
-                    self.remove_from_pending_fs(&*fs);
+                    self.linear_chain_state.remove_from_pending_fs(&*fs);
                     Effects::new()
                 } else {
                     let mut effects = effect_builder
                         .announce_finality_signature(fs.clone())
                         .ignore();
-                    if let Some(signature) = self.remove_from_pending_fs(&*fs) {
+                    if let Some(signature) = self.linear_chain_state.remove_from_pending_fs(&*fs) {
                         if signature.is_local() {
                             let message = Message::FinalitySignature(fs.clone());
                             effects.extend(effect_builder.broadcast_message(message).ignore());
@@ -210,7 +248,8 @@ where
                     signatures.insert_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
-                    self.cache_signatures(*signatures.clone());
+                    self.linear_chain_state
+                        .cache_signatures(*signatures.clone());
                     debug!(hash=%signatures.block_hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
@@ -227,7 +266,7 @@ where
                 Effects::new()
             }
             Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
-                self.remove_from_pending_fs(&fs);
+                self.linear_chain_state.remove_from_pending_fs(&fs);
                 // Unknown validator.
                 let FinalitySignature {
                     public_key,

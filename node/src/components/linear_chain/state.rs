@@ -2,7 +2,6 @@ use std::{fmt::Display, marker::PhantomData};
 
 use casper_types::{EraId, ProtocolVersion};
 use datasize::DataSize;
-use prometheus::Registry;
 use tracing::{debug, warn};
 
 use crate::{
@@ -16,8 +15,8 @@ use crate::{
 };
 
 use super::{
-    metrics::LinearChainMetrics, pending_signatures::PendingSignatures, signature::Signature,
-    signature_cache::SignatureCache, Event,
+    pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
+    Event,
 };
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
@@ -31,22 +30,18 @@ pub(crate) struct LinearChain<I> {
     protocol_version: ProtocolVersion,
     auction_delay: u64,
     unbonding_delay: u64,
-    #[data_size(skip)]
-    pub(super) metrics: LinearChainMetrics,
 
     _marker: PhantomData<I>,
 }
 
 impl<I> LinearChain<I> {
-    pub fn new(
-        registry: &Registry,
+    pub(crate) fn new(
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
         activation_era_id: EraId,
-    ) -> Result<Self, prometheus::Error> {
-        let metrics = LinearChainMetrics::new(registry)?;
-        Ok(LinearChain {
+    ) -> Self {
+        LinearChain {
             latest_block: None,
             pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
@@ -54,9 +49,8 @@ impl<I> LinearChain<I> {
             protocol_version,
             auction_delay,
             unbonding_delay,
-            metrics,
             _marker: PhantomData,
-        })
+        }
     }
 
     /// Returns whether we have already enqueued that finality signature.
