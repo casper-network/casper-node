@@ -806,8 +806,5 @@ fn should_meter_for_gas_storage_add() {
         gas_usage_before
     );
 
-    assert_eq!(
-        gas_usage_after,
-        gas_usage_before + Gas::from(expected_add_cost)
-    );
+    assert_eq!(gas_usage_after, gas_usage_before + expected_add_cost);
 }

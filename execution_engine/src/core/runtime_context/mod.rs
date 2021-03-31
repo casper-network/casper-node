@@ -761,7 +761,7 @@ where
             // wouldn't try to incur cost to system account.
             return Ok(());
         }
-        self.charge_gas(call_cost)
+        self.charge_gas(call_cost.into())
     }
 
     /// Writes data to global state with a measurement
