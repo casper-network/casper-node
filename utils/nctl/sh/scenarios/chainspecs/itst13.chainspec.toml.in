@@ -18,6 +18,9 @@ name = 'casper-example'
 # timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
 timestamp = '${TIMESTAMP}'
+# The maximum size of an acceptable networking message in bytes.  Any message larger than this will
+# be rejected at the networking level.
+maximum_net_message_size = 23_068_672
 
 [core]
 # Era duration.

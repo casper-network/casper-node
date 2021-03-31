@@ -140,6 +140,7 @@ impl Reactor for TestReactor {
             registry,
             small_network_identity,
             "test_network".to_string(),
+            23 * 1024 * 1024, // Hardcoded at 23 megs.
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
