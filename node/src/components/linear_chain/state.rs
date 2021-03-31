@@ -1,4 +1,4 @@
-use std::{fmt::Display, marker::PhantomData};
+use std::fmt::Display;
 
 use casper_types::{EraId, ProtocolVersion};
 use datasize::DataSize;
@@ -19,7 +19,7 @@ use super::{
     Event,
 };
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChain<I> {
+pub(crate) struct LinearChain {
     /// The most recently added block.
     latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
@@ -30,11 +30,9 @@ pub(crate) struct LinearChain<I> {
     protocol_version: ProtocolVersion,
     auction_delay: u64,
     unbonding_delay: u64,
-
-    _marker: PhantomData<I>,
 }
 
-impl<I> LinearChain<I> {
+impl LinearChain {
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         auction_delay: u64,
@@ -49,7 +47,6 @@ impl<I> LinearChain<I> {
             protocol_version,
             auction_delay,
             unbonding_delay,
-            _marker: PhantomData,
         }
     }
 
@@ -68,7 +65,7 @@ impl<I> LinearChain<I> {
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
     /// them, and the updated block signatures.
-    pub(super) fn collect_pending_finality_signatures<REv>(
+    pub(super) fn collect_pending_finality_signatures<I, REv>(
         &mut self,
         block_hash: &BlockHash,
         block_era: EraId,

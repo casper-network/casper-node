@@ -6,7 +6,7 @@ mod signature_cache;
 mod state;
 
 use datasize::DataSize;
-use std::{convert::Infallible, fmt::Display};
+use std::{convert::Infallible, fmt::Display, marker::PhantomData};
 
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
@@ -33,9 +33,10 @@ use state::LinearChain;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainComponent<I> {
-    linear_chain_state: LinearChain<I>,
+    linear_chain_state: LinearChain,
     #[data_size(skip)]
     metrics: LinearChainMetrics,
+    _marker: PhantomData<I>,
 }
 
 impl<I> LinearChainComponent<I> {
@@ -56,6 +57,7 @@ impl<I> LinearChainComponent<I> {
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
+            _marker: PhantomData,
         })
     }
 }
@@ -198,13 +200,14 @@ where
                     }
                     // Populate cache so that next finality signatures don't have to read from the
                     // storage. If signature is already from cache then this will be a noop.
-                    self.linear_chain_state.cache_signatures(*signatures.clone());
+                    self.linear_chain_state
+                        .cache_signatures(*signatures.clone());
                 }
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
                 let protocol_version = self.linear_chain_state.current_protocol_version();
                 let latest_state_root_hash = self
-                .linear_chain_state
+                    .linear_chain_state
                     .latest_block()
                     .as_ref()
                     .map(|block| *block.header().state_root_hash());
