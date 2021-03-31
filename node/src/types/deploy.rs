@@ -46,6 +46,8 @@ use crate::{
     utils::DisplayIter,
 };
 
+const MAX_SERIALIZED_SIZE: u64 = 1_024 * 1_024;
+
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {
         "quantity" => 1000
@@ -118,13 +120,8 @@ pub enum DeployValidationFailure {
     },
 
     /// Deploy is too large.
-    #[error("{deploy_size} deploy size exceeds block size limit of {max_block_size}")]
-    ExcessiveSize {
-        /// The block size limit.
-        max_block_size: u32,
-        /// The size of the deploy provided.
-        deploy_size: usize,
-    },
+    #[error("deploy size too large: {0}")]
+    ExcessiveSize(#[from] ExcessiveSizeError),
 
     /// Excessive time-to-live.
     #[error("time-to-live of {got} exceeds limit of {max_ttl}")]
@@ -186,6 +183,16 @@ pub enum DeployValidationFailure {
         /// The attempted transfer amount.
         attempted: U512,
     },
+}
+
+/// Error returned when a Deploy is too large.
+#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error)]
+#[error("deploy size of {actual_deploy_size} bytes exceeds limit of {max_deploy_size}")]
+pub struct ExcessiveSizeError {
+    /// The maximum permitted serialized deploy size, in bytes.
+    pub max_deploy_size: u64,
+    /// The serialized size of the deploy provided, in bytes.
+    pub actual_deploy_size: usize,
 }
 
 /// Errors other than validation failures relating to `Deploy`s.
@@ -609,6 +616,19 @@ impl Deploy {
         }
     }
 
+    /// Returns true if the serialized size of the deploy is not greater than `MAX_SERIALIZED_SIZE`
+    /// (i.e. 1 MiB).
+    pub fn is_valid_size(&self) -> Result<(), ExcessiveSizeError> {
+        let deploy_size = self.serialized_length();
+        if deploy_size as u64 > MAX_SERIALIZED_SIZE {
+            return Err(ExcessiveSizeError {
+                max_deploy_size: MAX_SERIALIZED_SIZE,
+                actual_deploy_size: deploy_size,
+            });
+        }
+        Ok(())
+    }
+
     /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
@@ -635,13 +655,7 @@ impl Deploy {
         chain_name: &str,
         config: &DeployConfig,
     ) -> Result<(), DeployValidationFailure> {
-        let deploy_size = self.serialized_length();
-        if deploy_size > config.max_block_size as usize {
-            return Err(DeployValidationFailure::ExcessiveSize {
-                max_block_size: config.max_block_size,
-                deploy_size,
-            });
-        }
+        self.is_valid_size()?;
 
         let header = self.header();
         if header.chain_name() != chain_name {
