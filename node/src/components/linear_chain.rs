@@ -1,5 +1,6 @@
 mod event;
 mod metrics;
+mod pending_signatures;
 mod signature;
 mod signature_cache;
 mod state;
@@ -88,13 +89,16 @@ where
                 block,
                 execution_results,
             } => {
+                // New linear chain block received. Collect any pending finality signatures that
+                // were waiting for that block.
                 let (signatures, mut effects) = self.collect_pending_finality_signatures(
                     block.hash(),
                     block.header().era_id(),
                     effect_builder,
                 );
-                // Cache the signature as we expect more finality signatures to arrive soon.
-                self.signature_cache.insert(signatures.clone());
+                // Cache the signature as we expect more finality signatures for the new block to
+                // arrive soon.
+                self.cache_signatures(signatures.clone());
                 effects.extend(
                     effect_builder
                         .put_signatures_to_storage(signatures)
@@ -114,7 +118,7 @@ where
                 effects
             }
             Event::PutBlockResult { block } => {
-                self.latest_block = Some(*block.clone());
+                self.set_latest_block(*block.clone());
 
                 let completion_duration =
                     Timestamp::now().millis() - block.header().timestamp().millis();
@@ -129,51 +133,11 @@ where
                 effect_builder.announce_block_added(block).ignore()
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
-                let FinalitySignature {
-                    block_hash,
-                    public_key,
-                    era_id,
-                    ..
-                } = *fs;
-                if let Some(latest_block) = self.latest_block.as_ref() {
-                    // If it's a switch block it has already forgotten its own era's validators,
-                    // unbonded some old validators, and determined new ones. In that case, we
-                    // should add 1 to last_block_era.
-                    let current_era = latest_block.header().era_id()
-                        + if latest_block.header().is_switch_block() {
-                            1
-                        } else {
-                            0
-                        };
-                    let lowest_acceptable_era_id =
-                        (current_era + self.auction_delay).saturating_sub(self.unbonding_delay);
-                    let highest_acceptable_era_id = current_era + self.auction_delay;
-                    if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
-                        warn!(
-                            ?era_id,
-                            ?public_key,
-                            ?block_hash,
-                            "received finality signature for not bonded era."
-                        );
-                        return Effects::new();
-                    }
-                }
-                if self.has_finality_signature(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
-                        "finality signature already pending");
+                let FinalitySignature { block_hash, .. } = *fs;
+                if !self.add_pending_finality_signature(*fs.clone(), gossiped) {
                     return Effects::new();
                 }
-                if self.signature_cache.known_signature(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
-                        "finality signature is already known");
-                    return Effects::new();
-                }
-                if let Err(err) = fs.verify() {
-                    warn!(%block_hash, %public_key, %err, "received invalid finality signature");
-                    return Effects::new();
-                }
-                self.add_pending_finality_signature(*fs.clone(), gossiped);
-                match self.signature_cache.get(&block_hash, era_id) {
+                match self.get_signatures(&block_hash) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
                         .event(move |maybe_signatures| {
@@ -197,13 +161,13 @@ where
                     }
                     // Populate cache so that next finality signatures don't have to read from the
                     // storage. If signature is already from cache then this will be a noop.
-                    self.signature_cache.insert(*signatures.clone());
+                    self.cache_signatures(*signatures.clone());
                 }
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
-                let protocol_version = self.protocol_version;
+                let protocol_version = self.current_protocol_version();
                 let latest_state_root_hash = self
-                    .latest_block
+                    .latest_block()
                     .as_ref()
                     .map(|block| *block.header().state_root_hash());
                 effect_builder
@@ -246,7 +210,7 @@ where
                     signatures.insert_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
-                    self.signature_cache.insert(*signatures.clone());
+                    self.cache_signatures(*signatures.clone());
                     debug!(hash=%signatures.block_hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
