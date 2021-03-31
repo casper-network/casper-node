@@ -474,7 +474,7 @@ impl From<Block> for FinalizedBlock {
         let proto_block = ProtoBlock::new(
             block.body.deploy_hashes().clone(),
             block.body.transfer_hashes().clone(),
-            block.header.timestamp,
+            block.timestamp(),
             block.header.random_bit,
         );
 

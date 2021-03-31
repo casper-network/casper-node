@@ -59,10 +59,10 @@ use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
 
 use super::Component;
 #[cfg(test)]
@@ -81,7 +81,6 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
-use casper_types::ProtocolVersion;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -153,14 +152,6 @@ pub enum Error {
         first: BlockHash,
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
-    },
-    /// Attempted to store a duplicate execution result.
-    #[error("duplicate execution result for deploy {deploy_hash} in block {block_hash}")]
-    DuplicateExecutionResult {
-        /// The deploy for which the result should be stored.
-        deploy_hash: DeployHash,
-        /// The block providing the context for the deploy's execution result.
-        block_hash: BlockHash,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
@@ -528,17 +519,13 @@ impl Storage {
                         .get_deploy_metadata(&mut txn, &deploy_hash)?
                         .unwrap_or_default();
 
-                    // If we have a previous execution result, we enforce that it is the same.
+                    // If we have a previous execution result, we can continue if it is the same.
                     if let Some(prev) = metadata.execution_results.get(&block_hash) {
-                        if prev != &execution_result {
-                            return Err(Error::DuplicateExecutionResult {
-                                deploy_hash,
-                                block_hash: *block_hash,
-                            });
+                        if prev == &execution_result {
+                            continue;
+                        } else {
+                            debug!(%deploy_hash, %block_hash, "different execution result");
                         }
-
-                        // We can now skip adding, as the result is the same.
-                        continue;
                     }
 
                     if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
