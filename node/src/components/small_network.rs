@@ -159,6 +159,8 @@ where
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     network_name: String,
+    /// The maximum message size for a network message, as supplied from the chainspec.
+    maximum_net_message_size: u32,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -198,6 +200,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         network_name: String,
+        maximum_net_message_size: u32,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
@@ -244,6 +247,7 @@ where
                 pending: HashMap::new(),
                 blocklist: HashMap::new(),
                 network_name,
+                maximum_net_message_size,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
@@ -312,6 +316,7 @@ where
             pending: HashMap::new(),
             blocklist: HashMap::new(),
             network_name,
+            maximum_net_message_size,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -502,7 +507,8 @@ where
 
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) = framed::<P>(transport).split();
+                let (mut sink, stream) =
+                    framed::<P>(transport, self.maximum_net_message_size).split();
                 let handshake = Message::Handshake {
                     network_name: self.network_name.clone(),
                     public_address: self.public_address,
@@ -586,7 +592,7 @@ where
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) = framed::<P>(transport).split();
+        let (sink, stream) = framed::<P>(transport, self.maximum_net_message_size).split();
         debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -1304,8 +1310,13 @@ type FramedTransport<P> = SymmetricallyFramed<
 >;
 
 /// Constructs a new framed transport on a stream.
-fn framed<P>(stream: Transport) -> FramedTransport<P> {
-    let length_delimited = Framed::new(stream, LengthDelimitedCodec::new());
+fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTransport<P> {
+    let length_delimited = Framed::new(
+        stream,
+        LengthDelimitedCodec::builder()
+            .max_frame_length(maximum_net_message_size as usize)
+            .new_codec(),
+    );
     SymmetricallyFramed::new(
         length_delimited,
         SymmetricalBincode::<Message<P>>::default(),

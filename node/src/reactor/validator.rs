@@ -416,12 +416,17 @@ impl reactor::Reactor for Reactor {
             true,
         )?;
         let network_name = chainspec_loader.chainspec().network_config.name.clone();
+        let maximum_net_message_size = chainspec_loader
+            .chainspec()
+            .network_config
+            .maximum_net_message_size;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
             network_name,
+            maximum_net_message_size,
             true,
         )?;
 
