@@ -17,7 +17,9 @@ use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
-use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
+use super::{
+    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork,
+};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
@@ -139,8 +141,7 @@ impl Reactor for TestReactor {
             cfg,
             registry,
             small_network_identity,
-            "test_network".to_string(),
-            23 * 1024 * 1024, // Hardcoded at 23 megs.
+            ChainInfo::create_for_testing(),
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
