@@ -17,6 +17,12 @@ use crate::{
     rpc::RpcClient,
 };
 
+/// The maximum permissible size in bytes of a Deploy when serialized via `ToBytes`.
+///
+/// Note: this should be kept in sync with the value of `[deploys.max_deploy_size]` in the
+/// production chainspec.
+const MAX_SERIALIZED_SIZE: u32 = 1_024 * 1_024;
+
 /// SendDeploy allows sending a deploy to the node.
 pub(crate) struct SendDeploy;
 
@@ -112,7 +118,7 @@ pub(super) trait DeployExt {
         params: DeployParams,
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
-    ) -> Deploy;
+    ) -> Result<Deploy>;
 
     /// Writes the `Deploy` to `output`.
     fn write_deploy<W>(&self, output: W) -> Result<()>
@@ -136,7 +142,7 @@ impl DeployExt for Deploy {
         params: DeployParams,
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
-    ) -> Deploy {
+    ) -> Result<Deploy> {
         let DeployParams {
             timestamp,
             ttl,
@@ -145,7 +151,8 @@ impl DeployExt for Deploy {
             chain_name,
             secret_key,
         } = params;
-        Deploy::new(
+
+        let deploy = Deploy::new(
             timestamp,
             ttl,
             gas_price,
@@ -154,7 +161,9 @@ impl DeployExt for Deploy {
             payment,
             session,
             &secret_key,
-        )
+        );
+        deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
+        Ok(deploy)
     }
 
     fn write_deploy<W>(&self, mut output: W) -> Result<()>
@@ -175,7 +184,9 @@ impl DeployExt for Deploy {
         R: Read,
     {
         let reader = BufReader::new(input);
-        Ok(serde_json::from_reader(reader)?)
+        let deploy: Deploy = serde_json::from_reader(reader)?;
+        deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
+        Ok(deploy)
     }
 
     fn sign_and_write_deploy<R, W>(input: R, secret_key: SecretKey, output: W) -> Result<()>
@@ -185,6 +196,7 @@ impl DeployExt for Deploy {
     {
         let mut deploy = Deploy::read_deploy(input)?;
         deploy.sign(&secret_key);
+        deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         deploy.write_deploy(output)?;
         Ok(())
     }
@@ -194,7 +206,7 @@ impl DeployExt for Deploy {
 mod tests {
     use std::convert::TryInto;
 
-    use casper_node::crypto::AsymmetricKeyExt;
+    use casper_node::{crypto::AsymmetricKeyExt, types::ExcessiveSizeDeployError};
 
     use super::*;
     use crate::{DeployStrParams, PaymentStrParams, SessionStrParams};
@@ -319,7 +331,8 @@ mod tests {
             deploy_params.try_into().unwrap(),
             payment_params.try_into().unwrap(),
             session_params.try_into().unwrap(),
-        );
+        )
+        .unwrap();
         deploy.write_deploy(&mut output).unwrap();
 
         // The test output can be used to generate data for SAMPLE_DEPLOY:
@@ -338,6 +351,40 @@ mod tests {
         assert_eq!(expected.header().body_hash(), actual.header().body_hash());
         assert_eq!(expected.payment(), actual.payment());
         assert_eq!(expected.session(), actual.session());
+    }
+
+    #[test]
+    fn should_fail_to_create_large_deploy() {
+        let deploy_params = deploy_params();
+        let payment_params =
+            PaymentStrParams::with_package_hash(PKG_HASH, VERSION, ENTRYPOINT, args_simple(), "");
+        // Create a string arg of 1048576 letter 'a's to ensure the deploy is greater than 1048576
+        // bytes.
+        let large_args_simple = format!("name_01:string='{:a<1048576}'", "");
+
+        let session_params = SessionStrParams::with_package_hash(
+            PKG_HASH,
+            VERSION,
+            ENTRYPOINT,
+            vec![large_args_simple.as_str()],
+            "",
+        );
+
+        match Deploy::with_payment_and_session(
+            deploy_params.try_into().unwrap(),
+            payment_params.try_into().unwrap(),
+            session_params.try_into().unwrap(),
+        ) {
+            Err(Error::DeploySizeTooLarge(ExcessiveSizeDeployError {
+                max_deploy_size,
+                actual_deploy_size,
+            })) => {
+                assert_eq!(max_deploy_size, MAX_SERIALIZED_SIZE);
+                assert!(actual_deploy_size > MAX_SERIALIZED_SIZE as usize);
+            }
+            Err(error) => panic!("unexpected error: {}", error),
+            Ok(_) => panic!("failed to error while creating an excessively large deploy"),
+        }
     }
 
     #[test]
