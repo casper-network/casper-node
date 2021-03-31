@@ -4,7 +4,7 @@ use humantime::{DurationError, TimestampError};
 use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
-use casper_node::crypto::Error as CryptoError;
+use casper_node::{crypto::Error as CryptoError, types::ExcessiveSizeDeployError};
 use casper_types::{
     bytesrepr::Error as ToBytesError, CLValueError, UIntParseError, URefFromStrError,
 };
@@ -42,6 +42,10 @@ pub enum Error {
     /// Failed to parse a `U128`, `U256` or `U512` from a string.
     #[error("Failed to parse '{0}' as U128, U256, or U512: {1:?}")]
     FailedToParseUint(&'static str, UIntParseError),
+
+    /// Deploy size too large.
+    #[error("Deploy size too large: {0}")]
+    DeploySizeTooLarge(#[from] ExcessiveSizeDeployError),
 
     /// Failed to get a response from the node.
     #[error("Failed to get RPC response: {0}")]
