@@ -58,10 +58,11 @@ impl SignatureCache {
         let FinalitySignature {
             block_hash,
             public_key,
+            signature,
             ..
         } = fs;
         self.signatures
             .get(block_hash)
-            .map_or(false, |bs| bs.has_proof(public_key))
+            .map_or(false, |bs| bs.has_proof(public_key, signature))
     }
 }

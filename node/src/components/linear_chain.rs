@@ -233,19 +233,14 @@ where
             Event::IsBonded(Some(mut signatures), fs, true) => {
                 // Known block and signature from a bonded validator.
                 // Check if we had already seen this signature before.
-                let signature_known = signatures
-                    .proofs
-                    .get(&fs.public_key)
-                    .iter()
-                    .any(|sig| *sig == &fs.signature);
-                // If new, gossip and store.
-                if signature_known {
+                if signatures.has_proof(&fs.public_key, &fs.signature) {
                     self.linear_chain_state.remove_from_pending_fs(&*fs);
                     Effects::new()
                 } else {
                     let mut effects = effect_builder
                         .announce_finality_signature(fs.clone())
                         .ignore();
+                    // If new, gossip and store.
                     if let Some(signature) = self.linear_chain_state.remove_from_pending_fs(&*fs) {
                         if signature.is_local() {
                             let message = Message::FinalitySignature(fs.clone());
