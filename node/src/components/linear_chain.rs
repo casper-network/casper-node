@@ -118,7 +118,7 @@ where
                 effects
             }
             Event::PutBlockResult { block } => {
-                self.latest_block = Some(*block.clone());
+                self.set_latest_block(*block.clone());
 
                 let completion_duration =
                     Timestamp::now().millis() - block.header().timestamp().millis();
@@ -165,9 +165,9 @@ where
                 }
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
-                let protocol_version = self.protocol_version;
+                let protocol_version = self.current_protocol_version();
                 let latest_state_root_hash = self
-                    .latest_block
+                    .latest_block()
                     .as_ref()
                     .map(|block| *block.header().state_root_hash());
                 effect_builder

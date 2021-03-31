@@ -22,15 +22,15 @@ use super::{
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// The most recently added block.
-    pub(super) latest_block: Option<Block>,
+    latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: PendingSignatures,
     signature_cache: SignatureCache,
-    pub(super) activation_era_id: EraId,
+    activation_era_id: EraId,
     /// Current protocol version of the network.
-    pub(super) protocol_version: ProtocolVersion,
-    pub(super) auction_delay: u64,
-    pub(super) unbonding_delay: u64,
+    protocol_version: ProtocolVersion,
+    auction_delay: u64,
+    unbonding_delay: u64,
     #[data_size(skip)]
     pub(super) metrics: LinearChainMetrics,
 
@@ -199,5 +199,17 @@ impl<I> LinearChain<I> {
     /// Returns cached finality signatures that we have already validated and stored.
     pub(super) fn get_signatures(&self, block_hash: &BlockHash) -> Option<BlockSignatures> {
         self.signature_cache.get(block_hash)
+    }
+
+    pub(super) fn current_protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    pub(super) fn set_latest_block(&mut self, block: Block) {
+        self.latest_block = Some(block);
+    }
+
+    pub(super) fn latest_block(&self) -> &Option<Block> {
+        &self.latest_block
     }
 }
