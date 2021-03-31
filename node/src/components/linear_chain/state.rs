@@ -25,7 +25,7 @@ pub(crate) struct LinearChain<I> {
     pub(super) latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: PendingSignatures,
-    pub(super) signature_cache: SignatureCache,
+    signature_cache: SignatureCache,
     pub(super) activation_era_id: EraId,
     /// Current protocol version of the network.
     pub(super) protocol_version: ProtocolVersion,
@@ -194,5 +194,10 @@ impl<I> LinearChain<I> {
     // Caches the signature.
     pub(super) fn cache_signatures(&mut self, signatures: BlockSignatures) {
         self.signature_cache.insert(signatures);
+    }
+
+    /// Returns cached finality signatures that we have already validated and stored.
+    pub(super) fn get_signatures(&self, block_hash: &BlockHash) -> Option<BlockSignatures> {
+        self.signature_cache.get(block_hash)
     }
 }

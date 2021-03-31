@@ -89,12 +89,15 @@ where
                 block,
                 execution_results,
             } => {
+                // New linear chain block received. Collect any pending finality signatures that
+                // were waiting for that block.
                 let (signatures, mut effects) = self.collect_pending_finality_signatures(
                     block.hash(),
                     block.header().era_id(),
                     effect_builder,
                 );
-                // Cache the signature as we expect more finality signatures to arrive soon.
+                // Cache the signature as we expect more finality signatures for the new block to
+                // arrive soon.
                 self.cache_signatures(signatures.clone());
                 effects.extend(
                     effect_builder
@@ -130,13 +133,11 @@ where
                 effect_builder.announce_block_added(block).ignore()
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
-                let FinalitySignature {
-                    block_hash, era_id, ..
-                } = *fs;
+                let FinalitySignature { block_hash, .. } = *fs;
                 if !self.add_pending_finality_signature(*fs.clone(), gossiped) {
                     return Effects::new();
                 }
-                match self.signature_cache.get(&block_hash, era_id) {
+                match self.get_signatures(&block_hash) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
                         .event(move |maybe_signatures| {
