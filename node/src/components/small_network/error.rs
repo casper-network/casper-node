@@ -61,7 +61,9 @@ pub enum Error {
         ResolveAddressError,
     ),
     /// Failed to send message.
-    #[error("failed to send message")]
+    // TODO: Inclusion of the cause is a workaround, we should actually be printing cause-traces
+    //       when logging errors.
+    #[error("failed to send message: {0}")]
     MessageNotSent(
         #[serde(skip_serializing)]
         #[source]
