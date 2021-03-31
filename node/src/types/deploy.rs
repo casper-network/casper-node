@@ -46,8 +46,6 @@ use crate::{
     utils::DisplayIter,
 };
 
-const MAX_SERIALIZED_SIZE: u64 = 1_024 * 1_024;
-
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {
         "quantity" => 1000
@@ -190,7 +188,7 @@ pub enum DeployValidationFailure {
 #[error("deploy size of {actual_deploy_size} bytes exceeds limit of {max_deploy_size}")]
 pub struct ExcessiveSizeError {
     /// The maximum permitted serialized deploy size, in bytes.
-    pub max_deploy_size: u64,
+    pub max_deploy_size: u32,
     /// The serialized size of the deploy provided, in bytes.
     pub actual_deploy_size: usize,
 }
@@ -616,13 +614,12 @@ impl Deploy {
         }
     }
 
-    /// Returns true if the serialized size of the deploy is not greater than `MAX_SERIALIZED_SIZE`
-    /// (i.e. 1 MiB).
-    pub fn is_valid_size(&self) -> Result<(), ExcessiveSizeError> {
+    /// Returns true if the serialized size of the deploy is not greater than `max_deploy_size`.
+    pub fn is_valid_size(&self, max_deploy_size: u32) -> Result<(), ExcessiveSizeError> {
         let deploy_size = self.serialized_length();
-        if deploy_size as u64 > MAX_SERIALIZED_SIZE {
+        if deploy_size > max_deploy_size as usize {
             return Err(ExcessiveSizeError {
-                max_deploy_size: MAX_SERIALIZED_SIZE,
+                max_deploy_size,
                 actual_deploy_size: deploy_size,
             });
         }
@@ -655,7 +652,7 @@ impl Deploy {
         chain_name: &str,
         config: &DeployConfig,
     ) -> Result<(), DeployValidationFailure> {
-        self.is_valid_size()?;
+        self.is_valid_size(config.max_deploy_size)?;
 
         let header = self.header();
         if header.chain_name() != chain_name {

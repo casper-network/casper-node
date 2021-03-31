@@ -18,6 +18,12 @@ use crate::{
     rpc::RpcClient,
 };
 
+/// The maximum permissible size in bytes of a Deploy when serialized via `ToBytes`.
+///
+/// Note: this should be kept in sync with the value of `[deploys.max_deploy_size]` in the
+/// production chainspec.
+const MAX_SERIALIZED_SIZE: u32 = 1_024 * 1_024;
+
 /// SendDeploy allows sending a deploy to the node.
 pub(crate) struct SendDeploy;
 
@@ -157,7 +163,7 @@ impl DeployExt for Deploy {
             session,
             &secret_key,
         );
-        deploy.is_valid_size()?;
+        deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         Ok(deploy)
     }
 
@@ -180,7 +186,7 @@ impl DeployExt for Deploy {
     {
         let reader = BufReader::new(input);
         let deploy: Deploy = serde_json::from_reader(reader)?;
-        deploy.is_valid_size()?;
+        deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         Ok(deploy)
     }
 
@@ -191,7 +197,7 @@ impl DeployExt for Deploy {
     {
         let mut deploy = Deploy::read_deploy(input)?;
         deploy.sign(&secret_key);
-        deploy.is_valid_size()?;
+        deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         deploy.write_deploy(output)?;
         Ok(())
     }
@@ -374,8 +380,8 @@ mod tests {
                 max_deploy_size,
                 actual_deploy_size,
             })) => {
-                assert_eq!(max_deploy_size, 1_024 * 1_024);
-                assert!(actual_deploy_size as u64 > max_deploy_size);
+                assert_eq!(max_deploy_size, MAX_SERIALIZED_SIZE);
+                assert!(actual_deploy_size > MAX_SERIALIZED_SIZE as usize);
             }
             Err(error) => panic!("unexpected error: {}", error),
             Ok(_) => panic!("failed to error while creating an excessively large deploy"),
