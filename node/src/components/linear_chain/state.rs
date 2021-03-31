@@ -59,12 +59,17 @@ impl<I> LinearChain<I> {
         })
     }
 
-    // Checks if we have already enqueued that finality signature.
-    pub(super) fn has_finality_signature(&self, fs: &FinalitySignature) -> bool {
+    /// Returns whether we have already enqueued that finality signature.
+    pub(super) fn is_pending(&self, fs: &FinalitySignature) -> bool {
         let creator = fs.public_key;
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
             .has_finality_signature(&creator, &block_hash)
+    }
+
+    /// Returns whether we have already seen and stored the finality signature.
+    pub(super) fn is_new(&self, fs: &FinalitySignature) -> bool {
+        !self.signature_cache.known_signature(fs)
     }
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
@@ -141,5 +146,10 @@ impl<I> LinearChain<I> {
         debug!(%block_hash, %public_key, "removing finality signature from pending collection");
         self.pending_finality_signatures
             .remove(&public_key, &block_hash)
+    }
+
+    // Caches the signature.
+    pub(super) fn cache_signatures(&mut self, signatures: BlockSignatures) {
+        self.signature_cache.insert(signatures);
     }
 }

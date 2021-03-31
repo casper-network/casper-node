@@ -95,7 +95,7 @@ where
                     effect_builder,
                 );
                 // Cache the signature as we expect more finality signatures to arrive soon.
-                self.signature_cache.insert(signatures.clone());
+                self.cache_signatures(signatures.clone());
                 effects.extend(
                     effect_builder
                         .put_signatures_to_storage(signatures)
@@ -159,12 +159,12 @@ where
                         return Effects::new();
                     }
                 }
-                if self.has_finality_signature(&fs) {
+                if self.is_pending(&fs) {
                     debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
                         "finality signature already pending");
                     return Effects::new();
                 }
-                if self.signature_cache.known_signature(&fs) {
+                if !self.is_new(&fs) {
                     debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
                         "finality signature is already known");
                     return Effects::new();
@@ -198,7 +198,7 @@ where
                     }
                     // Populate cache so that next finality signatures don't have to read from the
                     // storage. If signature is already from cache then this will be a noop.
-                    self.signature_cache.insert(*signatures.clone());
+                    self.cache_signatures(*signatures.clone());
                 }
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
@@ -247,7 +247,7 @@ where
                     signatures.insert_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
-                    self.signature_cache.insert(*signatures.clone());
+                    self.cache_signatures(*signatures.clone());
                     debug!(hash=%signatures.block_hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
