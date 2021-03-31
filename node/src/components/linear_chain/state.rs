@@ -1,10 +1,9 @@
-use std::{collections::HashMap, fmt::Display, marker::PhantomData};
+use std::{fmt::Display, marker::PhantomData};
 
-use casper_types::{EraId, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ProtocolVersion};
 use datasize::DataSize;
-use itertools::Itertools;
 use prometheus::Registry;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{
     effect::{
@@ -17,18 +16,15 @@ use crate::{
 };
 
 use super::{
-    metrics::LinearChainMetrics, signature::Signature, signature_cache::SignatureCache, Event,
+    metrics::LinearChainMetrics, pending_signatures::PendingSignatures, signature::Signature,
+    signature_cache::SignatureCache, Event,
 };
-
-/// The maximum number of finality signatures from a single validator we keep in memory while
-/// waiting for their block.
-const MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR: usize = 1000;
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// The most recently added block.
     pub(super) latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
-    pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, Signature>>,
+    pending_finality_signatures: PendingSignatures,
     pub(super) signature_cache: SignatureCache,
     pub(super) activation_era_id: EraId,
     /// Current protocol version of the network.
@@ -52,7 +48,7 @@ impl<I> LinearChain<I> {
         let metrics = LinearChainMetrics::new(registry)?;
         Ok(LinearChain {
             latest_block: None,
-            pending_finality_signatures: HashMap::new(),
+            pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
             activation_era_id,
             protocol_version,
@@ -68,14 +64,7 @@ impl<I> LinearChain<I> {
         let creator = fs.public_key;
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
-            .get(&creator)
-            .map_or(false, |sigs| sigs.contains_key(&block_hash))
-    }
-
-    /// Removes all entries for which there are no finality signatures.
-    fn remove_empty_entries(&mut self) {
-        self.pending_finality_signatures
-            .retain(|_, sigs| !sigs.is_empty());
+            .has_finality_signature(&creator, &block_hash)
     }
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
@@ -99,15 +88,7 @@ impl<I> LinearChain<I> {
             .get_known_signatures(block_hash, block_era);
         let pending_sigs = self
             .pending_finality_signatures
-            .values_mut()
-            .filter_map(|sigs| sigs.remove(&block_hash))
-            .filter(|signature| {
-                !known_signatures
-                    .proofs
-                    .contains_key(&signature.to_inner().public_key)
-            })
-            .collect_vec();
-        self.remove_empty_entries();
+            .collect_pending(block_hash, &known_signatures);
         // Add new signatures and send the updated block to storage.
         for signature in pending_sigs {
             if signature.to_inner().era_id != block_era {
@@ -139,27 +120,14 @@ impl<I> LinearChain<I> {
             public_key,
             ..
         } = fs;
+        // TODO: Verify if we already know that finality signature.
         debug!(%block_hash, %public_key, "received new finality signature");
-        let sigs = self
-            .pending_finality_signatures
-            .entry(public_key)
-            .or_default();
-        // Limit the memory we use for storing unknown signatures from each validator.
-        if sigs.len() >= MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
-            warn!(
-                %block_hash, %public_key,
-                "received too many finality signatures for unknown blocks"
-            );
-            return;
-        }
-
         let signature = if gossiped {
             Signature::External(Box::new(fs))
         } else {
             Signature::Local(Box::new(fs))
         };
-        // Add the pending signature.
-        let _ = sigs.insert(block_hash, signature);
+        self.pending_finality_signatures.add(signature);
     }
 
     /// Removes finality signature from the pending collection.
@@ -171,13 +139,7 @@ impl<I> LinearChain<I> {
             public_key,
         } = fs;
         debug!(%block_hash, %public_key, "removing finality signature from pending collection");
-        let maybe_sig =
-            if let Some(validator_sigs) = self.pending_finality_signatures.get_mut(public_key) {
-                validator_sigs.remove(&block_hash)
-            } else {
-                None
-            };
-        self.remove_empty_entries();
-        maybe_sig
+        self.pending_finality_signatures
+            .remove(&public_key, &block_hash)
     }
 }

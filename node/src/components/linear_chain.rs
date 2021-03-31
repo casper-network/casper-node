@@ -1,5 +1,6 @@
 mod event;
 mod metrics;
+mod pending_signatures;
 mod signature;
 mod signature_cache;
 mod state;
