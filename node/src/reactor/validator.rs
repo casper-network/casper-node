@@ -489,7 +489,6 @@ impl reactor::Reactor for Reactor {
         let linear_chain = linear_chain::LinearChain::new(
             &registry,
             *protocol_version,
-            chainspec_loader.initial_state_root_hash(),
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
             chainspec_loader
