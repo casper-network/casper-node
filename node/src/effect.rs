@@ -112,9 +112,9 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, ProtoBlock, TimeDiff, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockSignatures, Chainspec, ChainspecInfo,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
+        ProtoBlock, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -1124,15 +1124,38 @@ impl<REv> EffectBuilder<REv> {
     /// Checks whether the deploys included in the block exist on the network. This includes
     /// the block's timestamp, in order that it be checked against the timestamp of the deploys
     /// within the block.
-    pub(crate) async fn validate_block<I, T>(
+    pub(crate) async fn validate_block<I>(
         self,
         sender: I,
-        block: T,
+        block: Block,
         block_timestamp: Timestamp,
-    ) -> (bool, T)
+    ) -> (bool, Block)
     where
-        REv: From<BlockValidationRequest<T, I>>,
-        T: BlockLike + Send + 'static,
+        REv: From<BlockValidationRequest<Block, I>>,
+    {
+        self.make_request(
+            |responder| BlockValidationRequest {
+                block,
+                sender,
+                responder,
+                block_timestamp,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Checks whether the deploys included in the proto block exist on the network. This includes
+    /// the block's timestamp, in order that it be checked against the timestamp of the deploys
+    /// within the block.
+    pub(crate) async fn validate_proto_block<I>(
+        self,
+        sender: I,
+        block: ProtoBlock,
+        block_timestamp: Timestamp,
+    ) -> (bool, ProtoBlock)
+    where
+        REv: From<BlockValidationRequest<ProtoBlock, I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {

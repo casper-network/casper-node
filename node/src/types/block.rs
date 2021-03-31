@@ -178,10 +178,6 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
-pub trait BlockLike: Eq + Hash {
-    fn deploys(&self) -> Vec<&DeployHash>;
-}
-
 /// A cryptographic hash identifying a `ProtoBlock`.
 #[derive(
     Copy,
@@ -304,15 +300,6 @@ impl Display for ProtoBlock {
             self.random_bit(),
             self.timestamp,
         )
-    }
-}
-
-impl BlockLike for ProtoBlock {
-    fn deploys(&self) -> Vec<&DeployHash> {
-        self.wasm_deploys()
-            .iter()
-            .chain(self.transfers())
-            .collect::<Vec<_>>()
     }
 }
 
@@ -1293,15 +1280,6 @@ impl FromBytes for Block {
         let (body, remainder) = BlockBody::from_bytes(remainder)?;
         let block = Block { hash, header, body };
         Ok((block, remainder))
-    }
-}
-
-impl BlockLike for Block {
-    fn deploys(&self) -> Vec<&DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
-            .collect()
     }
 }
 

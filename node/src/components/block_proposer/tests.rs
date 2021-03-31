@@ -5,12 +5,13 @@ use casper_types::{
     system::standard_payment::ARG_AMOUNT,
     RuntimeArgs, SecretKey,
 };
+use itertools::Itertools;
 
 use super::*;
 use crate::{
     crypto::AsymmetricKeyExt,
     testing::TestRng,
-    types::{BlockLike, Deploy, DeployHash, TimeDiff},
+    types::{Deploy, DeployHash, TimeDiff},
 };
 
 const DEFAULT_TEST_GAS_PRICE: u64 = 1;
@@ -156,15 +157,14 @@ fn should_add_and_take_deploys() {
         DEFAULT_TEST_GAS_PRICE,
     );
 
-    assert!(proposer
-        .propose_proto_block(
-            DeployConfig::default(),
-            block_time2,
-            no_deploys.clone(),
-            true
-        )
-        .deploys()
-        .is_empty());
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time2,
+        no_deploys.clone(),
+        true,
+    );
+    assert!(block.wasm_deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // add two deploys
     proposer.add_deploy_or_transfer(block_time2, *deploy1.id(), deploy1.deploy_type().unwrap());
@@ -172,27 +172,25 @@ fn should_add_and_take_deploys() {
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
-    assert!(proposer
-        .propose_proto_block(
-            DeployConfig::default(),
-            block_time1,
-            no_deploys.clone(),
-            true
-        )
-        .deploys()
-        .is_empty());
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time1,
+        no_deploys.clone(),
+        true,
+    );
+    assert!(block.wasm_deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // if we try to create a block with a timestamp that is too late, we shouldn't get any
     // deploys, either
-    assert!(proposer
-        .propose_proto_block(
-            DeployConfig::default(),
-            block_time3,
-            no_deploys.clone(),
-            true
-        )
-        .deploys()
-        .is_empty());
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time3,
+        no_deploys.clone(),
+        true,
+    );
+    assert!(block.wasm_deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // take the deploys out
     let block = proposer.propose_proto_block(
@@ -201,11 +199,10 @@ fn should_add_and_take_deploys() {
         no_deploys.clone(),
         true,
     );
-    let deploys = block.deploys();
-
-    assert_eq!(deploys.len(), 2);
-    assert!(deploys.contains(&deploy1.id()));
-    assert!(deploys.contains(&deploy2.id()));
+    assert!(block.transfers().is_empty());
+    assert_eq!(block.wasm_deploys().len(), 2);
+    assert!(block.wasm_deploys().contains(&deploy1.id()));
+    assert!(block.wasm_deploys().contains(&deploy2.id()));
 
     // take the deploys out
     let block = proposer.propose_proto_block(
@@ -214,21 +211,22 @@ fn should_add_and_take_deploys() {
         no_deploys.clone(),
         true,
     );
-    let deploys = block
-        .deploys()
-        .iter()
-        .map(|hash| **hash)
-        .collect::<HashSet<_>>();
-    assert_eq!(deploys.len(), 2);
+    assert!(block.transfers().is_empty());
+    assert_eq!(block.wasm_deploys().len(), 2);
 
     // but they shouldn't be returned if we include it in the past deploys
-    assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time2, deploys.clone(), true)
-        .deploys()
-        .is_empty());
+    let wasm_deploys = block.deploys_iter().copied().collect_vec();
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time2,
+        block.deploys_iter().copied().collect(),
+        true,
+    );
+    assert!(block.wasm_deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // finalize the block
-    proposer.finalized_deploys(deploys.iter().copied());
+    proposer.finalized_deploys(wasm_deploys.iter().copied());
 
     // add more deploys
     proposer.add_deploy_or_transfer(block_time2, *deploy3.id(), deploy3.deploy_type().unwrap());
@@ -236,12 +234,12 @@ fn should_add_and_take_deploys() {
 
     let block =
         proposer.propose_proto_block(DeployConfig::default(), block_time2, no_deploys, true);
-    let deploys = block.deploys();
 
     // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
-    assert_eq!(deploys.len(), 2);
-    assert!(deploys.contains(&deploy3.id()));
-    assert!(deploys.contains(&deploy4.id()));
+    assert!(block.transfers().is_empty());
+    assert_eq!(block.wasm_deploys().len(), 2);
+    assert!(block.wasm_deploys().contains(&deploy3.id()));
+    assert!(block.wasm_deploys().contains(&deploy4.id()));
 }
 
 #[test]
@@ -578,7 +576,7 @@ fn test_proposer_with(
     }
 
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
-    let all_deploys = BlockLike::deploys(&block);
+    let all_deploys = block.deploys_iter().collect_vec();
     proposer.finalized_deploys(all_deploys.iter().map(|hash| **hash));
     println!("proposed deploys {}", block.wasm_deploys().len());
     println!("proposed transfers {}", block.transfers().len());
@@ -631,15 +629,14 @@ fn should_return_deploy_dependencies() {
     proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
 
     // deploy2 has an unsatisfied dependency
-    assert!(proposer
-        .propose_proto_block(
-            DeployConfig::default(),
-            block_time,
-            no_deploys.clone(),
-            true
-        )
-        .deploys()
-        .is_empty());
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time,
+        no_deploys.clone(),
+        true,
+    );
+    assert!(block.wasm_deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // add deploy1
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
@@ -650,11 +647,7 @@ fn should_return_deploy_dependencies() {
         no_deploys.clone(),
         true,
     );
-    let deploys = block
-        .deploys()
-        .iter()
-        .map(|hash| **hash)
-        .collect::<Vec<_>>();
+    let deploys: Vec<DeployHash> = block.deploys_iter().cloned().collect();
     // only deploy1 should be returned, as it has no dependencies
     assert_eq!(deploys.len(), 1);
     assert!(deploys.contains(deploy1.id()));

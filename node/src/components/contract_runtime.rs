@@ -48,8 +48,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, BlockHeader, BlockLike, Chainspec, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock, NodeId,
+        Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
+        NodeId,
     },
     utils::WithDir,
     NodeRng, StorageConfig,
@@ -760,9 +760,8 @@ impl ContractRuntime {
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
             .proto_block()
-            .deploys()
-            .iter()
-            .map(|hash| **hash)
+            .deploys_iter()
+            .copied()
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
             let result_event = move |_| {
