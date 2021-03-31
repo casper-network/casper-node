@@ -3,7 +3,7 @@ use std::{fmt::Display, marker::PhantomData};
 use casper_types::{EraId, ProtocolVersion};
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     effect::{
@@ -118,14 +118,56 @@ impl<I> LinearChain<I> {
         (known_signatures, effects)
     }
 
-    /// Adds finality signature to the collection of pending finality signatures.
-    pub(super) fn add_pending_finality_signature(&mut self, fs: FinalitySignature, gossiped: bool) {
+    /// Tries to add the finality signature to the collection of pending finality signatures.
+    /// Returns true if addedd successfully, otherwise false.
+    pub(super) fn add_pending_finality_signature(
+        &mut self,
+        fs: FinalitySignature,
+        gossiped: bool,
+    ) -> bool {
         let FinalitySignature {
             block_hash,
             public_key,
+            era_id,
             ..
         } = fs;
-        // TODO: Verify if we already know that finality signature.
+        if let Some(latest_block) = self.latest_block.as_ref() {
+            // If it's a switch block it has already forgotten its own era's validators,
+            // unbonded some old validators, and determined new ones. In that case, we
+            // should add 1 to last_block_era.
+            let current_era = latest_block.header().era_id()
+                + if latest_block.header().is_switch_block() {
+                    1
+                } else {
+                    0
+                };
+            let lowest_acceptable_era_id =
+                (current_era + self.auction_delay).saturating_sub(self.unbonding_delay);
+            let highest_acceptable_era_id = current_era + self.auction_delay;
+            if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
+                warn!(
+                    ?era_id,
+                    ?public_key,
+                    ?block_hash,
+                    "received finality signature for not bonded era."
+                );
+                return false;
+            }
+        }
+        if self.is_pending(&fs) {
+            debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                "finality signature already pending");
+            return false;
+        }
+        if !self.is_new(&fs) {
+            debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                "finality signature is already known");
+            return false;
+        }
+        if let Err(err) = fs.verify() {
+            warn!(%block_hash, %public_key, %err, "received invalid finality signature");
+            return false;
+        }
         debug!(%block_hash, %public_key, "received new finality signature");
         let signature = if gossiped {
             Signature::External(Box::new(fs))
@@ -133,6 +175,7 @@ impl<I> LinearChain<I> {
             Signature::Local(Box::new(fs))
         };
         self.pending_finality_signatures.add(signature);
+        true
     }
 
     /// Removes finality signature from the pending collection.

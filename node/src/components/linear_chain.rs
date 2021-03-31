@@ -131,49 +131,11 @@ where
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
                 let FinalitySignature {
-                    block_hash,
-                    public_key,
-                    era_id,
-                    ..
+                    block_hash, era_id, ..
                 } = *fs;
-                if let Some(latest_block) = self.latest_block.as_ref() {
-                    // If it's a switch block it has already forgotten its own era's validators,
-                    // unbonded some old validators, and determined new ones. In that case, we
-                    // should add 1 to last_block_era.
-                    let current_era = latest_block.header().era_id()
-                        + if latest_block.header().is_switch_block() {
-                            1
-                        } else {
-                            0
-                        };
-                    let lowest_acceptable_era_id =
-                        (current_era + self.auction_delay).saturating_sub(self.unbonding_delay);
-                    let highest_acceptable_era_id = current_era + self.auction_delay;
-                    if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
-                        warn!(
-                            ?era_id,
-                            ?public_key,
-                            ?block_hash,
-                            "received finality signature for not bonded era."
-                        );
-                        return Effects::new();
-                    }
-                }
-                if self.is_pending(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
-                        "finality signature already pending");
+                if !self.add_pending_finality_signature(*fs.clone(), gossiped) {
                     return Effects::new();
                 }
-                if !self.is_new(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
-                        "finality signature is already known");
-                    return Effects::new();
-                }
-                if let Err(err) = fs.verify() {
-                    warn!(%block_hash, %public_key, %err, "received invalid finality signature");
-                    return Effects::new();
-                }
-                self.add_pending_finality_signature(*fs.clone(), gossiped);
                 match self.signature_cache.get(&block_hash, era_id) {
                     None => effect_builder
                         .get_signatures_from_storage(block_hash)
