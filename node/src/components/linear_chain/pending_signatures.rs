@@ -24,6 +24,7 @@ impl PendingSignatures {
             pending_finality_signatures: HashMap::new(),
         }
     }
+
     // Checks if we have already enqueued that finality signature.
     pub(super) fn has_finality_signature(
         &self,
@@ -78,13 +79,10 @@ impl PendingSignatures {
         public_key: &PublicKey,
         block_hash: &BlockHash,
     ) -> Option<Signature> {
-        if let Some(validator_sigs) = self.pending_finality_signatures.get_mut(public_key) {
-            let sig = validator_sigs.remove(&block_hash);
-            self.remove_empty_entries();
-            sig
-        } else {
-            None
-        }
+        let validator_sigs = self.pending_finality_signatures.get_mut(public_key)?;
+        let sig = validator_sigs.remove(&block_hash);
+        self.remove_empty_entries();
+        sig
     }
 
     /// Removes all entries for which there are no finality signatures.

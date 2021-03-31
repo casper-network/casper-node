@@ -119,7 +119,7 @@ impl<I> LinearChain<I> {
     }
 
     /// Tries to add the finality signature to the collection of pending finality signatures.
-    /// Returns true if addedd successfully, otherwise false.
+    /// Returns true if added successfully, otherwise false.
     pub(super) fn add_pending_finality_signature(
         &mut self,
         fs: FinalitySignature,
@@ -146,9 +146,9 @@ impl<I> LinearChain<I> {
             let highest_acceptable_era_id = current_era + self.auction_delay;
             if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
                 warn!(
-                    ?era_id,
-                    ?public_key,
-                    ?block_hash,
+                    era_id=%era_id.value(),
+                    %public_key,
+                    %block_hash,
                     "received finality signature for not bonded era."
                 );
                 return false;
