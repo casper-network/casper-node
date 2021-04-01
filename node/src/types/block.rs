@@ -263,7 +263,7 @@ impl ProtoBlock {
         &self.transfer_hashes
     }
 
-    pub(crate) fn deploys_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes()
             .iter()
             .chain(self.transfer_hashes().iter())
@@ -401,7 +401,7 @@ impl FinalizedBlock {
     }
 
     /// Returns an iterator over all deploy and transfer hashes.
-    pub(crate) fn deploys_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes.iter().chain(&self.transfer_hashes)
     }
 

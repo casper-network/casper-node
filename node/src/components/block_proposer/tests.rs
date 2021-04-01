@@ -215,11 +215,11 @@ fn should_add_and_take_deploys() {
     assert_eq!(block.deploy_hashes().len(), 2);
 
     // but they shouldn't be returned if we include it in the past deploys
-    let deploy_hashes = block.deploys_transfers_iter().copied().collect_vec();
+    let deploy_hashes = block.deploys_and_transfers_iter().copied().collect_vec();
     let block = proposer.propose_proto_block(
         DeployConfig::default(),
         block_time2,
-        block.deploys_transfers_iter().copied().collect(),
+        block.deploys_and_transfers_iter().copied().collect(),
         true,
     );
     assert!(block.deploy_hashes().is_empty());
@@ -576,7 +576,7 @@ fn test_proposer_with(
     }
 
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
-    let all_deploys = block.deploys_transfers_iter().collect_vec();
+    let all_deploys = block.deploys_and_transfers_iter().collect_vec();
     proposer.finalized_deploys(all_deploys.iter().map(|hash| **hash));
     println!("proposed deploys {}", block.deploy_hashes().len());
     println!("proposed transfers {}", block.transfer_hashes().len());
@@ -647,7 +647,7 @@ fn should_return_deploy_dependencies() {
         no_deploys.clone(),
         true,
     );
-    let deploys: Vec<DeployHash> = block.deploys_transfers_iter().cloned().collect();
+    let deploys: Vec<DeployHash> = block.deploys_and_transfers_iter().cloned().collect();
     // only deploy1 should be returned, as it has no dependencies
     assert_eq!(deploys.len(), 1);
     assert!(deploys.contains(deploy1.id()));

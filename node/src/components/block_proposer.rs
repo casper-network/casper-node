@@ -268,7 +268,7 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::FinalizedBlock(block) => {
-                let deploys = block.deploys_transfers_iter().copied().collect_vec();
+                let deploys = block.deploys_and_transfers_iter().copied().collect_vec();
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {
