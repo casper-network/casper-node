@@ -916,19 +916,15 @@ impl BlockBody {
         let hashed_proposer = hash::hash(&serialized_proposer).to_array();
         let hashed_empty = hash::hash(&[]).to_array();
 
-        let mut to_hash = [0; Digest::LENGTH * 2];
-        to_hash[..Digest::LENGTH].copy_from_slice(&hashed_proposer);
-        to_hash[Digest::LENGTH..].copy_from_slice(&hashed_empty);
-        let hashed_proposer_empty = hash::hash(&to_hash).to_array();
-
-        to_hash[..Digest::LENGTH].copy_from_slice(&hashed_transfers);
-        to_hash[Digest::LENGTH..].copy_from_slice(&hashed_proposer_empty);
-        let hashed_transfers_proposer_empty = hash::hash(&to_hash).to_array();
-
-        to_hash[..Digest::LENGTH].copy_from_slice(&hashed_deploys);
-        to_hash[Digest::LENGTH..].copy_from_slice(&hashed_transfers_proposer_empty);
-
-        hash::hash(&to_hash)
+        [hashed_deploys, hashed_transfers, hashed_proposer][..]
+            .iter()
+            .rfold(hashed_empty, |prev, next| {
+                let mut to_hash = [0; Digest::LENGTH * 2];
+                to_hash[..Digest::LENGTH].copy_from_slice(&next[..]);
+                to_hash[Digest::LENGTH..].copy_from_slice(&prev[..]);
+                hash::hash(&to_hash).to_array()
+            })
+            .into()
     }
 }
 
