@@ -27,7 +27,7 @@ where
     I: IntoIterator<Item = (PublicKey, T)>,
     T: Into<U512>,
 {
-    let mut chainspec = Chainspec::from_resources("test/valid/0_9_0");
+    let mut chainspec = Chainspec::from_resources("local");
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {

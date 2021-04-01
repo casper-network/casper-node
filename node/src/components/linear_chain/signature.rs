@@ -1,6 +1,7 @@
+use casper_types::PublicKey;
 use datasize::DataSize;
 
-use crate::types::FinalitySignature;
+use crate::types::{BlockHash, FinalitySignature};
 
 #[derive(DataSize, Debug)]
 pub(super) enum Signature {
@@ -14,6 +15,14 @@ impl Signature {
             Signature::Local(fs) => fs,
             Signature::External(fs) => fs,
         }
+    }
+
+    pub(super) fn public_key(&self) -> PublicKey {
+        self.to_inner().public_key.clone()
+    }
+
+    pub(super) fn block_hash(&self) -> BlockHash {
+        self.to_inner().block_hash
     }
 
     pub(super) fn take(self) -> Box<FinalitySignature> {

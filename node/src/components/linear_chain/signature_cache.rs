@@ -19,7 +19,7 @@ impl SignatureCache {
         }
     }
 
-    pub(super) fn get(&mut self, hash: &BlockHash, _era_id: EraId) -> Option<BlockSignatures> {
+    pub(super) fn get(&self, hash: &BlockHash) -> Option<BlockSignatures> {
         self.signatures.get(hash).cloned()
     }
 
