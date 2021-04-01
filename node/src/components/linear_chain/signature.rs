@@ -25,10 +25,6 @@ impl Signature {
         self.to_inner().block_hash
     }
 
-    pub(super) fn signature(&self) -> casper_types::Signature {
-        self.to_inner().signature
-    }
-
     pub(super) fn take(self) -> Box<FinalitySignature> {
         match self {
             Signature::Local(fs) | Signature::External(fs) => fs,

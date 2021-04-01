@@ -206,15 +206,13 @@ impl LinearChain {
         I: Display + Send + 'static,
     {
         let mut effects = Effects::new();
-        let mut known_signatures = self
-            .signature_cache
-            .get_known_signatures(block_hash, block_era);
         let pending_sigs = self
             .pending_finality_signatures
             .collect_pending(block_hash)
             .into_iter()
-            .filter(|sig| !known_signatures.has_proof(&sig.public_key(), &sig.signature()))
+            .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
             .collect_vec();
+        let mut block_signatures = BlockSignatures::new(*block_hash, block_era);
         // Add new signatures and send the updated block to storage.
         for signature in pending_sigs {
             if signature.to_inner().era_id != block_era {
@@ -222,7 +220,7 @@ impl LinearChain {
                 // TODO: disconnect from the sender.
                 continue;
             }
-            known_signatures.insert_proof(
+            block_signatures.insert_proof(
                 signature.to_inner().public_key,
                 signature.to_inner().signature,
             );
@@ -236,6 +234,6 @@ impl LinearChain {
                     .ignore(),
             );
         }
-        (known_signatures, effects)
+        (block_signatures, effects)
     }
 }
