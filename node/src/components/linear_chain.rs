@@ -181,19 +181,27 @@ where
                 }
             }
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
-                if let Some(signatures) = &maybe_signatures {
-                    if signatures.era_id != fs.era_id {
+                if let Some(known_signatures) = &maybe_signatures {
+                    // If the newly-received finality signature does not match the era of previously
+                    // validated signatures reject it as they can't both be
+                    // correct – block was created in a specific era so the IDs have to match.
+                    if known_signatures.era_id != fs.era_id {
                         warn!(public_key=%fs.public_key,
-                            expected=%signatures.era_id, got=%fs.era_id,
+                            expected=%known_signatures.era_id, 
+                            got=%fs.era_id,
                             "finality signature with invalid era id.");
-                        // TODO: Disconnect from the sender.
                         self.linear_chain_state.remove_from_pending_fs(&*fs);
+                        // TODO: Disconnect from the sender.
                         return Effects::new();
                     }
-                    // Populate cache so that next finality signatures don't have to read from the
-                    // storage. If signature is already from cache then this will be a noop.
+                    if known_signatures.has_proof(&fs.public_key, &fs.signature) {
+                        self.linear_chain_state.remove_from_pending_fs(&fs);
+                        return Effects::new();
+                    }
+                    // Populate cache so that next incoming signatures don't trigger read from the
+                    // storage. If `known_signatures` are already from cache then this will be a noop.
                     self.linear_chain_state
-                        .cache_signatures(*signatures.clone());
+                        .cache_signatures(*known_signatures.clone());
                 }
                 // Check if the validator is bonded in the era in which the block was created.
                 // TODO: Use protocol version that is valid for the block's height.
