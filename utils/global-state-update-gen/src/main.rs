@@ -72,7 +72,7 @@ fn main() {
 
     // Open the global state that should be in the supplied directory.
     let mut test_builder =
-        LmdbWasmTestBuilder::open(data_dir, Default::default(), hash_from_str(state_hash));
+        LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
 
     // Read the old SeigniorageRecipientsSnapshot
     let old_snapshot = test_builder.get_seigniorage_recipients_snapshot();
