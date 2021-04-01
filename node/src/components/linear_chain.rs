@@ -227,36 +227,29 @@ where
                         },
                     )
             }
-            Event::IsBonded(Some(mut signatures), fs, true) => {
-                // Known block and signature from a bonded validator.
-                // Check if we had already seen this signature before.
-                if signatures.has_proof(&fs.public_key, &fs.signature) {
-                    self.linear_chain_state.remove_from_pending_fs(&*fs);
-                    Effects::new()
-                } else {
-                    signatures.insert_proof(fs.public_key, fs.signature);
-                    // Cache the results in case we receive the same finality signature before we
-                    // manage to store it in the database.
-                    self.linear_chain_state
-                        .cache_signatures(*signatures.clone());
-                    debug!(hash=%signatures.block_hash, "storing finality signatures");
-                    let mut effects = effect_builder
-                        .announce_finality_signature(fs.clone())
-                        .ignore();
-                    // If new, gossip and store.
-                    if let Some(signature) = self.linear_chain_state.remove_from_pending_fs(&*fs) {
-                        if signature.is_local() {
-                            let message = Message::FinalitySignature(fs.clone());
-                            effects.extend(effect_builder.broadcast_message(message).ignore());
-                        }
-                    };
-                    effects.extend(
-                        effect_builder
-                            .put_signatures_to_storage(*signatures)
-                            .ignore(),
-                    );
-                    effects
-                }
+            Event::IsBonded(Some(mut known_signatures), fs, true) => {
+                known_signatures.insert_proof(fs.public_key, fs.signature);
+                // Cache the results in case we receive the same finality signature before we
+                // manage to store it in the database.
+                self.linear_chain_state
+                    .cache_signatures(*known_signatures.clone());
+                debug!(hash=%known_signatures.block_hash, "storing finality signatures");
+                let mut effects = effect_builder
+                    .announce_finality_signature(fs.clone())
+                    .ignore();
+                // If new, gossip and store.
+                if let Some(signature) = self.linear_chain_state.remove_from_pending_fs(&*fs) {
+                    if signature.is_local() {
+                        let message = Message::FinalitySignature(fs.clone());
+                        effects.extend(effect_builder.broadcast_message(message).ignore());
+                    }
+                };
+                effects.extend(
+                    effect_builder
+                        .put_signatures_to_storage(*known_signatures)
+                        .ignore(),
+                );
+                effects
             }
             Event::IsBonded(None, _fs, true) => {
                 // Unknown block but validator is bonded.
