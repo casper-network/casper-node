@@ -63,13 +63,12 @@ impl LinearChain {
         !self.signature_cache.known_signature(fs)
     }
 
-    /// Adds pending finality signatures to the block; returns events to announce and broadcast
-    /// them, and the updated block signatures.
-    pub(super) fn collect_pending_finality_signatures<I, REv>(
+    // New linear chain block received. Collect any pending finality signatures that
+    // were waiting for that block.
+    pub(super) fn new_block<REv, I>(
         &mut self,
-        block_hash: &BlockHash,
-        block_era: EraId,
         effect_builder: EffectBuilder<REv>,
+        block: &Block,
     ) -> (BlockSignatures, Effects<Event<I>>)
     where
         REv: From<StorageRequest>
@@ -78,35 +77,15 @@ impl LinearChain {
             + Send,
         I: Display + Send + 'static,
     {
-        let mut effects = Effects::new();
-        let mut known_signatures = self
-            .signature_cache
-            .get_known_signatures(block_hash, block_era);
-        let pending_sigs = self
-            .pending_finality_signatures
-            .collect_pending(block_hash, &known_signatures);
-        // Add new signatures and send the updated block to storage.
-        for signature in pending_sigs {
-            if signature.to_inner().era_id != block_era {
-                // finality signature was created with era id that doesn't match block's era.
-                // TODO: disconnect from the sender.
-                continue;
-            }
-            known_signatures.insert_proof(
-                signature.to_inner().public_key,
-                signature.to_inner().signature,
-            );
-            if signature.is_local() {
-                let message = Message::FinalitySignature(Box::new(signature.to_inner().clone()));
-                effects.extend(effect_builder.broadcast_message(message).ignore());
-            }
-            effects.extend(
-                effect_builder
-                    .announce_finality_signature(signature.take())
-                    .ignore(),
-            );
-        }
-        (known_signatures, effects)
+        let (signatures, effects) = self.collect_pending_finality_signatures(
+            block.hash(),
+            block.header().era_id(),
+            effect_builder,
+        );
+        // Cache the signature as we expect more finality signatures for the new block to
+        // arrive soon.
+        self.cache_signatures(signatures.clone());
+        (signatures, effects)
     }
 
     /// Tries to add the finality signature to the collection of pending finality signatures.
@@ -203,4 +182,52 @@ impl LinearChain {
     pub(super) fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
     }
+
+
+    /// Adds pending finality signatures to the block; returns events to announce and broadcast
+    /// them, and the updated block signatures.
+    fn collect_pending_finality_signatures<I, REv>(
+        &mut self,
+        block_hash: &BlockHash,
+        block_era: EraId,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (BlockSignatures, Effects<Event<I>>)
+    where
+        REv: From<StorageRequest>
+            + From<NetworkRequest<I, Message>>
+            + From<LinearChainAnnouncement>
+            + Send,
+        I: Display + Send + 'static,
+    {
+        let mut effects = Effects::new();
+        let mut known_signatures = self
+            .signature_cache
+            .get_known_signatures(block_hash, block_era);
+        let pending_sigs = self
+            .pending_finality_signatures
+            .collect_pending(block_hash, &known_signatures);
+        // Add new signatures and send the updated block to storage.
+        for signature in pending_sigs {
+            if signature.to_inner().era_id != block_era {
+                // finality signature was created with era id that doesn't match block's era.
+                // TODO: disconnect from the sender.
+                continue;
+            }
+            known_signatures.insert_proof(
+                signature.to_inner().public_key,
+                signature.to_inner().signature,
+            );
+            if signature.is_local() {
+                let message = Message::FinalitySignature(Box::new(signature.to_inner().clone()));
+                effects.extend(effect_builder.broadcast_message(message).ignore());
+            }
+            effects.extend(
+                effect_builder
+                    .announce_finality_signature(signature.take())
+                    .ignore(),
+            );
+        }
+        (known_signatures, effects)
+    }
+
 }

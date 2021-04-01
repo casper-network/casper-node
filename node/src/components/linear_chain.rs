@@ -124,20 +124,8 @@ where
                 block,
                 execution_results,
             } => {
-                // New linear chain block received. Collect any pending finality signatures that
-                // were waiting for that block.
-                // TODO: Replace with `self.linear_chain_state.new_block(block)`
-                // and have that method do what `collect_ending_finality_signatures` +
-                // `cache_signatures` do.
                 let (signatures, mut effects) =
-                    self.linear_chain_state.collect_pending_finality_signatures(
-                        block.hash(),
-                        block.header().era_id(),
-                        effect_builder,
-                    );
-                // Cache the signature as we expect more finality signatures for the new block to
-                // arrive soon.
-                self.linear_chain_state.cache_signatures(signatures.clone());
+                    self.linear_chain_state.new_block(effect_builder, &*block);
                 let block_to_store = block.clone();
                 effects.extend(
                     async move {
