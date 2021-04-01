@@ -23,7 +23,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::{BlockByHeight, FinalitySignature, Timestamp},
+    types::{BlockByHeight, BlockSignatures, FinalitySignature, Timestamp},
     NodeRng,
 };
 use casper_types::{EraId, ProtocolVersion};
@@ -124,12 +124,35 @@ where
                 block,
                 execution_results,
             } => {
-                let (signatures, mut effects) =
-                    self.linear_chain_state.new_block(effect_builder, &*block);
+                let signatures = self.linear_chain_state.new_block(&*block);
+                let mut effects = Effects::new();
+                if !signatures.is_empty() {
+                    let mut block_signatures =
+                        BlockSignatures::new(*block.hash(), block.header().era_id());
+                    for sig in signatures.iter() {
+                        block_signatures.insert_proof(sig.public_key(), sig.signature());
+                    }
+                    effects.extend(
+                        effect_builder
+                            .put_signatures_to_storage(block_signatures)
+                            .ignore(),
+                    );
+                    for signature in signatures {
+                        if signature.is_local() {
+                            let message =
+                                Message::FinalitySignature(Box::new(signature.to_inner().clone()));
+                            effects.extend(effect_builder.broadcast_message(message).ignore());
+                        }
+                        effects.extend(
+                            effect_builder
+                                .announce_finality_signature(signature.take())
+                                .ignore(),
+                        );
+                    }
+                };
                 let block_to_store = block.clone();
                 effects.extend(
                     async move {
-                        effect_builder.put_signatures_to_storage(signatures).await;
                         let block_hash = *block_to_store.hash();
                         effect_builder.put_block_to_storage(block_to_store).await;
                         effect_builder

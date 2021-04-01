@@ -1,22 +1,12 @@
 use datasize::DataSize;
 use itertools::Itertools;
-use std::fmt::Display;
 use tracing::{debug, warn};
 
-use crate::{
-    effect::{
-        announcements::LinearChainAnnouncement,
-        requests::{NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
-    },
-    protocol::Message,
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature},
-};
+use crate::types::{Block, BlockHash, BlockSignatures, FinalitySignature};
 use casper_types::{EraId, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
-    Event,
 };
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain {
@@ -65,27 +55,19 @@ impl LinearChain {
 
     // New linear chain block received. Collect any pending finality signatures that
     // were waiting for that block.
-    pub(super) fn new_block<REv, I>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        block: &Block,
-    ) -> (BlockSignatures, Effects<Event<I>>)
-    where
-        REv: From<StorageRequest>
-            + From<NetworkRequest<I, Message>>
-            + From<LinearChainAnnouncement>
-            + Send,
-        I: Display + Send + 'static,
-    {
-        let (signatures, effects) = self.collect_pending_finality_signatures(
-            block.hash(),
-            block.header().era_id(),
-            effect_builder,
-        );
-        // Cache the signature as we expect more finality signatures for the new block to
+    pub(super) fn new_block(&mut self, block: &Block) -> Vec<Signature> {
+        let signatures = self.collect_pending_finality_signatures(block.hash());
+        if signatures.is_empty() {
+            return vec![];
+        }
+        let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
+        for sig in signatures.iter() {
+            block_signatures.insert_proof(sig.public_key(), sig.signature());
+        }
+        // Cache the signatures as we expect more finality signatures for the new block to
         // arrive soon.
-        self.cache_signatures(signatures.clone());
-        (signatures, effects)
+        self.cache_signatures(block_signatures);
+        signatures
     }
 
     /// Tries to add the finality signature to the collection of pending finality signatures.
@@ -190,50 +172,12 @@ impl LinearChain {
         &self.latest_block
     }
 
-    /// Adds pending finality signatures to the block; returns events to announce and broadcast
-    /// them, and the updated block signatures.
-    fn collect_pending_finality_signatures<I, REv>(
-        &mut self,
-        block_hash: &BlockHash,
-        block_era: EraId,
-        effect_builder: EffectBuilder<REv>,
-    ) -> (BlockSignatures, Effects<Event<I>>)
-    where
-        REv: From<StorageRequest>
-            + From<NetworkRequest<I, Message>>
-            + From<LinearChainAnnouncement>
-            + Send,
-        I: Display + Send + 'static,
-    {
-        let mut effects = Effects::new();
-        let pending_sigs = self
-            .pending_finality_signatures
+    /// Returns finality signatures for `block_hash`.
+    fn collect_pending_finality_signatures(&mut self, block_hash: &BlockHash) -> Vec<Signature> {
+        self.pending_finality_signatures
             .collect_pending(block_hash)
             .into_iter()
             .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
-            .collect_vec();
-        let mut block_signatures = BlockSignatures::new(*block_hash, block_era);
-        // Add new signatures and send the updated block to storage.
-        for signature in pending_sigs {
-            if signature.to_inner().era_id != block_era {
-                // finality signature was created with era id that doesn't match block's era.
-                // TODO: disconnect from the sender.
-                continue;
-            }
-            block_signatures.insert_proof(
-                signature.to_inner().public_key,
-                signature.to_inner().signature,
-            );
-            if signature.is_local() {
-                let message = Message::FinalitySignature(Box::new(signature.to_inner().clone()));
-                effects.extend(effect_builder.broadcast_message(message).ignore());
-            }
-            effects.extend(
-                effect_builder
-                    .announce_finality_signature(signature.take())
-                    .ignore(),
-            );
-        }
-        (block_signatures, effects)
+            .collect_vec()
     }
 }
