@@ -1,11 +1,11 @@
+mod auction_utils;
+mod utils;
+
+use clap::{crate_version, App, Arg};
+
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
 use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{bytesrepr::ToBytes, Key};
-
-use clap::{App, Arg};
-
-mod auction_utils;
-mod utils;
 
 use crate::{
     auction_utils::{
@@ -24,7 +24,7 @@ fn print_entry(key: &Key, value: &StoredValue) {
 
 fn main() {
     let matches = App::new("Global State Update Generator")
-        .version("0.1")
+        .version(crate_version!())
         .about("Generates a global state update file based on the supplied parameters")
         .arg(
             Arg::with_name("data_dir")
@@ -32,13 +32,14 @@ fn main() {
                 .long("data-dir")
                 .value_name("PATH")
                 .help("Data storage directory containing the global state database file")
-                .takes_value(true),
+                .takes_value(true)
+                .required(true),
         )
         .arg(
             Arg::with_name("hash")
                 .short("h")
                 .long("hash")
-                .value_name("HASH")
+                .value_name("HEX_STRING")
                 .help("The global state hash to be used as the base")
                 .takes_value(true)
                 .required(true),
