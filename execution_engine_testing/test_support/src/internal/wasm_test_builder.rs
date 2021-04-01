@@ -730,6 +730,15 @@ where
             .expect("should get purse balance")
     }
 
+    pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash: Blake2bHash =
+            self.post_state_hash.expect("should have post_state_hash");
+        self.engine_state
+            .get_balance(correlation_id, state_root_hash, public_key)
+            .expect("should get purse balance using public key")
+    }
+
     pub fn get_proposer_purse_balance(&self) -> U512 {
         let proposer_account = self
             .get_account(*DEFAULT_PROPOSER_ADDR)
