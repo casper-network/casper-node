@@ -403,12 +403,12 @@ where
 {
     async move {
         match effect_builder.fetch::<Deploy, I>(deploy_hash, sender).await {
-            Ok(FetchedData::FromStorage(deploy)) | Ok(FetchedData::FromPeer(deploy)) => {
-                if deploy
+            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+                if item
                     .header()
                     .is_valid(&chainspec.deploy_config, block_timestamp)
                 {
-                    let deploy_size = deploy.serialized_length();
+                    let deploy_size = item.serialized_length();
                     Event::DeployFound {
                         deploy_hash,
                         deploy_size,

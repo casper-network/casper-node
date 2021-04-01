@@ -28,12 +28,12 @@ where
 }
 
 #[derive(Clone, DataSize, Debug, PartialEq)]
-pub enum FetchedData<T> {
-    FromStorage(Box<T>),
-    FromPeer(Box<T>),
+pub enum FetchedData<T, I> {
+    FromStorage { item: Box<T> },
+    FromPeer { item: Box<T>, peer: I },
 }
 
-pub type FetchResult<T, I> = Result<FetchedData<T>, FetcherError<T, I>>;
+pub type FetchResult<T, I> = Result<FetchedData<T, I>, FetcherError<T, I>>;
 
 pub(crate) type FetchResponder<T> = Responder<FetchResult<T, NodeId>>;
 

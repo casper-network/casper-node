@@ -50,8 +50,8 @@ use super::{
     Component,
 };
 use crate::{
-    components::fetcher::FetchedData,
-    effect::{EffectBuilder, EffectExt, Effects},
+    components::fetcher::{FetchedData, FetcherError},
+    effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
     types::{
         ActivationPoint, Block, BlockHash, BlockWithMetadata, Chainspec, FinalizedBlock, TimeDiff,
@@ -859,22 +859,35 @@ where
             .fetch::<Block, I>(block_hash, peer_to_fetch_from)
             .await
         {
-            Ok(FetchedData::FromStorage(block)) => {
-                Event::GetBlockHashResult(block_hash, BlockByHashResult::FromStorage(block))
-            }
-            Ok(FetchedData::FromPeer(block)) => {
-                Event::GetBlockHashResult(block_hash, BlockByHashResult::FromPeer(block, peer))
+            Ok(FetchedData::FromStorage { item }) => Some(Event::GetBlockHashResult(
+                block_hash,
+                BlockByHashResult::FromStorage(item),
+            )),
+            Ok(FetchedData::FromPeer { item, peer }) => Some(Event::GetBlockHashResult(
+                block_hash,
+                BlockByHashResult::FromPeer(item, peer),
+            )),
+            Err(FetcherError::AbsentFromPeer { peer, .. })
+            | Err(FetcherError::TimedOutFromPeer { peer, .. }) => {
+                warn!(
+                    "Could not get block with hash {:?} from peer {:?}",
+                    block_hash, peer
+                );
+                Some(Event::GetBlockHashResult(
+                    block_hash,
+                    BlockByHashResult::Absent(peer),
+                ))
             }
             Err(error) => {
                 warn!(
-                    "Could not get block with hash {:?} from peer {:?}: {}",
+                    "Error getting hash {:?} from peer {:?}: {}",
                     block_hash, peer, error
                 );
-                Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(peer))
+                None
             }
         }
     }
-    .event(std::convert::identity)
+    .map_some(std::convert::identity)
 }
 
 fn fetch_block_at_height<I: Debug + Eq + Send + Clone + 'static, REv>(
@@ -891,13 +904,13 @@ where
             .fetch::<BlockWithMetadata, I>(block_height, peer_to_fetch_from)
             .await
         {
-            Ok(FetchedData::FromStorage(result)) => Event::GetBlockHeightResult(
+            Ok(FetchedData::FromStorage { item }) => Event::GetBlockHeightResult(
                 block_height,
-                BlockByHeightResult::FromStorage(Box::new(result.block)),
+                BlockByHeightResult::FromStorage(Box::new(item.block)),
             ),
-            Ok(FetchedData::FromPeer(result)) => Event::GetBlockHeightResult(
+            Ok(FetchedData::FromPeer { item, peer }) => Event::GetBlockHeightResult(
                 block_height,
-                BlockByHeightResult::FromPeer(Box::new(result.block), peer),
+                BlockByHeightResult::FromPeer(Box::new(item.block), peer),
             ),
             Err(error) => {
                 warn!(

@@ -306,7 +306,9 @@ async fn should_fetch_from_local() {
         )
         .await;
 
-    let expected_result = Some(Ok(FetchedData::FromStorage(Box::new(deploy))));
+    let expected_result = Some(Ok(FetchedData::FromStorage {
+        item: Box::new(deploy),
+    }));
     assert_settled(
         &node_id,
         deploy_hash,
@@ -352,7 +354,10 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    let expected_result = Some(Ok(FetchedData::FromPeer(Box::new(deploy))));
+    let expected_result = Some(Ok(FetchedData::FromPeer {
+        item: Box::new(deploy),
+        peer: node_with_deploy,
+    }));
     assert_settled(
         &node_without_deploy,
         deploy_hash,

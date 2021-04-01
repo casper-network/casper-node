@@ -108,7 +108,9 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn got_from_storage(&mut self, item: T, peer: NodeId) -> Effects<Event<T>> {
         self.signal(
             item.id(),
-            Ok(FetchedData::FromStorage(Box::new(item))),
+            Ok(FetchedData::FromStorage {
+                item: Box::new(item),
+            }),
             peer,
         )
     }
@@ -156,8 +158,8 @@ pub trait ItemFetcher<T: Item + 'static> {
     ) -> Effects<Event<T>> {
         // Capture metrics for successful requests
         match result {
-            Ok(FetchedData::FromStorage(_)) => self.metrics().found_in_storage.inc(),
-            Ok(FetchedData::FromPeer(_)) => self.metrics().found_on_peer.inc(),
+            Ok(FetchedData::FromStorage { .. }) => self.metrics().found_in_storage.inc(),
+            Ok(FetchedData::FromPeer { .. }) => self.metrics().found_on_peer.inc(),
             // The case where we timeout is exceptional and is handled below
             Err(_) => {}
         }
@@ -165,13 +167,13 @@ pub trait ItemFetcher<T: Item + 'static> {
         // Respond to callbacks
         let mut effects = Effects::new();
         let mut all_responders = self.responders().remove(&id).unwrap_or_default();
-        if let Ok(FetchedData::FromStorage(_)) | Ok(FetchedData::FromPeer(_)) = result {
+        if let Ok(FetchedData::FromStorage { .. }) | Ok(FetchedData::FromPeer { .. }) = result {
             // signal all responders waiting for this item
             // TODO: While this works for deploys, block headers and tries, this is wrong for
-            // block-headers-by-height and blocks-by-height.  In those latter cases the peer might
-            // have sent us bogus data and downstream logic will need to validate the fetched data
-            // and ban peers appropriately.
-            for (_, responders) in all_responders {
+            //       block-headers-by-height and blocks-by-height.  In those latter cases the peer
+            //       might have sent us bogus data and downstream logic will need to validate the
+            //       fetched data and ban peers appropriately.
+            for (_peer, responders) in all_responders {
                 for responder in responders {
                     effects.extend(responder.respond(result.clone()).ignore());
                 }
@@ -387,7 +389,7 @@ where
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();
-                        self.signal(item.id(), Ok(FetchedData::FromPeer(item)), peer)
+                        self.signal(item.id(), Ok(FetchedData::FromPeer { item, peer }), peer)
                     }
                     Source::Client | Source::Ourself => {
                         // TODO - we could possibly also handle this case
