@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use tracing::warn;
 
 use super::signature::Signature;
-use crate::types::{BlockHash, BlockSignatures};
+use crate::types::BlockHash;
 use casper_types::PublicKey;
 
 /// The maximum number of finality signatures from a single validator we keep in memory while
@@ -36,20 +36,12 @@ impl PendingSignatures {
             .map_or(false, |sigs| sigs.contains_key(block_hash))
     }
 
-    pub(super) fn collect_pending(
-        &mut self,
-        block_hash: &BlockHash,
-        known_signatures: &BlockSignatures,
-    ) -> Vec<Signature> {
+    /// Returns signatures for `block_hash` that are still pending.
+    pub(super) fn collect_pending(&mut self, block_hash: &BlockHash) -> Vec<Signature> {
         let pending_sigs = self
             .pending_finality_signatures
             .values_mut()
             .filter_map(|sigs| sigs.remove(&block_hash))
-            .filter(|signature| {
-                !known_signatures
-                    .proofs
-                    .contains_key(&signature.to_inner().public_key)
-            })
             .collect_vec();
         self.remove_empty_entries();
         pending_sigs

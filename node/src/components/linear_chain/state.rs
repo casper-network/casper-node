@@ -1,7 +1,6 @@
-use std::fmt::Display;
-
-use casper_types::{EraId, ProtocolVersion};
 use datasize::DataSize;
+use itertools::Itertools;
+use std::fmt::Display;
 use tracing::{debug, warn};
 
 use crate::{
@@ -13,6 +12,7 @@ use crate::{
     protocol::Message,
     types::{Block, BlockHash, BlockSignatures, FinalitySignature},
 };
+use casper_types::{EraId, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
@@ -212,7 +212,10 @@ impl LinearChain {
             .get_known_signatures(block_hash, block_era);
         let pending_sigs = self
             .pending_finality_signatures
-            .collect_pending(block_hash, &known_signatures);
+            .collect_pending(block_hash)
+            .into_iter()
+            .filter(|sig| !known_signatures.has_proof(&sig.public_key(), &sig.signature()))
+            .collect_vec();
         // Add new signatures and send the updated block to storage.
         for signature in pending_sigs {
             if signature.to_inner().era_id != block_era {
