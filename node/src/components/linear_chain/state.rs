@@ -144,8 +144,7 @@ impl LinearChain {
         } else {
             Signature::Local(Box::new(fs))
         };
-        self.pending_finality_signatures.add(signature);
-        true
+        self.pending_finality_signatures.add(signature)
     }
 
     /// Removes finality signature from the pending collection.

@@ -47,7 +47,9 @@ impl PendingSignatures {
         pending_sigs
     }
 
-    pub(super) fn add(&mut self, signature: Signature) {
+    /// Adds finality signature to the pending collection.
+    /// Returns `true` if it was added.
+    pub(super) fn add(&mut self, signature: Signature) -> bool {
         let public_key = signature.public_key();
         let block_hash = signature.block_hash();
         let sigs = self
@@ -60,10 +62,10 @@ impl PendingSignatures {
                 %block_hash, %public_key,
                 "received too many finality signatures for unknown blocks"
             );
-            return;
+            return false;
         }
         // Add the pending signature.
-        let _ = sigs.insert(block_hash, signature);
+        sigs.insert(block_hash, signature).is_some()
     }
 
     pub(super) fn remove(
