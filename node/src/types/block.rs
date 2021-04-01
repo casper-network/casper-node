@@ -217,29 +217,29 @@ impl Display for ProtoBlockHash {
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
-    wasm_deploys: Vec<DeployHash>,
-    transfers: Vec<DeployHash>,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
     timestamp: Timestamp,
     random_bit: bool,
 }
 
 impl ProtoBlock {
     pub(crate) fn new(
-        wasm_deploys: Vec<DeployHash>,
-        transfers: Vec<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
         timestamp: Timestamp,
         random_bit: bool,
     ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &bincode::serialize(&(&wasm_deploys, &transfers, timestamp, random_bit))
+            &bincode::serialize(&(&deploy_hashes, &transfer_hashes, timestamp, random_bit))
                 .expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {
             hash,
-            wasm_deploys,
+            deploy_hashes,
+            transfer_hashes,
             timestamp,
-            transfers,
             random_bit,
         }
     }
@@ -254,17 +254,19 @@ impl ProtoBlock {
     }
 
     /// The list of deploy hashes included in the block.
-    pub(crate) fn wasm_deploys(&self) -> &Vec<DeployHash> {
-        &self.wasm_deploys
+    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        &self.deploy_hashes
     }
 
     /// The list of deploy hashes included in the block.
-    pub(crate) fn transfers(&self) -> &Vec<DeployHash> {
-        &self.transfers
+    pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        &self.transfer_hashes
     }
 
-    pub(crate) fn deploys_iter(&self) -> impl Iterator<Item = &DeployHash> {
-        self.wasm_deploys().iter().chain(self.transfers().iter())
+    pub(crate) fn deploys_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
     }
 
     /// A random bit needed for initializing a future era.
@@ -277,9 +279,10 @@ impl Display for ProtoBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "proto block {}, deploys [{}], random bit {}, timestamp {}",
+            "proto block {}, deploys {}, transfers {}, random bit {}, timestamp {}",
             self.hash.inner(),
-            DisplayIter::new(self.wasm_deploys.iter().chain(self.transfers.iter())),
+            HexList(&self.deploy_hashes),
+            HexList(&self.transfer_hashes),
             self.random_bit(),
             self.timestamp,
         )
@@ -361,8 +364,8 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            deploy_hashes: proto_block.wasm_deploys,
-            transfer_hashes: proto_block.transfers,
+            deploy_hashes: proto_block.deploy_hashes,
+            transfer_hashes: proto_block.transfer_hashes,
             timestamp: proto_block.timestamp,
             random_bit: proto_block.random_bit,
             era_report,
