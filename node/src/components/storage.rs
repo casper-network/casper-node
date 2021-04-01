@@ -376,7 +376,6 @@ impl Storage {
     /// Reads from the state storage DB.
     /// If key is non-empty, returns bytes from under the key. Otherwise returns `Ok(None)`.
     /// May also fail with storage errors.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) fn read_state_store<K>(&self, key: &K) -> Result<Option<Vec<u8>>, Error>
     where
         K: AsRef<[u8]>,
@@ -391,7 +390,6 @@ impl Storage {
     }
 
     /// Deletes value living under the key from the state storage DB.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) fn del_state_store<K>(&self, key: K) -> Result<bool, Error>
     where
         K: AsRef<[u8]>,

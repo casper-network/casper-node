@@ -77,9 +77,7 @@ use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::error;
-#[cfg(not(feature = "fast-sync"))]
-use tracing::warn;
+use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -1309,7 +1307,6 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// Returns whether or not storing the state was successful. A component that requires state to
     /// be successfully stored should check the return value and act accordingly.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
         REv: From<StateStoreRequest>,

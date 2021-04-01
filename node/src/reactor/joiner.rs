@@ -22,8 +22,7 @@ use tracing::{debug, error, info, warn};
 use crate::components::linear_chain_sync::{self, LinearChainSync};
 #[cfg(feature = "fast-sync")]
 use crate::components::{
-    linear_chain_fast_sync as linear_chain_sync,
-    linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
+    linear_chain_fast_sync as linear_chain_sync, linear_chain_fast_sync::LinearChainSync,
 };
 
 #[cfg(test)]
@@ -911,7 +910,6 @@ impl Reactor {
     pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
         let latest_block = self.linear_chain_sync.latest_block().cloned();
         // Clean the state of the linear_chain_sync before shutting it down.
-        #[cfg(not(feature = "fast-sync"))]
         linear_chain_sync::clean_linear_chain_state(
             &self.storage,
             self.chainspec_loader.chainspec(),
