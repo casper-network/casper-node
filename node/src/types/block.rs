@@ -891,12 +891,44 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
-    /// Computes the body hash
+    /// Computes the body hash by hashing a Merkle tree of the form:
+    ///                   body_hash
+    ///                   /      \__________________
+    /// hash(deploy_hashes)      /                  \_____________
+    ///                   hash(transfer_hashes)     /             \
+    ///                                         hash(proposer)   hash("")
     pub(crate) fn hash(&self) -> Digest {
-        let serialized_body = self
+        let serialized_deploys = self
+            .deploy_hashes
             .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        hash::hash(&serialized_body)
+            .unwrap_or_else(|error| panic!("should serialize deploy hashes: {}", error));
+        let serialized_transfers = self
+            .transfer_hashes
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize transfer hashes: {}", error));
+        let serialized_proposer = self
+            .proposer
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize proposer: {}", error));
+
+        let hashed_deploys = hash::hash(&serialized_deploys).to_array();
+        let hashed_transfers = hash::hash(&serialized_transfers).to_array();
+        let hashed_proposer = hash::hash(&serialized_proposer).to_array();
+        let hashed_empty = hash::hash(&[]).to_array();
+
+        let mut to_hash = [0; Digest::LENGTH * 2];
+        to_hash[..Digest::LENGTH].copy_from_slice(&hashed_proposer);
+        to_hash[Digest::LENGTH..].copy_from_slice(&hashed_empty);
+        let hashed_proposer_empty = hash::hash(&to_hash).to_array();
+
+        to_hash[..Digest::LENGTH].copy_from_slice(&hashed_transfers);
+        to_hash[Digest::LENGTH..].copy_from_slice(&hashed_proposer_empty);
+        let hashed_transfers_proposer_empty = hash::hash(&to_hash).to_array();
+
+        to_hash[..Digest::LENGTH].copy_from_slice(&hashed_deploys);
+        to_hash[Digest::LENGTH..].copy_from_slice(&hashed_transfers_proposer_empty);
+
+        hash::hash(&to_hash)
     }
 }
 
