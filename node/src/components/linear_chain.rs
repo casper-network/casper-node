@@ -228,17 +228,22 @@ where
                     )
             }
             Event::IsBonded(Some(mut known_signatures), fs, true) => {
+                // New finality signature from a bonded validator.
                 known_signatures.insert_proof(fs.public_key, fs.signature);
                 // Cache the results in case we receive the same finality signature before we
                 // manage to store it in the database.
                 self.linear_chain_state
                     .cache_signatures(*known_signatures.clone());
                 debug!(hash=%known_signatures.block_hash, "storing finality signatures");
+                // Announce new finality signatures for other components to pick up.
                 let mut effects = effect_builder
                     .announce_finality_signature(fs.clone())
                     .ignore();
-                // If new, gossip and store.
                 if let Some(signature) = self.linear_chain_state.remove_from_pending_fs(&*fs) {
+                    // This shouldn't return `None` as we added the `fs` to the pending collection
+                    // when we received it. If it _is_ `None` then a concurrent
+                    // flow must have already removed it. If it's a signature
+                    // created by this node, gossip it.
                     if signature.is_local() {
                         let message = Message::FinalitySignature(fs.clone());
                         effects.extend(effect_builder.broadcast_message(message).ignore());
