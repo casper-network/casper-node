@@ -187,7 +187,7 @@ where
                     // correct – block was created in a specific era so the IDs have to match.
                     if known_signatures.era_id != fs.era_id {
                         warn!(public_key=%fs.public_key,
-                            expected=%known_signatures.era_id, 
+                            expected=%known_signatures.era_id,
                             got=%fs.era_id,
                             "finality signature with invalid era id.");
                         self.linear_chain_state.remove_from_pending_fs(&*fs);
@@ -199,7 +199,8 @@ where
                         return Effects::new();
                     }
                     // Populate cache so that next incoming signatures don't trigger read from the
-                    // storage. If `known_signatures` are already from cache then this will be a noop.
+                    // storage. If `known_signatures` are already from cache then this will be a
+                    // noop.
                     self.linear_chain_state
                         .cache_signatures(*known_signatures.clone());
                 }

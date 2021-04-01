@@ -161,8 +161,16 @@ impl LinearChain {
             .remove(&public_key, &block_hash)
     }
 
-    // Caches the signature.
-    pub(super) fn cache_signatures(&mut self, signatures: BlockSignatures) {
+    /// Caches the signature.
+    pub(super) fn cache_signatures(&mut self, mut signatures: BlockSignatures) {
+        // Merge already-known signatures and the new ones.
+        self.get_signatures(&signatures.block_hash)
+            .iter()
+            .for_each(|bs| {
+                for (pk, sig) in bs.proofs.iter() {
+                    signatures.insert_proof(*pk, *sig);
+                }
+            });
         self.signature_cache.insert(signatures);
     }
 
@@ -182,7 +190,6 @@ impl LinearChain {
     pub(super) fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
     }
-
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
     /// them, and the updated block signatures.
@@ -229,5 +236,4 @@ impl LinearChain {
         }
         (known_signatures, effects)
     }
-
 }
