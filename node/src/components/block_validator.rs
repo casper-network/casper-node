@@ -53,7 +53,7 @@ impl BlockLike for Block {
 
 impl BlockLike for ProtoBlock {
     fn deploys(&self) -> Vec<&DeployHash> {
-        self.deploys_iter().collect()
+        self.deploys_and_transfers_iter().collect()
     }
 }
 
