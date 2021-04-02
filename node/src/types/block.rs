@@ -1000,11 +1000,8 @@ impl BlockSignatures {
         self.proofs.insert(public_key, signature)
     }
 
-    pub(crate) fn has_proof(&self, public_key: &PublicKey, signature: &Signature) -> bool {
-        self.proofs
-            .get(public_key)
-            .iter()
-            .any(|sig| *sig == signature)
+    pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
+        self.proofs.contains_key(public_key)
     }
 
     /// Verify the signatures contained within.

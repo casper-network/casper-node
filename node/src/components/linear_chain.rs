@@ -217,7 +217,7 @@ where
                         // TODO: Disconnect from the sender.
                         return Effects::new();
                     }
-                    if known_signatures.has_proof(&fs.public_key, &fs.signature) {
+                    if known_signatures.has_proof(&fs.public_key) {
                         self.linear_chain_state.remove_from_pending_fs(&fs);
                         return Effects::new();
                     }
