@@ -24,7 +24,7 @@ use casper_types::{
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    AsymmetricType, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";

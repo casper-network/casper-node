@@ -113,7 +113,7 @@ mod tests {
     use crate::{
         bytesrepr,
         system::auction::{DelegationRate, SeigniorageRecipient},
-        AsymmetricType, SecretKey, U512,
+        SecretKey, U512,
     };
 
     #[test]

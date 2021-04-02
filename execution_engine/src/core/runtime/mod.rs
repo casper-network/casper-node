@@ -3360,9 +3360,7 @@ mod tests {
         result,
     };
 
-    use casper_types::{
-        gens::*, AccessRights, AsymmetricType, CLType, CLValue, Key, PublicKey, SecretKey, URef,
-    };
+    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, PublicKey, SecretKey, URef};
 
     use super::extract_urefs;
 

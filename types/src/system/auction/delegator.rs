@@ -190,8 +190,7 @@ impl FromBytes for Delegator {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytesrepr, system::auction::Delegator, AccessRights, AsymmetricType, PublicKey, SecretKey,
-        URef, U512,
+        bytesrepr, system::auction::Delegator, AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
     #[test]

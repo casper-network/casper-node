@@ -7,7 +7,7 @@ use casper_contract::contract_api::{runtime, system};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
-    AsymmetricType, ContractHash, PublicKey, RuntimeArgs, SecretKey, U512,
+    ContractHash, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const DELEGATION_RATE: DelegationRate = 42;

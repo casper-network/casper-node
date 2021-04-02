@@ -267,7 +267,7 @@ impl AccountHash {
             PublicKey::Ed25519(_) => ED25519_LOWERCASE,
             PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
         };
-        let public_key_bytes: Vec<u8> = public_key.clone().into();
+        let public_key_bytes: Vec<u8> = public_key.into();
 
         // Prepare preimage based on the public key parameters.
         let preimage = {

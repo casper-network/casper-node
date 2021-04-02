@@ -9,7 +9,7 @@ use casper_types::{
     PublicKey,
 };
 #[cfg(test)]
-use casper_types::{AsymmetricType, SecretKey, U512};
+use casper_types::{SecretKey, U512};
 
 #[cfg(test)]
 use crate::testing::TestRng;

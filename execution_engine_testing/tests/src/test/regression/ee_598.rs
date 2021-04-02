@@ -15,7 +15,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate},
-    ApiError, AsymmetricType, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

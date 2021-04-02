@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     system::auction::{Bid, Bids, DelegationRate, Delegator, EraValidators},
-    AccessRights, AsymmetricType, EraId, PublicKey, SecretKey, URef, U512,
+    AccessRights, EraId, PublicKey, SecretKey, URef, U512,
 };
 
 use crate::{crypto::hash::Digest, rpcs::docs::DocExample};

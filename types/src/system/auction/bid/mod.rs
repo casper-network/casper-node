@@ -308,7 +308,7 @@ mod tests {
     use crate::{
         bytesrepr,
         system::auction::{bid::VestingSchedule, Bid, DelegationRate, Delegator},
-        AccessRights, AsymmetricType, PublicKey, SecretKey, URef, U512,
+        AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
     #[test]

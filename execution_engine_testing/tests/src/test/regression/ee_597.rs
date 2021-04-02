@@ -6,8 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
-    account::AccountHash, system::auction, ApiError, AsymmetricType, PublicKey, RuntimeArgs,
-    SecretKey,
+    account::AccountHash, system::auction, ApiError, PublicKey, RuntimeArgs, SecretKey,
 };
 
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";

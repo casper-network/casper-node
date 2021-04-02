@@ -8,7 +8,7 @@ use proptest::{
     prop_oneof,
 };
 
-use crate::{crypto::SecretKey, AsymmetricType, PublicKey};
+use crate::{crypto::SecretKey, PublicKey};
 
 /// Creates an arbitrary [`SecretKey`]
 pub fn secret_key_arb() -> impl Strategy<Value = SecretKey> {

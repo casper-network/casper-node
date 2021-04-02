@@ -95,29 +95,14 @@ mod tests {
 
     use super::*;
     use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
-    use casper_types::bytesrepr::ToBytes;
 
     type OpenSSLSecretKey = PKey<Private>;
     type OpenSSLPublicKey = PKey<Public>;
 
-    fn secret_key_serialization_roundtrip(secret_key: SecretKey) {
-        // Try to/from bincode.
-        let serialized = bincode::serialize(&secret_key).unwrap();
-        let deserialized: SecretKey = bincode::deserialize(&serialized).unwrap();
-        assert_eq!(secret_key.to_bytes(), deserialized.to_bytes());
-        assert_eq!(secret_key.tag(), deserialized.tag());
-
-        // Try to/from JSON.
-        let serialized = serde_json::to_vec_pretty(&secret_key).unwrap();
-        let deserialized: SecretKey = serde_json::from_slice(&serialized).unwrap();
-        assert_eq!(secret_key.to_bytes(), deserialized.to_bytes());
-        assert_eq!(secret_key.tag(), deserialized.tag());
-    }
-
     fn secret_key_der_roundtrip(secret_key: SecretKey) {
         let der_encoded = secret_key.to_der().unwrap();
         let decoded = SecretKey::from_der(&der_encoded).unwrap();
-        assert_eq!(secret_key.to_bytes(), decoded.to_bytes());
+        assert_eq!(secret_key, decoded);
         assert_eq!(secret_key.tag(), decoded.tag());
 
         // Ensure malformed encoded version fails to decode.
@@ -127,10 +112,7 @@ mod tests {
     fn secret_key_pem_roundtrip(secret_key: SecretKey) {
         let pem_encoded = secret_key.to_pem().unwrap();
         let decoded = SecretKey::from_pem(pem_encoded.as_bytes()).unwrap();
-        assert_eq!(
-            Into::<Vec<u8>>::into(secret_key.clone()),
-            Into::<Vec<u8>>::into(decoded.clone())
-        );
+        assert_eq!(secret_key, decoded);
         assert_eq!(secret_key.tag(), decoded.tag());
 
         // Check PEM-encoded can be decoded by openssl.
@@ -140,10 +122,9 @@ mod tests {
         SecretKey::from_pem(&pem_encoded[1..]).unwrap_err();
     }
 
-    fn known_secret_key_to_pem(known_key_hex: &str, known_key_pem: &str, expected_tag: u8) {
-        let key_bytes = hex::decode(known_key_hex).unwrap();
+    fn known_secret_key_to_pem(expected_key: &SecretKey, known_key_pem: &str, expected_tag: u8) {
         let decoded = SecretKey::from_pem(known_key_pem.as_bytes()).unwrap();
-        assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded.clone()));
+        assert_eq!(*expected_key, decoded);
         assert_eq!(expected_tag, decoded.tag());
     }
 
@@ -153,7 +134,7 @@ mod tests {
 
         secret_key.to_file(&path).unwrap();
         let decoded = SecretKey::from_file(&path).unwrap();
-        assert_eq!(secret_key.to_bytes(), decoded.to_bytes());
+        assert_eq!(secret_key, decoded);
         assert_eq!(secret_key.tag(), decoded.tag());
     }
 
@@ -291,13 +272,6 @@ mod tests {
         const SIGNATURE_LENGTH: usize = Signature::ED25519_LENGTH;
 
         #[test]
-        fn secret_key_serialization_roundtrip() {
-            let mut rng = crate::new_rng();
-            let secret_key = SecretKey::random_ed25519(&mut rng);
-            super::secret_key_serialization_roundtrip(secret_key)
-        }
-
-        #[test]
         fn secret_key_from_bytes() {
             // Secret key should be `SecretKey::ED25519_LENGTH` bytes.
             let bytes = [0; SECRET_KEY_LENGTH + 1];
@@ -329,12 +303,14 @@ mod tests {
         #[test]
         fn known_secret_key_to_pem() {
             // Example values taken from https://tools.ietf.org/html/rfc8410#section-10.3
-            const KNOWN_KEY_HEX: &str =
-                "d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842";
             const KNOWN_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 -----END PRIVATE KEY-----"#;
-            super::known_secret_key_to_pem(KNOWN_KEY_HEX, KNOWN_KEY_PEM, ED25519_TAG);
+            let key_bytes =
+                hex::decode("d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842")
+                    .unwrap();
+            let expected_key = SecretKey::ed25519_from_bytes(key_bytes).unwrap();
+            super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, ED25519_TAG);
         }
 
         #[test]
@@ -506,13 +482,6 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         const SIGNATURE_LENGTH: usize = Signature::SECP256K1_LENGTH;
 
         #[test]
-        fn secret_key_serialization_roundtrip() {
-            let mut rng = crate::new_rng();
-            let secret_key = SecretKey::random_secp256k1(&mut rng);
-            super::secret_key_serialization_roundtrip(secret_key)
-        }
-
-        #[test]
         fn secret_key_from_bytes() {
             // Secret key should be `SecretKey::SECP256K1_LENGTH` bytes.
             // The k256 library will ensure that a byte stream of a length not equal to
@@ -543,14 +512,16 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         #[test]
         fn known_secret_key_to_pem() {
             // Example values taken from Python client.
-            const KNOWN_KEY_HEX: &str =
-                "bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c";
             const KNOWN_KEY_PEM: &str = r#"-----BEGIN EC PRIVATE KEY-----
 MHQCAQEEIL3fqaMKAfXSK1D2PnVVbZlZ7jTv133nukq4+95s6kmcoAcGBSuBBAAK
 oUQDQgAEQI6VJjFv0fje9IDdRbLMcv/XMnccnOtdkv+kBR5u4ISEAkuc2TFWQHX0
 Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 -----END EC PRIVATE KEY-----"#;
-            super::known_secret_key_to_pem(KNOWN_KEY_HEX, KNOWN_KEY_PEM, SECP256K1_TAG);
+            let key_bytes =
+                hex::decode("bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c")
+                    .unwrap();
+            let expected_key = SecretKey::secp256k1_from_bytes(key_bytes).unwrap();
+            super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, SECP256K1_TAG);
         }
 
         #[test]

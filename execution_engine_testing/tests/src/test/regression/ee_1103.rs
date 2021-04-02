@@ -17,7 +17,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{DelegationRate, ARG_DELEGATOR, ARG_VALIDATOR},
-    AsymmetricType, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";

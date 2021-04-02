@@ -42,10 +42,10 @@ use casper_types::{
         standard_payment::METHOD_PAY,
         SystemContractType,
     },
-    AccessRights, AsymmetricType, CLType, CLTyped, CLValue, Contract, ContractHash,
-    ContractPackage, ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, Parameter, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, EraId, Key, Parameter, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, URef, U512,
 };
 
 use crate::{

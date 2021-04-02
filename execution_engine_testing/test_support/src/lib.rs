@@ -21,7 +21,7 @@
 //! The test could be written as follows:
 //! ```no_run
 //! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
-//! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey, AsymmetricType};
+//! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey};
 //!
 //! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
 //! const MY_ADDR: [u8; 32] = [8u8; 32];
