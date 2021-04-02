@@ -260,6 +260,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Local(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -494,7 +498,7 @@ where
     ) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         let new_hash = self.new_hash_address()?;
         self.validate_value(&contract)?;
-        self.metered_write_gs_unsafe(new_hash, contract)?;
+        self.metered_write_gs_unsafe(Key::Hash(new_hash), contract)?;
         Ok(new_hash)
     }
 
@@ -673,6 +677,11 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
+            Key::Local(_) => {
+                // Local key is a special case that will not be readable by default, but the access
+                // bits are verified from within API call.
+                false
+            }
         }
     }
 
@@ -687,6 +696,11 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
+            Key::Local(_) => {
+                // Local key is a special case that will not be readable by default, but the access
+                // bits are verified from within API call.
+                false
+            }
         }
     }
 
@@ -701,6 +715,11 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
+            Key::Local(_) => {
+                // Local key is a special case that will not be readable by default, but the access
+                // bits are verified from within API call.
+                false
+            }
         }
     }
 

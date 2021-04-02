@@ -95,10 +95,10 @@ impl ExecutableDeployItem {
     pub(crate) fn to_contract_hash_key(&self, account: &Account) -> Result<Option<Key>, Error> {
         match self {
             ExecutableDeployItem::StoredContractByHash { hash, .. } => {
-                Ok(Some(Key::from(hash.value())))
+                Ok(Some(Key::Hash(hash.value())))
             }
             ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
-                Ok(Some(Key::from(hash.value())))
+                Ok(Some(Key::Hash(hash.value())))
             }
             ExecutableDeployItem::StoredContractByName { name, .. }
             | ExecutableDeployItem::StoredVersionedContractByName { name, .. } => {

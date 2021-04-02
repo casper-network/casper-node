@@ -99,6 +99,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
+        Key::Local(_) => None,
     }
 }
 
@@ -2266,7 +2267,7 @@ where
         let addr = self.context.new_hash_address()?;
         let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
-            .metered_write_gs_unsafe(addr, contract_package)?;
+            .metered_write_gs_unsafe(Key::Hash(addr), contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
@@ -2397,9 +2398,9 @@ where
             contract_package.insert_contract_version(major, contract_hash.into());
 
         self.context
-            .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
+            .metered_write_gs_unsafe(Key::Hash(contract_wasm_hash), contract_wasm)?;
         self.context
-            .metered_write_gs_unsafe(contract_hash, contract)?;
+            .metered_write_gs_unsafe(Key::Hash(contract_hash), contract)?;
         self.context
             .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
