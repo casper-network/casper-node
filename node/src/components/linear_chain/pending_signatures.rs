@@ -65,7 +65,8 @@ impl PendingSignatures {
             return false;
         }
         // Add the pending signature.
-        sigs.insert(block_hash, signature).is_some()
+        sigs.insert(block_hash, signature);
+        true
     }
 
     pub(super) fn remove(
