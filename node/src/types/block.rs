@@ -1291,7 +1291,13 @@ pub struct BlockWithMetadata {
 
 impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(
+            f,
+            "Block at {} with hash {} with {} finality signatures.",
+            self.block.height(),
+            self.block.hash(),
+            self.finality_signatures.proofs.len()
+        )
     }
 }
 

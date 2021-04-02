@@ -248,10 +248,22 @@ async fn store_deploy(
         .await;
 }
 
+#[derive(Debug)]
+enum ExpectedFetchedDeployResult {
+    TimedOut,
+    FromStorage {
+        expected_deploy: Box<Deploy>,
+    },
+    FromPeer {
+        expected_deploy: Box<Deploy>,
+        expected_peer: NodeId,
+    },
+}
+
 async fn assert_settled(
     node_id: &NodeId,
     deploy_hash: DeployHash,
-    expected_result: Option<FetchResult<Deploy, NodeId>>,
+    expected_result: ExpectedFetchedDeployResult,
     fetched: FetchedDeployResult,
     network: &mut Network<Reactor>,
     rng: &mut TestRng,
@@ -272,8 +284,39 @@ async fn assert_settled(
         .storage
         .get_deploy_by_hash(deploy_hash);
 
-    assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
-    assert_eq!(fetched.lock().unwrap().1, expected_result)
+    // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
+    let actual_fetcher_result = fetched.lock().unwrap().1.clone();
+    match (expected_result, actual_fetcher_result, maybe_stored_deploy) {
+        // Timed-out case: should not have a stored deploy
+        (
+            ExpectedFetchedDeployResult::TimedOut,
+            Some(Err(FetcherError::TimedOutFromPeer { .. })),
+            None,
+        ) => {}
+        // FromStorage case: expect deploy to correspond to item fetched, as well as stored item
+        (
+            ExpectedFetchedDeployResult::FromStorage { expected_deploy },
+            Some(Ok(FetchedData::FromStorage { item })),
+            Some(stored_deploy),
+        ) if expected_deploy == item && stored_deploy == *item => {}
+        // FromPeer case: deploys should correspond, storage should be present and correspond, and
+        // peers should correspond.
+        (
+            ExpectedFetchedDeployResult::FromPeer {
+                expected_deploy,
+                expected_peer,
+            },
+            Some(Ok(FetchedData::FromPeer { item, peer })),
+            Some(stored_deploy),
+        ) if expected_deploy == item && stored_deploy == *item && expected_peer == peer => {}
+        // Sad path case
+        (expected_result, actual_fetcher_result, maybe_stored_deploy) => {
+            panic!(
+                "Expected result type {:?} but found {:?} (stored deploy is {:?})",
+                expected_result, actual_fetcher_result, maybe_stored_deploy
+            )
+        }
+    }
 }
 
 #[tokio::test]
@@ -306,9 +349,10 @@ async fn should_fetch_from_local() {
         )
         .await;
 
-    let expected_result = Some(Ok(FetchedData::FromStorage {
-        item: Box::new(deploy),
-    }));
+    let expected_result = ExpectedFetchedDeployResult::FromStorage {
+        expected_deploy: Box::new(deploy),
+    };
+
     assert_settled(
         &node_id,
         deploy_hash,
@@ -354,10 +398,11 @@ async fn should_fetch_from_peer() {
         )
         .await;
 
-    let expected_result = Some(Ok(FetchedData::FromPeer {
-        item: Box::new(deploy),
-        peer: node_with_deploy,
-    }));
+    let expected_result = ExpectedFetchedDeployResult::FromPeer {
+        expected_deploy: Box::new(deploy),
+        expected_peer: node_with_deploy,
+    };
+
     assert_settled(
         &node_without_deploy,
         deploy_hash,
@@ -448,7 +493,7 @@ async fn should_timeout_fetch_from_peer() {
     time::resume();
 
     // Settle the network, allowing timeout to avoid panic.
-    let expected_result = None;
+    let expected_result = ExpectedFetchedDeployResult::TimedOut;
     assert_settled(
         &requesting_node,
         deploy_hash,
