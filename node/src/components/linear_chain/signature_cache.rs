@@ -40,19 +40,6 @@ impl SignatureCache {
         }
     }
 
-    /// Get signatures from the cache to be updated.
-    /// If there are no signatures, create an empty signature to be updated.
-    pub(super) fn get_known_signatures(
-        &self,
-        block_hash: &BlockHash,
-        block_era: EraId,
-    ) -> BlockSignatures {
-        match self.signatures.get(block_hash) {
-            Some(signatures) => signatures.clone(),
-            None => BlockSignatures::new(*block_hash, block_era),
-        }
-    }
-
     /// Returns whether finality signature is known already.
     pub(super) fn known_signature(&self, fs: &FinalitySignature) -> bool {
         let FinalitySignature {

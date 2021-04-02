@@ -1,26 +1,15 @@
-use std::{fmt::Display, marker::PhantomData};
-
-use casper_types::{EraId, ProtocolVersion};
 use datasize::DataSize;
-use prometheus::Registry;
+use itertools::Itertools;
 use tracing::{debug, warn};
 
-use crate::{
-    effect::{
-        announcements::LinearChainAnnouncement,
-        requests::{NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
-    },
-    protocol::Message,
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature},
-};
+use crate::types::{Block, BlockHash, BlockSignatures, FinalitySignature};
+use casper_types::{EraId, ProtocolVersion};
 
 use super::{
-    metrics::LinearChainMetrics, pending_signatures::PendingSignatures, signature::Signature,
-    signature_cache::SignatureCache, Event,
+    pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChain<I> {
+pub(crate) struct LinearChain {
     /// The most recently added block.
     latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
@@ -31,22 +20,16 @@ pub(crate) struct LinearChain<I> {
     protocol_version: ProtocolVersion,
     auction_delay: u64,
     unbonding_delay: u64,
-    #[data_size(skip)]
-    pub(super) metrics: LinearChainMetrics,
-
-    _marker: PhantomData<I>,
 }
 
-impl<I> LinearChain<I> {
-    pub fn new(
-        registry: &Registry,
+impl LinearChain {
+    pub(crate) fn new(
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
         activation_era_id: EraId,
-    ) -> Result<Self, prometheus::Error> {
-        let metrics = LinearChainMetrics::new(registry)?;
-        Ok(LinearChain {
+    ) -> Self {
+        LinearChain {
             latest_block: None,
             pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
@@ -54,9 +37,7 @@ impl<I> LinearChain<I> {
             protocol_version,
             auction_delay,
             unbonding_delay,
-            metrics,
-            _marker: PhantomData,
-        })
+        }
     }
 
     /// Returns whether we have already enqueued that finality signature.
@@ -72,50 +53,21 @@ impl<I> LinearChain<I> {
         !self.signature_cache.known_signature(fs)
     }
 
-    /// Adds pending finality signatures to the block; returns events to announce and broadcast
-    /// them, and the updated block signatures.
-    pub(super) fn collect_pending_finality_signatures<REv>(
-        &mut self,
-        block_hash: &BlockHash,
-        block_era: EraId,
-        effect_builder: EffectBuilder<REv>,
-    ) -> (BlockSignatures, Effects<Event<I>>)
-    where
-        REv: From<StorageRequest>
-            + From<NetworkRequest<I, Message>>
-            + From<LinearChainAnnouncement>
-            + Send,
-        I: Display + Send + 'static,
-    {
-        let mut effects = Effects::new();
-        let mut known_signatures = self
-            .signature_cache
-            .get_known_signatures(block_hash, block_era);
-        let pending_sigs = self
-            .pending_finality_signatures
-            .collect_pending(block_hash, &known_signatures);
-        // Add new signatures and send the updated block to storage.
-        for signature in pending_sigs {
-            if signature.to_inner().era_id != block_era {
-                // finality signature was created with era id that doesn't match block's era.
-                // TODO: disconnect from the sender.
-                continue;
-            }
-            known_signatures.insert_proof(
-                signature.to_inner().public_key,
-                signature.to_inner().signature,
-            );
-            if signature.is_local() {
-                let message = Message::FinalitySignature(Box::new(signature.to_inner().clone()));
-                effects.extend(effect_builder.broadcast_message(message).ignore());
-            }
-            effects.extend(
-                effect_builder
-                    .announce_finality_signature(signature.take())
-                    .ignore(),
-            );
+    // New linear chain block received. Collect any pending finality signatures that
+    // were waiting for that block.
+    pub(super) fn new_block(&mut self, block: &Block) -> Vec<Signature> {
+        let signatures = self.collect_pending_finality_signatures(block.hash());
+        if signatures.is_empty() {
+            return vec![];
         }
-        (known_signatures, effects)
+        let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
+        for sig in signatures.iter() {
+            block_signatures.insert_proof(sig.public_key(), sig.signature());
+        }
+        // Cache the signatures as we expect more finality signatures for the new block to
+        // arrive soon.
+        self.cache_signatures(block_signatures);
+        signatures
     }
 
     /// Tries to add the finality signature to the collection of pending finality signatures.
@@ -174,8 +126,7 @@ impl<I> LinearChain<I> {
         } else {
             Signature::Local(Box::new(fs))
         };
-        self.pending_finality_signatures.add(signature);
-        true
+        self.pending_finality_signatures.add(signature)
     }
 
     /// Removes finality signature from the pending collection.
@@ -191,8 +142,16 @@ impl<I> LinearChain<I> {
             .remove(&public_key, &block_hash)
     }
 
-    // Caches the signature.
-    pub(super) fn cache_signatures(&mut self, signatures: BlockSignatures) {
+    /// Caches the signature.
+    pub(super) fn cache_signatures(&mut self, mut signatures: BlockSignatures) {
+        // Merge already-known signatures and the new ones.
+        self.get_signatures(&signatures.block_hash)
+            .iter()
+            .for_each(|bs| {
+                for (pk, sig) in bs.proofs.iter() {
+                    signatures.insert_proof(*pk, *sig);
+                }
+            });
         self.signature_cache.insert(signatures);
     }
 
@@ -211,5 +170,14 @@ impl<I> LinearChain<I> {
 
     pub(super) fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
+    }
+
+    /// Returns finality signatures for `block_hash`.
+    fn collect_pending_finality_signatures(&mut self, block_hash: &BlockHash) -> Vec<Signature> {
+        self.pending_finality_signatures
+            .collect_pending(block_hash)
+            .into_iter()
+            .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
+            .collect_vec()
     }
 }
