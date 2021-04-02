@@ -209,9 +209,9 @@ where
                     // validated signatures reject it as they can't both be
                     // correct – block was created in a specific era so the IDs have to match.
                     if known_signatures.era_id != fs.era_id {
-                        warn!(public_key=%fs.public_key,
-                            expected=%known_signatures.era_id,
-                            got=%fs.era_id,
+                        warn!(public_key = %fs.public_key,
+                            expected = %known_signatures.era_id,
+                            got = %fs.era_id,
                             "finality signature with invalid era id.");
                         self.linear_chain_state.remove_from_pending_fs(&*fs);
                         // TODO: Disconnect from the sender.
@@ -257,7 +257,7 @@ where
                 // manage to store it in the database.
                 self.linear_chain_state
                     .cache_signatures(*known_signatures.clone());
-                debug!(hash=%known_signatures.block_hash, "storing finality signatures");
+                debug!(hash = %known_signatures.block_hash, "storing finality signatures");
                 // Announce new finality signatures for other components to pick up.
                 let mut effects = effect_builder
                     .announce_finality_signature(fs.clone())
