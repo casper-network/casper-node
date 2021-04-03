@@ -19,7 +19,7 @@ impl SignatureCache {
         }
     }
 
-    pub(super) fn get(&mut self, hash: &BlockHash, _era_id: EraId) -> Option<BlockSignatures> {
+    pub(super) fn get(&self, hash: &BlockHash) -> Option<BlockSignatures> {
         self.signatures.get(hash).cloned()
     }
 
@@ -37,19 +37,6 @@ impl SignatureCache {
             Entry::Vacant(entry) => {
                 entry.insert(block_signature);
             }
-        }
-    }
-
-    /// Get signatures from the cache to be updated.
-    /// If there are no signatures, create an empty signature to be updated.
-    pub(super) fn get_known_signatures(
-        &self,
-        block_hash: &BlockHash,
-        block_era: EraId,
-    ) -> BlockSignatures {
-        match self.signatures.get(block_hash) {
-            Some(signatures) => signatures.clone(),
-            None => BlockSignatures::new(*block_hash, block_era),
         }
     }
 
