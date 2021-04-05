@@ -12,6 +12,7 @@ use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey
 use super::{Config, Storage};
 use crate::{
     components::storage::lmdb_ext::WriteTransactionExt,
+    crypto::AsymmetricKeyExt,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         Multiple,
@@ -80,6 +81,24 @@ fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
     block
 }
 
+/// Creates 3 random signatures for the given block.
+fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
+    let block_hash = *block.hash();
+    let era_id = block.header().era_id();
+    let mut block_signatures = BlockSignatures::new(block_hash, era_id);
+    for _ in 0..3 {
+        let secret_key = SecretKey::random(rng);
+        let signature = FinalitySignature::new(
+            block_hash,
+            era_id,
+            &secret_key,
+            PublicKey::from(&secret_key),
+        );
+        block_signatures.insert_proof(signature.public_key, signature.signature);
+    }
+    block_signatures
+}
+
 /// Requests block at a specific height from a storage component.
 fn get_block_at_height(
     harness: &mut ComponentHarness<UnitTestEvent>,
@@ -101,6 +120,23 @@ fn get_block(
 ) -> Option<Block> {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetBlock {
+            block_hash,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Loads a block's signatures from a storage component.
+fn get_block_signatures(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    block_hash: BlockHash,
+) -> Option<BlockSignatures> {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetBlockSignatures {
             block_hash,
             responder,
         }
@@ -182,6 +218,23 @@ fn put_block(
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutBlock { block, responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Stores a block's signatures in a storage component.
+fn put_block_signatures(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    signatures: BlockSignatures,
+) -> bool {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::PutBlockSignatures {
+            signatures,
+            responder,
+        }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -846,7 +899,7 @@ fn test_legacy_interface() {
     let result = storage.handle_legacy_direct_deploy_request(*deploy.id());
     assert_eq!(result, Some(*deploy));
 
-    // A non-existant deploy should simply return `None`.
+    // A non-existent deploy should simply return `None`.
     assert!(storage
         .handle_legacy_direct_deploy_request(DeployHash::random(&mut harness.rng))
         .is_none())
@@ -929,30 +982,90 @@ fn should_hard_reset() {
             Box::new(block.clone())
         ));
     }
+
+    // Create and store signatures for these blocks.
+    for block in &blocks {
+        let block_signatures = random_signatures(&mut harness.rng, block);
+        assert!(put_block_signatures(
+            &mut harness,
+            &mut storage,
+            block_signatures
+        ));
+    }
+
+    // Add execution results to deploys; deploy 0 will be executed in block 0, deploy 1 in block 1,
+    // and so on.
+    let mut deploys = vec![];
+    let mut execution_results = vec![];
+    for block_hash in blocks.iter().map(|block| block.hash()) {
+        let deploy = Deploy::random(&mut harness.rng);
+        let execution_result: ExecutionResult = harness.rng.gen();
+        let mut exec_results = HashMap::new();
+        exec_results.insert(*deploy.id(), execution_result);
+        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+        put_execution_results(
+            &mut harness,
+            &mut storage,
+            *block_hash,
+            exec_results.clone(),
+        );
+        deploys.push(deploy);
+        execution_results.push(exec_results);
+    }
+
     // Check the highest block is #7.
     assert_eq!(
         Some(blocks[blocks_count - 1].clone()),
         get_highest_block(&mut harness, &mut storage)
     );
 
-    // Initialize a new storage with a hard reset to era 2, effectively hiding blocks 6 and 7.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(2));
-    // Check the highest block is #5.
-    assert_eq!(
-        Some(blocks[blocks_count - blocks_per_era].clone()),
-        get_highest_block(&mut harness, &mut storage)
-    );
+    // The closure doing the actual checks.
+    let mut check = |reset_era: usize| {
+        // Initialize a new storage with a hard reset to the given era, deleting blocks from that
+        // era onwards.
+        let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(reset_era as u64));
 
-    // Initialize a new storage with a hard reset to era 1, effectively hiding blocks 3-7.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(1));
-    // Check the highest block is #2.
-    assert_eq!(
-        Some(blocks[blocks_count - (2 * blocks_per_era)].clone()),
-        get_highest_block(&mut harness, &mut storage)
-    );
+        // Check highest block is the last from the previous era, or `None` if resetting to era 0.
+        let highest_block = get_highest_block(&mut harness, &mut storage);
+        if reset_era > 0 {
+            assert_eq!(
+                blocks[blocks_per_era * reset_era - 1],
+                highest_block.unwrap()
+            );
+        } else {
+            assert!(highest_block.is_none());
+        }
 
-    // Initialize a new storage with a hard reset to era 0, effectively hiding all blocks.
-    let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(0));
-    // Check the highest block is `None`.
-    assert!(get_highest_block(&mut harness, &mut storage).is_none());
+        // Check deleted blocks can't be retrieved.
+        for (index, block) in blocks.iter().enumerate() {
+            let result = get_block(&mut harness, &mut storage, *block.hash());
+            let should_get_block = index < blocks_per_era * reset_era;
+            assert_eq!(should_get_block, result.is_some());
+        }
+
+        // Check signatures of deleted blocks can't be retrieved.
+        for (index, block) in blocks.iter().enumerate() {
+            let result = get_block_signatures(&mut harness, &mut storage, *block.hash());
+            let should_get_sigs = index < blocks_per_era * reset_era;
+            assert_eq!(should_get_sigs, result.is_some());
+        }
+
+        // Check execution results in deleted blocks have been removed.
+        for (index, deploy) in deploys.iter().enumerate() {
+            let (_deploy, metadata) =
+                get_deploy_and_metadata(&mut harness, &mut storage, *deploy.id()).unwrap();
+            let should_have_exec_results = index < blocks_per_era * reset_era;
+            assert_eq!(
+                should_have_exec_results,
+                !metadata.execution_results.is_empty()
+            );
+        }
+    };
+
+    // Test with a hard reset to era 2, deleting blocks (and associated data) 6 and 7.
+    check(2);
+    // Test with a hard reset to era 1, further deleting blocks (and associated data) 3, 4 and 5.
+    check(1);
+    // Test with a hard reset to era 0, deleting all blocks and associated data.
+    check(0);
 }
