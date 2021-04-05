@@ -1064,8 +1064,8 @@ fn should_hard_reset() {
 
     // Test with a hard reset to era 2, deleting blocks (and associated data) 6 and 7.
     check(2);
-    // Test with a hard reset to era 1, further deleting blocks 3, 4 and 5.
+    // Test with a hard reset to era 1, further deleting blocks (and associated data) 3, 4 and 5.
     check(1);
-    // Test with a hard reset to era 0, deleting all blocks.
+    // Test with a hard reset to era 0, deleting all blocks and associated data.
     check(0);
 }

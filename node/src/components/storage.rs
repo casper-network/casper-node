@@ -1266,6 +1266,7 @@ fn initialize_deploy_metadata_db(
             }
         }
 
+        // If the deploy's execution results are now empty, we just remove them entirely.
         if deploy_metadata.execution_results.is_empty() {
             cursor.del(WriteFlags::empty())?;
         } else if removed {
