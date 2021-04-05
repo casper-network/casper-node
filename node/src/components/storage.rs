@@ -1254,22 +1254,18 @@ fn initialize_deploy_metadata_db(
 
     for (raw_key, raw_val) in cursor.iter() {
         let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+        let len_before = deploy_metadata.execution_results.len();
 
-        let mut removed = false;
-        for block_hash in deleted_block_hashes {
-            if deploy_metadata
-                .execution_results
-                .remove(block_hash)
-                .is_some()
-            {
-                removed = true;
-            }
-        }
+        deploy_metadata.execution_results = deploy_metadata
+            .execution_results
+            .drain()
+            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+            .collect();
 
         // If the deploy's execution results are now empty, we just remove them entirely.
         if deploy_metadata.execution_results.is_empty() {
             cursor.del(WriteFlags::empty())?;
-        } else if removed {
+        } else if len_before != deploy_metadata.execution_results.len() {
             let buffer = lmdb_ext::serialize(&deploy_metadata)?;
             cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
         }
