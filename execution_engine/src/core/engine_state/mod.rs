@@ -2074,7 +2074,7 @@ where
         state_hash: Blake2bHash,
         public_key: PublicKey,
     ) -> Result<BalanceResult, Error> {
-        //look up the account, get the main purse, and then do the existing balance check
+        // Look up the account, get the main purse, and then do the existing balance check
         let tracking_copy = match self.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return Ok(BalanceResult::RootNotFound),
