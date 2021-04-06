@@ -678,7 +678,7 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new(contract_runtime_config.query_depth_limit());
+        let engine_config = EngineConfig::new(contract_runtime_config.max_query_depth());
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

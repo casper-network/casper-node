@@ -428,7 +428,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         let mut proofs = Vec::new();
 
         loop {
-            if query.depth > config.query_depth_limit {
+            if query.depth >= config.max_query_depth {
                 return Ok(query.into_depth_limit_result());
             }
 
