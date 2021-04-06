@@ -37,8 +37,8 @@ fn main() {
         )
         .arg(
             Arg::with_name("hash")
-                .short("h")
-                .long("hash")
+                .short("s")
+                .long("state-hash")
                 .value_name("HEX_STRING")
                 .help("The global state hash to be used as the base")
                 .takes_value(true)

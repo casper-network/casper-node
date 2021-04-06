@@ -20,12 +20,12 @@ pub fn gen_snapshot(
 ) -> SeigniorageRecipientsSnapshot {
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
-    for (key_str, bonded_str) in &validators {
-        let key = PublicKey::from_hex(key_str.as_bytes()).unwrap();
-        let bonded_amount = U512::from_dec_str(bonded_str).unwrap();
+    for (pub_key_str, bonded_amount_str) in &validators {
+        let validator_pub_key = PublicKey::from_hex(pub_key_str.as_bytes()).unwrap();
+        let bonded_amount = U512::from_dec_str(bonded_amount_str).unwrap();
         let seigniorage_recipient =
             SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());
-        let _ = era_validators.insert(key, seigniorage_recipient);
+        let _ = era_validators.insert(validator_pub_key, seigniorage_recipient);
     }
     for era_id in starting_era_id.iter(count) {
         let _ = new_snapshot.insert(era_id, era_validators.clone());
