@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -17,7 +19,9 @@ use crate::{
 /// a `FinalizedBlock`.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) struct CandidateBlock {
-    proto_block: ProtoBlock,
+    /// The block's payload. This is wrapped in an `Arc` so that cloning `CandidateBlock`s is
+    /// cheap, even if they contain lots of transactions.
+    proto_block: Arc<ProtoBlock>,
     accusations: Vec<PublicKey>,
     /// The parent candidate block in this era, or `None` if this is the first block in this era.
     parent: Option<Digest>,
@@ -31,7 +35,7 @@ impl CandidateBlock {
         parent: Option<Digest>,
     ) -> Self {
         CandidateBlock {
-            proto_block,
+            proto_block: Arc::new(proto_block),
             accusations,
             parent,
         }
@@ -39,7 +43,7 @@ impl CandidateBlock {
 
     /// Returns the proto block containing the deploys.
     pub(crate) fn proto_block(&self) -> &ProtoBlock {
-        &self.proto_block
+        &*self.proto_block
     }
 
     /// Returns the validators accused by this block.
@@ -50,7 +54,7 @@ impl CandidateBlock {
 
 impl From<CandidateBlock> for ProtoBlock {
     fn from(cb: CandidateBlock) -> ProtoBlock {
-        cb.proto_block
+        Arc::try_unwrap(cb.proto_block).unwrap_or_else(|proto_block| (*proto_block).clone())
     }
 }
 
