@@ -102,7 +102,6 @@ use casper_types::{
 use crate::{
     components::{
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::BlockContext,
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1127,29 +1126,27 @@ impl<REv> EffectBuilder<REv> {
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     pub(crate) async fn request_proto_block(
         self,
-        block_context: BlockContext,
+        current_instant: Timestamp,
         past_deploys: HashSet<DeployHash>,
         next_finalized: u64,
         random_bit: bool,
-    ) -> (ProtoBlock, BlockContext)
+    ) -> ProtoBlock
     where
         REv: From<BlockProposerRequest>,
     {
-        let proto_block = self
-            .make_request(
-                |responder| {
-                    BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
-                        current_instant: block_context.timestamp(),
-                        past_deploys,
-                        next_finalized,
-                        responder,
-                        random_bit,
-                    })
-                },
-                QueueKind::Regular,
-            )
-            .await;
-        (proto_block, block_context)
+        self.make_request(
+            |responder| {
+                BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
+                    current_instant,
+                    past_deploys,
+                    next_finalized,
+                    responder,
+                    random_bit,
+                })
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Passes a finalized proto-block to the block executor component to execute it.

@@ -39,7 +39,7 @@ use crate::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     fatal,
     protocol::Message,
@@ -48,7 +48,7 @@ use crate::{
     NodeRng,
 };
 
-use crate::effect::EffectExt;
+use cl_context::ClContext;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
 pub(crate) use era_supervisor::EraSupervisor;
@@ -77,6 +77,13 @@ pub struct TimerId(pub u8);
 #[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ActionId(pub u8);
 
+#[derive(DataSize, Debug, From)]
+pub struct NewProtoBlock {
+    era_id: EraId,
+    proto_block: ProtoBlock,
+    block_context: BlockContext<ClContext>,
+}
+
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub enum Event<I> {
@@ -91,12 +98,7 @@ pub enum Event<I> {
     /// A queued action to be handled by a specific era.
     Action { era_id: EraId, action_id: ActionId },
     /// We are receiving the data we require to propose a new block.
-    NewProtoBlock {
-        era_id: EraId,
-        proto_block: ProtoBlock,
-        block_context: BlockContext,
-        parent: Option<Digest>,
-    },
+    NewProtoBlock(NewProtoBlock),
     #[from]
     ConsensusRequest(ConsensusRequest),
     /// A new block has been added to the linear chain.
@@ -181,15 +183,14 @@ impl<I: Debug> Display for Event<I> {
             Event::Action { era_id, action_id } => {
                 write!(f, "action (ID {}) for {}", action_id.0, era_id)
             }
-            Event::NewProtoBlock {
+            Event::NewProtoBlock(NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
-                parent,
-            } => write!(
+            }) => write!(
                 f,
-                "New proto-block for era {:?}: {:?}, {:?}, parent: {:?}",
-                era_id, proto_block, block_context, parent
+                "New proto-block for era {:?}: {:?}, {:?}",
+                era_id, proto_block, block_context
             ),
             Event::ConsensusRequest(request) => write!(
                 f,
@@ -296,12 +297,9 @@ where
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewProtoBlock {
-                era_id,
-                proto_block,
-                block_context,
-                parent,
-            } => handling_es.handle_new_proto_block(era_id, proto_block, block_context, parent),
+            Event::NewProtoBlock(new_proto_block) => {
+                handling_es.handle_new_proto_block(new_proto_block)
+            }
             Event::BlockAdded(block) => handling_es.handle_block_added(*block),
             Event::ResolveValidity {
                 era_id,

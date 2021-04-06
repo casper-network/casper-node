@@ -251,19 +251,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     TIMER_ID_ACTIVE_VALIDATOR,
                 )]
             }
-            AvEffect::RequestNewBlock {
-                block_context,
-                fork_choice,
-            } => {
-                let parent_value = fork_choice
-                    .as_ref()
-                    .map(|hash| self.highway.state().block(hash).value.clone());
-                let past_values = self.non_finalized_values(fork_choice).cloned().collect();
-                vec![ProtocolOutcome::CreateNewBlock {
-                    block_context,
-                    past_values,
-                    parent_value,
-                }]
+            AvEffect::RequestNewBlock(block_context) => {
+                vec![ProtocolOutcome::CreateNewBlock(block_context)]
             }
             AvEffect::WeAreFaulty(fault) => {
                 error!("this validator is faulty: {:?}", fault);
@@ -433,24 +422,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// appropriate.
     fn next_era_round_succ_meter(&self, era_start_timestamp: Timestamp) -> RoundSuccessMeter<C> {
         self.round_success_meter.next_era(era_start_timestamp)
-    }
-
-    /// Returns an iterator over all the values that are expected to become finalized, but are not
-    /// finalized yet.
-    fn non_finalized_values(
-        &self,
-        mut fork_choice: Option<C::Hash>,
-    ) -> impl Iterator<Item = &C::ConsensusValue> {
-        let last_finalized = self.finality_detector.last_finalized();
-        iter::from_fn(move || {
-            if fork_choice.as_ref() == last_finalized {
-                return None;
-            }
-            let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
-            let value = maybe_block.map(|block| &block.value);
-            fork_choice = maybe_block.and_then(|block| block.parent().cloned());
-            value
-        })
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
@@ -794,7 +765,7 @@ where
     fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
         let effects = self.highway.propose(value, block_context);
