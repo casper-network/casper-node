@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     env,
 };
 
@@ -12,12 +12,11 @@ use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock, cl_context::ClContext,
-        consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
-        traits::ConsensusValueT,
+        cl_context::ClContext,
+        consensus_protocol::{ConsensusProtocol, ProposedBlock},
+        protocols::highway::HighwayProtocol,
     },
-    crypto::hash::Digest,
-    types::{ProtoBlock, Timestamp},
+    types::Timestamp,
 };
 
 const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
@@ -25,11 +24,9 @@ const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
 static CASPER_ENABLE_DETAILED_CONSENSUS_METRICS: Lazy<bool> =
     Lazy::new(|| env::var(CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR).is_ok());
 
-/// A candidate block waiting for validation and dependencies.
+/// A proposed block waiting for validation and dependencies.
 #[derive(DataSize)]
 pub struct PendingCandidate {
-    /// The candidate, to be passed into the consensus instance once dependencies are resolved.
-    candidate: CandidateBlock,
     /// Whether the proto block has been validated yet.
     validated: bool,
     /// A list of IDs of accused validators for which we are still missing evidence.
@@ -37,9 +34,8 @@ pub struct PendingCandidate {
 }
 
 impl PendingCandidate {
-    fn new(candidate: CandidateBlock, missing_evidence: Vec<PublicKey>) -> Self {
+    fn new(missing_evidence: Vec<PublicKey>) -> Self {
         PendingCandidate {
-            candidate,
             validated: false,
             missing_evidence,
         }
@@ -58,8 +54,8 @@ pub struct Era<I> {
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
-    /// has been validated; the vector contains the list of accused validators missing evidence.
-    candidates: Vec<PendingCandidate>,
+    /// has been validated; the map contains the list of accused validators missing evidence.
+    candidates: HashMap<ProposedBlock<ClContext>, PendingCandidate>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
     /// previous switch block.
     pub(crate) newly_slashed: Vec<PublicKey>,
@@ -85,7 +81,7 @@ impl<I> Era<I> {
             consensus,
             start_time,
             start_height,
-            candidates: Vec::new(),
+            candidates: HashMap::new(),
             newly_slashed,
             slashed,
             accusations: HashSet::new(),
@@ -97,66 +93,69 @@ impl<I> Era<I> {
     /// yet.
     pub(crate) fn add_candidate(
         &mut self,
-        candidate: CandidateBlock,
+        proposed_block: ProposedBlock<ClContext>,
         missing_evidence: Vec<PublicKey>,
     ) {
         self.candidates
-            .push(PendingCandidate::new(candidate, missing_evidence));
+            .insert(proposed_block, PendingCandidate::new(missing_evidence));
     }
 
     /// Marks the dependencies of candidate blocks on evidence against validator `pub_key` as
     /// resolved and returns all candidates that have no missing dependencies left.
-    pub(crate) fn resolve_evidence(&mut self, pub_key: &PublicKey) -> Vec<CandidateBlock> {
-        for pc in &mut self.candidates {
+    pub(crate) fn resolve_evidence(
+        &mut self,
+        pub_key: &PublicKey,
+    ) -> Vec<ProposedBlock<ClContext>> {
+        for pc in self.candidates.values_mut() {
             pc.missing_evidence.retain(|pk| pk != pub_key);
         }
         self.consensus.mark_faulty(pub_key);
-        self.remove_complete_candidates()
+        let (complete, candidates): (HashMap<_, _>, HashMap<_, _>) = self
+            .candidates
+            .drain()
+            .partition(|(_, candidate)| candidate.is_complete());
+        self.candidates = candidates;
+        complete
+            .into_iter()
+            .map(|(proposed_block, _)| proposed_block)
+            .collect()
     }
 
     /// Marks the proto block as valid or invalid, and returns all candidates whose validity is now
     /// fully determined.
     pub(crate) fn resolve_validity(
         &mut self,
-        proto_block: &ProtoBlock,
-        parent: Option<Digest>,
+        proposed_block: &ProposedBlock<ClContext>,
         valid: bool,
-    ) -> Vec<CandidateBlock> {
+    ) -> bool {
         if valid {
-            self.accept_proto_block(proto_block, parent)
+            self.accept_candidate_block(proposed_block)
         } else {
-            self.reject_proto_block(proto_block, parent)
+            self.reject_candidate_block(proposed_block)
         }
     }
 
     /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
-    /// resolved and returns all candidates that have no missing dependencies left.
-    pub(crate) fn accept_proto_block(
+    /// resolved and returns `true` if the block was present and has no missing dependencies.
+    pub(crate) fn accept_candidate_block(
         &mut self,
-        proto_block: &ProtoBlock,
-        parent: Option<Digest>,
-    ) -> Vec<CandidateBlock> {
-        for pc in &mut self.candidates {
-            if pc.candidate.proto_block() == proto_block && pc.candidate.parent() == parent.as_ref()
-            {
+        proposed_block: &ProposedBlock<ClContext>,
+    ) -> bool {
+        if let Some(pc) = self.candidates.get_mut(proposed_block) {
+            if !pc.missing_evidence.is_empty() {
                 pc.validated = true;
+                return false;
             }
         }
-        self.remove_complete_candidates()
+        self.candidates.remove(proposed_block).is_some()
     }
 
-    /// Removes and returns any candidate blocks depending on the validity of the specified proto
-    /// block. If it is invalid, all those candidates are invalid.
-    pub(crate) fn reject_proto_block(
+    /// Removes the invalid proposed block. Returns `true` if it was present.
+    pub(crate) fn reject_candidate_block(
         &mut self,
-        proto_block: &ProtoBlock,
-        parent: Option<Digest>,
-    ) -> Vec<CandidateBlock> {
-        let (invalid, candidates): (Vec<_>, Vec<_>) = self.candidates.drain(..).partition(|pc| {
-            pc.candidate.proto_block() == proto_block && pc.candidate.parent() == parent.as_ref()
-        });
-        self.candidates = candidates;
-        invalid.into_iter().map(|pc| pc.candidate).collect()
+        proposed_block: &ProposedBlock<ClContext>,
+    ) -> bool {
+        self.candidates.remove(proposed_block).is_some()
     }
 
     /// Adds new accusations from a finalized block.
@@ -181,16 +180,6 @@ impl<I> Era<I> {
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
     pub(crate) fn set_paused(&mut self, paused: bool) {
         self.consensus.set_paused(paused);
-    }
-
-    /// Removes and returns all candidate blocks with no missing dependencies.
-    fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
-        let (complete, candidates): (Vec<_>, Vec<_>) = self
-            .candidates
-            .drain(..)
-            .partition(PendingCandidate::is_complete);
-        self.candidates = candidates;
-        complete.into_iter().map(|pc| pc.candidate).collect()
     }
 }
 

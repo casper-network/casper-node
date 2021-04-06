@@ -32,7 +32,6 @@ use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::Component,
-    crypto::hash::Digest,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
@@ -50,7 +49,7 @@ use crate::{
 
 use cl_context::ClContext;
 pub use config::Config;
-pub(crate) use consensus_protocol::{BlockContext, EraReport};
+pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
@@ -84,6 +83,14 @@ pub struct NewProtoBlock {
     block_context: BlockContext<ClContext>,
 }
 
+#[derive(DataSize, Debug, From)]
+pub struct ResolveValidity<I> {
+    era_id: EraId,
+    sender: I,
+    proposed_block: ProposedBlock<ClContext>,
+    valid: bool,
+}
+
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub enum Event<I> {
@@ -104,13 +111,7 @@ pub enum Event<I> {
     /// A new block has been added to the linear chain.
     BlockAdded(Box<Block>),
     /// The proto-block has been validated.
-    ResolveValidity {
-        era_id: EraId,
-        sender: I,
-        proto_block: ProtoBlock,
-        parent: Option<Digest>,
-        valid: bool,
-    },
+    ResolveValidity(ResolveValidity<I>),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
     DeactivateEra {
         era_id: EraId,
@@ -202,20 +203,18 @@ impl<I: Debug> Display for Event<I> {
                 "A block has been added to the linear chain: {}",
                 block.hash()
             ),
-            Event::ResolveValidity {
+            Event::ResolveValidity(ResolveValidity {
                 era_id,
                 sender,
-                proto_block,
-                parent,
+                proposed_block,
                 valid,
-            } => write!(
+            }) => write!(
                 f,
-                "Proto-block received from {:?} for {} with parent {:?} is {}: {:?}",
+                "Proposed block received from {:?} for {} is {}: {:?}",
                 sender,
                 era_id,
-                parent,
                 if *valid { "valid" } else { "invalid" },
-                proto_block,
+                proposed_block,
             ),
             Event::DeactivateEra {
                 era_id, faulty_num, ..
@@ -301,13 +300,9 @@ where
                 handling_es.handle_new_proto_block(new_proto_block)
             }
             Event::BlockAdded(block) => handling_es.handle_block_added(*block),
-            Event::ResolveValidity {
-                era_id,
-                sender,
-                proto_block,
-                parent,
-                valid,
-            } => handling_es.resolve_validity(era_id, sender, proto_block, parent, valid),
+            Event::ResolveValidity(resolve_validity) => {
+                handling_es.resolve_validity(resolve_validity)
+            }
             Event::DeactivateEra {
                 era_id,
                 faulty_num,

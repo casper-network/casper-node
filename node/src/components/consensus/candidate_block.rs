@@ -12,7 +12,7 @@ use casper_types::PublicKey;
 use crate::{
     components::consensus::traits::ConsensusValueT,
     crypto::hash::Digest,
-    types::{ProtoBlock, Timestamp},
+    types::{DeployHash, ProtoBlock, Timestamp},
 };
 
 /// A proposed block. Once the consensus protocol reaches agreement on it, it will be converted to
@@ -49,6 +49,11 @@ impl CandidateBlock {
     /// Returns the validators accused by this block.
     pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
         &self.accusations
+    }
+
+    /// Returns an iterator over all deploy and transfer hashes.
+    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+        self.proto_block.deploys_and_transfers_iter()
     }
 }
 

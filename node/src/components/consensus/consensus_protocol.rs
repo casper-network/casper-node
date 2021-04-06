@@ -50,6 +50,34 @@ impl<C: Context> BlockContext<C> {
     }
 }
 
+/// A proposed block, with context.
+#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
+pub(crate) struct ProposedBlock<C>
+where
+    C: Context,
+{
+    value: C::ConsensusValue,
+    context: BlockContext<C>,
+}
+
+impl<C: Context> ProposedBlock<C> {
+    pub(crate) fn new(value: C::ConsensusValue, context: BlockContext<C>) -> Self {
+        ProposedBlock { value, context }
+    }
+
+    pub(crate) fn value(&self) -> &C::ConsensusValue {
+        &self.value
+    }
+
+    pub(crate) fn context(&self) -> &BlockContext<C> {
+        &self.context
+    }
+
+    pub(crate) fn destructure(self) -> (C::ConsensusValue, BlockContext<C>) {
+        (self.value, self.context)
+    }
+}
+
 /// Equivocation and reward information to be included in the terminal finalized block.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound(
@@ -118,8 +146,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue {
         sender: I,
-        consensus_value: C::ConsensusValue,
-        ancestor_values: Vec<C::ConsensusValue>,
+        proposed_block: ProposedBlock<C>,
     },
     /// New direct evidence was added against the given validator.
     NewEvidence(C::ValidatorId),
@@ -161,8 +188,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
-        value: C::ConsensusValue,
-        block_context: BlockContext<C>,
+        proposed_block: ProposedBlock<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C>;
 
@@ -170,7 +196,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// `ProtocolOutcome::ValidateConsensusvalue`.
     fn resolve_validity(
         &mut self,
-        value: &C::ConsensusValue,
+        proposed_block: ProposedBlock<C>,
         valid: bool,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C>;
