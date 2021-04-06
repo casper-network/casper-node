@@ -18,7 +18,7 @@ use blake2::{
 
 use datasize::DataSize;
 use hex::FromHexError;
-use hex_fmt::{HexFmt, HexList};
+use hex_fmt::HexList;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
@@ -217,29 +217,29 @@ impl Display for ProtoBlockHash {
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
-    wasm_deploys: Vec<DeployHash>,
-    transfers: Vec<DeployHash>,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
     timestamp: Timestamp,
     random_bit: bool,
 }
 
 impl ProtoBlock {
     pub(crate) fn new(
-        wasm_deploys: Vec<DeployHash>,
-        transfers: Vec<DeployHash>,
+        deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
         timestamp: Timestamp,
         random_bit: bool,
     ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &bincode::serialize(&(&wasm_deploys, &transfers, timestamp, random_bit))
+            &bincode::serialize(&(&deploy_hashes, &transfer_hashes, timestamp, random_bit))
                 .expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {
             hash,
-            wasm_deploys,
+            deploy_hashes,
+            transfer_hashes,
             timestamp,
-            transfers,
             random_bit,
         }
     }
@@ -254,31 +254,24 @@ impl ProtoBlock {
     }
 
     /// The list of deploy hashes included in the block.
-    pub(crate) fn wasm_deploys(&self) -> &Vec<DeployHash> {
-        &self.wasm_deploys
+    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        &self.deploy_hashes
     }
 
     /// The list of deploy hashes included in the block.
-    pub(crate) fn transfers(&self) -> &Vec<DeployHash> {
-        &self.transfers
+    pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        &self.transfer_hashes
     }
 
-    pub(crate) fn deploys_iter(&self) -> impl Iterator<Item = &DeployHash> {
-        self.wasm_deploys().iter().chain(self.transfers().iter())
+    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
     }
 
     /// A random bit needed for initializing a future era.
     pub(crate) fn random_bit(&self) -> bool {
         self.random_bit
-    }
-
-    pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, Vec<DeployHash>, bool) {
-        (
-            self.hash,
-            self.wasm_deploys,
-            self.transfers,
-            self.random_bit,
-        )
     }
 }
 
@@ -286,9 +279,10 @@ impl Display for ProtoBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "proto block {}, deploys [{}], random bit {}, timestamp {}",
+            "proto block {}, deploys {}, transfers {}, random bit {}, timestamp {}",
             self.hash.inner(),
-            DisplayIter::new(self.wasm_deploys.iter().chain(self.transfers.iter())),
+            HexList(&self.deploy_hashes),
+            HexList(&self.transfer_hashes),
             self.random_bit(),
             self.timestamp,
         )
@@ -351,7 +345,10 @@ impl DocExample for EraReport {
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
-    proto_block: ProtoBlock,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
+    timestamp: Timestamp,
+    random_bit: bool,
     era_report: Option<EraReport>,
     era_id: EraId,
     height: u64,
@@ -367,7 +364,10 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            proto_block,
+            deploy_hashes: proto_block.deploy_hashes,
+            transfer_hashes: proto_block.transfer_hashes,
+            timestamp: proto_block.timestamp,
+            random_bit: proto_block.random_bit,
             era_report,
             era_id,
             height,
@@ -375,14 +375,9 @@ impl FinalizedBlock {
         }
     }
 
-    /// The finalized proto block.
-    pub(crate) fn proto_block(&self) -> &ProtoBlock {
-        &self.proto_block
-    }
-
     /// The timestamp from when the proto block was proposed.
     pub(crate) fn timestamp(&self) -> Timestamp {
-        self.proto_block.timestamp
+        self.timestamp
     }
 
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
@@ -403,6 +398,11 @@ impl FinalizedBlock {
 
     pub(crate) fn proposer(&self) -> PublicKey {
         self.proposer
+    }
+
+    /// Returns an iterator over all deploy and transfer hashes.
+    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes.iter().chain(&self.transfer_hashes)
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -471,21 +471,12 @@ impl DocExample for FinalizedBlock {
 
 impl From<Block> for FinalizedBlock {
     fn from(block: Block) -> Self {
-        let proto_block = ProtoBlock::new(
-            block.body.deploy_hashes().clone(),
-            block.body.transfer_hashes().clone(),
-            block.header.timestamp,
-            block.header.random_bit,
-        );
-
-        let era_report = match block.header.era_end {
-            Some(data) => Some(data.era_report),
-            None => None,
-        };
-
         FinalizedBlock {
-            proto_block,
-            era_report,
+            deploy_hashes: block.body.deploy_hashes,
+            transfer_hashes: block.body.transfer_hashes,
+            timestamp: block.header.timestamp,
+            random_bit: block.header.random_bit,
+            era_report: block.header.era_end.map(|era_end| era_end.era_report),
             era_id: block.header.era_id,
             height: block.header.height,
             proposer: block.body.proposer,
@@ -497,14 +488,14 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block {:10} in era {:?}, height {}, deploys {:10}, random bit {}, \
-            timestamp {}",
-            HexFmt(self.proto_block.hash().inner()),
+            "finalized block in era {:?}, height {}, deploys {:10}, transfers {:10}, \
+            random bit {}, timestamp {}",
             self.era_id,
             self.height,
-            HexList(&self.proto_block.wasm_deploys),
-            self.proto_block.random_bit,
-            self.timestamp(),
+            HexList(&self.deploy_hashes),
+            HexList(&self.transfer_hashes),
+            self.random_bit,
+            self.timestamp,
         )?;
         if let Some(ee) = &self.era_report {
             write!(formatter, ", era_end: {}", ee)?;
@@ -1051,14 +1042,10 @@ impl Block {
     ) -> Self {
         let body = BlockBody::new(
             finalized_block.proposer,
-            finalized_block.proto_block.wasm_deploys().clone(),
-            finalized_block.proto_block.transfers().clone(),
+            finalized_block.deploy_hashes,
+            finalized_block.transfer_hashes,
         );
         let body_hash = body.hash();
-
-        let era_id = finalized_block.era_id();
-        let height = finalized_block.height();
-        let timestamp = finalized_block.timestamp();
 
         let era_end = match finalized_block.era_report {
             Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
@@ -1069,7 +1056,7 @@ impl Block {
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
         hasher.update(parent_seed);
-        hasher.update([finalized_block.proto_block.random_bit as u8]);
+        hasher.update([finalized_block.random_bit as u8]);
         hasher.finalize_variable(|slice| {
             accumulated_seed.copy_from_slice(slice);
         });
@@ -1078,12 +1065,12 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            random_bit: finalized_block.proto_block.random_bit,
+            random_bit: finalized_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end,
-            timestamp,
-            era_id,
-            height,
+            timestamp: finalized_block.timestamp,
+            era_id: finalized_block.era_id,
+            height: finalized_block.height,
             protocol_version,
         };
 

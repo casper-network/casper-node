@@ -342,7 +342,7 @@ pub struct Reactor {
     linear_chain_sync: LinearChainSync<NodeId>,
     block_validator: BlockValidator<Block, NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
-    linear_chain: linear_chain::LinearChain<NodeId>,
+    linear_chain: linear_chain::LinearChainComponent<NodeId>,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -491,10 +491,9 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_block_header(),
         );
 
-        let linear_chain = linear_chain::LinearChain::new(
+        let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
             *protocol_version,
-            chainspec_loader.initial_state_root_hash(),
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
             chainspec_loader

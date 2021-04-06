@@ -17,6 +17,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use itertools::Itertools;
 use prometheus::{self, Registry};
 use tracing::{debug, error, info, trace, warn};
 
@@ -266,9 +267,9 @@ impl BlockProposerReady {
                 error!("got loaded event for block proposer state during ready state");
                 Effects::new()
             }
-            Event::FinalizedProtoBlock { block, mut height } => {
-                let (_, mut deploys, transfers, _) = block.destructure();
-                deploys.extend(transfers);
+            Event::FinalizedBlock(block) => {
+                let deploys = block.deploys_and_transfers_iter().copied().collect_vec();
+                let mut height = block.height();
 
                 if height > self.sets.next_finalized {
                     debug!(
@@ -413,14 +414,14 @@ impl BlockProposerReady {
         let max_block_size_bytes = deploy_config.max_block_size as usize;
         let block_gas_limit = Gas::from(deploy_config.block_gas_limit);
 
-        let mut transfers = Vec::new();
-        let mut wasm_deploys = Vec::new();
+        let mut transfer_hashes = Vec::new();
+        let mut deploy_hashes = Vec::new();
         let mut block_gas_running_total = Gas::zero();
         let mut block_size_running_total = 0usize;
 
         for (hash, deploy_type) in self.sets.pending.iter() {
-            let at_max_transfers = transfers.len() == max_transfers;
-            let at_max_deploys = wasm_deploys.len() == max_deploys
+            let at_max_transfers = transfer_hashes.len() == max_transfers;
+            let at_max_deploys = deploy_hashes.len() == max_deploys
                 || (deploy_type.is_wasm()
                     && block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes);
 
@@ -441,7 +442,7 @@ impl BlockProposerReady {
 
             // always include wasm-less transfers if we are under the max for them
             if deploy_type.is_transfer() && !at_max_transfers {
-                transfers.push(*hash);
+                transfer_hashes.push(*hash);
             } else if deploy_type.is_wasm() && !at_max_deploys {
                 if block_size_running_total + deploy_type.size() > max_block_size_bytes {
                     continue;
@@ -468,13 +469,13 @@ impl BlockProposerReady {
                 if gas_running_total > block_gas_limit {
                     continue;
                 }
-                wasm_deploys.push(*hash);
+                deploy_hashes.push(*hash);
                 block_gas_running_total = gas_running_total;
                 block_size_running_total += deploy_type.size();
             }
         }
 
-        ProtoBlock::new(wasm_deploys, transfers, block_timestamp, random_bit)
+        ProtoBlock::new(deploy_hashes, transfer_hashes, block_timestamp, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
