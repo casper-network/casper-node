@@ -18,7 +18,8 @@ use crate::{
     },
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata, FinalitySignature,
+        Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployMetadata,
+        FinalitySignature,
     },
     utils::WithDir,
 };
@@ -78,6 +79,19 @@ fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
     let mut block = Box::new(Block::random(rng));
     block.set_height(height);
     block
+}
+
+/// Requests block header at a specific height from a storage component.
+fn get_block_header_at_height(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    height: u64,
+) -> Option<BlockHeader> {
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetBlockHeaderAtHeight { height, responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
 }
 
 /// Requests block at a specific height from a storage component.
@@ -387,10 +401,14 @@ fn can_retrieve_block_by_height() {
 
     // Both block at ID and highest block should return `None` initially.
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
     assert!(get_highest_block(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 14).is_none());
     assert!(get_block_at_height(&mut harness, &mut storage, 33).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 33).is_none());
     assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 99).is_none());
 
     // Inserting 33 changes this.
     let was_new = put_block(&mut harness, &mut storage, block_33.clone());
@@ -401,12 +419,19 @@ fn can_retrieve_block_by_height() {
         Some(&*block_33)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
     assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 14).is_none());
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33)
     );
+    assert_eq!(
+        get_block_header_at_height(&mut harness, &mut storage, 33).as_ref(),
+        Some(block_33.header())
+    );
     assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 99).is_none());
 
     // Inserting block with height 14, no change in highest.
     let was_new = put_block(&mut harness, &mut storage, block_14.clone());
@@ -417,15 +442,25 @@ fn can_retrieve_block_by_height() {
         Some(&*block_33)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
+        get_block_header_at_height(&mut harness, &mut storage, 14).as_ref(),
+        Some(block_14.header())
+    );
+    assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33)
     );
+    assert_eq!(
+        get_block_header_at_height(&mut harness, &mut storage, 33).as_ref(),
+        Some(block_33.header())
+    );
     assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 99).is_none());
 
     // Inserting block with height 99, changes highest.
     let was_new = put_block(&mut harness, &mut storage, block_99.clone());
@@ -436,17 +471,30 @@ fn can_retrieve_block_by_height() {
         Some(&*block_99)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut harness, &mut storage, 0).is_none());
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
         Some(&*block_14)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut harness, &mut storage, 14).as_ref(),
+        Some(block_14.header())
     );
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
+        get_block_header_at_height(&mut harness, &mut storage, 33).as_ref(),
+        Some(block_33.header())
+    );
+    assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 99).as_ref(),
         Some(&*block_99)
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut harness, &mut storage, 99).as_ref(),
+        Some(block_99.header())
     );
 }
 
