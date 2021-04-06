@@ -981,7 +981,7 @@ where
             } => {
                 let past_deploys = past_values
                     .iter()
-                    .flat_map(|candidate| candidate.proto_block().deploys_iter())
+                    .flat_map(|candidate| candidate.proto_block().deploys_and_transfers_iter())
                     .cloned()
                     .collect();
                 let parent = parent_value.as_ref().map(CandidateBlock::hash);
@@ -1076,10 +1076,10 @@ where
                 self.era_mut(era_id)
                     .add_candidate(candidate_block, missing_evidence.clone());
                 let proto_block_deploys_set: BTreeSet<DeployHash> =
-                    proto_block.deploys_iter().cloned().collect();
+                    proto_block.deploys_and_transfers_iter().cloned().collect();
                 for ancestor_block in ancestor_blocks {
                     let ancestor_proto_block = ancestor_block.proto_block();
-                    for deploy in ancestor_proto_block.deploys_iter() {
+                    for deploy in ancestor_proto_block.deploys_and_transfers_iter() {
                         if proto_block_deploys_set.contains(deploy) {
                             return self.resolve_validity(
                                 era_id,
@@ -1269,7 +1269,7 @@ where
     REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
 {
-    for deploy_hash in proto_block.deploys_iter() {
+    for deploy_hash in proto_block.deploys_and_transfers_iter() {
         let execution_results = match effect_builder
             .get_deploy_and_metadata_from_storage(*deploy_hash)
             .await

@@ -759,8 +759,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
-            .proto_block()
-            .deploys_iter()
+            .deploys_and_transfers_iter()
             .copied()
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
