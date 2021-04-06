@@ -72,7 +72,7 @@ impl LinearChain {
     }
 
     /// Returns whether we have already enqueued that finality signature.
-    pub(super) fn is_pending(&self, fs: &FinalitySignature) -> bool {
+    fn is_pending(&self, fs: &FinalitySignature) -> bool {
         let creator = fs.public_key;
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
@@ -80,13 +80,13 @@ impl LinearChain {
     }
 
     /// Returns whether we have already seen and stored the finality signature.
-    pub(super) fn is_new(&self, fs: &FinalitySignature) -> bool {
+    fn is_new(&self, fs: &FinalitySignature) -> bool {
         !self.signature_cache.known_signature(fs)
     }
 
     // New linear chain block received. Collect any pending finality signatures that
     // were waiting for that block.
-    pub(super) fn new_block(&mut self, block: &Block) -> Vec<Signature> {
+    fn new_block(&mut self, block: &Block) -> Vec<Signature> {
         let signatures = self.collect_pending_finality_signatures(block.hash());
         if signatures.is_empty() {
             return vec![];
@@ -103,11 +103,7 @@ impl LinearChain {
 
     /// Tries to add the finality signature to the collection of pending finality signatures.
     /// Returns true if added successfully, otherwise false.
-    pub(super) fn add_pending_finality_signature(
-        &mut self,
-        fs: FinalitySignature,
-        gossiped: bool,
-    ) -> bool {
+    fn add_pending_finality_signature(&mut self, fs: FinalitySignature, gossiped: bool) -> bool {
         let FinalitySignature {
             block_hash,
             public_key,
@@ -161,7 +157,7 @@ impl LinearChain {
     }
 
     /// Removes finality signature from the pending collection.
-    pub(super) fn remove_from_pending_fs(&mut self, fs: &FinalitySignature) -> Option<Signature> {
+    fn remove_from_pending_fs(&mut self, fs: &FinalitySignature) -> Option<Signature> {
         let FinalitySignature {
             block_hash,
             era_id: _era_id,
@@ -174,7 +170,7 @@ impl LinearChain {
     }
 
     /// Caches the signature.
-    pub(super) fn cache_signatures(&mut self, mut signatures: BlockSignatures) {
+    fn cache_signatures(&mut self, mut signatures: BlockSignatures) {
         // Merge already-known signatures and the new ones.
         self.get_signatures(&signatures.block_hash)
             .iter()
@@ -187,19 +183,19 @@ impl LinearChain {
     }
 
     /// Returns cached finality signatures that we have already validated and stored.
-    pub(super) fn get_signatures(&self, block_hash: &BlockHash) -> Option<BlockSignatures> {
+    fn get_signatures(&self, block_hash: &BlockHash) -> Option<BlockSignatures> {
         self.signature_cache.get(block_hash)
     }
 
-    pub(super) fn current_protocol_version(&self) -> ProtocolVersion {
+    fn current_protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
-    pub(super) fn set_latest_block(&mut self, block: Block) {
+    fn set_latest_block(&mut self, block: Block) {
         self.latest_block = Some(block);
     }
 
-    pub(super) fn latest_block(&self) -> &Option<Block> {
+    fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
     }
 
