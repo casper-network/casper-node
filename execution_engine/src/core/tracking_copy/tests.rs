@@ -1039,8 +1039,8 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     const PACKAGE_OFFSET: u64 = 1_000;
 
     // create a long chain of contract at address X with a named key that points to a contract X+1
-    // which has a size that exceeds `MAXIMUM_QUERY_DEPTH_LIMIT`.
-    for value in 0..engine_config.query_depth_limit + 1 {
+    // which has a size that exceeds configured max query depth.
+    for value in 1..=engine_config.max_query_depth {
         let contract_key = Key::Hash(val_to_hashaddr(value));
         let next_contract_key = Key::Hash(val_to_hashaddr(value + 1));
         let contract_name = format!("contract{}", value);
@@ -1075,7 +1075,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     assert!(
         matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
         depth
-    }) if depth == engine_config.query_depth_limit + 1),
+    }) if depth == engine_config.max_query_depth),
         "{:?}",
         result
     );
@@ -1093,8 +1093,8 @@ fn query_with_large_depth_with_urefs_should_fail() {
     let root_key_name = "key".to_string();
 
     // create a long chain of urefs at address X with a uref that points to a uref X+1
-    // which has a size that exceeds `MAXIMUM_QUERY_DEPTH_LIMIT`.
-    for value in 0..engine_config.query_depth_limit + 1 {
+    // which has a size that exceeds configured max query depth.
+    for value in 1..=engine_config.max_query_depth {
         let uref_addr = val_to_hashaddr(value);
         let uref = Key::URef(URef::new(uref_addr, AccessRights::READ));
 
@@ -1136,7 +1136,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
     assert!(
         matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
         depth
-    }) if depth == engine_config.query_depth_limit + 1),
+    }) if depth == engine_config.max_query_depth),
         "{:?}",
         result
     );

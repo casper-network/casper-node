@@ -259,4 +259,4 @@ verify_accounts = true
 # Optional depth limit to use for global state queries.
 #
 # If unset, defaults to 5.
-#query_depth_limit = 5
+#max_query_depth = 5

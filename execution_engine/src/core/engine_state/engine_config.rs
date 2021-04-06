@@ -1,22 +1,22 @@
-const DEFAULT_QUERY_DEPTH_LIMIT: u64 = 5;
+const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]
 pub struct EngineConfig {
-    pub(crate) query_depth_limit: u64,
+    pub(crate) max_query_depth: u64,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         EngineConfig {
-            query_depth_limit: DEFAULT_QUERY_DEPTH_LIMIT,
+            max_query_depth: DEFAULT_MAX_QUERY_DEPTH,
         }
     }
 }
 
 impl EngineConfig {
     /// Creates a new engine configuration with provided parameters.
-    pub fn new(query_depth_limit: u64) -> EngineConfig {
-        EngineConfig { query_depth_limit }
+    pub fn new(max_query_depth: u64) -> EngineConfig {
+        EngineConfig { max_query_depth }
     }
 }
