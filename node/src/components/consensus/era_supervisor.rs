@@ -36,12 +36,12 @@ use crate::{
         cl_context::{ClContext, Keypair},
         config::ProtocolConfig,
         consensus_protocol::{
-            BlockContext, ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock,
-            ProtocolOutcome, ProtocolOutcomes,
+            ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProtocolOutcome,
+            ProtocolOutcomes,
         },
         metrics::ConsensusMetrics,
         traits::{ConsensusValueT, NodeIdT},
-        ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
+        ActionId, Config, ConsensusMessage, Event, NewProtoBlock, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
     effect::{
@@ -694,11 +694,13 @@ where
 
     pub(super) fn handle_new_proto_block(
         &mut self,
-        era_id: EraId,
-        proto_block: ProtoBlock,
-        block_context: BlockContext,
-        parent: Option<Digest>,
+        new_proto_block: NewProtoBlock,
     ) -> Effects<Event<I>> {
+        let NewProtoBlock {
+            era_id,
+            proto_block,
+            block_context,
+        } = new_proto_block;
         if !self.era_supervisor.is_bonded(era_id) {
             warn!(era = era_id.value(), "new proto block in outdated era");
             return Effects::new();
@@ -711,6 +713,7 @@ where
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
+        let parent = block_context.parent_value().map(CandidateBlock::hash);
         let candidate_block = CandidateBlock::new(proto_block, accusations, parent);
         self.delegate_to_era(era_id, move |consensus| {
             consensus.propose(candidate_block, block_context, Timestamp::now())
@@ -975,29 +978,26 @@ where
                 .effect_builder
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
-            ProtocolOutcome::CreateNewBlock {
-                block_context,
-                past_values,
-                parent_value,
-            } => {
-                let past_deploys = past_values
+            ProtocolOutcome::CreateNewBlock(block_context) => {
+                let past_deploys = block_context
+                    .ancestor_values()
                     .iter()
                     .flat_map(|candidate| candidate.proto_block().deploys_and_transfers_iter())
                     .cloned()
                     .collect();
-                let parent = parent_value.as_ref().map(CandidateBlock::hash);
                 self.effect_builder
                     .request_proto_block(
-                        block_context,
+                        block_context.timestamp(),
                         past_deploys,
                         self.era_supervisor.next_block_height,
                         self.rng.gen(),
                     )
-                    .event(move |(proto_block, block_context)| Event::NewProtoBlock {
-                        era_id,
-                        proto_block,
-                        block_context,
-                        parent,
+                    .event(move |proto_block| {
+                        Event::NewProtoBlock(NewProtoBlock {
+                            era_id,
+                            proto_block,
+                            block_context,
+                        })
                     })
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {

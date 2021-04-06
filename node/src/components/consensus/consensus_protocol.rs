@@ -11,15 +11,21 @@ use crate::{
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
-pub struct BlockContext {
+pub(crate) struct BlockContext<C>
+where
+    C: Context,
+{
     timestamp: Timestamp,
-    height: u64,
+    ancestor_values: Vec<C::ConsensusValue>,
 }
 
-impl BlockContext {
+impl<C: Context> BlockContext<C> {
     /// Constructs a new `BlockContext`.
-    pub(crate) fn new(timestamp: Timestamp, height: u64) -> Self {
-        BlockContext { timestamp, height }
+    pub(crate) fn new(timestamp: Timestamp, ancestor_values: Vec<C::ConsensusValue>) -> Self {
+        BlockContext {
+            timestamp,
+            ancestor_values,
+        }
     }
 
     /// The block's timestamp.
@@ -27,9 +33,20 @@ impl BlockContext {
         self.timestamp
     }
 
+    /// The block's relative height, i.e. the number of ancestors in the current era.
     #[cfg(test)]
     pub(crate) fn height(&self) -> u64 {
-        self.height
+        self.ancestor_values.len() as u64
+    }
+
+    /// The values of the block's ancestors.
+    pub(crate) fn ancestor_values(&self) -> &[C::ConsensusValue] {
+        &self.ancestor_values
+    }
+
+    /// The value of the parent.
+    pub(crate) fn parent_value(&self) -> Option<&C::ConsensusValue> {
+        self.ancestor_values.get(0)
     }
 }
 
@@ -90,11 +107,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
-    CreateNewBlock {
-        block_context: BlockContext,
-        past_values: Vec<C::ConsensusValue>,
-        parent_value: Option<C::ConsensusValue>,
-    },
+    CreateNewBlock(BlockContext<C>),
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
     /// Request validation of the consensus value, contained in a message received from the given
@@ -149,7 +162,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C>;
 
