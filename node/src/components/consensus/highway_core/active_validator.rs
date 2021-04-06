@@ -915,7 +915,7 @@ mod tests {
             [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
                 block_context: bctx,
                 ..
-            }] if *timestamp == 426.into() => *bctx,
+            }] if *timestamp == 426.into() => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
         assert_eq!(
@@ -1041,7 +1041,7 @@ mod tests {
             [Eff::ScheduleTimer(_), Eff::RequestNewBlock {
                 block_context: bctx,
                 ..
-            }] => *bctx,
+            }] => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
 
@@ -1075,7 +1075,7 @@ mod tests {
                 [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock {
                     block_context: bctx,
                     ..
-                }] => (*witness_timestamp, *bctx),
+                }] => (*witness_timestamp, bctx.clone()),
                 effects => panic!("unexpected effects {:?}", effects),
             };
 
