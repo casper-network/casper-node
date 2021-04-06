@@ -1,9 +1,14 @@
+use std::collections::HashMap;
+
 use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, warn};
 
-use crate::types::{Block, BlockHash, BlockSignatures, FinalitySignature};
-use casper_types::{EraId, ProtocolVersion};
+use crate::{
+    crypto::hash::Digest,
+    types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
+};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
@@ -21,6 +26,32 @@ pub(crate) struct LinearChain {
     auction_delay: u64,
     unbonding_delay: u64,
 }
+pub(super) enum Outcome {
+    // Store block signatures to storage.
+    StoreBlockSignatures(BlockSignatures),
+    // Store execution results to storage.
+    StoreExecutionResults(BlockHash, HashMap<DeployHash, ExecutionResult>),
+    // Store block.
+    StoreBlock(Box<Block>),
+    // Read finality signatures for the block from storage.
+    LoadSignatures(Box<FinalitySignature>),
+    // Gossip finality signature to peers.
+    Gossip(Box<FinalitySignature>),
+    // Create a reactor announcement about new (valid) finality signatures.
+    AnnounceSignature(Box<FinalitySignature>),
+    // Create a reactor announcement about new (valid) block.
+    AnnounceBlock(Box<Block>),
+    // Check if creator of `new_fs` is known trusted validator.
+    // Carries additional context necessary to create the corresponding event.
+    VerifyIfBonded {
+        new_fs: Box<FinalitySignature>,
+        known_fs: Option<Box<BlockSignatures>>,
+        protocol_version: ProtocolVersion,
+        latest_state_root_hash: Option<Digest>,
+    },
+}
+
+pub(super) type Outcomes = Vec<Outcome>;
 
 impl LinearChain {
     pub(crate) fn new(
@@ -179,5 +210,155 @@ impl LinearChain {
             .into_iter()
             .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
             .collect_vec()
+    }
+
+    pub(super) fn handle_new_block(
+        &mut self,
+        block: Box<Block>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+    ) -> Outcomes {
+        let mut outcomes = vec![];
+        let signatures = self.new_block(&*block);
+        if !signatures.is_empty() {
+            let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
+            for sig in signatures.iter() {
+                block_signatures.insert_proof(sig.public_key(), sig.signature());
+            }
+            outcomes.push(Outcome::StoreBlockSignatures(block_signatures));
+            for signature in signatures {
+                if signature.is_local() {
+                    outcomes.push(Outcome::Gossip(Box::new(signature.to_inner().clone())));
+                }
+                outcomes.push(Outcome::AnnounceSignature(signature.take()));
+            }
+        };
+        let block_hash = *block.hash();
+        outcomes.push(Outcome::StoreBlock(block));
+        outcomes.push(Outcome::StoreExecutionResults(
+            block_hash,
+            execution_results,
+        ));
+        outcomes
+    }
+
+    pub(super) fn handle_put_block(&mut self, block: Box<Block>) -> Outcomes {
+        self.set_latest_block(*block.clone());
+        vec![Outcome::AnnounceBlock(block)]
+    }
+
+    pub(super) fn handle_finality_signature(
+        &mut self,
+        fs: Box<FinalitySignature>,
+        gossiped: bool,
+    ) -> Outcomes {
+        let FinalitySignature { block_hash, .. } = *fs;
+        if !self.add_pending_finality_signature(*fs.clone(), gossiped) {
+            // If we did not add the signature it means it's either incorrect or we already
+            // know it.
+            return vec![];
+        }
+        match self.get_signatures(&block_hash) {
+            // Not found in the cache, look in the storage.
+            None => vec![Outcome::LoadSignatures(fs)],
+            Some(signatures) => self.handle_cached_signatures(Some(Box::new(signatures)), fs),
+        }
+    }
+
+    pub(super) fn handle_cached_signatures(
+        &mut self,
+        signatures: Option<Box<BlockSignatures>>,
+        fs: Box<FinalitySignature>,
+    ) -> Outcomes {
+        if let Some(known_signatures) = &signatures {
+            // If the newly-received finality signature does not match the era of previously
+            // validated signatures reject it as they can't both be
+            // correct – block was created in a specific era so the IDs have to match.
+            if known_signatures.era_id != fs.era_id {
+                warn!(public_key = %fs.public_key,
+                    expected = %known_signatures.era_id,
+                    got = %fs.era_id,
+                    "finality signature with invalid era id.");
+                self.remove_from_pending_fs(&*fs);
+                // TODO: Disconnect from the sender.
+                return vec![];
+            }
+            if known_signatures.has_proof(&fs.public_key) {
+                self.remove_from_pending_fs(&fs);
+                return vec![];
+            }
+            // Populate cache so that next incoming signatures don't trigger read from the
+            // storage. If `known_signatures` are already from cache then this will be a
+            // noop.
+            self.cache_signatures(*known_signatures.clone());
+        }
+        // Check if the validator is bonded in the era in which the block was created.
+        // TODO: Use protocol version that is valid for the block's height.
+        let protocol_version = self.current_protocol_version();
+        let latest_state_root_hash = self
+            .latest_block()
+            .as_ref()
+            .map(|block| *block.header().state_root_hash());
+        vec![Outcome::VerifyIfBonded {
+            new_fs: fs,
+            known_fs: signatures,
+            protocol_version,
+            latest_state_root_hash,
+        }]
+    }
+
+    pub(super) fn handle_is_bonded(
+        &mut self,
+        maybe_known_signatures: Option<Box<BlockSignatures>>,
+        new_fs: Box<FinalitySignature>,
+        is_bonded: bool,
+    ) -> Outcomes {
+        if !is_bonded {
+            // Creator of the finality signature (`new_fs`) is not known to be a trusted
+            // validator. Neither in the current era nor in the eras for which
+            // we have already run auctions for.
+            self.remove_from_pending_fs(&new_fs);
+            let FinalitySignature {
+                public_key,
+                block_hash,
+                ..
+            } = *new_fs;
+            warn!(
+                validator = %public_key,
+                %block_hash,
+                "Received a signature from a validator that is not bonded."
+            );
+            // TODO: Disconnect from the sender.
+            return vec![];
+        }
+
+        match maybe_known_signatures {
+            None => {
+                // Unknown block but validator is bonded.
+                // We should finalize the same block eventually. Either in this or in the
+                // next eras. New signature is already cached for later.
+                vec![]
+            }
+            Some(mut known_signatures) => {
+                // New finality signature from a bonded validator.
+                known_signatures.insert_proof(new_fs.public_key, new_fs.signature);
+                // Cache the results in case we receive the same finality signature before we
+                // manage to store it in the database.
+                self.cache_signatures(*known_signatures.clone());
+                debug!(hash = %known_signatures.block_hash, "storing finality signatures");
+                // Announce new finality signatures for other components to pick up.
+                let mut outcomes = vec![Outcome::AnnounceSignature(new_fs.clone())];
+                if let Some(signature) = self.remove_from_pending_fs(&*new_fs) {
+                    // This shouldn't return `None` as we added the `fs` to the pending collection
+                    // when we received it. If it _is_ `None` then a concurrent
+                    // flow must have already removed it. If it's a signature
+                    // created by this node, gossip it.
+                    if signature.is_local() {
+                        outcomes.push(Outcome::Gossip(new_fs.clone()));
+                    }
+                };
+                outcomes.push(Outcome::StoreBlockSignatures(*known_signatures));
+                outcomes
+            }
+        }
     }
 }
