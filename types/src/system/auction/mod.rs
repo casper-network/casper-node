@@ -20,6 +20,7 @@ pub use constants::*;
 pub use delegator::Delegator;
 pub use era_info::*;
 pub use error::Error;
+use num_traits::{CheckedMul, CheckedSub};
 pub use providers::{
     AccountProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
 };
@@ -62,7 +63,10 @@ pub trait Auction:
             .map(|(era_id, recipients)| {
                 let validator_weights = recipients
                     .into_iter()
-                    .map(|(public_key, bid)| (public_key, bid.total_stake()))
+                    .filter_map(|(public_key, bid)| match bid.total_stake() {
+                        Some(stake) => Some((public_key, stake)),
+                        None => None,
+                    })
                     .collect::<ValidatorWeights>();
                 (era_id, validator_weights)
             })
@@ -358,7 +362,7 @@ pub trait Auction:
 
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let mut era_id = detail::get_era_id(self)?;
+        let mut era_id: EraId = detail::get_era_id(self)?;
         let mut bids = detail::get_bids(self)?;
 
         // Process unbond requests
@@ -412,9 +416,15 @@ pub trait Auction:
         };
 
         // Increment era
-        era_id += 1;
+        era_id = match era_id.checked_add(1) {
+            Some(era_id) => era_id,
+            None => return Err(Error::ArithmeticOverflow),
+        };
 
-        let delayed_era = era_id + auction_delay;
+        let delayed_era = match era_id.checked_add(auction_delay) {
+            Some(delayed_era) => delayed_era,
+            None => return Err(Error::ArithmeticOverflow),
+        };
 
         // Update seigniorage recipients for current era
         {
@@ -464,7 +474,10 @@ pub trait Auction:
                 .get(&public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
-            let total_stake = recipient.total_stake();
+            let total_stake = match recipient.total_stake() {
+                Some(stake) => stake,
+                None => return Err(Error::ArithmeticOverflow),
+            };
             if total_stake.is_zero() {
                 // TODO: error?
                 continue;
@@ -472,10 +485,16 @@ pub trait Auction:
 
             let total_reward: Ratio<U512> = {
                 let reward_rate = Ratio::new(U512::from(reward_factor), U512::from(BLOCK_REWARD));
-                reward_rate * base_round_reward
+                match reward_rate.checked_mul(&Ratio::from_integer(base_round_reward)) {
+                    Some(total_reward) => total_reward,
+                    None => return Err(Error::ArithmeticOverflow),
+                }
             };
 
-            let delegator_total_stake: U512 = recipient.delegator_total_stake();
+            let delegator_total_stake: U512 = match recipient.delegator_total_stake() {
+                Some(stake) => stake,
+                None => return Err(Error::ArithmeticOverflow),
+            };
 
             let delegators_part: Ratio<U512> = {
                 let commission_rate = Ratio::new(
@@ -483,9 +502,20 @@ pub trait Auction:
                     U512::from(DELEGATION_RATE_DENOMINATOR),
                 );
                 let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-                let delegator_reward: Ratio<U512> = total_reward * reward_multiplier;
-                let commission: Ratio<U512> = delegator_reward * commission_rate;
-                delegator_reward - commission
+                let delegator_reward: Ratio<U512> =
+                    match total_reward.checked_mul(&reward_multiplier) {
+                        Some(reward) => reward,
+                        None => return Err(Error::ArithmeticOverflow),
+                    };
+                let commission: Ratio<U512> = match delegator_reward.checked_mul(&commission_rate) {
+                    Some(commission) => commission,
+                    None => return Err(Error::ArithmeticOverflow),
+                };
+                let delegator_part = match delegator_reward.checked_sub(&commission) {
+                    Some(part) => part,
+                    None => return Err(Error::ArithmeticOverflow),
+                };
+                delegator_part
             };
 
             let delegator_rewards =

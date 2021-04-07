@@ -71,7 +71,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::TotalSupplyNotFound)?;
 
         // decrease total supply
-        let reduced_total_supply = total_supply - amount;
+        let reduced_total_supply = match total_supply.checked_sub(amount) {
+            Some(supply) => supply,
+            None => return Err(Error::ArithmeticOverflow),
+        };
 
         // update total supply
         self.write(total_supply_uref, reduced_total_supply)?;
@@ -135,7 +138,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(round_seigniorage_rate_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let ret = (round_seigniorage_rate * Ratio::from(total_supply)).to_integer();
+        let ret = match round_seigniorage_rate
+            .to_integer()
+            .checked_mul(total_supply)
+        {
+            Some(ret) => ret,
+            None => return Err(Error::ArithmeticOverflow),
+        };
 
         Ok(ret)
     }
