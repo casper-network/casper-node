@@ -93,6 +93,8 @@ mod tests {
     use crate::{crypto::generate_ed25519_keypair, testing::TestRng, types::FinalitySignature};
     use casper_types::EraId;
 
+    use std::collections::BTreeMap;
+
     #[test]
     fn membership_test() {
         let mut rng = TestRng::new();
@@ -121,12 +123,15 @@ mod tests {
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a1.clone()))));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a2.clone()))));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_b))));
-        let collected_sigs: Vec<FinalitySignature> = pending_sigs
+        let collected_sigs: BTreeMap<PublicKey, FinalitySignature> = pending_sigs
             .collect_pending(&block_hash)
             .into_iter()
-            .map(|sig| *sig.take())
+            .map(|sig| (sig.public_key(), *sig.take()))
             .collect();
-        let expected_sigs = vec![sig_a1.clone(), sig_a2.clone()];
+        let expected_sigs = vec![sig_a1.clone(), sig_a2.clone()]
+            .into_iter()
+            .map(|sig| (sig.public_key, sig))
+            .collect();
         assert_eq!(collected_sigs, expected_sigs);
         assert!(
             !pending_sigs.has_finality_signature(&sig_a1.public_key, &sig_a1.block_hash),
