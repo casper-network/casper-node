@@ -446,6 +446,9 @@ impl Storage {
             } => responder
                 .respond(self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?)
                 .ignore(),
+            StorageRequest::GetBlockHeaderAtHeight { height, responder } => responder
+                .respond(self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)?)
+                .ignore(),
             StorageRequest::GetBlockAtHeight { height, responder } => responder
                 .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
@@ -455,6 +458,11 @@ impl Storage {
                     .respond(self.get_highest_block(&mut txn)?)
                     .ignore()
             }
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => responder
+                .respond(
+                    self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?,
+                )
+                .ignore(),
             StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
                 .respond(self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?)
                 .ignore(),
@@ -751,6 +759,18 @@ impl Storage {
         Ok(maybe_block_header_and_finality_signatures)
     }
 
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.block_height_index
+            .get(&height)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .transpose()
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
@@ -760,6 +780,19 @@ impl Storage {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
+
+    /// Retrieves single switch block header by era ID by looking it up in the index and returning
+    /// it.
+    fn get_switch_block_header_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
     }
 

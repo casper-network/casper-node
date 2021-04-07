@@ -216,6 +216,13 @@ pub enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve block header with given height.
+    GetBlockHeaderAtHeight {
+        /// Height of the block.
+        height: BlockHeight,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
@@ -227,6 +234,13 @@ pub enum StorageRequest {
     GetHighestBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve switch block header with given era ID.
+    GetSwitchBlockHeaderAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve switch block with given era ID.
     GetSwitchBlockAtEraId {
@@ -349,10 +363,16 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockHeaderAtHeight { height, .. } => {
+                write!(formatter, "get block header at height {}", height)
+            }
             StorageRequest::GetBlockAtHeight { height, .. } => {
                 write!(formatter, "get block at height {}", height)
             }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block header at era id {}", era_id)
+            }
             StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block at era id {}", era_id)
             }
