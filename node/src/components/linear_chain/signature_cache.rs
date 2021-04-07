@@ -112,5 +112,8 @@ mod tests {
 
         // Verify that era-0 signature is not cached anymore.
         assert!(!cache.known_signature(&block_hash, &sig_a.public_key));
+
+        // Verify that era-1 signature is cached.
+        assert!(cache.known_signature(&block_hash, &sig_b.public_key));
     }
 }
