@@ -784,8 +784,9 @@ where
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
+        let now = Timestamp::now();
         self.blocklist
-            .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
+            .retain(|_, ts| *ts > now - *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
