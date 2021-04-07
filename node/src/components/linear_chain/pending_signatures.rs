@@ -86,3 +86,86 @@ impl PendingSignatures {
             .retain(|_, sigs| !sigs.is_empty());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{crypto::generate_ed25519_keypair, testing::TestRng, types::FinalitySignature};
+    use casper_types::EraId;
+
+    #[test]
+    fn membership_test() {
+        let mut rng = TestRng::new();
+        let mut pending_sigs = PendingSignatures::new();
+        let block_hash = BlockHash::random(&mut rng);
+        let block_hash_other = BlockHash::random(&mut rng);
+        let sig_a = FinalitySignature::random_for_block(block_hash, 0);
+        let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
+        let public_key = sig_a.public_key;
+        let public_key_other = sig_b.public_key;
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_a.clone()))));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
+        assert!(!pending_sigs.has_finality_signature(&public_key_other, &block_hash));
+        assert!(!pending_sigs.has_finality_signature(&public_key, &block_hash_other));
+    }
+
+    #[test]
+    fn collect_pending() {
+        let mut rng = TestRng::new();
+        let mut pending_sigs = PendingSignatures::new();
+        let block_hash = BlockHash::random(&mut rng);
+        let block_hash_other = BlockHash::random(&mut rng);
+        let sig_a1 = FinalitySignature::random_for_block(block_hash, 0);
+        let sig_a2 = FinalitySignature::random_for_block(block_hash, 0);
+        let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_a1.clone()))));
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_a2.clone()))));
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_b.clone()))));
+        let collected_sigs: Vec<FinalitySignature> = pending_sigs
+            .collect_pending(&block_hash)
+            .into_iter()
+            .map(|sig| *sig.take())
+            .collect();
+        let expected_sigs = vec![sig_a1.clone(), sig_a2.clone()];
+        assert_eq!(collected_sigs, expected_sigs);
+        assert!(
+            !pending_sigs.has_finality_signature(&sig_a1.public_key, &sig_a1.block_hash),
+            "collecting should remove the signature"
+        );
+        assert!(
+            !pending_sigs.has_finality_signature(&sig_a2.public_key, &sig_a2.block_hash),
+            "collecting should remove the signature"
+        );
+    }
+
+    #[test]
+    fn remove_signature() {
+        let mut rng = TestRng::new();
+        let mut pending_sigs = PendingSignatures::new();
+        let block_hash = BlockHash::random(&mut rng);
+        let sig = FinalitySignature::random_for_block(block_hash, 0);
+        assert!(pending_sigs.add(Signature::External(Box::new(sig.clone()))));
+        let removed_sig = pending_sigs.remove(&sig.public_key, &sig.block_hash);
+        assert!(removed_sig.is_some());
+        assert!(!pending_sigs.has_finality_signature(&sig.public_key, &sig.block_hash));
+        assert!(pending_sigs
+            .remove(&sig.public_key, &sig.block_hash)
+            .is_none());
+    }
+
+    #[test]
+    fn max_limit_respected() {
+        let mut rng = TestRng::new();
+        let mut pending_sigs = PendingSignatures::new();
+        let (sec_key, pub_key) = generate_ed25519_keypair();
+        let era_id = EraId::new(0);
+        for _ in 0..MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
+            let block_hash = BlockHash::random(&mut rng);
+            let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key.clone());
+            assert!(pending_sigs.add(Signature::External(Box::new(sig))));
+        }
+        let block_hash = BlockHash::random(&mut rng);
+        let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key.clone());
+        assert!(!pending_sigs.add(Signature::External(Box::new(sig))));
+    }
+}

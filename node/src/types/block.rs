@@ -35,6 +35,8 @@ use casper_types::{
 
 use super::{Item, Tag, Timestamp};
 #[cfg(test)]
+use crate::crypto::generate_ed25519_keypair;
+#[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     components::consensus,
@@ -1632,6 +1634,12 @@ impl FinalitySignature {
         bytes.extend_from_slice(&self.era_id.to_le_bytes());
         crypto::verify(bytes, &self.signature, &self.public_key)
     }
+
+    #[cfg(test)]
+    pub fn random_for_block(block_hash: BlockHash, era_id: u64) -> Self {
+        let (sec_key, pub_key) = generate_ed25519_keypair();
+        FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)
+    }
 }
 
 impl Display for FinalitySignature {
@@ -1764,7 +1772,7 @@ mod tests {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
         // Signature should be over both block hash and era id.
-        let (secret_key, public_key) = crypto::generate_ed25519_keypair();
+        let (secret_key, public_key) = generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId::from(1);
         let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key);
