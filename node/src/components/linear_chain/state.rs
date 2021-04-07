@@ -78,7 +78,12 @@ impl LinearChain {
 
     /// Returns whether we have already seen and stored the finality signature.
     fn is_new(&self, fs: &FinalitySignature) -> bool {
-        !self.signature_cache.known_signature(fs)
+        let FinalitySignature {
+            block_hash,
+            public_key,
+            ..
+        } = fs;
+        !self.signature_cache.known_signature(block_hash, public_key)
     }
 
     // New linear chain block received. Collect any pending finality signatures that
@@ -201,7 +206,14 @@ impl LinearChain {
         self.pending_finality_signatures
             .collect_pending(block_hash)
             .into_iter()
-            .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
+            .filter(|sig| {
+                let FinalitySignature {
+                    block_hash,
+                    public_key,
+                    ..
+                } = sig.to_inner();
+                !self.signature_cache.known_signature(block_hash, public_key)
+            })
             .collect_vec()
     }
 
