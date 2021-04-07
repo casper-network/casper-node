@@ -511,11 +511,10 @@ pub trait Auction:
                     Some(commission) => commission,
                     None => return Err(Error::ArithmeticOverflow),
                 };
-                let delegator_part = match delegator_reward.checked_sub(&commission) {
+                match delegator_reward.checked_sub(&commission) {
                     Some(part) => part,
                     None => return Err(Error::ArithmeticOverflow),
-                };
-                delegator_part
+                }
             };
 
             let delegator_rewards =
