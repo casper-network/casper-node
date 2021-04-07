@@ -13,6 +13,7 @@ pub use crate::system::mint::{
     constants::*, error::Error, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider, system_provider::SystemProvider,
 };
+use num_traits::CheckedMul;
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
@@ -138,11 +139,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(round_seigniorage_rate_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let ret = match round_seigniorage_rate
-            .to_integer()
-            .checked_mul(total_supply)
-        {
-            Some(ret) => ret,
+        let ret = match round_seigniorage_rate.checked_mul(&Ratio::from(total_supply)) {
+            Some(ratio) => ratio.to_integer(),
             None => return Err(Error::ArithmeticOverflow),
         };
 
