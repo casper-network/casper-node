@@ -2094,7 +2094,7 @@ where
         let main_purse_balance_key = {
             let main_purse = account.main_purse();
             match tracking_copy
-                .borrow_mut()
+                .borrow()
                 .get_purse_balance_key(correlation_id, main_purse.into())
             {
                 Ok(balance_key) => balance_key,
@@ -2103,7 +2103,7 @@ where
         };
 
         let (account_balance, proof) = match tracking_copy
-            .borrow_mut()
+            .borrow()
             .get_purse_balance_with_proof(correlation_id, main_purse_balance_key)
         {
             Ok((balance, proof)) => (balance, proof),
