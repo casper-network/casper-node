@@ -30,7 +30,7 @@ use crate::{
     types::{BlockByHeight, Timestamp},
     NodeRng,
 };
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 pub use event::Event;
 use state::LinearChain;
@@ -49,15 +49,9 @@ impl<I> LinearChainComponent<I> {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
-        activation_era_id: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
-        let linear_chain_state = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
-            activation_era_id,
-        );
+        let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,

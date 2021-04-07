@@ -8,7 +8,7 @@ use crate::{
     crypto::hash::Digest,
     types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
-use casper_types::{EraId, ExecutionResult, ProtocolVersion};
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
@@ -20,7 +20,6 @@ pub(crate) struct LinearChain {
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: PendingSignatures,
     signature_cache: SignatureCache,
-    activation_era_id: EraId,
     /// Current protocol version of the network.
     protocol_version: ProtocolVersion,
     auction_delay: u64,
@@ -58,13 +57,11 @@ impl LinearChain {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
-        activation_era_id: EraId,
     ) -> Self {
         LinearChain {
             latest_block: None,
             pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
-            activation_era_id,
             protocol_version,
             auction_delay,
             unbonding_delay,
@@ -81,7 +78,12 @@ impl LinearChain {
 
     /// Returns whether we have already seen and stored the finality signature.
     fn is_new(&self, fs: &FinalitySignature) -> bool {
-        !self.signature_cache.known_signature(fs)
+        let FinalitySignature {
+            block_hash,
+            public_key,
+            ..
+        } = fs;
+        !self.signature_cache.known_signature(block_hash, public_key)
     }
 
     // New linear chain block received. Collect any pending finality signatures that
@@ -204,7 +206,14 @@ impl LinearChain {
         self.pending_finality_signatures
             .collect_pending(block_hash)
             .into_iter()
-            .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
+            .filter(|sig| {
+                let FinalitySignature {
+                    block_hash,
+                    public_key,
+                    ..
+                } = sig.to_inner();
+                !self.signature_cache.known_signature(block_hash, public_key)
+            })
             .collect_vec()
     }
 
