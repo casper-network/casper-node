@@ -77,20 +77,20 @@ impl AppendableBlock {
             return Err(AddError::InvalidDeploy);
         }
         if deploy_type.is_transfer() {
-            if self.transfer_hashes.len() == self.deploy_config.block_max_transfer_count as usize {
+            if self.has_max_transfer_count() {
                 return Err(AddError::TransferCount);
             }
             self.transfer_hashes.push(hash);
         } else {
-            if self.deploy_hashes.len() == self.deploy_config.block_max_deploy_count as usize {
+            if self.has_max_deploy_count() {
                 return Err(AddError::DeployCount);
             }
             // Only deploys count towards the size and gas limits.
-            if self.total_size
-                > (self.deploy_config.max_block_size as usize).saturating_sub(deploy_type.size())
-            {
-                return Err(AddError::BlockSize);
-            }
+            let new_total_size = self
+                .total_size
+                .checked_add(deploy_type.size())
+                .filter(|size| *size <= self.deploy_config.max_block_size as usize)
+                .ok_or(AddError::BlockSize)?;
             let payment_amount = deploy_type.payment_amount();
             let gas_price = deploy_type.header().gas_price();
             let gas =
@@ -101,7 +101,7 @@ impl AppendableBlock {
             }
             self.deploy_hashes.push(hash);
             self.total_gas = new_total_gas;
-            self.total_size += deploy_type.size();
+            self.total_size = new_total_size;
         }
         self.deploy_and_transfer_set.insert(hash);
         Ok(())
@@ -117,5 +117,17 @@ impl AppendableBlock {
             ..
         } = self;
         ProtoBlock::new(deploy_hashes, transfer_hashes, timestamp, random_bit)
+    }
+
+    /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
+    /// more transfers can be added to this block.
+    fn has_max_transfer_count(&self) -> bool {
+        self.transfer_hashes.len() == self.deploy_config.block_max_transfer_count as usize
+    }
+
+    /// Returns `true` if the number of deploys is already the maximum allowed count, i.e. no more
+    /// deploys can be added to this block.
+    fn has_max_deploy_count(&self) -> bool {
+        self.deploy_hashes.len() == self.deploy_config.block_max_deploy_count as usize
     }
 }
