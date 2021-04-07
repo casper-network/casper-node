@@ -403,13 +403,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             false,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             false,
         )?;
 
