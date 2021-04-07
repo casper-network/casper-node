@@ -11,9 +11,10 @@ use std::{convert::Infallible, fmt::Display, marker::PhantomData};
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use self::metrics::LinearChainMetrics;
-use super::Component;
+use casper_types::{EraId, ProtocolVersion};
+
 use crate::{
+    components::fetcher::FetchedOrNotFound,
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
@@ -23,12 +24,13 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::{BlockByHeight, BlockSignatures, FinalitySignature, Timestamp},
+    types::{BlockSignatures, FinalitySignature, Timestamp},
     NodeRng,
 };
-use casper_types::{EraId, ProtocolVersion};
 
+use crate::components::Component;
 pub use event::Event;
+use metrics::LinearChainMetrics;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
@@ -83,30 +85,32 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => async move {
-                match effect_builder.get_block_from_storage(block_hash).await {
-                    None => debug!("failed to get {} for {}", block_hash, sender),
-                    Some(block) => match Message::new_get_response(&block) {
-                        Ok(message) => effect_builder.send_message(sender, message).await,
-                        Err(error) => error!("failed to create get-response {}", error),
-                    },
+                let fetched_or_not_found_block =
+                    match effect_builder.get_block_from_storage(block_hash).await {
+                        None => FetchedOrNotFound::NotFound(block_hash),
+                        Some(block) => FetchedOrNotFound::Fetched(block),
+                    };
+                match Message::new_get_response(&fetched_or_not_found_block) {
+                    Ok(message) => effect_builder.send_message(sender, message).await,
+                    Err(error) => error!("failed to create get-response {}", error),
                 }
             }
             .ignore(),
             Event::Request(LinearChainRequest::BlockWithMetadataAtHeight(height, sender)) => {
                 async move {
-                    if let Some(block_with_metadata) = effect_builder
+                    let fetch_or_not_found_block_with_metadata = match effect_builder
                         .get_block_at_height_with_metadata_from_storage(height)
                         .await
                     {
-                        match Message::new_get_response(&block_with_metadata) {
-                            Ok(message) => effect_builder.send_message(sender, message).await,
-                            Err(error) => {
-                                error!("failed to create get-response {}", error);
-                            }
-                        }
-                    } else {
-                        debug!("failed to get {} for {}", height, sender);
+                        None => FetchedOrNotFound::NotFound(height),
+                        Some(block) => FetchedOrNotFound::Fetched(block),
                     };
+                    match Message::new_get_response(&fetch_or_not_found_block_with_metadata) {
+                        Ok(message) => effect_builder.send_message(sender, message).await,
+                        Err(error) => {
+                            error!("failed to create get-response {}", error);
+                        }
+                    }
                 }
                 .ignore()
             }

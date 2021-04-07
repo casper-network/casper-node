@@ -34,7 +34,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
-        fetcher::{self, Fetcher},
+        fetcher::{self, FetchedOrNotFound, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
@@ -62,7 +62,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag},
+    types::{Block, BlockHash, Deploy, DeployHash, ExitCode, NodeId, ProtoBlock, Tag},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -675,7 +675,8 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
-                            let deploy_hash = match bincode::deserialize(&serialized_id) {
+                            let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id)
+                            {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -686,30 +687,22 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
 
-                            match self
+                            let fetched_or_not_found_deploy = match self
                                 .storage
                                 .handle_legacy_direct_deploy_request(deploy_hash)
                             {
-                                // This functionality was moved out of the storage component and
-                                // should be refactored ASAP.
-                                Some(deploy) => {
-                                    match Message::new_get_response(&deploy) {
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                    };
+                                Some(deploy) => FetchedOrNotFound::Fetched(deploy),
+                                None => FetchedOrNotFound::NotFound(deploy_hash),
+                            };
+                            match Message::new_get_response(&fetched_or_not_found_deploy) {
+                                Ok(message) => {
+                                    return effect_builder.send_message(sender, message).ignore();
                                 }
-                                None => {
-                                    debug!("failed to get {} for {}", deploy_hash, sender);
+                                Err(error) => {
+                                    error!("failed to create get-response: {}", error);
                                     return Effects::new();
                                 }
-                            }
+                            };
                         }
                         Tag::Block => {
                             let block_hash = match bincode::deserialize(&serialized_id) {
@@ -757,24 +750,12 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
 
-                            match self.storage.read_block_header_by_hash(&block_hash) {
-                                Ok(Some(block_header)) => {
-                                    match Message::new_get_response(&block_header) {
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                    };
-                                }
-                                Ok(None) => {
-                                    debug!("failed to get {} for {}", block_hash, sender);
-                                    return Effects::new();
-                                }
+                            let fetched_or_not_found_block_header = match self
+                                .storage
+                                .read_block_header_by_hash(&block_hash)
+                            {
+                                Ok(Some(block_header)) => FetchedOrNotFound::Fetched(block_header),
+                                Ok(None) => FetchedOrNotFound::NotFound(block_hash),
                                 Err(error) => {
                                     error!(
                                         "failed to get {} for {}: {}",
@@ -782,10 +763,20 @@ impl reactor::Reactor for Reactor {
                                     );
                                     return Effects::new();
                                 }
-                            }
+                            };
+
+                            match Message::new_get_response(&fetched_or_not_found_block_header) {
+                                Err(error) => {
+                                    error!("failed to create get-response: {}", error);
+                                    return Effects::new();
+                                }
+                                Ok(message) => {
+                                    return effect_builder.send_message(sender, message).ignore();
+                                }
+                            };
                         }
                         Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            let block_height = match bincode::deserialize(&serialized_id) {
+                            let block_height: u64 = match bincode::deserialize(&serialized_id) {
                                 Ok(block_height) => block_height,
                                 Err(error) => {
                                     error!(
@@ -795,35 +786,36 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
-                            match self
-                                .storage
-                                .read_block_header_and_finality_signatures_by_height(block_height)
-                            {
-                                Ok(Some(block_header)) => {
-                                    match Message::new_get_response(&block_header) {
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                    };
-                                }
-                                Ok(None) => {
-                                    debug!("failed to get {} for {}", block_height, sender);
-                                    return Effects::new();
+                            let fetched_or_not_found_block_header_and_finality_signatures =
+                                match self
+                                    .storage
+                                    .read_block_header_and_finality_signatures_by_height(
+                                        block_height,
+                                    ) {
+                                    Ok(Some(block_header)) => {
+                                        FetchedOrNotFound::Fetched(block_header)
+                                    }
+                                    Ok(None) => FetchedOrNotFound::NotFound(block_height),
+                                    Err(error) => {
+                                        error!(
+                                            "failed to get {} for {}: {}",
+                                            block_height, sender, error
+                                        );
+                                        return Effects::new();
+                                    }
+                                };
+
+                            match Message::new_get_response(
+                                &fetched_or_not_found_block_header_and_finality_signatures,
+                            ) {
+                                Ok(message) => {
+                                    return effect_builder.send_message(sender, message).ignore();
                                 }
                                 Err(error) => {
-                                    error!(
-                                        "failed to get {} for {}: {}",
-                                        block_height, sender, error
-                                    );
+                                    error!("failed to create get-response: {}", error);
                                     return Effects::new();
                                 }
-                            }
+                            };
                         }
                     },
                     Message::GetResponse {
@@ -831,8 +823,19 @@ impl reactor::Reactor for Reactor {
                         serialized_item,
                     } => match tag {
                         Tag::Deploy => {
-                            let deploy = match bincode::deserialize(&serialized_item) {
-                                Ok(deploy) => Box::new(deploy),
+                            let deploy: Box<Deploy> = match bincode::deserialize::<
+                                FetchedOrNotFound<Deploy, DeployHash>,
+                            >(
+                                &serialized_item
+                            ) {
+                                Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                                Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                                    error!(
+                                        "peer did not have deploy with hash {}: {}",
+                                        sender, deploy_hash
+                                    );
+                                    return Effects::new();
+                                }
                                 Err(error) => {
                                     error!("failed to decode deploy from {}: {}", sender, error);
                                     return Effects::new();

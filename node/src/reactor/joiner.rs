@@ -18,6 +18,8 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
+use casper_types::{PublicKey, U512};
+
 #[cfg(not(feature = "fast-sync"))]
 use crate::components::linear_chain_sync::{self, LinearChainSync};
 #[cfg(feature = "fast-sync")]
@@ -35,7 +37,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::EventStreamServer,
-        fetcher::{self, Fetcher},
+        fetcher::{self, FetchedOrNotFound, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
@@ -67,13 +69,12 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
-        ProtoBlock, Tag, Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
+        DeployHash, ExitCode, NodeId, ProtoBlock, Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
 };
-use casper_types::{PublicKey, U512};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -605,16 +606,23 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::Block,
                     serialized_item,
                 } => {
-                    let block = match bincode::deserialize(&serialized_item) {
-                        Ok(block) => Box::new(block),
+                    let event = match bincode::deserialize::<FetchedOrNotFound<Block, BlockHash>>(
+                        &serialized_item,
+                    ) {
+                        Ok(FetchedOrNotFound::Fetched(block)) => fetcher::Event::GotRemotely {
+                            item: Box::new(block),
+                            source: Source::Peer(sender),
+                        },
+                        Ok(FetchedOrNotFound::NotFound(block_hash)) => {
+                            fetcher::Event::AbsentRemotely {
+                                id: block_hash,
+                                peer: sender,
+                            }
+                        }
                         Err(err) => {
                             error!("failed to decode block from {}: {}", sender, err);
                             return Effects::new();
                         }
-                    };
-                    let event = fetcher::Event::GotRemotely {
-                        item: block,
-                        source: Source::Peer(sender),
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockFetcher(event))
                 }
@@ -622,18 +630,26 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::BlockAndMetadataByHeight,
                     serialized_item,
                 } => {
-                    let block_with_metadata_at_height: BlockWithMetadata =
-                        match bincode::deserialize(&serialized_item) {
-                            Ok(maybe_block) => maybe_block,
-                            Err(err) => {
-                                error!("failed to decode block from {}: {}", sender, err);
-                                return Effects::new();
+                    let event = match bincode::deserialize::<
+                        FetchedOrNotFound<BlockWithMetadata, u64>,
+                    >(&serialized_item)
+                    {
+                        Ok(FetchedOrNotFound::Fetched(block_with_metadata)) => {
+                            fetcher::Event::GotRemotely {
+                                item: Box::new(block_with_metadata),
+                                source: Source::Peer(sender),
                             }
-                        };
-
-                    let event = fetcher::Event::GotRemotely {
-                        item: Box::new(block_with_metadata_at_height),
-                        source: Source::Peer(sender),
+                        }
+                        Ok(FetchedOrNotFound::NotFound(block_height)) => {
+                            fetcher::Event::AbsentRemotely {
+                                id: block_height,
+                                peer: sender,
+                            }
+                        }
+                        Err(err) => {
+                            error!("failed to decode block from {}: {}", sender, err);
+                            return Effects::new();
+                        }
                     };
                     self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(event))
                 }
@@ -641,10 +657,19 @@ impl reactor::Reactor for Reactor {
                     tag: Tag::Deploy,
                     serialized_item,
                 } => {
-                    let deploy = match bincode::deserialize(&serialized_item) {
-                        Ok(deploy) => Box::new(deploy),
-                        Err(err) => {
-                            error!("failed to decode deploy from {}: {}", sender, err);
+                    let deploy: Box<Deploy> = match bincode::deserialize(&serialized_item) {
+                        Ok(FetchedOrNotFound::Fetched::<Deploy, DeployHash>(deploy)) => {
+                            Box::new(deploy)
+                        }
+                        Ok(FetchedOrNotFound::NotFound::<Deploy, DeployHash>(deploy_hash)) => {
+                            error!(
+                                "Peer did not have deploy with hash {}: {}",
+                                sender, deploy_hash
+                            );
+                            return Effects::new();
+                        }
+                        Err(error) => {
+                            error!("failed to decode deploy from {}: {}", sender, error);
                             return Effects::new();
                         }
                     };

@@ -7,6 +7,7 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
 use prometheus::Registry;
+use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
@@ -19,10 +20,7 @@ use casper_types::Key;
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
     effect::{
-        requests::{
-            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
-            StorageRequest,
-        },
+        requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
@@ -41,8 +39,6 @@ pub trait ReactorEventT<T>:
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
-    // Won't be needed when we implement "get block by height" feature in storage.
-    + From<LinearChainRequest<NodeId>>
     + Send
     + 'static
 where
@@ -59,10 +55,16 @@ where
         + From<NetworkRequest<NodeId, Message>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
-        + From<LinearChainRequest<NodeId>>
         + Send
         + 'static,
 {
+}
+
+/// Message to be returned by a peer. Indicates if the item could be fetched or not.
+#[derive(Serialize, Deserialize)]
+pub enum FetchedOrNotFound<T, Id> {
+    Fetched(T),
+    NotFound(Id),
 }
 
 pub trait ItemFetcher<T: Item + 'static> {

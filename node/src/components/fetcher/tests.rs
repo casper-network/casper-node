@@ -121,7 +121,7 @@ impl Reactor {
         match network_announcement {
             NetworkAnnouncement::MessageReceived { sender, payload } => match payload {
                 Message::GetRequest { serialized_id, .. } => {
-                    let deploy_hash = match bincode::deserialize(&serialized_id) {
+                    let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
                         Ok(hash) => hash,
                         Err(error) => {
                             error!(
@@ -132,21 +132,18 @@ impl Reactor {
                         }
                     };
 
-                    match self
+                    let fetched_or_not_found_deploy = match self
                         .storage
                         .handle_legacy_direct_deploy_request(deploy_hash)
                     {
-                        // This functionality was moved out of the storage component and
-                        // should be refactored ASAP.
-                        Some(deploy) => match Message::new_get_response(&deploy) {
-                            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                            Err(error) => {
-                                error!("failed to create get-response: {}", error);
-                                Effects::new()
-                            }
-                        },
-                        None => {
-                            debug!("failed to get {} for {}", deploy_hash, sender);
+                        None => FetchedOrNotFound::NotFound(deploy_hash),
+                        Some(deploy) => FetchedOrNotFound::Fetched(deploy),
+                    };
+
+                    match Message::new_get_response(&fetched_or_not_found_deploy) {
+                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                        Err(error) => {
+                            error!("failed to create get-response: {}", error);
                             Effects::new()
                         }
                     }

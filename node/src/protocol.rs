@@ -8,7 +8,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus, gossiper, small_network::GossipedAddress},
+    components::{consensus, fetcher::FetchedOrNotFound, gossiper, small_network::GossipedAddress},
     types::{Deploy, FinalitySignature, Item, Tag},
 };
 
@@ -51,7 +51,12 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
+    pub(crate) fn new_get_response<T>(
+        item: &FetchedOrNotFound<T, T::Id>,
+    ) -> Result<Self, bincode::Error>
+    where
+        T: Item,
+    {
         Ok(Message::GetResponse {
             tag: T::TAG,
             serialized_item: bincode::serialize(item)?,
