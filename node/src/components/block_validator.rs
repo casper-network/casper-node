@@ -54,7 +54,7 @@ pub enum Event<T, I> {
 
     /// Deploy was invalid. Unable to convert to a deploy type.
     #[display(fmt = "deploy {} invalid", _0)]
-    DeployInvalid(DeployHash),
+    CannotConvertDeploy(DeployHash),
 }
 
 /// State of the current process of block validation.
@@ -299,8 +299,8 @@ where
                     self.in_flight.inc(&deploy_hash);
                 }
             }
-            Event::DeployInvalid(deploy_hash) => {
-                info!(%deploy_hash, "deploy invalid");
+            Event::CannotConvertDeploy(deploy_hash) => {
+                info!(%deploy_hash, "cannot convert deploy to deploy type");
                 // Deploy is invalid. There's no point waiting for other in-flight requests to
                 // finish.
                 self.in_flight.dec(&deploy_hash);
@@ -343,7 +343,7 @@ where
     let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
         FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => deploy
             .deploy_type()
-            .map_or(Event::DeployInvalid(deploy_hash), |deploy_type| {
+            .map_or(Event::CannotConvertDeploy(deploy_hash), |deploy_type| {
                 Event::DeployFound {
                     deploy_hash,
                     deploy_type: Box::new(deploy_type),
