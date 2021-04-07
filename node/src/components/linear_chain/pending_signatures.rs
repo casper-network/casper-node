@@ -103,7 +103,7 @@ mod tests {
         let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
         let public_key = sig_a.public_key;
         let public_key_other = sig_b.public_key;
-        assert!(pending_sigs.add(Signature::External(Box::new(sig_a.clone()))));
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_a))));
         assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
         assert!(!pending_sigs.has_finality_signature(&public_key_other, &block_hash));
         assert!(!pending_sigs.has_finality_signature(&public_key, &block_hash_other));
@@ -120,7 +120,7 @@ mod tests {
         let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a1.clone()))));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a2.clone()))));
-        assert!(pending_sigs.add(Signature::External(Box::new(sig_b.clone()))));
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_b))));
         let collected_sigs: Vec<FinalitySignature> = pending_sigs
             .collect_pending(&block_hash)
             .into_iter()
@@ -161,11 +161,11 @@ mod tests {
         let era_id = EraId::new(0);
         for _ in 0..MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
             let block_hash = BlockHash::random(&mut rng);
-            let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key.clone());
+            let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key);
             assert!(pending_sigs.add(Signature::External(Box::new(sig))));
         }
         let block_hash = BlockHash::random(&mut rng);
-        let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key.clone());
+        let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key);
         assert!(!pending_sigs.add(Signature::External(Box::new(sig))));
     }
 }
