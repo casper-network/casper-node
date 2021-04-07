@@ -249,6 +249,13 @@ pub enum StorageRequest {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve the header of the block containing the deploy.
+    GetBlockHeaderForDeploy {
+        /// Hash of the deploy.
+        deploy_hash: DeployHash,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve highest switch block.
     GetHighestSwitchBlock {
         /// Responder.
@@ -375,6 +382,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block at era id {}", era_id)
+            }
+            StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
+                write!(formatter, "get block header for deploy {}", deploy_hash)
             }
             StorageRequest::GetHighestSwitchBlock { .. } => {
                 write!(formatter, "get highest switch block")
