@@ -8,6 +8,7 @@ use super::error::GasLimitError;
 
 pub(crate) const U64_MAX_AS_U512: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
 
+/// Gas counter optimized for gas limits larger than [`u64::MAX`].
 #[derive(Debug, Copy, Clone)]
 pub struct LargeGasCounter {
     total_limit: U512,
@@ -35,7 +36,6 @@ impl LargeGasCounter {
                 self.flush_buffer();
                 self.add(additional_gas)
             } else {
-                self.used_buffer = 0;
                 self.rest_of_used = self.total_limit;
                 Err(GasLimitError {})
             }
@@ -46,14 +46,19 @@ impl LargeGasCounter {
         }
     }
 
-    pub(crate) fn add_large(&mut self, mut additional_gas: U512) -> Result<(), GasLimitError> {
-        while additional_gas >= U64_MAX_AS_U512 {
-            self.add(u64::MAX)?;
-            additional_gas -= U64_MAX_AS_U512;
+    /// Adds a very large amount which is possibly exceeding [`u64::MAX`].
+    pub(crate) fn add_large(&mut self, additional_gas: U512) -> Result<(), GasLimitError> {
+        self.flush_buffer();
+        if self.total_limit - self.rest_of_used < additional_gas {
+            self.rest_of_used = self.total_limit;
+            self.limit_for_buffer = 0;
+            Err(GasLimitError)
+        } else {
+            self.rest_of_used += additional_gas;
+            self.limit_for_buffer =
+                cmp::min(U64_MAX_AS_U512, self.total_limit - self.rest_of_used).as_u64();
+            Ok(())
         }
-        // Safe as we were draining `additional_gas` until it's smaller than `u64::MAX`
-        self.add(additional_gas.as_u64())?;
-        Ok(())
     }
 
     fn flush_buffer(&mut self) {
@@ -71,6 +76,12 @@ impl LargeGasCounter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_have_valid_u64_max_value() {
+        // Ensures `U64_MAX_AS_U512` has correct layout regardless of representation
+        assert_eq!(U512::from(u64::max_value()), U64_MAX_AS_U512);
+    }
 
     #[test]
     fn increment_large_counter() {
@@ -96,7 +107,6 @@ mod tests {
     #[test]
     fn should_mix_gas_amounts() {
         let limit = (U64_MAX_AS_U512 * U512::from(3)) + U512::from(2);
-        // let gas_cost = (U64_MAX_AS_U512 * U512::from(3)) + U512::from(1);
         let mut counter = LargeGasCounter::new(Gas::new(limit), Gas::default());
         counter.add(2).unwrap();
         counter.add_large(U64_MAX_AS_U512 * U512::from(3)).unwrap();
@@ -138,5 +148,15 @@ mod tests {
         let mut large_counter = LargeGasCounter::new(Gas::new(gas_limit), Gas::new(U512::zero()));
         assert!(large_counter.add_large(gas_limit + U512::one()).is_err());
         assert_eq!(large_counter.used(), gas_limit);
+    }
+
+    #[test]
+    fn should_add_u512_limit_worst_case() {
+        let gas_limit = U512::MAX;
+        let mut large_counter = LargeGasCounter::new(Gas::new(gas_limit), Gas::new(U512::zero()));
+        large_counter.add(1).unwrap();
+        large_counter.add_large(gas_limit - U512::one()).unwrap();
+        assert_eq!(large_counter.used(), gas_limit);
+        assert!(large_counter.add(1).is_err());
     }
 }

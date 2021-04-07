@@ -18,6 +18,7 @@ pub enum GasCounter {
 }
 
 impl GasCounter {
+    /// Create a new gas counter with provided initial values.
     pub fn new(limit: Gas, initial_count: Gas) -> GasCounter {
         if limit.value() <= U64_MAX_AS_U512 && initial_count.value() <= U64_MAX_AS_U512 {
             // Small counter if values fit in `0..u64::MAX`
@@ -30,6 +31,7 @@ impl GasCounter {
         }
     }
 
+    /// Adds a gas charge.
     pub fn add(&mut self, additional_gas: u64) -> Result<(), GasLimitError> {
         match self {
             GasCounter::Small(counter) => counter.add(additional_gas),
@@ -37,6 +39,9 @@ impl GasCounter {
         }
     }
 
+    /// Adds a large gas amount (possibly larger than `u64::MAX`). This comes from sources where gas
+    /// cost is multiplied from multiple ingredients which possibly could extend the supported range
+    /// of [`GasCounter::add`].
     pub fn add_large(&mut self, additional_gas: Gas) -> Result<(), GasLimitError> {
         let gas_value = additional_gas.value();
         if gas_value <= U64_MAX_AS_U512 {
@@ -54,6 +59,7 @@ impl GasCounter {
         }
     }
 
+    /// Returns how much has is currently used.
     pub fn used(&self) -> Gas {
         match self {
             GasCounter::Small(small) => small.used().into(),

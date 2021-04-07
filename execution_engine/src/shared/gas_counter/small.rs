@@ -1,5 +1,6 @@
 use super::error::GasLimitError;
 
+/// Gas counter optimized for gas limit smaller or equal to than [`u64::MAX`].
 #[derive(Debug, Copy, Clone)]
 pub struct SmallGasCounter {
     limit: u64,
@@ -14,6 +15,7 @@ impl SmallGasCounter {
         }
     }
 
+    /// Add a gas amount.
     pub(crate) fn add(&mut self, additional_gas: u64) -> Result<(), GasLimitError> {
         if self.limit - self.used < additional_gas {
             self.saturate();
@@ -25,11 +27,12 @@ impl SmallGasCounter {
         }
     }
 
-    /// Consumes self, and returns a saturated gas counter.
+    /// Saturates gas counter. Any further operation should return [`GasLimitError`].
     pub(crate) fn saturate(&mut self) {
         self.used = self.limit;
     }
 
+    /// Returns currently used gas amount.
     pub(crate) fn used(&self) -> u64 {
         self.used
     }

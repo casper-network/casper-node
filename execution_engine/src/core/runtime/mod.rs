@@ -1426,8 +1426,7 @@ where
         // isolated runtime might have a recursive costs whenever system contract calls other system
         // contract.
         let gas_diff = mint_runtime.gas_counter().used() - gas_counter.used();
-        debug_assert!(gas_diff.value() <= U512::from(u64::MAX));
-        self.gas(gas_diff.value().as_u64())?;
+        self.context.charge_gas_large(gas_diff)?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
@@ -1544,8 +1543,7 @@ where
         };
 
         let gas_diff = runtime.gas_counter().used() - gas_counter.used();
-        debug_assert!(gas_diff.value() <= U512::from(u64::MAX));
-        self.gas(gas_diff.value().as_u64())?;
+        self.context.charge_gas_large(gas_diff)?;
 
         let ret = result?;
         let urefs = extract_urefs(&ret)?;
@@ -1762,8 +1760,7 @@ where
         // Assumes that gas spent does not exceed u64::MAX which as all system contract costs are
         // u32.
         let gas_diff = runtime.gas_counter().used() - gas_counter.used();
-        debug_assert!(gas_diff.value() <= U512::from(u64::MAX));
-        self.gas(gas_diff.value().as_u64())?;
+        self.context.charge_gas_large(gas_diff)?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
