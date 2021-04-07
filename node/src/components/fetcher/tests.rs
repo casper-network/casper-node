@@ -18,6 +18,7 @@ use crate::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
         Responder,
     },
+    fatal,
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
     testing::{
@@ -152,11 +153,27 @@ impl Reactor {
                 Message::GetResponse {
                     serialized_item, ..
                 } => {
-                    let deploy = match bincode::deserialize(&serialized_item) {
-                        Ok(deploy) => Box::new(deploy),
+                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                        &serialized_item,
+                    ) {
+                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                            return fatal!(
+                                effect_builder,
+                                "peer did not have deploy with hash {}: {}",
+                                deploy_hash,
+                                sender,
+                            )
+                            .ignore();
+                        }
                         Err(error) => {
-                            error!("failed to decode deploy from {}: {}", sender, error);
-                            return Effects::new();
+                            return fatal!(
+                                effect_builder,
+                                "failed to decode deploy from {}: {}",
+                                sender,
+                                error
+                            )
+                            .ignore();
                         }
                     };
 
