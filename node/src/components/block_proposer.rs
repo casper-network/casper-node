@@ -334,7 +334,9 @@ impl BlockProposerReady {
         if self.sets.finalized_deploys.contains_key(&hash) {
             info!(%hash, "deploy rejected from the buffer");
         } else {
-            self.sets.pending.insert(hash, deploy_or_transfer);
+            self.sets
+                .pending
+                .insert(hash, (deploy_or_transfer, current_instant));
             info!(%hash, "added deploy to the buffer");
         }
     }
@@ -346,7 +348,7 @@ impl BlockProposerReady {
     {
         for deploy_hash in deploys.into_iter() {
             match self.sets.pending.remove(&deploy_hash) {
-                Some(deploy_type) => {
+                Some((deploy_type, _)) => {
                     self.sets
                         .finalized_deploys
                         .insert(deploy_hash, deploy_type.take_header());
@@ -428,7 +430,7 @@ impl BlockProposerReady {
         let mut block_gas_running_total = Gas::zero();
         let mut block_size_running_total = 0usize;
 
-        for (hash, deploy_type) in self.sets.pending.iter() {
+        for (hash, (deploy_type, received_time)) in self.sets.pending.iter() {
             let at_max_transfers = transfers.len() == max_transfers;
             let at_max_deploys = wasm_deploys.len() == max_deploys
                 || (deploy_type.is_wasm()
@@ -445,6 +447,7 @@ impl BlockProposerReady {
                 &past_deploys,
             ) || past_deploys.contains(hash)
                 || self.sets.finalized_deploys.contains_key(hash)
+                || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay
             {
                 continue;
             }
