@@ -5,7 +5,9 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{runtime_args, ApiError, ContractHash, RuntimeArgs, URef, U512};
+use casper_types::{
+    runtime_args, system::handle_payment, ApiError, ContractHash, RuntimeArgs, URef, U512,
+};
 
 #[repr(u16)]
 enum Error {
@@ -17,26 +19,31 @@ enum Error {
 
 pub const ARG_PURSE: &str = "purse";
 const ARG_PAYMENT_AMOUNT: &str = "payment_amount";
-const SET_REFUND_PURSE: &str = "set_refund_purse";
-const GET_REFUND_PURSE: &str = "get_refund_purse";
-const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
 fn set_refund_purse(contract_hash: ContractHash, p: &URef) {
     runtime::call_contract(
         contract_hash,
-        SET_REFUND_PURSE,
+        handle_payment::METHOD_SET_REFUND_PURSE,
         runtime_args! {
             ARG_PURSE => *p,
         },
     )
 }
 
-fn get_refund_purse(handle_payment: ContractHash) -> Option<URef> {
-    runtime::call_contract(handle_payment, GET_REFUND_PURSE, runtime_args! {})
+fn get_refund_purse(handle_payment_hash: ContractHash) -> Option<URef> {
+    runtime::call_contract(
+        handle_payment_hash,
+        handle_payment::METHOD_GET_REFUND_PURSE,
+        runtime_args! {},
+    )
 }
 
 fn get_payment_purse(handle_payment: ContractHash) -> URef {
-    runtime::call_contract(handle_payment, GET_PAYMENT_PURSE, runtime_args! {})
+    runtime::call_contract(
+        handle_payment,
+        handle_payment::METHOD_GET_PAYMENT_PURSE,
+        runtime_args! {},
+    )
 }
 
 fn submit_payment(handle_payment: ContractHash, amount: U512) {
