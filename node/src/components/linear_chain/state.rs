@@ -25,6 +25,7 @@ pub(crate) struct LinearChain {
     auction_delay: u64,
     unbonding_delay: u64,
 }
+
 #[derive(Debug)]
 pub(super) enum Outcome {
     // Store block signatures to storage.
@@ -417,7 +418,10 @@ mod tests {
         let block_hash = BlockHash::random(&mut rng);
         let valid_sig = FinalitySignature::random_for_block(block_hash, 0);
         let handle_sig_outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
-        assert_eq!(handle_sig_outcomes.len(), 1);
+        assert!(matches!(
+            &*handle_sig_outcomes,
+            &[Outcome::LoadSignatures(_)]
+        ));
         assert!(
             lc.handle_finality_signature(Box::new(valid_sig), false)
                 .is_empty(),
