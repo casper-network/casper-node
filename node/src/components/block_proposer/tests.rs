@@ -14,6 +14,7 @@ use crate::{
 };
 
 const DEFAULT_TEST_GAS_PRICE: u64 = 1;
+const TEST_DEPLOY_DELAY_MILLIS: TimeDiff = TimeDiff::from_millis(10);
 
 fn default_gas_payment() -> Gas {
     Gas::from(1u32)
@@ -95,6 +96,9 @@ fn create_test_proposer() -> BlockProposerReady {
         state_key: b"block-proposer-test".to_vec(),
         request_queue: Default::default(),
         unhandled_finalized: Default::default(),
+        local_config: Config {
+            deploy_delay: TEST_DEPLOY_DELAY_MILLIS,
+        },
     }
 }
 

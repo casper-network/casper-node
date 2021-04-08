@@ -462,6 +462,7 @@ impl reactor::Reactor for Reactor {
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
+            config.block_proposer,
         )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         let block_executor = BlockExecutor::new(

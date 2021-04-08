@@ -41,6 +41,7 @@ pending_vertex_timeout = '30min'
 max_execution_delay = 3
 
 
+
 # ====================================
 # Configuration options for networking
 # ====================================
@@ -86,6 +87,7 @@ initial_gossip_delay = '5s'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
+
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -259,3 +261,14 @@ verify_accounts = true
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
+
+
+# ====================================================================
+# Configuration options for selecting deploys to propose in new blocks
+# ====================================================================
+[block_proposer]
+
+# Deploys are only proposed in a new block if the have been received at least this long ago.
+# A longer delay makes it more likely that many proposed deploys are already known by the
+# other nodes, and don't have to be requested from the proposer afterwards.
+#deploy_delay = '1min'

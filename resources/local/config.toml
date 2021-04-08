@@ -254,3 +254,14 @@ verify_accounts = true
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
+
+
+# ====================================================================
+# Configuration options for selecting deploys to propose in new blocks
+# ====================================================================
+[block_proposer]
+
+# Deploys are only proposed in a new block if the have been received at least this long ago.
+# A longer delay makes it more likely that many proposed deploys are already known by the
+# other nodes, and don't have to be requested from the proposer afterwards.
+#deploy_delay = '1min'
