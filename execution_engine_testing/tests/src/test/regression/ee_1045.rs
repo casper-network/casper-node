@@ -16,7 +16,7 @@ use casper_execution_engine::{
 use casper_types::{
     runtime_args,
     system::auction::{DelegationRate, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
-    AsymmetricType, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 

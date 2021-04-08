@@ -17,7 +17,7 @@ use casper_execution_engine::{
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
-    AsymmetricType, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

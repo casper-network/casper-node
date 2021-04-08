@@ -1,6 +1,6 @@
 use std::mem;
 
-use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
 use super::deploy_item::DeployItem;
 use crate::shared::newtypes::Blake2bHash;

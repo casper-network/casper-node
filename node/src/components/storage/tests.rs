@@ -7,7 +7,7 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{AsymmetricType, EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey};
 
 use super::{Config, Storage};
 use crate::{

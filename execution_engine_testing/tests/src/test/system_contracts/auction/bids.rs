@@ -36,7 +36,7 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    AsymmetricType, EraId, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";

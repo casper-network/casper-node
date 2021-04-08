@@ -23,7 +23,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    AsymmetricType, PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

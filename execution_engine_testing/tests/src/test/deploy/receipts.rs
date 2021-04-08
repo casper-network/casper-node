@@ -8,8 +8,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, AsymmetricType, DeployHash, PublicKey,
-    RuntimeArgs, SecretKey, Transfer, TransferAddr, U512,
+    account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs,
+    SecretKey, Transfer, TransferAddr, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

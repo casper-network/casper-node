@@ -16,9 +16,7 @@ use casper_execution_engine::{
     },
     shared::{motes::Motes, stored_value::StoredValue},
 };
-use casper_types::{
-    system::auction::DelegationRate, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512,
-};
+use casper_types::{system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, U512};
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;

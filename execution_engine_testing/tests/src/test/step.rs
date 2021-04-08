@@ -19,7 +19,7 @@ use casper_types::{
         auction::{Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD},
         mint::TOTAL_SUPPLY_KEY,
     },
-    AsymmetricType, CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {

@@ -281,7 +281,7 @@ mod tests {
 
     mod simple_types {
         use super::*;
-        use crate::{crypto::SecretKey, AsymmetricType};
+        use crate::crypto::SecretKey;
 
         #[test]
         fn bool_cl_value_should_encode_to_json() {
@@ -435,7 +435,7 @@ mod tests {
 
     mod option {
         use super::*;
-        use crate::{crypto::SecretKey, AsymmetricType};
+        use crate::crypto::SecretKey;
 
         #[test]
         fn bool_cl_value_should_encode_to_json() {
@@ -670,7 +670,7 @@ mod tests {
 
     mod result {
         use super::*;
-        use crate::{crypto::SecretKey, AsymmetricType};
+        use crate::crypto::SecretKey;
 
         #[test]
         fn bool_cl_value_should_encode_to_json() {

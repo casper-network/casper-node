@@ -30,7 +30,7 @@ use thiserror::Error;
 use casper_types::system::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{Item, Tag, Timestamp};

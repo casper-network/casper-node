@@ -44,7 +44,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    AsymmetricType, EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";

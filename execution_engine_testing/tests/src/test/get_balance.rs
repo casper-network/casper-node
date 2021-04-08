@@ -6,8 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core, core::ValidationError, shared::newtypes::Blake2bHash};
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, AsymmetricType, Key, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    account::AccountHash, runtime_args, AccessRights, Key, PublicKey, RuntimeArgs, SecretKey, URef,
+    U512,
 };
 
 const TRANSFER_ARG_TARGET: &str = "target";

@@ -55,13 +55,13 @@ pub enum Error {
     #[error("invalid operation on system key: {0}")]
     System(String),
 
-    /// Error related to the underlying signature crate
-    #[error("Error in signature")]
+    /// Error related to the underlying signature crate.
+    #[error("error in signature")]
     Signature(SignatureError),
 
-    /// Error in generating random seed for cryptographic operations.
-    #[error("Failure in the generation of a random seed")]
-    RNGFailure,
+    /// Error in getting random bytes from the system's preferred random number source.
+    #[error("failed to get random bytes: {0}")]
+    GetRandomBytes(#[from] getrandom::Error),
 }
 
 impl From<PemError> for Error {

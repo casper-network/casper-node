@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::{
     cmp::Ordering,
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
     iter,
@@ -20,11 +20,14 @@ use ed25519_dalek::{
     SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
 };
 use hex_fmt::HexFmt;
-use k256::ecdsa::{
-    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
-    VerifyingKey as Secp256k1PublicKey,
+use k256::{
+    ecdsa::{
+        Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
+        VerifyingKey as Secp256k1PublicKey,
+    },
+    elliptic_curve::zeroize::Zeroize,
+    SecretBytes as Secp256k1SecretBytes,
 };
-
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -44,15 +47,15 @@ mod tests;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
-/// Tag for system variant
+/// Tag for system variant.
 pub const SYSTEM_TAG: u8 = 0;
 const SYSTEM: &str = "System";
 
-/// Tag for ed25519 variant
+/// Tag for ed25519 variant.
 pub const ED25519_TAG: u8 = 1;
 const ED25519: &str = "Ed25519";
 
-/// Tag for secp256k1 variant
+/// Tag for secp256k1 variant.
 pub const SECP256K1_TAG: u8 = 2;
 const SECP256K1: &str = "Secp256k1";
 
@@ -60,21 +63,25 @@ const SECP256K1_SECRET_KEY_LENGTH: usize = 32;
 const SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH: usize = 33;
 const SECP256K1_SIGNATURE_LENGTH: usize = 64;
 
-/// Public key for system account
+/// Public key for system account.
 pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
 
-/// Operations on asymmetric cryptographic type
-pub trait AsymmetricType: Sized + Into<Vec<u8>> + Tagged<u8> + Clone {
-    /// Converts the signature to hex, where the first byte represents the algorithm tag.
-    fn to_hex(&self) -> String {
+/// Operations on asymmetric cryptographic type.
+pub trait AsymmetricType<'a>
+where
+    Self: 'a + Sized + Tagged<u8>,
+    &'a Self: Into<Vec<u8>>,
+{
+    /// Converts `self` to hex, where the first byte represents the algorithm tag.
+    fn to_hex(&'a self) -> String {
         let bytes = iter::once(self.tag())
-            .chain(Into::<Vec<u8>>::into(self.clone()))
+            .chain(self.into())
             .collect::<Vec<u8>>();
         hex::encode(bytes)
     }
 
-    /// Tries to decode a signature from its hex-representation.  The hex format should be as
-    /// produced by `Signature::to_hex()`.
+    /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
+    /// by `AsymmetricType::to_hex()`.
     fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
         if input.as_ref().len() < 2 {
             return Err(Error::AsymmetricKey("too short".to_string()));
@@ -133,6 +140,25 @@ impl SecretKey {
     /// The length in bytes of a secp256k1 secret key.
     pub const SECP256K1_LENGTH: usize = SECP256K1_SECRET_KEY_LENGTH;
 
+    /// Constructs a new system variant.
+    pub fn system() -> Self {
+        SecretKey::System
+    }
+
+    /// Constructs a new ed25519 variant from a byte slice.
+    pub fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
+        Ok(SecretKey::Ed25519(ed25519_dalek::SecretKey::from_bytes(
+            bytes.as_ref(),
+        )?))
+    }
+
+    /// Constructs a new secp256k1 variant from a byte slice.
+    pub fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
+        Ok(SecretKey::Secp256k1(Secp256k1SecretKey::from_bytes(
+            bytes.as_ref(),
+        )?))
+    }
+
     fn variant_name(&self) -> &str {
         match self {
             SecretKey::System => SYSTEM,
@@ -142,49 +168,19 @@ impl SecretKey {
     }
 }
 
-impl AsymmetricType for SecretKey {
-    fn system() -> Self {
-        SecretKey::System
-    }
-
-    fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(SecretKey::Ed25519(ed25519_dalek::SecretKey::from_bytes(
-            bytes.as_ref(),
-        )?))
-    }
-
-    fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(SecretKey::Secp256k1(Secp256k1SecretKey::from_bytes(
-            bytes.as_ref(),
-        )?))
-    }
-}
-
-impl From<SecretKey> for Vec<u8> {
-    fn from(secret_key: SecretKey) -> Vec<u8> {
-        Vec::<u8>::from(&secret_key)
-    }
-}
-
-impl From<&SecretKey> for Vec<u8> {
-    fn from(secret_key: &SecretKey) -> Self {
-        match secret_key {
-            SecretKey::System => Vec::new(),
-            SecretKey::Ed25519(key) => key.as_ref().into(),
-            SecretKey::Secp256k1(key) => key.to_bytes().as_slice().into(),
-        }
-    }
-}
-
 impl Clone for SecretKey {
     fn clone(&self) -> Self {
         match self {
             SecretKey::System => SecretKey::System,
-            SecretKey::Ed25519(sk) => Self::ed25519_from_bytes(*sk.as_bytes()).unwrap(),
-            SecretKey::Secp256k1(sk) => {
-                let raw_bytes: [u8; SECP256K1_SECRET_KEY_LENGTH] =
-                    sk.to_bytes().as_slice().try_into().unwrap();
-                Self::secp256k1_from_bytes(&raw_bytes).unwrap()
+            SecretKey::Ed25519(secret_key) => {
+                Self::ed25519_from_bytes(*secret_key.as_bytes()).unwrap()
+            }
+            SecretKey::Secp256k1(secret_key) => {
+                // Use `Secp256k1SecretBytes` to ensure the raw bytes are zeroized after use.
+                let mut secret_bytes = Secp256k1SecretBytes::from(secret_key.to_bytes());
+                let secret_key = Self::secp256k1_from_bytes(secret_bytes.as_ref()).unwrap();
+                secret_bytes.zeroize();
+                secret_key
             }
         }
     }
@@ -192,23 +188,13 @@ impl Clone for SecretKey {
 
 impl Debug for SecretKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "SecretKey::{}({})",
-            self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self.clone()))
-        )
+        write!(formatter, "SecretKey::{}", self.variant_name())
     }
 }
 
 impl Display for SecretKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "SecKey::{}({:10})",
-            self.variant_name(),
-            HexFmt(Into::<Vec<u8>>::into(self.clone()))
-        )
+        <Self as Debug>::fmt(self, formatter)
     }
 }
 
@@ -219,70 +205,6 @@ impl Tagged<u8> for SecretKey {
             SecretKey::Ed25519(_) => ED25519_TAG,
             SecretKey::Secp256k1(_) => SECP256K1_TAG,
         }
-    }
-}
-
-impl ToBytes for SecretKey {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            SecretKey::System => buffer.insert(0, SYSTEM_TAG),
-            SecretKey::Ed25519(secret_key) => {
-                buffer.insert(0, ED25519_TAG);
-                let ed25519_bytes = secret_key.as_bytes();
-                buffer.extend_from_slice(ed25519_bytes);
-            }
-            SecretKey::Secp256k1(secret_key) => {
-                buffer.insert(0, SECP256K1_TAG);
-                buffer.extend_from_slice(secret_key.to_bytes().as_slice());
-            }
-        }
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        TAG_LENGTH
-            + match self {
-                SecretKey::System => Self::SYSTEM_LENGTH,
-                SecretKey::Ed25519(_) => Self::ED25519_LENGTH,
-                SecretKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
-            }
-    }
-}
-
-impl FromBytes for SecretKey {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            SYSTEM_TAG => Ok((SecretKey::System, remainder)),
-            ED25519_TAG => {
-                let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
-                    FromBytes::from_bytes(remainder)?;
-                let secret_key = Self::ed25519_from_bytes(raw_bytes)
-                    .map_err(|_| bytesrepr::Error::Formatting)?;
-                Ok((secret_key, remainder))
-            }
-            SECP256K1_TAG => {
-                let (raw_bytes, remainder): ([u8; Self::SECP256K1_LENGTH], _) =
-                    FromBytes::from_bytes(remainder)?;
-                let secret_key = Self::secp256k1_from_bytes(raw_bytes)
-                    .map_err(|_| bytesrepr::Error::Formatting)?;
-                Ok((secret_key, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-impl Serialize for SecretKey {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        detail::serialize(self, serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for SecretKey {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        detail::deserialize(deserializer)
     }
 }
 
@@ -323,7 +245,7 @@ impl PublicKey {
     }
 }
 
-impl AsymmetricType for PublicKey {
+impl AsymmetricType<'_> for PublicKey {
     fn system() -> Self {
         PublicKey::System
     }
@@ -591,7 +513,7 @@ impl Signature {
     }
 }
 
-impl AsymmetricType for Signature {
+impl AsymmetricType<'_> for Signature {
     fn system() -> Self {
         Signature::System
     }
@@ -786,7 +708,7 @@ mod detail {
 
     use serde::{de::Error as _deError, Deserialize, Deserializer, Serialize, Serializer};
 
-    use super::{PublicKey, SecretKey, Signature};
+    use super::{PublicKey, Signature};
     use crate::AsymmetricType;
 
     /// Used to serialize and deserialize asymmetric key types where the (de)serializer is not a
@@ -798,16 +720,6 @@ mod detail {
         System,
         Ed25519(Vec<u8>),
         Secp256k1(Vec<u8>),
-    }
-
-    impl From<&SecretKey> for AsymmetricTypeAsBytes {
-        fn from(secret_key: &SecretKey) -> Self {
-            match secret_key {
-                SecretKey::System => AsymmetricTypeAsBytes::System,
-                key @ SecretKey::Ed25519(_) => AsymmetricTypeAsBytes::Ed25519(key.into()),
-                key @ SecretKey::Secp256k1(_) => AsymmetricTypeAsBytes::Secp256k1(key.into()),
-            }
-        }
     }
 
     impl From<&PublicKey> for AsymmetricTypeAsBytes {
@@ -832,7 +744,8 @@ mod detail {
 
     pub fn serialize<'a, T, S>(value: &'a T, serializer: S) -> Result<S::Ok, S::Error>
     where
-        T: AsymmetricType,
+        T: AsymmetricType<'a>,
+        Vec<u8>: From<&'a T>,
         S: Serializer,
         AsymmetricTypeAsBytes: From<&'a T>,
     {
@@ -843,9 +756,10 @@ mod detail {
         AsymmetricTypeAsBytes::from(value).serialize(serializer)
     }
 
-    pub fn deserialize<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+    pub fn deserialize<'a, 'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where
-        T: AsymmetricType,
+        T: AsymmetricType<'a>,
+        Vec<u8>: From<&'a T>,
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {

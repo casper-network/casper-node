@@ -135,7 +135,7 @@ mod tests {
     use crate::{
         bytesrepr,
         system::auction::{EraId, UnbondingPurse},
-        AccessRights, AsymmetricType, PublicKey, SecretKey, URef, U512,
+        AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);

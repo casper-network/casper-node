@@ -13,8 +13,7 @@ use casper_execution_engine::{
     shared::motes::Motes,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ApiError, AsymmetricType, Key, PublicKey, RuntimeArgs,
-    SecretKey, U512,
+    account::AccountHash, runtime_args, ApiError, Key, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_FAUCET_STORED: &str = "faucet_stored.wasm";
