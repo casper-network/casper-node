@@ -363,7 +363,8 @@ fn test_get_block_header_and_finality_signatures_by_height() {
     let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
 
     {
-        let alice_secret_key = SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]);
+        let alice_secret_key =
+            SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,
@@ -378,7 +379,7 @@ fn test_get_block_header_and_finality_signatures_by_height() {
     }
 
     {
-        let bob_secret_key = SecretKey::ed25519([2; SecretKey::ED25519_LENGTH]);
+        let bob_secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
         let FinalitySignature {
             public_key,
             signature,

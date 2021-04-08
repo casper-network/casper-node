@@ -72,7 +72,7 @@ impl LinearChain {
 
     /// Returns whether we have already enqueued that finality signature.
     fn is_pending(&self, fs: &FinalitySignature) -> bool {
-        let creator = fs.public_key;
+        let creator = fs.public_key.clone();
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
             .has_finality_signature(&creator, &block_hash)
@@ -113,7 +113,7 @@ impl LinearChain {
             public_key,
             era_id,
             ..
-        } = fs;
+        } = fs.clone();
         if let Some(latest_block) = self.latest_block.as_ref() {
             // If it's a switch block it has already forgotten its own era's validators,
             // unbonded some old validators, and determined new ones. In that case, we
@@ -180,7 +180,7 @@ impl LinearChain {
             .iter()
             .for_each(|bs| {
                 for (pk, sig) in bs.proofs.iter() {
-                    signatures.insert_proof(*pk, *sig);
+                    signatures.insert_proof((*pk).clone(), *sig);
                 }
             });
         self.signature_cache.insert(signatures);
@@ -347,7 +347,7 @@ impl LinearChain {
             }
             Some(mut known_signatures) => {
                 // New finality signature from a bonded validator.
-                known_signatures.insert_proof(new_fs.public_key, new_fs.signature);
+                known_signatures.insert_proof(new_fs.public_key.clone(), new_fs.signature);
                 // Cache the results in case we receive the same finality signature before we
                 // manage to store it in the database.
                 self.cache_signatures(*known_signatures.clone());

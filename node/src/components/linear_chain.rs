@@ -105,7 +105,7 @@ where
                 latest_state_root_hash,
             } => effect_builder
                 .is_bonded_validator(
-                    new_fs.public_key,
+                    new_fs.public_key.clone(),
                     new_fs.era_id,
                     latest_state_root_hash,
                     protocol_version,
