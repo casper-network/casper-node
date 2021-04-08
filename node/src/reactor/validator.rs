@@ -415,13 +415,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             true,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             true,
         )?;
 
@@ -454,6 +453,7 @@ impl reactor::Reactor for Reactor {
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
+            config.block_proposer,
         )?;
 
         let initial_era = latest_block.as_ref().map_or_else(
@@ -491,11 +491,6 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id(),
         )?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));

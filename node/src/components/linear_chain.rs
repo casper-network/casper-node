@@ -8,10 +8,14 @@ mod state;
 use datasize::DataSize;
 use std::{convert::Infallible, fmt::Display, marker::PhantomData};
 
+use itertools::Itertools;
 use prometheus::Registry;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error};
 
-use self::metrics::LinearChainMetrics;
+use self::{
+    metrics::LinearChainMetrics,
+    state::{Outcome, Outcomes},
+};
 use super::Component;
 use crate::{
     effect::{
@@ -23,10 +27,10 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::{BlockByHeight, BlockSignatures, FinalitySignature, Timestamp},
+    types::BlockByHeight,
     NodeRng,
 };
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 pub use event::Event;
 use state::LinearChain;
@@ -45,21 +49,76 @@ impl<I> LinearChainComponent<I> {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
-        activation_era_id: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
-        let linear_chain_state = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
-            activation_era_id,
-        );
+        let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
             _marker: PhantomData,
         })
     }
+}
+
+fn outcomes_to_effects<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    outcomes: Outcomes,
+) -> Effects<Event<I>>
+where
+    REv: From<StorageRequest>
+        + From<NetworkRequest<I, Message>>
+        + From<LinearChainAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
+        + Send,
+    I: Display + Send + 'static,
+{
+    outcomes
+        .into_iter()
+        .map(|outcome| match outcome {
+            Outcome::StoreBlockSignatures(block_signatures) => effect_builder
+                .put_signatures_to_storage(block_signatures)
+                .ignore(),
+            Outcome::StoreExecutionResults(block_hash, execution_results) => effect_builder
+                .put_execution_results_to_storage(block_hash, execution_results)
+                .ignore(),
+            Outcome::StoreBlock(block) => effect_builder
+                .put_block_to_storage(block.clone())
+                .event(move |_| Event::PutBlockResult { block }),
+            Outcome::Gossip(fs) => {
+                let message = Message::FinalitySignature(fs);
+                effect_builder.broadcast_message(message).ignore()
+            }
+            Outcome::AnnounceSignature(fs) => {
+                effect_builder.announce_finality_signature(fs).ignore()
+            }
+            Outcome::AnnounceBlock(block) => effect_builder.announce_block_added(block).ignore(),
+            Outcome::LoadSignatures(fs) => effect_builder
+                .get_signatures_from_storage(fs.block_hash)
+                .event(move |maybe_signatures| {
+                    Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures.map(Box::new))
+                }),
+            Outcome::VerifyIfBonded {
+                new_fs,
+                known_fs,
+                protocol_version,
+                latest_state_root_hash,
+            } => effect_builder
+                .is_bonded_validator(
+                    new_fs.public_key.clone(),
+                    new_fs.era_id,
+                    latest_state_root_hash,
+                    protocol_version,
+                )
+                .result(
+                    |is_bonded| Event::IsBonded(known_fs, new_fs, is_bonded),
+                    |error| {
+                        error!(%error, "checking in future eras returned an error.");
+                        panic!("couldn't check if validator is bonded")
+                    },
+                ),
+        })
+        .concat()
 }
 
 impl<I, REv> Component<REv> for LinearChainComponent<I>
@@ -124,182 +183,38 @@ where
                 block,
                 execution_results,
             } => {
-                let signatures = self.linear_chain_state.new_block(&*block);
-                let mut effects = Effects::new();
-                if !signatures.is_empty() {
-                    let mut block_signatures =
-                        BlockSignatures::new(*block.hash(), block.header().era_id());
-                    for sig in signatures.iter() {
-                        block_signatures.insert_proof(sig.public_key(), sig.signature());
-                    }
-                    effects.extend(
-                        effect_builder
-                            .put_signatures_to_storage(block_signatures)
-                            .ignore(),
-                    );
-                    for signature in signatures {
-                        if signature.is_local() {
-                            let message =
-                                Message::FinalitySignature(Box::new(signature.to_inner().clone()));
-                            effects.extend(effect_builder.broadcast_message(message).ignore());
-                        }
-                        effects.extend(
-                            effect_builder
-                                .announce_finality_signature(signature.take())
-                                .ignore(),
-                        );
-                    }
-                };
-                let block_to_store = block.clone();
-                effects.extend(
-                    async move {
-                        let block_hash = *block_to_store.hash();
-                        effect_builder.put_block_to_storage(block_to_store).await;
-                        effect_builder
-                            .put_execution_results_to_storage(block_hash, execution_results)
-                            .await;
-                    }
-                    .event(move |_| Event::PutBlockResult { block }),
-                );
-                effects
+                let outcomes = self
+                    .linear_chain_state
+                    .handle_new_block(block, execution_results);
+                outcomes_to_effects(effect_builder, outcomes)
             }
             Event::PutBlockResult { block } => {
-                self.linear_chain_state.set_latest_block(*block.clone());
-
-                let completion_duration =
-                    Timestamp::now().millis() - block.header().timestamp().millis();
+                let completion_duration = block.header().timestamp().elapsed().millis();
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
-
-                let block_hash = block.header().hash();
-                let era_id = block.header().era_id();
-                let height = block.header().height();
-                info!(%block_hash, %era_id, %height, "linear chain block stored");
-                effect_builder.announce_block_added(block).ignore()
+                let outcomes = self.linear_chain_state.handle_put_block(block);
+                outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
-                let FinalitySignature { block_hash, .. } = *fs;
-                if !self
+                let outcomes = self
                     .linear_chain_state
-                    .add_pending_finality_signature(*fs.clone(), gossiped)
-                {
-                    // If we did not add the signature it means it's either incorrect or we already
-                    // know it.
-                    return Effects::new();
-                }
-                match self.linear_chain_state.get_signatures(&block_hash) {
-                    // Not found in the cache, look in the storage.
-                    None => effect_builder
-                        .get_signatures_from_storage(block_hash)
-                        .event(move |maybe_signatures| {
-                            Event::GetStoredFinalitySignaturesResult(
-                                fs,
-                                maybe_signatures.map(Box::new),
-                            )
-                        }),
-                    Some(signatures) => effect_builder.immediately().event(move |_| {
-                        Event::GetStoredFinalitySignaturesResult(fs, Some(Box::new(signatures)))
-                    }),
-                }
+                    .handle_finality_signature(fs, gossiped);
+                outcomes_to_effects(effect_builder, outcomes)
             }
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
-                if let Some(known_signatures) = &maybe_signatures {
-                    // If the newly-received finality signature does not match the era of previously
-                    // validated signatures reject it as they can't both be
-                    // correct – block was created in a specific era so the IDs have to match.
-                    if known_signatures.era_id != fs.era_id {
-                        warn!(public_key = %fs.public_key,
-                            expected = %known_signatures.era_id,
-                            got = %fs.era_id,
-                            "finality signature with invalid era id.");
-                        self.linear_chain_state.remove_from_pending_fs(&*fs);
-                        // TODO: Disconnect from the sender.
-                        return Effects::new();
-                    }
-                    if known_signatures.has_proof(&fs.public_key) {
-                        self.linear_chain_state.remove_from_pending_fs(&fs);
-                        return Effects::new();
-                    }
-                    // Populate cache so that next incoming signatures don't trigger read from the
-                    // storage. If `known_signatures` are already from cache then this will be a
-                    // noop.
-                    self.linear_chain_state
-                        .cache_signatures(*known_signatures.clone());
-                }
-                // Check if the validator is bonded in the era in which the block was created.
-                // TODO: Use protocol version that is valid for the block's height.
-                let protocol_version = self.linear_chain_state.current_protocol_version();
-                let latest_state_root_hash = self
+                let outcomes = self
                     .linear_chain_state
-                    .latest_block()
-                    .as_ref()
-                    .map(|block| *block.header().state_root_hash());
-                effect_builder
-                    .is_bonded_validator(
-                        fs.public_key,
-                        fs.era_id,
-                        latest_state_root_hash,
-                        protocol_version,
-                    )
-                    .result(
-                        |is_bonded| Event::IsBonded(maybe_signatures, fs, is_bonded),
-                        |error| {
-                            error!(%error, "checking in future eras returned an error.");
-                            panic!("couldn't check if validator is bonded")
-                        },
-                    )
+                    .handle_cached_signatures(maybe_signatures, fs);
+                outcomes_to_effects(effect_builder, outcomes)
             }
-            Event::IsBonded(Some(mut known_signatures), fs, true) => {
-                // New finality signature from a bonded validator.
-                known_signatures.insert_proof(fs.public_key, fs.signature);
-                // Cache the results in case we receive the same finality signature before we
-                // manage to store it in the database.
-                self.linear_chain_state
-                    .cache_signatures(*known_signatures.clone());
-                debug!(hash = %known_signatures.block_hash, "storing finality signatures");
-                // Announce new finality signatures for other components to pick up.
-                let mut effects = effect_builder
-                    .announce_finality_signature(fs.clone())
-                    .ignore();
-                if let Some(signature) = self.linear_chain_state.remove_from_pending_fs(&*fs) {
-                    // This shouldn't return `None` as we added the `fs` to the pending collection
-                    // when we received it. If it _is_ `None` then a concurrent
-                    // flow must have already removed it. If it's a signature
-                    // created by this node, gossip it.
-                    if signature.is_local() {
-                        let message = Message::FinalitySignature(fs.clone());
-                        effects.extend(effect_builder.broadcast_message(message).ignore());
-                    }
-                };
-                effects.extend(
-                    effect_builder
-                        .put_signatures_to_storage(*known_signatures)
-                        .ignore(),
+            Event::IsBonded(maybe_known_signatures, new_fs, is_bonded) => {
+                let outcomes = self.linear_chain_state.handle_is_bonded(
+                    maybe_known_signatures,
+                    new_fs,
+                    is_bonded,
                 );
-                effects
-            }
-            Event::IsBonded(None, _fs, true) => {
-                // Unknown block but validator is bonded.
-                // We should finalize the same block eventually. Either in this or in the
-                // next era.
-                Effects::new()
-            }
-            Event::IsBonded(_, fs, false) => {
-                self.linear_chain_state.remove_from_pending_fs(&fs);
-                // Unknown validator.
-                let FinalitySignature {
-                    public_key,
-                    block_hash,
-                    ..
-                } = *fs;
-                warn!(
-                    validator = %public_key,
-                    %block_hash,
-                    "Received a signature from a validator that is not bonded."
-                );
-                // TODO: Disconnect from the sender.
-                Effects::new()
+                outcomes_to_effects(effect_builder, outcomes)
             }
             Event::KnownLinearChainBlock(block) => {
                 self.linear_chain_state.set_latest_block(*block);

@@ -29,7 +29,7 @@
 //! const VALUE: &str = "hello world";
 //! const ARG_MESSAGE: &str = "message";
 //!
-//! let public_key: PublicKey = SecretKey::ed25519(MY_ACCOUNT).into();
+//! let public_key: PublicKey = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap().into();
 //! let account_addr = AccountHash::new(MY_ADDR);
 //!
 //! let mut context = TestContextBuilder::new()

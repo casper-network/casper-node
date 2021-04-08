@@ -3,6 +3,7 @@
 //! The block proposer stores deploy hashes in memory, tracking their suitability for inclusion into
 //! a new block. Upon request, it returns a list of candidates that can be included.
 
+mod config;
 mod deploy_sets;
 mod event;
 mod metrics;
@@ -16,10 +17,11 @@ use std::{
     time::Duration,
 };
 
+pub use config::Config;
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::{self, Registry};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     components::Component,
@@ -27,14 +29,16 @@ use crate::{
         requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{chainspec::DeployConfig, Chainspec, DeployHash, DeployHeader, ProtoBlock, Timestamp},
+    types::{
+        appendable_block::{AddError, AppendableBlock},
+        chainspec::DeployConfig,
+        Chainspec, DeployHash, DeployHeader, ProtoBlock, Timestamp,
+    },
     NodeRng,
 };
-use casper_execution_engine::shared::gas::Gas;
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
-use num_traits::Zero;
 
 /// Block proposer component.
 #[derive(DataSize, Debug)]
@@ -79,6 +83,8 @@ enum BlockProposerState {
         state_key: Vec<u8>,
         /// The deploy config from the current chainspec.
         deploy_config: DeployConfig,
+        /// The configuration, containing local settings for deploy selection
+        local_config: Config,
     },
     /// Normal operation.
     Ready(BlockProposerReady),
@@ -91,6 +97,7 @@ impl BlockProposer {
         effect_builder: EffectBuilder<REv>,
         next_finalized_block: BlockHeight,
         chainspec: &Chainspec,
+        local_config: Config,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
@@ -110,6 +117,7 @@ impl BlockProposer {
                 pending: Vec::new(),
                 state_key,
                 deploy_config: chainspec.deploy_config,
+                local_config,
             },
             metrics: BlockProposerMetrics::new(registry)?,
         };
@@ -142,6 +150,7 @@ where
                     ref mut pending,
                     state_key,
                     deploy_config,
+                    local_config,
                 },
                 Event::Loaded {
                     finalized_deploys,
@@ -157,6 +166,7 @@ where
                     deploy_config: *deploy_config,
                     state_key: state_key.clone(),
                     request_queue: Default::default(),
+                    local_config: local_config.clone(),
                 };
 
                 // Replay postponed events onto new state.
@@ -212,6 +222,8 @@ struct BlockProposerReady {
     state_key: Vec<u8>,
     /// The queue of requests awaiting being handled.
     request_queue: RequestQueue,
+    /// The block proposer configuration, containing local settings for selecting deploys.
+    local_config: Config,
 }
 
 impl BlockProposerReady {
@@ -325,7 +337,9 @@ impl BlockProposerReady {
         if self.sets.finalized_deploys.contains_key(&hash) {
             info!(%hash, "deploy rejected from the buffer");
         } else {
-            self.sets.pending.insert(hash, deploy_or_transfer);
+            self.sets
+                .pending
+                .insert(hash, (deploy_or_transfer, current_instant));
             info!(%hash, "added deploy to the buffer");
         }
     }
@@ -337,7 +351,7 @@ impl BlockProposerReady {
     {
         for deploy_hash in deploys.into_iter() {
             match self.sets.pending.remove(&deploy_hash) {
-                Some(deploy_type) => {
+                Some((deploy_type, _)) => {
                     self.sets
                         .finalized_deploys
                         .insert(deploy_hash, deploy_type.take_header());
@@ -384,21 +398,12 @@ impl BlockProposerReady {
         }
     }
 
-    /// Checks if a deploy is valid (for inclusion into the next block).
-    fn is_deploy_valid(
-        &self,
-        header: &DeployHeader,
-        block_timestamp: Timestamp,
-        deploy_config: &DeployConfig,
-        past_deploys: &HashSet<DeployHash>,
-    ) -> bool {
-        let all_deps_resolved = || {
-            header
-                .dependencies()
-                .iter()
-                .all(|dep| past_deploys.contains(dep) || self.contains_finalized(dep))
-        };
-        header.is_valid(deploy_config, block_timestamp) && all_deps_resolved()
+    /// Checks if a deploy's dependencies are satisfied, so the deploy is eligible for inclusion.
+    fn deps_resolved(&self, header: &DeployHeader, past_deploys: &HashSet<DeployHash>) -> bool {
+        header
+            .dependencies()
+            .iter()
+            .all(|dep| past_deploys.contains(dep) || self.contains_finalized(dep))
     }
 
     /// Returns a list of candidates for inclusion into a block.
@@ -409,73 +414,70 @@ impl BlockProposerReady {
         past_deploys: HashSet<DeployHash>,
         random_bit: bool,
     ) -> ProtoBlock {
-        let max_transfers = deploy_config.block_max_transfer_count as usize;
-        let max_deploys = deploy_config.block_max_deploy_count as usize;
-        let max_block_size_bytes = deploy_config.max_block_size as usize;
-        let block_gas_limit = Gas::from(deploy_config.block_gas_limit);
+        let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
-        let mut transfer_hashes = Vec::new();
-        let mut deploy_hashes = Vec::new();
-        let mut block_gas_running_total = Gas::zero();
-        let mut block_size_running_total = 0usize;
-
-        for (hash, deploy_type) in self.sets.pending.iter() {
-            let at_max_transfers = transfer_hashes.len() == max_transfers;
-            let at_max_deploys = deploy_hashes.len() == max_deploys
-                || (deploy_type.is_wasm()
-                    && block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes);
-
-            if at_max_deploys && at_max_transfers {
-                break;
-            }
-
-            if !self.is_deploy_valid(
-                &deploy_type.header(),
-                block_timestamp,
-                &deploy_config,
-                &past_deploys,
-            ) || past_deploys.contains(hash)
-                || self.sets.finalized_deploys.contains_key(hash)
+        // We prioritize transfers over deploys, so we try to include them first.
+        for (hash, (deploy_type, received_time)) in &self.sets.pending {
+            if !deploy_type.is_transfer()
+                || !self.deps_resolved(&deploy_type.header(), &past_deploys)
+                || past_deploys.contains(hash)
+                || self.contains_finalized(hash)
+                || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay
             {
                 continue;
             }
 
-            // always include wasm-less transfers if we are under the max for them
-            if deploy_type.is_transfer() && !at_max_transfers {
-                transfer_hashes.push(*hash);
-            } else if deploy_type.is_wasm() && !at_max_deploys {
-                if block_size_running_total + deploy_type.size() > max_block_size_bytes {
-                    continue;
-                }
-                let payment_amount_gas = match Gas::from_motes(
-                    deploy_type.payment_amount(),
-                    deploy_type.header().gas_price(),
-                ) {
-                    Some(value) => value,
-                    None => {
-                        error!("payment_amount couldn't be converted from motes to gas");
-                        continue;
+            if let Err(err) = appendable_block.add(*hash, deploy_type) {
+                match err {
+                    // We added the maximum number of transfers.
+                    AddError::TransferCount | AddError::GasLimit | AddError::BlockSize => break,
+                    // The deploy is not valid in this block, but might be valid in another.
+                    AddError::InvalidDeploy => (),
+                    // These errors should never happen when adding a transfer.
+                    AddError::InvalidGasAmount | AddError::DeployCount | AddError::Duplicate => {
+                        error!(?err, "unexpected error when adding transfer")
                     }
-                };
-                let gas_running_total = if let Some(gas_running_total) =
-                    block_gas_running_total.checked_add(payment_amount_gas)
-                {
-                    gas_running_total
-                } else {
-                    warn!("block gas would overflow");
-                    continue;
-                };
-
-                if gas_running_total > block_gas_limit {
-                    continue;
                 }
-                deploy_hashes.push(*hash);
-                block_gas_running_total = gas_running_total;
-                block_size_running_total += deploy_type.size();
             }
         }
 
-        ProtoBlock::new(deploy_hashes, transfer_hashes, block_timestamp, random_bit)
+        // Now we try to add other deploys to the block.
+        for (hash, (deploy_type, received_time)) in &self.sets.pending {
+            if deploy_type.is_transfer()
+                || !self.deps_resolved(&deploy_type.header(), &past_deploys)
+                || past_deploys.contains(hash)
+                || self.contains_finalized(hash)
+                || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay
+            {
+                continue;
+            }
+
+            if let Err(err) = appendable_block.add(*hash, deploy_type) {
+                match err {
+                    // We added the maximum number of deploys.
+                    AddError::DeployCount => break,
+                    AddError::BlockSize => {
+                        if appendable_block.total_size() + DEPLOY_APPROX_MIN_SIZE
+                            > deploy_config.block_gas_limit as usize
+                        {
+                            break; // Probably no deploy will fit in this block anymore.
+                        }
+                    }
+                    // The deploy is not valid in this block, but might be valid in another.
+                    // TODO: Do something similar to DEPLOY_APPROX_MIN_SIZE for gas.
+                    AddError::InvalidDeploy | AddError::GasLimit => (),
+                    // These errors should never happen when adding a deploy.
+                    AddError::TransferCount | AddError::Duplicate => {
+                        error!(?err, "unexpected error when adding deploy")
+                    }
+                    AddError::InvalidGasAmount => {
+                        error!("payment_amount couldn't be converted from motes to gas")
+                    }
+                }
+            }
+        }
+
+        appendable_block.into_proto_block(random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.

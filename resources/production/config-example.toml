@@ -30,6 +30,7 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+
 # ===========================================
 # Configuration options for Highway consensus
 # ===========================================
@@ -73,6 +74,7 @@ acceleration_parameter = 40
 # The required quorum in a summit we will look for to check if a round was successful is
 # determined by this FTT.
 acceleration_ftt = [1, 100]
+
 
 # ====================================
 # Configuration options for networking
@@ -121,6 +123,7 @@ initial_gossip_delay = '5s'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
+
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -289,3 +292,14 @@ verify_accounts = true
 #
 # The size should be a multiple of the OS page size.
 #max_global_state_size = 805306368000
+
+
+# ====================================================================
+# Configuration options for selecting deploys to propose in new blocks
+# ====================================================================
+[block_proposer]
+
+# Deploys are only proposed in a new block if the have been received at least this long ago.
+# A longer delay makes it more likely that many proposed deploys are already known by the
+# other nodes, and don't have to be requested from the proposer afterwards.
+#deploy_delay = '1min'

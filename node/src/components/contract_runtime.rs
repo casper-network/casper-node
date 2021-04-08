@@ -858,17 +858,17 @@ impl ContractRuntime {
         let reward_items = era_end
             .rewards
             .iter()
-            .map(|(&vid, &value)| RewardItem::new(vid, value))
+            .map(|(vid, &value)| RewardItem::new(vid.clone(), value))
             .collect();
         let slash_items = era_end
             .equivocators
             .iter()
-            .map(|&vid| SlashItem::new(vid))
+            .map(|vid| SlashItem::new(vid.clone()))
             .collect();
         let evict_items = era_end
             .inactive_validators
             .iter()
-            .map(|&vid| EvictItem::new(vid))
+            .map(|vid| EvictItem::new(vid.clone()))
             .collect();
         let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
         let request = StepRequest {
@@ -906,7 +906,7 @@ impl ContractRuntime {
                     block_time,
                     vec![deploy_item],
                     protocol_version,
-                    proposer,
+                    proposer.clone(),
                 );
 
                 // TODO: this is currently working coincidentally because we are passing only one

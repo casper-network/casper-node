@@ -33,6 +33,7 @@ pub mod validator;
 #[cfg(test)]
 use std::sync::Arc;
 use std::{
+    any,
     collections::HashMap,
     env,
     fmt::{Debug, Display},
@@ -444,7 +445,10 @@ where
         // right now, since storage size of events is not an issue per se, but copying might be
         // expensive if events get too large.
         if event_size > 16 * mem::size_of::<usize>() {
-            warn!(%event_size, "large event size, consider reducing it or boxing");
+            warn!(
+                %event_size, type_name = ?any::type_name::<R::Event>(),
+                "large event size, consider reducing it or boxing"
+            );
         }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));

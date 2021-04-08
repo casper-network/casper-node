@@ -35,6 +35,8 @@ use casper_types::{
 
 use super::{Item, Tag, Timestamp};
 #[cfg(test)]
+use crate::crypto::generate_ed25519_keypair;
+#[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     components::consensus,
@@ -49,16 +51,16 @@ use crate::{
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::ed25519([0; 32]);
+    let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
     let equivocators = vec![public_key_1];
 
-    let secret_key_2 = SecretKey::ed25519([1; 32]);
+    let secret_key_2 = SecretKey::ed25519_from_bytes([1; 32]).unwrap();
     let public_key_2 = PublicKey::from(&secret_key_2);
     let mut rewards = BTreeMap::new();
     rewards.insert(public_key_2, 1000);
 
-    let secret_key_3 = SecretKey::ed25519([2; 32]);
+    let secret_key_3 = SecretKey::ed25519_from_bytes([2; 32]).unwrap();
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
 
@@ -69,17 +71,21 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     }
 });
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::ed25519([0; 32]);
+    let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
     let next_era_validator_weights = {
         let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
         next_era_validator_weights.insert(public_key_1, U512::from(123));
         next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::ed25519([5u8; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             U512::from(456),
         );
         next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::ed25519([6u8; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([6u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             U512::from(789),
         );
         next_era_validator_weights
@@ -114,11 +120,15 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
         next_era_validator_weights.insert(public_key, U512::from(123));
         next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::ed25519([5u8; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             U512::from(456),
         );
         next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::ed25519([6u8; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([6u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             U512::from(789),
         );
         Some(next_era_validator_weights)
@@ -397,7 +407,7 @@ impl FinalizedBlock {
     }
 
     pub(crate) fn proposer(&self) -> PublicKey {
-        self.proposer
+        self.proposer.clone()
     }
 
     /// Returns an iterator over all deploy and transfer hashes.
@@ -437,18 +447,22 @@ impl FinalizedBlock {
             let rewards_count = rng.gen_range(0..5);
             let inactive_count = rng.gen_range(0..5);
             Some(EraReport {
-                equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
-                    .take(equivocators_count)
-                    .collect(),
+                equivocators: iter::repeat_with(|| {
+                    PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
+                })
+                .take(equivocators_count)
+                .collect(),
                 rewards: iter::repeat_with(|| {
-                    let pub_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
+                    let pub_key = PublicKey::from(
+                        &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+                    );
                     let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
                     (pub_key, reward)
                 })
                 .take(rewards_count)
                 .collect(),
                 inactive_validators: iter::repeat_with(|| {
-                    PublicKey::from(&SecretKey::ed25519(rng.gen()))
+                    PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
                 })
                 .take(inactive_count)
                 .collect(),
@@ -456,7 +470,7 @@ impl FinalizedBlock {
         } else {
             None
         };
-        let secret_key: SecretKey = SecretKey::ed25519(rng.gen());
+        let secret_key: SecretKey = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
         let public_key = PublicKey::from(&secret_key);
 
         FinalizedBlock::new(proto_block, era_report, era_id, height, public_key)
@@ -1002,7 +1016,7 @@ impl BlockSignatures {
                 block_hash: self.block_hash,
                 era_id: self.era_id,
                 signature: *signature,
-                public_key: *public_key,
+                public_key: public_key.clone(),
             };
             signature.verify()?;
         }
@@ -1041,7 +1055,7 @@ impl Block {
         protocol_version: ProtocolVersion,
     ) -> Self {
         let body = BlockBody::new(
-            finalized_block.proposer,
+            finalized_block.proposer.clone(),
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
@@ -1390,7 +1404,7 @@ pub(crate) mod json_compatibility {
                 .next_era_validator_weights
                 .iter()
                 .map(|(validator, weight)| ValidatorWeight {
-                    validator: *validator,
+                    validator: validator.clone(),
                     weight: *weight,
                 })
                 .collect();
@@ -1407,7 +1421,9 @@ pub(crate) mod json_compatibility {
             let validator_weights = json_data
                 .next_era_validator_weights
                 .iter()
-                .map(|validator_weight| (validator_weight.validator, validator_weight.weight))
+                .map(|validator_weight| {
+                    (validator_weight.validator.clone(), validator_weight.weight)
+                })
                 .collect();
             EraEnd::new(era_report, validator_weights)
         }
@@ -1474,7 +1490,7 @@ pub(crate) mod json_compatibility {
     impl From<BlockBody> for JsonBlockBody {
         fn from(body: BlockBody) -> Self {
             JsonBlockBody {
-                proposer: *body.proposer(),
+                proposer: body.proposer().clone(),
                 deploy_hashes: body.deploy_hashes().clone(),
                 transfer_hashes: body.transfer_hashes().clone(),
             }
@@ -1619,6 +1635,12 @@ impl FinalitySignature {
         bytes.extend_from_slice(&self.era_id.to_le_bytes());
         crypto::verify(bytes, &self.signature, &self.public_key)
     }
+
+    #[cfg(test)]
+    pub fn random_for_block(block_hash: BlockHash, era_id: u64) -> Self {
+        let (sec_key, pub_key) = generate_ed25519_keypair();
+        FinalitySignature::new(block_hash, EraId::new(era_id), &sec_key, pub_key)
+    }
 }
 
 impl Display for FinalitySignature {
@@ -1751,10 +1773,10 @@ mod tests {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
         // Signature should be over both block hash and era id.
-        let (secret_key, public_key) = crypto::generate_ed25519_keypair();
+        let (secret_key, public_key) = generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId::from(1);
-        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key);
+        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key.clone());
         assert!(fs.verify().is_ok());
         let signature = fs.signature;
         // Verify that signature includes era id.

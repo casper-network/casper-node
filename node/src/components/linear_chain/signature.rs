@@ -18,7 +18,7 @@ impl Signature {
     }
 
     pub(super) fn public_key(&self) -> PublicKey {
-        self.to_inner().public_key
+        self.to_inner().public_key.clone()
     }
 
     pub(super) fn block_hash(&self) -> BlockHash {

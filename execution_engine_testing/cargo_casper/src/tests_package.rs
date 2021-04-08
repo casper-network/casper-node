@@ -18,7 +18,7 @@ mod tests {
     use casper_engine_test_support::{
         Code, Error, SessionBuilder, TestContextBuilder, Value,
     };
-    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey, SecretKey};
+    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey, SecretKey, AsymmetricType};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
     // define KEY constant to match that in the contract
@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn should_store_hello_world() {
-        let public_key: PublicKey = SecretKey::ed25519(MY_ACCOUNT).into();
+        let public_key: PublicKey = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap().into();
         let account_addr = AccountHash::from(&public_key);
 
         let mut context = TestContextBuilder::new()

@@ -53,6 +53,7 @@ use signal_hook::{
 };
 
 pub use components::{
+    block_proposer::Config as BlockProposerConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
