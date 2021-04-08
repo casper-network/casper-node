@@ -93,7 +93,6 @@ pub struct EraSupervisor<I> {
     config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
-    node_start_time: Timestamp,
     /// The height of the next block to be finalized.
     /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
     /// finalized when we request a new block. This way the Block Proposer can know whether it's up
@@ -169,9 +168,6 @@ where
             protocol_config,
             config,
             new_consensus,
-            // TODO: Find a better way to decide whether to activate validator, or get the
-            // timestamp from when the process started.
-            node_start_time: Timestamp::now(),
             next_block_height: next_height,
             metrics,
             unit_hashes_folder,

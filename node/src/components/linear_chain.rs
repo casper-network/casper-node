@@ -27,7 +27,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::{BlockByHeight, Timestamp},
+    types::BlockByHeight,
     NodeRng,
 };
 use casper_types::ProtocolVersion;
@@ -189,8 +189,7 @@ where
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::PutBlockResult { block } => {
-                let completion_duration =
-                    Timestamp::now().millis() - block.header().timestamp().millis();
+                let completion_duration = block.header().timestamp().elapsed().millis();
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
