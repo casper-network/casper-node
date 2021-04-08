@@ -25,6 +25,7 @@ pub(crate) struct LinearChain {
     auction_delay: u64,
     unbonding_delay: u64,
 }
+#[derive(Debug)]
 pub(super) enum Outcome {
     // Store block signatures to storage.
     StoreBlockSignatures(BlockSignatures),
@@ -365,5 +366,143 @@ impl LinearChain {
                 outcomes
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{crypto::generate_ed25519_keypair, logging, testing::TestRng};
+    use casper_types::EraId;
+
+    use super::*;
+
+    #[test]
+    fn new_block_no_sigs() {
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block = Block::random(&mut rng);
+        let execution_results = HashMap::new();
+        let new_block_outcomes =
+            lc.handle_new_block(Box::new(block.clone()), execution_results.clone());
+        let block_hash = *block.hash();
+        match &*new_block_outcomes {
+            [Outcome::StoreBlock(outcome_block), Outcome::StoreExecutionResults(outcome_block_hash, outcome_execution_results)] =>
+            {
+                assert_eq!(&**outcome_block, &block);
+                assert_eq!(outcome_block_hash, &block_hash);
+                assert_eq!(outcome_execution_results, &execution_results);
+            }
+            others => panic!("unexpected outcome: {:?}", others),
+        }
+        let block_stored_outcomes = lc.handle_put_block(Box::new(block.clone()));
+        match &*block_stored_outcomes {
+            [Outcome::AnnounceBlock(announced_block)] => {
+                assert_eq!(&**announced_block, &block);
+            }
+            others => panic!("unexpected outcome: {:?}", others),
+        }
+        assert_eq!(
+            lc.latest_block(),
+            &Some(block),
+            "should update the latest block"
+        );
+    }
+
+    #[test]
+    fn pending_sig_rejected() {
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block_hash = BlockHash::random(&mut rng);
+        let valid_sig = FinalitySignature::random_for_block(block_hash, 0);
+        let handle_sig_outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
+        assert_eq!(handle_sig_outcomes.len(), 1);
+        assert!(
+            lc.handle_finality_signature(Box::new(valid_sig), false)
+                .is_empty(),
+            "adding already-pending signature should be a no-op"
+        );
+    }
+
+    // Forces caching of the finality signature. Requires confirming that creator is known to be
+    // bonded.
+    fn cache_signature(lc: &mut LinearChain, fs: FinalitySignature) {
+        // We need to signal that block is known. Otherwise we won't cache the signature.
+        let block_signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
+        let outcomes =
+            lc.handle_cached_signatures(Some(Box::new(block_signatures)), Box::new(fs.clone()));
+        match &*outcomes {
+            [Outcome::VerifyIfBonded {
+                new_fs, known_fs, ..
+            }] => {
+                assert_eq!(&fs, &**new_fs);
+                let outcomes = lc.handle_is_bonded(known_fs.clone(), Box::new(fs), true);
+                // After confirming that signature is valid and block known, we want to store the
+                // signature and announce it.
+                assert!(matches!(
+                    &*outcomes,
+                    &[
+                        Outcome::AnnounceSignature(_),
+                        Outcome::StoreBlockSignatures(_)
+                    ]
+                ));
+            }
+            others => panic!("unexpected outcomes {:?}", others),
+        }
+    }
+
+    #[test]
+    fn known_sig_rejected() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block = Block::random(&mut rng);
+        let valid_sig =
+            FinalitySignature::random_for_block(*block.hash(), block.header().era_id().value());
+        cache_signature(&mut lc, valid_sig.clone());
+        let outcomes = lc.handle_finality_signature(Box::new(valid_sig), false);
+        assert!(
+            outcomes.is_empty(),
+            "adding already-known signature should be a no-op"
+        );
+    }
+
+    #[test]
+    fn invalid_sig_rejected() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let auction_delay = 1;
+        let unbonding_delay = 2;
+        let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        // Set the latest known block so that we can trigger the following checks.
+        let block = Block::random_with_specifics(&mut rng, EraId::new(3), 10, false);
+        let block_hash = *block.hash();
+        let block_era = block.header().era_id();
+        let put_block_outcomes = lc.handle_put_block(Box::new(block.clone()));
+        assert_eq!(put_block_outcomes.len(), 1);
+        assert_eq!(
+            lc.latest_block(),
+            &Some(block),
+            "should update the latest block"
+        );
+        // signature's era either too low or too high
+        let era_too_low_sig = FinalitySignature::random_for_block(block_hash, 0);
+        let outcomes = lc.handle_finality_signature(Box::new(era_too_low_sig), false);
+        assert!(outcomes.is_empty());
+        let era_too_high_sig =
+            FinalitySignature::random_for_block(block_hash, block_era.value() + auction_delay + 1);
+        let outcomes = lc.handle_finality_signature(Box::new(era_too_high_sig), false);
+        assert!(outcomes.is_empty());
+        // signature is not valid
+        let block_hash = BlockHash::random(&mut rng);
+        let (_, pub_key) = generate_ed25519_keypair();
+        let mut invalid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
+        // replace the public key so that the verification fails.
+        invalid_sig.public_key = pub_key;
+        let outcomes = lc.handle_finality_signature(Box::new(invalid_sig), false);
+        assert!(outcomes.is_empty())
     }
 }
