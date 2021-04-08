@@ -386,7 +386,7 @@ impl BlockProposerReady {
         }
     }
 
-    /// Checks if a deploy is valid (for inclusion into the next block).
+    /// Checks if a deploy's dependencies are satisfied, so the deploy is eligible for inclusion.
     fn deps_resolved(&self, header: &DeployHeader, past_deploys: &HashSet<DeployHash>) -> bool {
         header
             .dependencies()
@@ -444,7 +444,7 @@ impl BlockProposerReady {
                     AddError::DeployCount => break,
                     AddError::BlockSize => {
                         if appendable_block.total_size() + DEPLOY_APPROX_MIN_SIZE
-                            >= deploy_config.block_gas_limit as usize
+                            > deploy_config.block_gas_limit as usize
                         {
                             break; // Probably no deploy will fit in this block anymore.
                         }
