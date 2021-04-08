@@ -830,7 +830,7 @@ mod rate_limit {
             assert_eq!(join_handle.await.unwrap(), Ok(()));
         }
 
-        let diff = Timestamp::now() - now;
+        let diff = now.elapsed();
         assert!(
             diff < Duration::from_millis(4000).into(),
             "Rate limiting of 1 qps for 3 sec took too long at {}ms",

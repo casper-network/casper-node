@@ -93,7 +93,6 @@ pub struct EraSupervisor<I> {
     config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
-    node_start_time: Timestamp,
     /// The height of the next block to be finalized.
     /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
     /// finalized when we request a new block. This way the Block Proposer can know whether it's up
@@ -169,9 +168,6 @@ where
             protocol_config,
             config,
             new_consensus,
-            // TODO: Find a better way to decide whether to activate validator, or get the
-            // timestamp from when the process started.
-            node_start_time: Timestamp::now(),
             next_block_height: next_height,
             metrics,
             unit_hashes_folder,
@@ -986,7 +982,7 @@ where
             } => {
                 let past_deploys = past_values
                     .iter()
-                    .flat_map(|candidate| candidate.proto_block().deploys_iter())
+                    .flat_map(|candidate| candidate.proto_block().deploys_and_transfers_iter())
                     .cloned()
                     .collect();
                 let parent = parent_value.as_ref().map(CandidateBlock::hash);
@@ -1081,10 +1077,10 @@ where
                 self.era_mut(era_id)
                     .add_candidate(candidate_block, missing_evidence.clone());
                 let proto_block_deploys_set: BTreeSet<DeployHash> =
-                    proto_block.deploys_iter().cloned().collect();
+                    proto_block.deploys_and_transfers_iter().cloned().collect();
                 for ancestor_block in ancestor_blocks {
                     let ancestor_proto_block = ancestor_block.proto_block();
-                    for deploy in ancestor_proto_block.deploys_iter() {
+                    for deploy in ancestor_proto_block.deploys_and_transfers_iter() {
                         if proto_block_deploys_set.contains(deploy) {
                             return self.resolve_validity(
                                 era_id,
@@ -1274,7 +1270,7 @@ where
     REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
 {
-    for deploy_hash in proto_block.deploys_iter() {
+    for deploy_hash in proto_block.deploys_and_transfers_iter() {
         let execution_results = match effect_builder
             .get_deploy_and_metadata_from_storage(*deploy_hash)
             .await

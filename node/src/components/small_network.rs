@@ -32,6 +32,7 @@
 //! No explicit reconnect is attempted. Instead, if the peer is still online, the normal gossiping
 //! process will cause both peers to connect again.
 
+mod chain_info;
 mod config;
 mod error;
 mod event;
@@ -99,6 +100,7 @@ use crate::{
     types::{NodeId, TimeDiff, Timestamp},
     utils, NodeRng,
 };
+use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
 
@@ -156,9 +158,10 @@ where
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashMap<SocketAddr, Instant>,
-    /// Name of the network we participate in. We only remain connected to peers with the same
-    /// network name as us.
-    network_name: String,
+
+    /// Information retained from the chainspec required for operating the networking component.
+    chain_info: Arc<ChainInfo>,
+
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -192,12 +195,12 @@ where
     /// If `notify` is set to `false`, no systemd notifications will be sent, regardless of
     /// configuration.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn new(
+    pub(crate) fn new<C: Into<ChainInfo>>(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
-        network_name: String,
+        chain_info_source: C,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
@@ -227,6 +230,8 @@ where
         let secret_key = small_network_identity.secret_key;
         let certificate = small_network_identity.tls_certificate;
 
+        let chain_info = Arc::new(chain_info_source.into());
+
         // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
@@ -243,7 +248,7 @@ where
                 outgoing: HashMap::new(),
                 pending: HashMap::new(),
                 blocklist: HashMap::new(),
-                network_name,
+                chain_info,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
@@ -311,7 +316,7 @@ where
             outgoing: HashMap::new(),
             pending: HashMap::new(),
             blocklist: HashMap::new(),
-            network_name,
+            chain_info,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -502,11 +507,9 @@ where
 
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) = framed::<P>(transport).split();
-                let handshake = Message::Handshake {
-                    network_name: self.network_name.clone(),
-                    public_address: self.public_address,
-                };
+                let (mut sink, stream) =
+                    framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+                let handshake = self.chain_info.create_handshake(self.public_address);
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
                 }
@@ -582,11 +585,12 @@ where
                 local_address=?transport.get_ref().local_addr(),
                 "connected outgoing to ourself - closing connection",
             );
-            return Effects::new();
+            return self.reconnect_if_not_connected_to_any_known_addresses(effect_builder);
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) = framed::<P>(transport).split();
+        let (sink, stream) =
+            framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
         debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -604,10 +608,8 @@ where
 
         let mut effects = self.check_connection_complete(effect_builder, peer_id);
 
-        let handshake = Message::Handshake {
-            network_name: self.network_name.clone(),
-            public_address: self.public_address,
-        };
+        let handshake = self.chain_info.create_handshake(self.public_address);
+
         effects.extend(
             message_sender(
                 receiver,
@@ -638,29 +640,39 @@ where
     ) -> Effects<Event<P>> {
         let _ = self.pending.remove(&peer_address);
 
-        let mut effects = Effects::new();
-
         if let Some(peer_id) = peer_id {
             if let Some(ref err) = error {
-                warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "outgoing connection failed");
+                warn!(
+                    our_id=%self.our_id,
+                    %peer_id,
+                    %peer_address,
+                    %err,
+                    "outgoing connection failed"
+                );
             } else {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
             }
-            effects.extend(self.remove(effect_builder, &peer_id, false));
-        } else {
-            // If we are not calling remove, call the reconnection check explicitly.
-            effects.extend(self.reconnect_if_not_connected_to_any_known_addresses(effect_builder));
+            return self.remove(effect_builder, &peer_id, false);
         }
 
         // If we don't have the node ID passed in here, it was never added as an
         // outgoing connection, hence no need to call `self.remove()`.
         if let Some(ref err) = error {
-            warn!(our_id=%self.our_id, %peer_address, %err, "outgoing connection failed");
+            warn!(
+                our_id=%self.our_id,
+                %peer_address,
+                %err,
+                "outgoing connection to known address failed"
+            );
         } else {
-            warn!(our_id=%self.our_id, %peer_address, "outgoing connection closed");
+            warn!(
+                our_id=%self.our_id,
+                %peer_address,
+                "outgoing connection to known address closed"
+            );
         }
-
-        effects
+        // Since we are not calling `self.remove()`, call the reconnection check explicitly.
+        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
     }
 
     fn remove(
@@ -753,13 +765,16 @@ where
             Message::Handshake {
                 network_name,
                 public_address,
+                protocol_version,
             } => {
-                if network_name != self.network_name {
+                if network_name != self.chain_info.network_name {
                     info!(
                         our_id=%self.our_id,
                         %peer_id,
-                        our_network=?self.network_name,
+                        our_network=?self.chain_info.network_name,
                         their_network=?network_name,
+                        our_protocol_version=%self.chain_info.protocol_version,
+                        their_protocol_version=%protocol_version,
                         "dropping connection due to network name mismatch"
                     );
                     let remove = self.remove(effect_builder, &peer_id, false);
@@ -784,8 +799,9 @@ where
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
+        let now = Timestamp::now();
         self.blocklist
-            .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
+            .retain(|_, ts| *ts > now - *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
@@ -1304,8 +1320,13 @@ type FramedTransport<P> = SymmetricallyFramed<
 >;
 
 /// Constructs a new framed transport on a stream.
-fn framed<P>(stream: Transport) -> FramedTransport<P> {
-    let length_delimited = Framed::new(stream, LengthDelimitedCodec::new());
+fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTransport<P> {
+    let length_delimited = Framed::new(
+        stream,
+        LengthDelimitedCodec::builder()
+            .max_frame_length(maximum_net_message_size as usize)
+            .new_codec(),
+    );
     SymmetricallyFramed::new(
         length_delimited,
         SymmetricalBincode::<Message<P>>::default(),
