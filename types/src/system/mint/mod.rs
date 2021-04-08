@@ -6,6 +6,7 @@ mod storage_provider;
 mod system_provider;
 
 use num_rational::Ratio;
+use num_traits::CheckedMul;
 
 use crate::{account::AccountHash, Key, PublicKey, URef, U512};
 
@@ -13,7 +14,6 @@ pub use crate::system::mint::{
     constants::*, error::Error, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider, system_provider::SystemProvider,
 };
-use num_traits::CheckedMul;
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
@@ -72,10 +72,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::TotalSupplyNotFound)?;
 
         // decrease total supply
-        let reduced_total_supply = match total_supply.checked_sub(amount) {
-            Some(supply) => supply,
-            None => return Err(Error::ArithmeticOverflow),
-        };
+        let reduced_total_supply = total_supply
+            .checked_sub(amount)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // update total supply
         self.write(total_supply_uref, reduced_total_supply)?;
@@ -139,11 +138,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(round_seigniorage_rate_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let ret = match round_seigniorage_rate.checked_mul(&Ratio::from(total_supply)) {
-            Some(ratio) => ratio.to_integer(),
-            None => return Err(Error::ArithmeticOverflow),
-        };
-
-        Ok(ret)
+        round_seigniorage_rate
+            .checked_mul(&Ratio::from(total_supply))
+            .map(|ratio| ratio.to_integer())
+            .ok_or(Error::ArithmeticOverflow)
     }
 }

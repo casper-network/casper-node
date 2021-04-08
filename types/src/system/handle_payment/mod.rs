@@ -119,23 +119,20 @@ mod internal {
 
         // User's part
         let refund_amount = {
-            let refund_amount_raw = match total.checked_sub(amount_spent) {
-                Some(amount) => amount,
-                None => return Err(Error::ArithmeticOverflow),
-            };
+            let refund_amount_raw = total
+                .checked_sub(amount_spent)
+                .ok_or(Error::ArithmeticOverflow)?;
             // Currently refund percentage is zero and we expect no overflows.
             // However, we put this check should the constant change in the future.
-            match refund_amount_raw.checked_mul(REFUND_PERCENTAGE) {
-                Some(refund_amount) => refund_amount,
-                None => return Err(Error::ArithmeticOverflow),
-            }
+            refund_amount_raw
+                .checked_mul(REFUND_PERCENTAGE)
+                .ok_or(Error::ArithmeticOverflow)?
         };
 
         // Validator reward
-        let validator_reward = match total.checked_sub(refund_amount) {
-            Some(reward) => reward,
-            None => return Err(Error::ArithmeticOverflow),
-        };
+        let validator_reward = total
+            .checked_sub(refund_amount)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // Makes sure both parts: for user, and for validator sums to the total amount in the
         // payment's purse.
