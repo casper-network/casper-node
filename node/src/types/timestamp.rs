@@ -247,11 +247,6 @@ impl TimeDiff {
     pub const fn from_seconds(seconds: u32) -> Self {
         TimeDiff(seconds as u64 * 1_000)
     }
-
-    /// Creates a new time difference from milliseconds.
-    pub const fn from_millis(millis: u64) -> Self {
-        TimeDiff(millis)
-    }
 }
 
 impl Mul<u64> for TimeDiff {

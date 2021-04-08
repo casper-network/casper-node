@@ -336,7 +336,9 @@ impl BlockProposerReady {
         if self.sets.finalized_deploys.contains_key(&hash) {
             info!(%hash, "deploy rejected from the buffer");
         } else {
-            self.sets.pending.insert(hash, deploy_or_transfer);
+            self.sets
+                .pending
+                .insert(hash, (deploy_or_transfer, current_instant));
             info!(%hash, "added deploy to the buffer");
         }
     }
@@ -348,7 +350,7 @@ impl BlockProposerReady {
     {
         for deploy_hash in deploys.into_iter() {
             match self.sets.pending.remove(&deploy_hash) {
-                Some(deploy_type) => {
+                Some((deploy_type, _)) => {
                     self.sets
                         .finalized_deploys
                         .insert(deploy_hash, deploy_type.take_header());
@@ -414,11 +416,12 @@ impl BlockProposerReady {
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
         // We prioritize transfers over deploys, so we try to include them first.
-        for (hash, deploy_type) in &self.sets.pending {
+        for (hash, (deploy_type, received_time)) in &self.sets.pending {
             if !deploy_type.is_transfer()
                 || !self.deps_resolved(&deploy_type.header(), &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
+                || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay
             {
                 continue;
             }
@@ -438,11 +441,12 @@ impl BlockProposerReady {
         }
 
         // Now we try to add other deploys to the block.
-        for (hash, deploy_type) in &self.sets.pending {
+        for (hash, (deploy_type, received_time)) in &self.sets.pending {
             if deploy_type.is_transfer()
                 || !self.deps_resolved(&deploy_type.header(), &past_deploys)
                 || past_deploys.contains(hash)
                 || self.contains_finalized(hash)
+                || block_timestamp.saturating_diff(*received_time) < self.local_config.deploy_delay
             {
                 continue;
             }
