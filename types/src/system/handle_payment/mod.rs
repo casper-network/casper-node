@@ -29,15 +29,6 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
         internal::set_refund(self, purse)
     }
 
-    /// Get refund purse.
-    fn get_refund_purse(&self) -> Result<Option<URef>, Error> {
-        // We purposely choose to remove the access rights so that we do not
-        // accidentally give rights for a purse to some contract that is not
-        // supposed to have it.
-        let maybe_purse = internal::get_refund_purse(self)?;
-        Ok(maybe_purse.map(|p| p.remove_access_rights()))
-    }
-
     /// Finalize payment with `amount_spent` and a given `account`.
     fn finalize_payment(
         &mut self,
