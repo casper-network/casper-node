@@ -25,7 +25,7 @@ pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
-    Error as DeployError,
+    Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
 };
 pub use exit_code::ExitCode;
 pub use item::{Item, Tag};

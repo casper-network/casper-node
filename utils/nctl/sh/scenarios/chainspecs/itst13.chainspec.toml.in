@@ -18,6 +18,9 @@ name = 'casper-example'
 # timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
 timestamp = '${TIMESTAMP}'
+# The maximum size of an acceptable networking message in bytes.  Any message larger than this will
+# be rejected at the networking level.
+maximum_net_message_size = 23_068_672
 
 [core]
 # Era duration.
@@ -69,6 +72,8 @@ max_ttl = '1day'
 max_dependencies = 10
 # Maximum block size in bytes including deploys contained by the block.  0 means unlimited.
 max_block_size = 10_485_760
+# Maximum deploy size in bytes.  Size is of the deploy when serialized via ToBytes.
+max_deploy_size = 1_048_576
 # The maximum number of non-transfer deploys permitted in a single block.
 block_max_deploy_count = 100
 # The maximum number of wasm-less transfer deploys permitted in a single block.
