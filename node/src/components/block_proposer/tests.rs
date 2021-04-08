@@ -91,13 +91,14 @@ fn generate_deploy(
     )
 }
 
-fn create_test_proposer() -> BlockProposerReady {
+fn create_test_proposer(deploy_delay: TimeDiff) -> BlockProposerReady {
     BlockProposerReady {
         sets: Default::default(),
         deploy_config: Default::default(),
         state_key: b"block-proposer-test".to_vec(),
         request_queue: Default::default(),
         unhandled_finalized: Default::default(),
+        local_config: Config { deploy_delay },
     }
 }
 
@@ -124,7 +125,7 @@ fn should_add_and_take_deploys() {
     let block_time3 = Timestamp::from(220);
 
     let no_deploys = HashSet::new();
-    let mut proposer = create_test_proposer();
+    let mut proposer = create_test_proposer(0.into());
     let mut rng = crate::new_rng();
     let deploy1 = generate_deploy(
         &mut rng,
@@ -284,7 +285,7 @@ fn should_successfully_prune() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = create_test_proposer();
+    let mut proposer = create_test_proposer(0.into());
 
     // pending
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
@@ -337,7 +338,7 @@ fn should_keep_track_of_unhandled_deploys() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = create_test_proposer();
+    let mut proposer = create_test_proposer(0.into());
 
     // We do NOT add deploy2...
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
@@ -546,7 +547,7 @@ fn test_proposer_with(
     let past_deploys = HashSet::new();
 
     let mut rng = crate::new_rng();
-    let mut proposer = create_test_proposer();
+    let mut proposer = create_test_proposer(0.into());
     let mut config = proposer.deploy_config;
     // defaults are 10, 1000 respectively
     config.block_max_deploy_count = max_deploy_count;
@@ -625,7 +626,7 @@ fn should_return_deploy_dependencies() {
     );
 
     let no_deploys = HashSet::new();
-    let mut proposer = create_test_proposer();
+    let mut proposer = create_test_proposer(0.into());
 
     // add deploy2
     proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
@@ -662,4 +663,29 @@ fn should_return_deploy_dependencies() {
     let deploys2 = block.deploy_hashes();
     assert_eq!(deploys2.len(), 1);
     assert!(deploys2.contains(deploy2.id()));
+}
+
+#[test]
+fn should_respect_deploy_delay() {
+    let mut rng = crate::new_rng();
+    let creation_time = Timestamp::from(0);
+    let ttl = TimeDiff::from(10000);
+    let no_deploys = HashSet::new();
+    let deploy_config = DeployConfig::default();
+    let deploy = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        DEFAULT_TEST_GAS_PRICE,
+    );
+    let mut proposer = create_test_proposer(10.into()); // Deploy delay: 10 milliseconds
+
+    // Add the deploy at time 100. So at 109 it cannot be proposed yet, but at time 110 it can.
+    proposer.add_deploy_or_transfer(100.into(), *deploy.id(), deploy.deploy_type().unwrap());
+    let block = proposer.propose_proto_block(deploy_config, 109.into(), no_deploys.clone(), true);
+    assert!(block.deploy_hashes().is_empty());
+    let block = proposer.propose_proto_block(deploy_config, 110.into(), no_deploys, true);
+    assert_eq!(&vec![*deploy.id()], block.deploy_hashes());
 }
