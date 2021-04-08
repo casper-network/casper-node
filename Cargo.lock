@@ -5888,29 +5888,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "transfer-to-account-stored"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "transfer-to-account",
-]
-
-[[package]]
 name = "transfer-to-account-u512"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
-]
-
-[[package]]
-name = "transfer-to-account-u512-stored"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "transfer-to-account-u512",
 ]
 
 [[package]]
