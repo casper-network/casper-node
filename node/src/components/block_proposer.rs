@@ -3,6 +3,7 @@
 //! The block proposer stores deploy hashes in memory, tracking their suitability for inclusion into
 //! a new block. Upon request, it returns a list of candidates that can be included.
 
+mod config;
 mod deploy_sets;
 mod event;
 mod metrics;
@@ -16,6 +17,7 @@ use std::{
     time::Duration,
 };
 
+pub use config::Config;
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::{self, Registry};
@@ -81,6 +83,8 @@ enum BlockProposerState {
         state_key: Vec<u8>,
         /// The deploy config from the current chainspec.
         deploy_config: DeployConfig,
+        /// The configuration, containing local settings for deploy selection
+        local_config: Config,
     },
     /// Normal operation.
     Ready(BlockProposerReady),
@@ -93,6 +97,7 @@ impl BlockProposer {
         effect_builder: EffectBuilder<REv>,
         next_finalized_block: BlockHeight,
         chainspec: &Chainspec,
+        local_config: Config,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
@@ -112,6 +117,7 @@ impl BlockProposer {
                 pending: Vec::new(),
                 state_key,
                 deploy_config: chainspec.deploy_config,
+                local_config,
             },
             metrics: BlockProposerMetrics::new(registry)?,
         };
@@ -144,6 +150,7 @@ where
                     ref mut pending,
                     state_key,
                     deploy_config,
+                    local_config,
                 },
                 Event::Loaded {
                     finalized_deploys,
@@ -159,6 +166,7 @@ where
                     deploy_config: *deploy_config,
                     state_key: state_key.clone(),
                     request_queue: Default::default(),
+                    local_config: local_config.clone(),
                 };
 
                 // Replay postponed events onto new state.
@@ -214,6 +222,8 @@ struct BlockProposerReady {
     state_key: Vec<u8>,
     /// The queue of requests awaiting being handled.
     request_queue: RequestQueue,
+    /// The block proposer configuration, containing local settings for selecting deploys.
+    local_config: Config,
 }
 
 impl BlockProposerReady {
