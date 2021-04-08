@@ -99,10 +99,15 @@ mod tests {
     type OpenSSLSecretKey = PKey<Private>;
     type OpenSSLPublicKey = PKey<Public>;
 
+    // `SecretKey` does not implement `PartialEq`, so just compare derived `PublicKey`s.
+    fn assert_secret_keys_equal(lhs: &SecretKey, rhs: &SecretKey) {
+        assert_eq!(PublicKey::from(lhs), PublicKey::from(rhs));
+    }
+
     fn secret_key_der_roundtrip(secret_key: SecretKey) {
         let der_encoded = secret_key.to_der().unwrap();
         let decoded = SecretKey::from_der(&der_encoded).unwrap();
-        assert_eq!(secret_key, decoded);
+        assert_secret_keys_equal(&secret_key, &decoded);
         assert_eq!(secret_key.tag(), decoded.tag());
 
         // Ensure malformed encoded version fails to decode.
@@ -112,7 +117,7 @@ mod tests {
     fn secret_key_pem_roundtrip(secret_key: SecretKey) {
         let pem_encoded = secret_key.to_pem().unwrap();
         let decoded = SecretKey::from_pem(pem_encoded.as_bytes()).unwrap();
-        assert_eq!(secret_key, decoded);
+        assert_secret_keys_equal(&secret_key, &decoded);
         assert_eq!(secret_key.tag(), decoded.tag());
 
         // Check PEM-encoded can be decoded by openssl.
@@ -124,7 +129,7 @@ mod tests {
 
     fn known_secret_key_to_pem(expected_key: &SecretKey, known_key_pem: &str, expected_tag: u8) {
         let decoded = SecretKey::from_pem(known_key_pem.as_bytes()).unwrap();
-        assert_eq!(*expected_key, decoded);
+        assert_secret_keys_equal(expected_key, &decoded);
         assert_eq!(expected_tag, decoded.tag());
     }
 
@@ -134,7 +139,7 @@ mod tests {
 
         secret_key.to_file(&path).unwrap();
         let decoded = SecretKey::from_file(&path).unwrap();
-        assert_eq!(secret_key, decoded);
+        assert_secret_keys_equal(&secret_key, &decoded);
         assert_eq!(secret_key.tag(), decoded.tag());
     }
 

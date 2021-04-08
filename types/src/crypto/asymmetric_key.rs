@@ -208,26 +208,6 @@ impl Tagged<u8> for SecretKey {
     }
 }
 
-// TODO - this should be feature-gated for use in the casper-node tests only.
-#[doc(hidden)]
-impl PartialEq for SecretKey {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (SecretKey::System, SecretKey::System) => true,
-            (SecretKey::Ed25519(lhs), SecretKey::Ed25519(rhs)) => lhs.as_ref() == rhs.as_ref(),
-            (SecretKey::Secp256k1(lhs), SecretKey::Secp256k1(rhs)) => {
-                let mut lhs_secret_bytes = Secp256k1SecretBytes::from(lhs.to_bytes());
-                let mut rhs_secret_bytes = Secp256k1SecretBytes::from(rhs.to_bytes());
-                let result = *lhs_secret_bytes == *rhs_secret_bytes;
-                lhs_secret_bytes.zeroize();
-                rhs_secret_bytes.zeroize();
-                result
-            }
-            _ => false,
-        }
-    }
-}
-
 /// A public asymmetric key.
 #[derive(DataSize, Eq, PartialEq)]
 pub enum PublicKey {
