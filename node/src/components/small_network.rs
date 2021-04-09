@@ -90,6 +90,7 @@ use crate::{
     components::{
         network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
     },
+    e,
     effect::{
         announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -211,8 +212,8 @@ where
                         warn!(%address, resolved=%known_address, "ignoring duplicated known address");
                     };
                 }
-                Err(err) => {
-                    warn!(%address, %err, "failed to resolve known address");
+                Err(ref err) => {
+                    warn!(%address, err=e!(err), "failed to resolve known address");
                 }
             }
         }
@@ -494,12 +495,12 @@ where
                 }
 
                 // If the peer has already disconnected, allow the connection to drop.
-                if let Err(error) = transport.get_ref().peer_addr() {
+                if let Err(ref err) = transport.get_ref().peer_addr() {
                     debug!(
                         our_id=%self.our_id,
                         %peer_address,
                         local_address=?transport.get_ref().local_addr(),
-                        %error,
+                        err=e!(err),
                         "incoming connection dropped",
                     );
                     return Effects::new();
@@ -546,8 +547,8 @@ where
 
                 effects
             }
-            Err(err) => {
-                warn!(our_id=%self.our_id, %peer_address, %err, "TLS handshake failed");
+            Err(ref err) => {
+                warn!(our_id=%self.our_id, %peer_address, err=e!(err), "TLS handshake failed");
                 Effects::new()
             }
         }
@@ -563,10 +564,10 @@ where
         // This connection is send-only, we only use the sink.
         let peer_address = match transport.get_ref().peer_addr() {
             Ok(peer_addr) => peer_addr,
-            Err(err) => {
+            Err(ref err) => {
                 // The peer address disappeared, likely because the connection was closed while
                 // we are setting up.
-                warn!(%peer_id, %err, "peer connection terminated while setting up outgoing connection, dropping");
+                warn!(%peer_id, err=e!(err), "peer connection terminated while setting up outgoing connection, dropping");
 
                 // We still need to clean up any trace of the connection.
                 return self.remove(effect_builder, &peer_id, false);
@@ -646,7 +647,7 @@ where
                     our_id=%self.our_id,
                     %peer_id,
                     %peer_address,
-                    %err,
+                    err=e!(err),
                     "outgoing connection failed"
                 );
             } else {
@@ -661,7 +662,7 @@ where
             warn!(
                 our_id=%self.our_id,
                 %peer_address,
-                %err,
+                err=e!(err),
                 "outgoing connection to known address failed"
             );
         } else {
@@ -927,7 +928,9 @@ where
             if let Some(join_handle) = self.server_join_handle.take() {
                 match join_handle.await {
                     Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
-                    Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
+                    Err(ref err) => {
+                        error!(%self.our_id, err=e!(err), "could not join server task cleanly")
+                    }
                 }
             } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
@@ -992,8 +995,8 @@ where
                     Ok(()) => {
                         info!(our_id=%self.our_id, %peer_id, %peer_address, "connection closed",)
                     }
-                    Err(err) => {
-                        warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "connection dropped")
+                    Err(ref err) => {
+                        warn!(our_id=%self.our_id, %peer_id, %peer_address, err=e!(err), "connection dropped")
                     }
                 }
                 self.remove(effect_builder, &peer_id, false)
@@ -1098,8 +1101,8 @@ async fn server_task<P, REv>(
                 //
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(err) => {
-                    warn!(%our_id, %err, "dropping incoming connection during accept")
+                Err(ref err) => {
+                    warn!(%our_id, err=e!(err), "dropping incoming connection during accept")
                 }
             }
         }
@@ -1260,7 +1263,7 @@ where
                         .await;
                 }
                 Err(err) => {
-                    warn!(%our_id, %err, %peer_id, "receiving message failed, closing connection");
+                    warn!(%our_id, err=e!(&err), %peer_id, "receiving message failed, closing connection");
                     return Err(err);
                 }
             }
