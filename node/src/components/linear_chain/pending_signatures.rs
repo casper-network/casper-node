@@ -1,6 +1,6 @@
 use datasize::DataSize;
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use tracing::warn;
 
 use super::signature::Signature;
@@ -11,11 +11,29 @@ use casper_types::PublicKey;
 /// waiting for their block.
 const MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR: usize = 1000;
 
+#[derive(DataSize, Debug)]
+enum VerificationStatus {
+    Unknown(Signature),
+    Bonded(Signature),
+}
+
+impl VerificationStatus {
+    fn is_bonded(&self) -> bool {
+        matches!(self, &VerificationStatus::Bonded(_))
+    }
+
+    fn into_inner(self) -> Signature {
+        match self {
+            Self::Unknown(sig) | Self::Bonded(sig) => sig,
+        }
+    }
+}
+
 /// Finality signatures to be inserted in a block once it is available.
 /// Keyed by public key of the creator to limit the maximum amount of pending signatures.
 #[derive(DataSize, Debug, Default)]
 pub(super) struct PendingSignatures {
-    pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, Signature>>,
+    pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, VerificationStatus>>,
 }
 
 impl PendingSignatures {
@@ -41,7 +59,19 @@ impl PendingSignatures {
         let pending_sigs = self
             .pending_finality_signatures
             .values_mut()
-            .filter_map(|sigs| sigs.remove(&block_hash))
+            .filter_map(|sigs| {
+                // Collect the signature only if it's been verified already.
+                if let Some(sig_status) = sigs.get(block_hash) {
+                    if sig_status.is_bonded() {
+                        sigs.remove(block_hash)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .map(|status| status.into_inner())
             .collect_vec();
         self.remove_empty_entries();
         pending_sigs
@@ -64,8 +94,10 @@ impl PendingSignatures {
             );
             return false;
         }
+
         // Add the pending signature.
-        sigs.insert(block_hash, signature);
+        let value = VerificationStatus::Unknown(signature);
+        sigs.insert(block_hash, value);
         true
     }
 
@@ -77,7 +109,33 @@ impl PendingSignatures {
         let validator_sigs = self.pending_finality_signatures.get_mut(public_key)?;
         let sig = validator_sigs.remove(&block_hash);
         self.remove_empty_entries();
-        sig
+        sig.map(|status| status.into_inner())
+    }
+
+    /// Marks pending finality signature as created by a bonded validator.
+    /// Returns whether there was a signature from the `public_key` for `block_hash` in the
+    /// collection.
+    pub(super) fn mark_bonded(&mut self, public_key: PublicKey, block_hash: BlockHash) -> bool {
+        self.mark_bonded_helper(public_key, block_hash).is_some()
+    }
+
+    fn mark_bonded_helper(&mut self, public_key: PublicKey, block_hash: BlockHash) -> Option<()> {
+        match self.pending_finality_signatures.entry(public_key) {
+            Entry::Occupied(mut validator_sigs) => {
+                let sig = validator_sigs.get_mut().remove(&block_hash)?;
+                if sig.is_bonded() {
+                    return Some(());
+                }
+                validator_sigs
+                    .get_mut()
+                    .insert(block_hash, VerificationStatus::Bonded(sig.into_inner()));
+                Some(())
+            }
+            Entry::Vacant(_) => {
+                warn!(?public_key, ?block_hash, "no signature from validator");
+                None
+            }
+        }
     }
 
     /// Removes all entries for which there are no finality signatures.
