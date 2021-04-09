@@ -179,7 +179,9 @@ mod tests {
         let sig_a2 = FinalitySignature::random_for_block(block_hash, 0);
         let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a1.clone()))));
+        assert!(pending_sigs.mark_bonded(sig_a1.public_key.clone(), block_hash));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a2.clone()))));
+        assert!(pending_sigs.mark_bonded(sig_a2.public_key.clone(), block_hash));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_b))));
         let collected_sigs: BTreeMap<PublicKey, FinalitySignature> = pending_sigs
             .collect_pending(&block_hash)
