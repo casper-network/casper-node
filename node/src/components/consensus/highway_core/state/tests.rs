@@ -62,12 +62,6 @@ impl ConsensusValueT for u32 {
     fn needs_validation(&self) -> bool {
         false
     }
-
-    type Hash = u32;
-
-    fn hash(&self) -> Self::Hash {
-        *self
-    }
 }
 
 impl Context for TestContext {

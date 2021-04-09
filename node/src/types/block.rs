@@ -261,10 +261,6 @@ impl BlockPayload {
         }
     }
 
-    pub(crate) fn hash(&self) -> &BlockPayloadHash {
-        &self.hash
-    }
-
     /// Returns the set of validators that are reported as faulty in this block.
     pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
         &self.accusations
