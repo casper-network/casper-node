@@ -597,7 +597,7 @@ where
         }
     }
 
-    /// Expects a successful run and caches transformations
+    /// Expects a successful run
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
@@ -614,6 +614,27 @@ where
                 exec_results,
             );
         }
+        self
+    }
+
+    /// Expects a failed run
+    pub fn expect_failure(&mut self) -> &mut Self {
+        // Check first result, as only first result is interesting for a simple test
+        let exec_results = self
+            .exec_results
+            .last()
+            .expect("Expected to be called after run()");
+        let exec_result = exec_results
+            .get(0)
+            .expect("Unable to get first deploy result");
+
+        if exec_result.is_success() {
+            panic!(
+                "Expected failed execution result, but instead got: {:?}",
+                exec_results,
+            );
+        }
+
         self
     }
 
