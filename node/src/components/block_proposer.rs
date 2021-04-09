@@ -17,6 +17,7 @@ use std::{
     time::Duration,
 };
 
+use casper_types::PublicKey;
 pub use config::Config;
 use datasize::DataSize;
 use itertools::Itertools;
@@ -256,6 +257,7 @@ impl BlockProposerReady {
                             self.deploy_config,
                             request.current_instant,
                             request.past_deploys,
+                            request.accusations,
                             request.random_bit,
                         ))
                         .ignore()
@@ -388,6 +390,7 @@ impl BlockProposerReady {
                             self.deploy_config,
                             request.current_instant,
                             request.past_deploys,
+                            request.accusations,
                             request.random_bit,
                         ))
                         .ignore()
@@ -412,6 +415,7 @@ impl BlockProposerReady {
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
         past_deploys: HashSet<DeployHash>,
+        accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> ProtoBlock {
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
@@ -477,7 +481,7 @@ impl BlockProposerReady {
             }
         }
 
-        appendable_block.into_proto_block(random_bit)
+        appendable_block.into_proto_block(accusations, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.

@@ -1129,6 +1129,7 @@ impl<REv> EffectBuilder<REv> {
         current_instant: Timestamp,
         past_deploys: HashSet<DeployHash>,
         next_finalized: u64,
+        accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> ProtoBlock
     where
@@ -1141,6 +1142,7 @@ impl<REv> EffectBuilder<REv> {
                     past_deploys,
                     next_finalized,
                     responder,
+                    accusations,
                     random_bit,
                 })
             },

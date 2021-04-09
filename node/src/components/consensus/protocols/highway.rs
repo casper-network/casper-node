@@ -337,21 +337,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         {
             let panorama = &swunit.wire_unit().panorama;
             let fork_choice = self.highway.state().fork_choice(panorama);
-            let parent_value =
-                fork_choice.map(|hash| self.highway.state().block(hash).value.hash());
-            // The timestamp and parent are currently duplicated: The information in the consensus
-            // value must match the information in the Highway DAG.
-            if timestamp != value.timestamp() || parent_value.as_ref() != value.parent() {
-                info!(
-                    timestamp = %value.timestamp(), consensus_timestamp = %timestamp,
-                    parent = ?value.parent(), consensus_parent = ?parent_value,
-                    "consensus value does not match vertex"
-                );
-                let vertices = vec![vv.inner().id()];
-                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
-                outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
-                return outcomes;
-            }
             if value.needs_validation() {
                 self.log_proposal(vertex, "requesting proposal validation");
                 let ancestor_values = self.ancestors(fork_choice).cloned().collect();

@@ -482,6 +482,8 @@ pub struct ProtoBlockRequest {
     /// request was made. Block Proposer uses this in order to determine if there might be any
     /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
     pub(crate) next_finalized: u64,
+    /// A list of validators reported as malicious in this block.
+    pub(crate) accusations: Vec<PublicKey>,
     /// Random bit with which to construct the `ProtoBlock` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
@@ -504,6 +506,7 @@ impl Display for BlockProposerRequest {
                 past_deploys,
                 next_finalized,
                 responder: _,
+                accusations: _,
                 random_bit: _,
             }) => write!(
                 formatter,

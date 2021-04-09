@@ -68,14 +68,6 @@ impl ConsensusValueT for u32 {
     fn hash(&self) -> Self::Hash {
         *self
     }
-
-    fn timestamp(&self) -> Timestamp {
-        0.into() // Not relevant for highway_core tests.
-    }
-
-    fn parent(&self) -> Option<&Self::Hash> {
-        None // Not relevant for highway_core tests.
-    }
 }
 
 impl Context for TestContext {

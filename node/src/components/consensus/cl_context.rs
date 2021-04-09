@@ -6,14 +6,12 @@ use tracing::info;
 use casper_types::{PublicKey, SecretKey, Signature};
 
 use crate::{
-    components::consensus::{
-        candidate_block::CandidateBlock,
-        traits::{Context, ValidatorSecret},
-    },
+    components::consensus::traits::{ConsensusValueT, Context, ValidatorSecret},
     crypto::{
         self,
         hash::{self, Digest},
     },
+    types::ProtoBlock,
 };
 
 #[derive(DataSize)]
@@ -47,12 +45,24 @@ impl ValidatorSecret for Keypair {
     }
 }
 
+impl ConsensusValueT for ProtoBlock {
+    type Hash = Digest;
+
+    fn hash(&self) -> Digest {
+        *self.hash().inner()
+    }
+
+    fn needs_validation(&self) -> bool {
+        !self.transfer_hashes().is_empty() || !self.deploy_hashes().is_empty()
+    }
+}
+
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ClContext;
 
 impl Context for ClContext {
-    type ConsensusValue = CandidateBlock;
+    type ConsensusValue = ProtoBlock;
     type ValidatorId = PublicKey;
     type ValidatorSecret = Keypair;
     type Signature = Signature;

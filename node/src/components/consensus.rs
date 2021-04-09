@@ -2,7 +2,6 @@
 
 #![warn(clippy::integer_arithmetic)]
 
-mod candidate_block;
 mod cl_context;
 mod config;
 mod consensus_protocol;
