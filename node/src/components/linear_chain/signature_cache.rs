@@ -65,7 +65,7 @@ mod tests {
         // Add first signature for the block.
         let mut block_signatures_a = BlockSignatures::new(block_hash, EraId::new(0));
         let sig_a = FinalitySignature::random_for_block(block_hash, 0);
-        block_signatures_a.insert_proof(sig_a.public_key, sig_a.signature);
+        block_signatures_a.insert_proof(sig_a.public_key.clone(), sig_a.signature);
         cache.insert(block_signatures_a.clone());
         // Verify that the first signature is cached.
         assert!(cache.known_signature(&block_hash, &sig_a.public_key));
@@ -75,7 +75,7 @@ mod tests {
         // Adding more signatures for the same block.
         let mut block_signatures_b = BlockSignatures::new(block_hash, EraId::new(0));
         let sig_b = FinalitySignature::random_for_block(block_hash, 0);
-        block_signatures_b.insert_proof(sig_b.public_key, sig_b.signature);
+        block_signatures_b.insert_proof(sig_b.public_key.clone(), sig_b.signature);
         cache.insert(block_signatures_b.clone());
         // Verify that the second signature is cached.
         assert!(cache.known_signature(&block_hash, &sig_b.public_key));
@@ -101,13 +101,13 @@ mod tests {
         // Add signature for a block in era-0.
         let mut block_signatures_a = BlockSignatures::new(block_hash, EraId::new(0));
         let sig_a = FinalitySignature::random_for_block(block_hash, 0);
-        block_signatures_a.insert_proof(sig_a.public_key, sig_a.signature);
+        block_signatures_a.insert_proof(sig_a.public_key.clone(), sig_a.signature);
         cache.insert(block_signatures_a);
 
         // Add a signature for a block in era-1.
         let mut block_signatures_b = BlockSignatures::new(block_hash, EraId::new(1));
         let sig_b = FinalitySignature::random_for_block(block_hash, 1);
-        block_signatures_b.insert_proof(sig_b.public_key, sig_b.signature);
+        block_signatures_b.insert_proof(sig_b.public_key.clone(), sig_b.signature);
         cache.insert(block_signatures_b);
 
         // Verify that era-0 signature is not cached anymore.

@@ -162,8 +162,8 @@ pub trait Auction:
 
         detail::create_unbonding_purse(
             self,
-            public_key,
-            public_key, // validator is the unbonder
+            public_key.clone(),
+            public_key.clone(), // validator is the unbonder
             *bid.bonding_purse(),
             amount,
         )?;
@@ -173,8 +173,8 @@ pub trait Auction:
             for (delegator_public_key, delegator) in bid.delegators() {
                 detail::create_unbonding_purse(
                     self,
-                    public_key,
-                    *delegator_public_key,
+                    public_key.clone(),
+                    delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     *delegator.staked_amount(),
                 )?;
@@ -236,12 +236,12 @@ pub trait Auction:
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::unlocked(
-                    delegator_public_key,
+                    delegator_public_key.clone(),
                     amount,
                     bonding_purse,
                     validator_public_key,
                 );
-                delegators.insert(delegator_public_key, delegator);
+                delegators.insert(delegator_public_key.clone(), delegator);
                 amount
             }
         };
@@ -281,7 +281,7 @@ pub trait Auction:
                 detail::create_unbonding_purse(
                     self,
                     validator_public_key,
-                    delegator_public_key,
+                    delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     amount,
                 )?;
@@ -383,7 +383,7 @@ pub trait Auction:
                 .filter(|(_public_key, bid)| bid.vesting_schedule().is_some() && !bid.inactive())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
-                    Ok((*public_key, total_staked_amount))
+                    Ok((public_key.clone(), total_staked_amount))
                 })
                 .collect::<Result<ValidatorWeights, Error>>()?;
 
@@ -393,7 +393,7 @@ pub trait Auction:
                 .filter(|(_public_key, bid)| bid.vesting_schedule().is_none() && !bid.inactive())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
-                    Ok((*public_key, total_staked_amount))
+                    Ok((public_key.clone(), total_staked_amount))
                 })
                 .collect::<Result<Vec<(PublicKey, U512)>, Error>>()?;
 
@@ -425,7 +425,7 @@ pub trait Auction:
                     Some(bid) => bid.into(),
                     None => return Err(Error::BidNotFound),
                 };
-                recipients.insert(*era_validator, seigniorage_recipient);
+                recipients.insert(era_validator.clone(), seigniorage_recipient);
             }
 
             self.write_era_validators(delayed_era, recipients)?;
@@ -495,12 +495,12 @@ pub trait Auction:
                     .map(|(delegator_key, delegator_stake)| {
                         let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
                         let reward = delegators_part * reward_multiplier;
-                        (*delegator_key, reward)
+                        (delegator_key.clone(), reward)
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
                 self,
                 &mut seigniorage_allocations,
-                public_key,
+                public_key.clone(),
                 delegator_rewards,
             )?;
             let total_delegator_payout = delegator_payouts
@@ -513,7 +513,7 @@ pub trait Auction:
             let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
                 &mut seigniorage_allocations,
-                public_key,
+                public_key.clone(),
                 validator_reward,
             )?;
             // TODO: add "mint into existing purse" facility

@@ -585,7 +585,7 @@ where
                 local_address=?transport.get_ref().local_addr(),
                 "connected outgoing to ourself - closing connection",
             );
-            return Effects::new();
+            return self.reconnect_if_not_connected_to_any_known_addresses(effect_builder);
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
@@ -640,29 +640,39 @@ where
     ) -> Effects<Event<P>> {
         let _ = self.pending.remove(&peer_address);
 
-        let mut effects = Effects::new();
-
         if let Some(peer_id) = peer_id {
             if let Some(ref err) = error {
-                warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "outgoing connection failed");
+                warn!(
+                    our_id=%self.our_id,
+                    %peer_id,
+                    %peer_address,
+                    %err,
+                    "outgoing connection failed"
+                );
             } else {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
             }
-            effects.extend(self.remove(effect_builder, &peer_id, false));
-        } else {
-            // If we are not calling remove, call the reconnection check explicitly.
-            effects.extend(self.reconnect_if_not_connected_to_any_known_addresses(effect_builder));
+            return self.remove(effect_builder, &peer_id, false);
         }
 
         // If we don't have the node ID passed in here, it was never added as an
         // outgoing connection, hence no need to call `self.remove()`.
         if let Some(ref err) = error {
-            warn!(our_id=%self.our_id, %peer_address, %err, "outgoing connection failed");
+            warn!(
+                our_id=%self.our_id,
+                %peer_address,
+                %err,
+                "outgoing connection to known address failed"
+            );
         } else {
-            warn!(our_id=%self.our_id, %peer_address, "outgoing connection closed");
+            warn!(
+                our_id=%self.our_id,
+                %peer_address,
+                "outgoing connection to known address closed"
+            );
         }
-
-        effects
+        // Since we are not calling `self.remove()`, call the reconnection check explicitly.
+        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
     }
 
     fn remove(
@@ -789,8 +799,9 @@ where
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
+        let now = Timestamp::now();
         self.blocklist
-            .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
+            .retain(|_, ts| *ts > now - *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
