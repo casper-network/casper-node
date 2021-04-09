@@ -1188,9 +1188,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Checks whether the deploys included in the block payload exist on the network. This includes
-    /// the block's timestamp, in order that it be checked against the timestamp of the deploys
-    /// within the block.
+    /// Checks whether the deploys included in the block payload exist on the network. This
+    /// includes the block's timestamp, in order that it be checked against the timestamp of the
+    /// deploys within the block.
     pub(crate) async fn validate_block_payload<I>(
         self,
         sender: I,
@@ -1212,7 +1212,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces that a block payload has been finalized.
+    /// Announces that a block has been finalized.
     pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
     where
         REv: From<ConsensusAnnouncement>,

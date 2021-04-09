@@ -1038,7 +1038,7 @@ where
                 self.era_supervisor
                     .metrics
                     .finalized_block(&finalized_block);
-                // Announce the finalized block payload.
+                // Announce the finalized block.
                 let mut effects = self
                     .effect_builder
                     .announce_finalized_block(finalized_block.clone())
@@ -1076,7 +1076,7 @@ where
                     .collect();
                 self.era_mut(era_id)
                     .add_block(proposed_block.clone(), missing_evidence.clone());
-                let block_payload_deploys_set: BTreeSet<DeployHash> = proposed_block
+                let block_deploys_set: BTreeSet<DeployHash> = proposed_block
                     .value()
                     .deploys_and_transfers_iter()
                     .cloned()
@@ -1086,7 +1086,7 @@ where
                     .ancestor_values()
                     .iter()
                     .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
-                    .any(|deploy| block_payload_deploys_set.contains(deploy))
+                    .any(|deploy| block_deploys_set.contains(deploy))
                 {
                     return self.resolve_validity(ResolveValidity {
                         era_id,
@@ -1261,7 +1261,7 @@ pub enum ReplayCheckAndValidateBlockError {
 /// be less than the current era, otherwise the deploy is a replay attack.
 async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
-    block_payload_era_id: EraId,
+    proposed_block_era_id: EraId,
     sender: I,
     proposed_block: ProposedBlock<ClContext>,
 ) -> Result<Event<I>, ReplayCheckAndValidateBlockError>
@@ -1300,9 +1300,9 @@ where
                     // coming to consensus, and we will rely on the immediate ancestors of the
                     // block_payload within the current era to determine if we are facing a replay
                     // attack.
-                    if block_header.era_id() < block_payload_era_id {
+                    if block_header.era_id() < proposed_block_era_id {
                         return Ok(Event::ResolveValidity(ResolveValidity {
-                            era_id: block_payload_era_id,
+                            era_id: proposed_block_era_id,
                             sender: sender.clone(),
                             proposed_block: proposed_block.clone(),
                             valid: false,
@@ -1323,7 +1323,7 @@ where
         .await;
 
     Ok(Event::ResolveValidity(ResolveValidity {
-        era_id: block_payload_era_id,
+        era_id: proposed_block_era_id,
         sender,
         proposed_block,
         valid,

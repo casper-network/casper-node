@@ -109,7 +109,7 @@ impl AppendableBlock {
     }
 
     /// Creates a `BlockPayload` with the `AppendableBlock`s deploys and transfers, and the given
-    /// random bit.
+    /// random bit and accusations.
     pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
