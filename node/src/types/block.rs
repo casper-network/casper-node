@@ -187,41 +187,6 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
-/// A cryptographic hash identifying a `BlockPayload`.
-#[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Debug,
-    Default,
-)]
-pub struct BlockPayloadHash(Digest);
-
-impl BlockPayloadHash {
-    /// Constructs a new `BlockPayloadHash`.
-    pub fn new(hash: Digest) -> Self {
-        BlockPayloadHash(hash)
-    }
-
-    /// Returns the wrapped inner hash.
-    pub fn inner(&self) -> &Digest {
-        &self.0
-    }
-}
-
-impl Display for BlockPayloadHash {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "proto-block-hash({})", self.0)
-    }
-}
-
 /// The piece of information that will become the content of a future block (isn't finalized or
 /// executed yet)
 ///
@@ -233,7 +198,6 @@ impl Display for BlockPayloadHash {
 /// that this comes before a block in the linear, executed, finalized blockchain is produced.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BlockPayload {
-    hash: BlockPayloadHash,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
     accusations: Vec<PublicKey>,
@@ -247,13 +211,7 @@ impl BlockPayload {
         accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Self {
-        let hash = BlockPayloadHash::new(hash::hash(
-            &bincode::serialize(&(&deploy_hashes, &transfer_hashes, &accusations, random_bit))
-                .expect("serialize BlockPayload"),
-        ));
-
         BlockPayload {
-            hash,
             deploy_hashes,
             transfer_hashes,
             accusations,
@@ -287,8 +245,7 @@ impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "block payload {}, deploys {}, transfers {}, accusations {:?}, random bit {}",
-            self.hash.inner(),
+            "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
             HexList(&self.deploy_hashes),
             HexList(&self.transfer_hashes),
             self.accusations,
