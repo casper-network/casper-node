@@ -56,14 +56,6 @@ impl ConsensusValueT for ConsensusValue {
         std::hash::Hash::hash(&self, &mut hasher);
         hasher.finish()
     }
-
-    fn timestamp(&self) -> Timestamp {
-        0.into() // Not relevant for highway_core tests.
-    }
-
-    fn parent(&self) -> Option<&Self::Hash> {
-        None // Not relevant for highway_core tests.
-    }
 }
 
 const TEST_MIN_ROUND_EXP: u8 = 12;

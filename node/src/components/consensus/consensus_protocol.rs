@@ -43,11 +43,6 @@ impl<C: Context> BlockContext<C> {
     pub(crate) fn ancestor_values(&self) -> &[C::ConsensusValue] {
         &self.ancestor_values
     }
-
-    /// The value of the parent.
-    pub(crate) fn parent_value(&self) -> Option<&C::ConsensusValue> {
-        self.ancestor_values.get(0)
-    }
 }
 
 /// A proposed block, with context.

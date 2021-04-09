@@ -32,7 +32,6 @@ use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
         config::ProtocolConfig,
         consensus_protocol::{
@@ -40,7 +39,7 @@ use crate::{
             ProtocolOutcome, ProtocolOutcomes,
         },
         metrics::ConsensusMetrics,
-        traits::{ConsensusValueT, NodeIdT},
+        traits::NodeIdT,
         ActionId, Config, ConsensusMessage, Event, NewProtoBlock, ReactorEventT, ResolveValidity,
         TimerId,
     },
@@ -706,17 +705,7 @@ where
             warn!(era = era_id.value(), "new proto block in outdated era");
             return Effects::new();
         }
-        let accusations = self
-            .era_supervisor
-            .iter_past(era_id, self.era_supervisor.bonded_eras())
-            .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
-            .unique()
-            .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
-            .cloned()
-            .collect();
-        let parent = block_context.parent_value().map(CandidateBlock::hash);
-        let candidate_block = CandidateBlock::new(proto_block, accusations, parent);
-        let proposed_block = ProposedBlock::new(candidate_block, block_context);
+        let proposed_block = ProposedBlock::new(proto_block, block_context);
         self.delegate_to_era(era_id, move |consensus| {
             consensus.propose(proposed_block, Timestamp::now())
         })
@@ -989,11 +978,20 @@ where
                     .flat_map(|candidate| candidate.deploys_and_transfers_iter())
                     .cloned()
                     .collect();
+                let accusations = self
+                    .era_supervisor
+                    .iter_past(era_id, self.era_supervisor.bonded_eras())
+                    .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
+                    .unique()
+                    .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
+                    .cloned()
+                    .collect();
                 self.effect_builder
                     .request_proto_block(
                         block_context.timestamp(),
                         past_deploys,
                         self.era_supervisor.next_block_height,
+                        accusations,
                         self.rng.gen(),
                     )
                     .event(move |proto_block| {
@@ -1030,8 +1028,9 @@ where
                         .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
-                    value.into(),
+                    value,
                     era_end,
+                    timestamp,
                     era_id,
                     era.start_height + height,
                     proposer,
@@ -1318,7 +1317,7 @@ where
     let (valid, _) = effect_builder
         .validate_proto_block(
             sender_for_validate_block,
-            proposed_block.value().proto_block().clone(),
+            proposed_block.value().clone(),
             proposed_block.context().timestamp(),
         )
         .await;

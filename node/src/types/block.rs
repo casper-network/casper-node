@@ -98,13 +98,20 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
-    let proto_block = ProtoBlock::new(deploy_hashes, vec![], timestamp, random_bit);
+    let proto_block = ProtoBlock::new(deploy_hashes, vec![], vec![], random_bit);
     let era_report = Some(EraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
-    FinalizedBlock::new(proto_block, era_report, era_id, height, public_key)
+    FinalizedBlock::new(
+        proto_block,
+        era_report,
+        timestamp,
+        era_id,
+        height,
+        public_key,
+    )
 });
 static BLOCK: Lazy<Block> = Lazy::new(|| {
     let parent_hash = BlockHash::new(Digest::from([7u8; Digest::LENGTH]));
@@ -229,7 +236,7 @@ pub struct ProtoBlock {
     hash: ProtoBlockHash,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
-    timestamp: Timestamp,
+    accusations: Vec<PublicKey>,
     random_bit: bool,
 }
 
@@ -237,11 +244,11 @@ impl ProtoBlock {
     pub(crate) fn new(
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
-        timestamp: Timestamp,
+        accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
-            &bincode::serialize(&(&deploy_hashes, &transfer_hashes, timestamp, random_bit))
+            &bincode::serialize(&(&deploy_hashes, &transfer_hashes, &accusations, random_bit))
                 .expect("serialize ProtoBlock"),
         ));
 
@@ -249,7 +256,7 @@ impl ProtoBlock {
             hash,
             deploy_hashes,
             transfer_hashes,
-            timestamp,
+            accusations,
             random_bit,
         }
     }
@@ -258,9 +265,9 @@ impl ProtoBlock {
         &self.hash
     }
 
-    /// Returns the time when this proto block was proposed.
-    pub(crate) fn timestamp(&self) -> Timestamp {
-        self.timestamp
+    /// Returns the set of validators that are reported as faulty in this block.
+    pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
+        &self.accusations
     }
 
     /// The list of deploy hashes included in the block.
@@ -278,23 +285,18 @@ impl ProtoBlock {
             .iter()
             .chain(self.transfer_hashes().iter())
     }
-
-    /// A random bit needed for initializing a future era.
-    pub(crate) fn random_bit(&self) -> bool {
-        self.random_bit
-    }
 }
 
 impl Display for ProtoBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "proto block {}, deploys {}, transfers {}, random bit {}, timestamp {}",
+            "proto block {}, deploys {}, transfers {}, accusations {:?}, random bit {}",
             self.hash.inner(),
             HexList(&self.deploy_hashes),
             HexList(&self.transfer_hashes),
-            self.random_bit(),
-            self.timestamp,
+            self.accusations,
+            self.random_bit,
         )
     }
 }
@@ -369,6 +371,7 @@ impl FinalizedBlock {
     pub(crate) fn new(
         proto_block: ProtoBlock,
         era_report: Option<EraReport>,
+        timestamp: Timestamp,
         era_id: EraId,
         height: u64,
         proposer: PublicKey,
@@ -376,7 +379,7 @@ impl FinalizedBlock {
         FinalizedBlock {
             deploy_hashes: proto_block.deploy_hashes,
             transfer_hashes: proto_block.transfer_hashes,
-            timestamp: proto_block.timestamp,
+            timestamp,
             random_bit: proto_block.random_bit,
             era_report,
             era_id,
@@ -440,7 +443,7 @@ impl FinalizedBlock {
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let proto_block = ProtoBlock::new(deploy_hashes, vec![], timestamp, random_bit);
+        let proto_block = ProtoBlock::new(deploy_hashes, vec![], vec![], random_bit);
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
@@ -473,7 +476,14 @@ impl FinalizedBlock {
         let secret_key: SecretKey = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
         let public_key = PublicKey::from(&secret_key);
 
-        FinalizedBlock::new(proto_block, era_report, era_id, height, public_key)
+        FinalizedBlock::new(
+            proto_block,
+            era_report,
+            timestamp,
+            era_id,
+            height,
+            public_key,
+        )
     }
 }
 

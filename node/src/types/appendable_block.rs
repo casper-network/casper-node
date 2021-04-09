@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use casper_execution_engine::shared::gas::Gas;
+use casper_types::PublicKey;
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
@@ -109,14 +110,17 @@ impl AppendableBlock {
 
     /// Creates a `ProtoBlock` with the `AppendableBlock`s deploys and transfers, and the given
     /// random bit.
-    pub(crate) fn into_proto_block(self, random_bit: bool) -> ProtoBlock {
+    pub(crate) fn into_proto_block(
+        self,
+        accusations: Vec<PublicKey>,
+        random_bit: bool,
+    ) -> ProtoBlock {
         let AppendableBlock {
             deploy_hashes,
             transfer_hashes,
-            timestamp,
             ..
         } = self;
-        ProtoBlock::new(deploy_hashes, transfer_hashes, timestamp, random_bit)
+        ProtoBlock::new(deploy_hashes, transfer_hashes, accusations, random_bit)
     }
 
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
