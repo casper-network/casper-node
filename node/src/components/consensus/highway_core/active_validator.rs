@@ -2,6 +2,7 @@ use std::{
     fmt::{self, Debug},
     fs::{self, File},
     io::{self, Read, Write},
+    iter,
     path::{Path, PathBuf},
 };
 
@@ -326,15 +327,14 @@ impl<C: Context> ActiveValidator<C> {
                 .new_unit(panorama, timestamp, None, state, instance_id)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
-        let ancestor_values = maybe_parent_hash
-            .into_iter()
-            .chain(
-                maybe_parent_hash
-                    .into_iter()
-                    .flat_map(|parent_hash| state.ancestor_hashes(parent_hash)),
-            )
-            .map(|bhash| state.block(bhash).value.clone())
-            .collect();
+        // Otherwise we need to request a new consensus value to propose.
+        let ancestor_values = match maybe_parent_hash {
+            None => vec![],
+            Some(parent_hash) => iter::once(parent_hash)
+                .chain(state.ancestor_hashes(parent_hash))
+                .map(|bhash| state.block(bhash).value.clone())
+                .collect(),
+        };
         let block_context = BlockContext::new(timestamp, ancestor_values);
         self.next_proposal = Some((block_context.clone(), panorama));
         Some(Effect::RequestNewBlock(block_context))
