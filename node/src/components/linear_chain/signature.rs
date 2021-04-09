@@ -3,7 +3,7 @@ use datasize::DataSize;
 
 use crate::types::{BlockHash, FinalitySignature};
 
-#[derive(DataSize, Debug)]
+#[derive(DataSize, Debug, Clone)]
 pub(super) enum Signature {
     Local(Box<FinalitySignature>),
     External(Box<FinalitySignature>),

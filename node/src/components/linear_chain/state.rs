@@ -26,7 +26,7 @@ pub(crate) struct LinearChain {
     unbonding_delay: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub(super) enum Outcome {
     // Store block signatures to storage.
     StoreBlockSignatures(BlockSignatures),
@@ -338,7 +338,12 @@ impl LinearChain {
             return vec![];
         }
 
-        match maybe_known_signatures {
+        self.pending_finality_signatures
+            .mark_bonded(new_fs.public_key.clone(), new_fs.block_hash);
+
+        match maybe_known_signatures
+            .or_else(|| self.get_signatures(&new_fs.block_hash).map(Box::new))
+        {
             None => {
                 // Unknown block but validator is bonded.
                 // We should finalize the same block eventually. Either in this or in the
@@ -377,6 +382,8 @@ mod tests {
 
     use super::*;
 
+    use core::fmt::Debug;
+
     #[test]
     fn new_block_no_sigs() {
         let mut rng = TestRng::new();
@@ -410,6 +417,121 @@ mod tests {
         );
     }
 
+    // Creates a new finality signature for a given block, adds it as pending and returns.
+    fn add_pending(
+        lc: &mut LinearChain,
+        block_hash: BlockHash,
+        era_id: EraId,
+        local: bool,
+    ) -> FinalitySignature {
+        let sig = FinalitySignature::random_for_block(block_hash, era_id.value());
+        let outcomes = lc.handle_finality_signature(Box::new(sig.clone()), !local);
+        assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
+        sig
+    }
+
+    // Mark the creator of the signature as bonded.
+    fn mark_bonded(lc: &mut LinearChain, fs: FinalitySignature) {
+        let outcomes = lc.handle_is_bonded(None, Box::new(fs), true);
+        assert!(outcomes.is_empty());
+    }
+
+    #[test]
+    fn new_block_unvalidated_pending_sigs() {
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block = Block::random(&mut rng);
+        let block_hash = *block.hash();
+        let block_era = block.header().era_id();
+        // Store some pending finality signatures
+        let _sig_a = add_pending(&mut lc, block_hash, block_era, true);
+        let _sig_b = add_pending(&mut lc, block_hash, block_era, false);
+        let _sig_c = add_pending(&mut lc, block_hash, block_era, false);
+
+        let execution_results = HashMap::new();
+        let outcomes = lc.handle_new_block(Box::new(block), execution_results);
+        // None of the signatures' creators have been confirmed to be bonded yet.
+        // We should not gossip/store/announce any signatures yet.
+        assert!(matches!(
+            &*outcomes,
+            [Outcome::StoreBlock(_), Outcome::StoreExecutionResults(_, _)]
+        ));
+    }
+
+    // Check that `left` is a subset of `right`.
+    // i.e. that all elements from `left` exist in `right`.
+    fn verify_is_subset<T>(left: &[T], right: &[T])
+    where
+        T: PartialEq + Eq + Debug,
+    {
+        for l in left {
+            assert!(right.iter().any(|r| r == l), format!("{:?} not found", l))
+        }
+    }
+
+    fn assert_equal<T>(l: Vec<T>, r: Vec<T>)
+    where
+        T: PartialEq + Eq + Debug,
+    {
+        verify_is_subset(&l, &r);
+        verify_is_subset(&r, &l);
+    }
+
+    #[test]
+    fn new_block_bonded_pending_sigs() {
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block = Block::random(&mut rng);
+        let block_hash = *block.hash();
+        let block_era = block.header().era_id();
+        // Store some pending finality signatures
+        let sig_a = add_pending(&mut lc, block_hash, block_era, true);
+        let sig_b = add_pending(&mut lc, block_hash, block_era, false);
+        let sig_c = add_pending(&mut lc, block_hash, block_era, true);
+        // Mark two of the creators as bonded.
+        mark_bonded(&mut lc, sig_a.clone());
+        mark_bonded(&mut lc, sig_b.clone());
+        let execution_results = HashMap::new();
+        let outcomes = lc.handle_new_block(Box::new(block.clone()), execution_results.clone());
+        // `sig_a` and `sig_b` are valid and created by bonded validators.
+        let expected_outcomes = {
+            let mut tmp = vec![];
+            let mut block_signatures = BlockSignatures::new(block_hash, block_era);
+            block_signatures.insert_proof(sig_a.public_key.clone(), sig_a.signature);
+            block_signatures.insert_proof(sig_b.public_key.clone(), sig_b.signature);
+            tmp.push(Outcome::StoreBlockSignatures(block_signatures));
+            // Only `sig_a` was created locally and we don't "regossip" incoming signatures.
+            tmp.push(Outcome::Gossip(Box::new(sig_a.clone())));
+            tmp.push(Outcome::AnnounceSignature(Box::new(sig_a.clone())));
+            tmp.push(Outcome::AnnounceSignature(Box::new(sig_b.clone())));
+            tmp.push(Outcome::StoreBlock(Box::new(block)));
+            tmp.push(Outcome::StoreExecutionResults(
+                block_hash,
+                execution_results,
+            ));
+            tmp
+        };
+        // Verify that all outcomes are expected.
+        assert_equal(expected_outcomes, outcomes);
+        // Simulate that the `IsValidatorBonded` event for `sig_c` just arrived.
+        // When it was created, there was no `known_signatures` yet.
+        let outcomes = lc.handle_is_bonded(None, Box::new(sig_c.clone()), true);
+        let expected_outcomes = {
+            let mut tmp = vec![];
+            tmp.push(Outcome::AnnounceSignature(Box::new(sig_c.clone())));
+            tmp.push(Outcome::Gossip(Box::new(sig_c.clone())));
+            let mut block_signatures = BlockSignatures::new(block_hash, block_era);
+            block_signatures.insert_proof(sig_a.public_key.clone(), sig_a.signature);
+            block_signatures.insert_proof(sig_b.public_key.clone(), sig_b.signature);
+            block_signatures.insert_proof(sig_c.public_key.clone(), sig_c.signature);
+            tmp.push(Outcome::StoreBlockSignatures(block_signatures));
+            tmp
+        };
+        assert_equal(expected_outcomes, outcomes);
+    }
+
     #[test]
     fn pending_sig_rejected() {
         let mut rng = TestRng::new();
@@ -433,24 +555,30 @@ mod tests {
     // bonded.
     fn cache_signature(lc: &mut LinearChain, fs: FinalitySignature) {
         // We need to signal that block is known. Otherwise we won't cache the signature.
-        let block_signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
-        let outcomes =
-            lc.handle_cached_signatures(Some(Box::new(block_signatures)), Box::new(fs.clone()));
+        let mut block_signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
+        let outcomes = lc.handle_cached_signatures(
+            Some(Box::new(block_signatures.clone())),
+            Box::new(fs.clone()),
+        );
         match &*outcomes {
             [Outcome::VerifyIfBonded {
                 new_fs, known_fs, ..
             }] => {
                 assert_eq!(&fs, &**new_fs);
-                let outcomes = lc.handle_is_bonded(known_fs.clone(), Box::new(fs), true);
+                let outcomes = lc.handle_is_bonded(known_fs.clone(), Box::new(fs.clone()), true);
                 // After confirming that signature is valid and block known, we want to store the
                 // signature and announce it.
-                assert!(matches!(
-                    &*outcomes,
-                    &[
-                        Outcome::AnnounceSignature(_),
-                        Outcome::StoreBlockSignatures(_)
-                    ]
-                ));
+                match &*outcomes {
+                    [Outcome::AnnounceSignature(outcome_fs), Outcome::StoreBlockSignatures(outcome_block_signatures)] =>
+                    {
+                        assert_eq!(&fs, &**outcome_fs);
+                        // LinearChain component will update the `block_signatures` with a new
+                        // signature for storage.
+                        block_signatures.insert_proof(fs.public_key, fs.signature);
+                        assert_eq!(&block_signatures, outcome_block_signatures);
+                    }
+                    others => panic!("unexpected outcomes {:?}", others),
+                }
             }
             others => panic!("unexpected outcomes {:?}", others),
         }
