@@ -1,10 +1,6 @@
 //! Logging via the tracing crate.
 
-use std::{
-    env, error,
-    fmt::{self, Display, Formatter},
-    io,
-};
+use std::{env, fmt, io};
 
 use ansi_term::{Color, Style};
 use anyhow::anyhow;
@@ -297,94 +293,4 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
             .try_init(),
     }
     .map_err(|error| anyhow!(error))
-}
-
-/// An error formatter.
-#[derive(Clone, Copy, Debug)]
-pub struct ErrFormatter<'a, T>(pub &'a T);
-
-impl<'a, T> Display for ErrFormatter<'a, T>
-where
-    T: error::Error,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut opt_source: Option<&(dyn error::Error)> = Some(self.0);
-
-        while let Some(source) = opt_source {
-            write!(f, "{}", source)?;
-            opt_source = source.source();
-
-            if opt_source.is_some() {
-                f.write_str(": ")?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// Wraps an error to ensure it gets properly captured by tracing.
-///
-/// Ensures that errors are properly captured.
-///
-/// This macro should be removed once/if the tracing
-/// issue https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special
-/// syntax for this case and the known issue https://github.com/tokio-rs/tracing/issues/1308 has
-/// been fixed, which cuts traces short after the first cause.
-#[macro_export]
-macro_rules! e {
-    ($orig_err:expr) => {
-        ::tracing::field::display($crate::logging::ErrFormatter($orig_err))
-    };
-}
-
-#[cfg(test)]
-mod tests {
-    use thiserror::Error;
-    use tracing::Value;
-
-    use super::ErrFormatter;
-    use crate::e;
-
-    #[derive(Debug, Error)]
-    #[error("this is baz")]
-    struct Baz;
-
-    #[derive(Debug, Error)]
-    #[error("this is bar")]
-    struct Bar(#[source] Baz);
-
-    #[derive(Debug, Error)]
-    enum MyError {
-        #[error("this is foo")]
-        Foo {
-            #[source]
-            bar: Bar,
-        },
-    }
-
-    #[test]
-    fn test_formatter_formats_single() {
-        let single = Baz;
-
-        assert_eq!(ErrFormatter(&single).to_string().as_str(), "this is baz");
-    }
-
-    #[test]
-    fn test_formatter_formats_nested() {
-        let nested = MyError::Foo { bar: Bar(Baz) };
-
-        assert_eq!(
-            ErrFormatter(&nested).to_string().as_str(),
-            "this is foo: this is bar: this is baz"
-        );
-    }
-
-    #[test]
-    #[allow(trivial_casts)]
-    fn test_e_produces_value() {
-        let err = Baz;
-        let wrapped = e!(&err);
-        let _value_ref: &dyn Value = &wrapped as &dyn Value;
-    }
 }
