@@ -74,10 +74,13 @@ mod internal {
         runtime_provider: &mut R,
         purse: URef,
     ) -> Result<(), Error> {
+        // let payment_purse = get_payment_purse(runtime_provider)?;
+
         if let Phase::Payment = runtime_provider.get_phase() {
             runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
             return Ok(());
         }
+
         Err(Error::SetRefundPurseCalledOutsidePayment)
     }
 
@@ -128,6 +131,15 @@ mod internal {
         debug_assert_eq!(validator_reward + refund_amount, total);
 
         let refund_purse = get_refund_purse(provider)?;
+
+        if let Some(refund_purse) = refund_purse {
+            if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
+                // Make sure we're not refunding into a payment purse to invalidate payment code
+                // postconditions.
+                return Err(Error::RefundPurseIsPaymentPurse);
+            }
+        }
+
         provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
 
         // pay target validator
@@ -138,6 +150,10 @@ mod internal {
         if refund_amount.is_zero() {
             return Ok(());
         }
+
+        // if let Some(refund_purse) = refund_purse {
+        //     assert_ne!(refund_purse.addr(), payment_purse.a);
+        // }
 
         // give refund
         let refund_purse = match refund_purse {
