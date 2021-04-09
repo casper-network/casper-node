@@ -142,7 +142,7 @@ pub enum Error {
 
 /// An error formatter.
 #[derive(Clone, Copy, Debug)]
-pub struct ErrFormatter<'a, T>(pub &'a T);
+pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
 
 impl<'a, T> Display for ErrFormatter<'a, T>
 where
