@@ -61,14 +61,9 @@ impl PendingSignatures {
             .values_mut()
             .filter_map(|sigs| {
                 // Collect the signature only if it's been verified already.
-                if let Some(sig_status) = sigs.get(block_hash) {
-                    if sig_status.is_bonded() {
-                        sigs.remove(block_hash)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+                match sigs.get(block_hash) {
+                    Some(sig_status) if sig_status.is_bonded() => sigs.remove(block_hash),
+                    _ => None,
                 }
             })
             .map(|status| status.into_inner())
@@ -123,12 +118,11 @@ impl PendingSignatures {
         match self.pending_finality_signatures.entry(public_key.clone()) {
             Entry::Occupied(mut validator_sigs) => {
                 let sig = validator_sigs.get_mut().remove(&block_hash)?;
-                if sig.is_bonded() {
-                    return Some(());
+                if !sig.is_bonded() {
+                    validator_sigs
+                        .get_mut()
+                        .insert(block_hash, VerificationStatus::Bonded(sig.into_inner()));
                 }
-                validator_sigs
-                    .get_mut()
-                    .insert(block_hash, VerificationStatus::Bonded(sig.into_inner()));
                 Some(())
             }
             Entry::Vacant(_) => {

@@ -455,6 +455,25 @@ mod tests {
         ));
     }
 
+    // Check that `left` is a subset of `right`.
+    // i.e. that all elements from `left` exist in `right`.
+    fn verify_is_subset<T>(left: &[T], right: &[T])
+    where
+        T: PartialEq + Eq,
+    {
+        for l in left {
+            assert!(right.iter().any(|r| r == l))
+        }
+    }
+
+    fn assert_equal<T>(l: Vec<T>, r: Vec<T>)
+    where
+        T: PartialEq + Eq,
+    {
+        verify_is_subset(&l, &r);
+        verify_is_subset(&r, &l);
+    }
+
     #[test]
     fn new_block_bonded_pending_sigs() {
         let mut rng = TestRng::new();
@@ -479,7 +498,8 @@ mod tests {
             block_signatures.insert_proof(sig_a.public_key.clone(), sig_a.signature);
             block_signatures.insert_proof(sig_b.public_key.clone(), sig_b.signature);
             tmp.push(Outcome::StoreBlockSignatures(block_signatures));
-            tmp.push(Outcome::Gossip(Box::new(sig_a.clone()))); // Only `sig_a` was created locally and we don't "regossip" incoming signatures.
+            // Only `sig_a` was created locally and we don't "regossip" incoming signatures.
+            tmp.push(Outcome::Gossip(Box::new(sig_a.clone())));
             tmp.push(Outcome::AnnounceSignature(Box::new(sig_a)));
             tmp.push(Outcome::AnnounceSignature(Box::new(sig_b)));
             tmp.push(Outcome::StoreBlock(Box::new(block)));
@@ -490,12 +510,7 @@ mod tests {
             tmp
         };
         // Verify that all outcomes are expected.
-        for outcome in outcomes {
-            assert!(
-                expected_outcomes.iter().any(|e| e == &outcome),
-                "unexpected outcome"
-            );
-        }
+        assert_equal(expected_outcomes, outcomes);
     }
 
     #[test]
