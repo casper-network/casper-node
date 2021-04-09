@@ -11,7 +11,7 @@ use crate::{
         self,
         hash::{self, Digest},
     },
-    types::ProtoBlock,
+    types::BlockPayload,
 };
 
 #[derive(DataSize)]
@@ -45,7 +45,7 @@ impl ValidatorSecret for Keypair {
     }
 }
 
-impl ConsensusValueT for ProtoBlock {
+impl ConsensusValueT for BlockPayload {
     type Hash = Digest;
 
     fn hash(&self) -> Digest {
@@ -62,7 +62,7 @@ impl ConsensusValueT for ProtoBlock {
 pub(crate) struct ClContext;
 
 impl Context for ClContext {
-    type ConsensusValue = ProtoBlock;
+    type ConsensusValue = BlockPayload;
     type ValidatorId = PublicKey;
     type ValidatorSecret = Keypair;
     type Signature = Signature;

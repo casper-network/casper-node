@@ -45,9 +45,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
+        Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
+        Item, NodeId, StatusFeed, TimeDiff, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -472,7 +472,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct ProtoBlockRequest {
+pub struct BlockPayloadRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
     /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
@@ -484,10 +484,10 @@ pub struct ProtoBlockRequest {
     pub(crate) next_finalized: u64,
     /// A list of validators reported as malicious in this block.
     pub(crate) accusations: Vec<PublicKey>,
-    /// Random bit with which to construct the `ProtoBlock` requested.
+    /// Random bit with which to construct the `BlockPayload` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<ProtoBlock>,
+    pub(crate) responder: Responder<BlockPayload>,
 }
 
 /// A `BlockProposer` request.
@@ -495,13 +495,13 @@ pub struct ProtoBlockRequest {
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
-    RequestProtoBlock(ProtoBlockRequest),
+    RequestBlockPayload(BlockPayloadRequest),
 }
 
 impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
+            BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                 current_instant,
                 past_deploys,
                 next_finalized,

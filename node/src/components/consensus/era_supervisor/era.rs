@@ -26,16 +26,16 @@ static CASPER_ENABLE_DETAILED_CONSENSUS_METRICS: Lazy<bool> =
 
 /// A proposed block waiting for validation and dependencies.
 #[derive(DataSize)]
-pub struct PendingCandidate {
-    /// Whether the proto block has been validated yet.
+pub struct ValidationState {
+    /// Whether the block has been validated yet.
     validated: bool,
     /// A list of IDs of accused validators for which we are still missing evidence.
     missing_evidence: Vec<PublicKey>,
 }
 
-impl PendingCandidate {
+impl ValidationState {
     fn new(missing_evidence: Vec<PublicKey>) -> Self {
-        PendingCandidate {
+        ValidationState {
             validated: false,
             missing_evidence,
         }
@@ -53,9 +53,8 @@ pub struct Era<I> {
     pub(crate) start_time: Timestamp,
     /// The height of this era's first block.
     pub(crate) start_height: u64,
-    /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
-    /// has been validated; the map contains the list of accused validators missing evidence.
-    candidates: HashMap<ProposedBlock<ClContext>, PendingCandidate>,
+    /// Pending blocks, waiting for validation and dependencies.
+    validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
     /// previous switch block.
     pub(crate) newly_slashed: Vec<PublicKey>,
@@ -81,7 +80,7 @@ impl<I> Era<I> {
             consensus,
             start_time,
             start_height,
-            candidates: HashMap::new(),
+            validation_states: HashMap::new(),
             newly_slashed,
             slashed,
             accusations: HashSet::new(),
@@ -89,73 +88,54 @@ impl<I> Era<I> {
         }
     }
 
-    /// Adds a new candidate block, together with the accusations for which we don't have evidence
-    /// yet.
-    pub(crate) fn add_candidate(
+    /// Adds a new block, together with the accusations for which we don't have evidence yet.
+    pub(crate) fn add_block(
         &mut self,
         proposed_block: ProposedBlock<ClContext>,
         missing_evidence: Vec<PublicKey>,
     ) {
-        self.candidates
-            .insert(proposed_block, PendingCandidate::new(missing_evidence));
+        self.validation_states
+            .insert(proposed_block, ValidationState::new(missing_evidence));
     }
 
-    /// Marks the dependencies of candidate blocks on evidence against validator `pub_key` as
-    /// resolved and returns all candidates that have no missing dependencies left.
+    /// Marks the dependencies of blocks on evidence against validator `pub_key` as resolved and
+    /// returns all valid blocks that have no missing dependencies left.
     pub(crate) fn resolve_evidence(
         &mut self,
         pub_key: &PublicKey,
     ) -> Vec<ProposedBlock<ClContext>> {
-        for pc in self.candidates.values_mut() {
+        for pc in self.validation_states.values_mut() {
             pc.missing_evidence.retain(|pk| pk != pub_key);
         }
         self.consensus.mark_faulty(pub_key);
-        let (complete, candidates): (HashMap<_, _>, HashMap<_, _>) = self
-            .candidates
+        let (complete, validation_states): (HashMap<_, _>, HashMap<_, _>) = self
+            .validation_states
             .drain()
-            .partition(|(_, candidate)| candidate.is_complete());
-        self.candidates = candidates;
+            .partition(|(_, validation_state)| validation_state.is_complete());
+        self.validation_states = validation_states;
         complete
             .into_iter()
             .map(|(proposed_block, _)| proposed_block)
             .collect()
     }
 
-    /// Marks the proto block as valid or invalid, and returns all candidates whose validity is now
-    /// fully determined.
+    /// Marks the block payload as valid or invalid. Returns `false` if the block was not present
+    /// or is still missing evidence. Otherwise it returns `true`: The block can now be processed
+    /// by the consensus protocol.
     pub(crate) fn resolve_validity(
         &mut self,
         proposed_block: &ProposedBlock<ClContext>,
         valid: bool,
     ) -> bool {
         if valid {
-            self.accept_candidate_block(proposed_block)
-        } else {
-            self.reject_candidate_block(proposed_block)
-        }
-    }
-
-    /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
-    /// resolved and returns `true` if the block was present and has no missing dependencies.
-    pub(crate) fn accept_candidate_block(
-        &mut self,
-        proposed_block: &ProposedBlock<ClContext>,
-    ) -> bool {
-        if let Some(pc) = self.candidates.get_mut(proposed_block) {
-            if !pc.missing_evidence.is_empty() {
-                pc.validated = true;
-                return false;
+            if let Some(vs) = self.validation_states.get_mut(proposed_block) {
+                if !vs.missing_evidence.is_empty() {
+                    vs.validated = true;
+                    return false;
+                }
             }
         }
-        self.candidates.remove(proposed_block).is_some()
-    }
-
-    /// Removes the invalid proposed block. Returns `true` if it was present.
-    pub(crate) fn reject_candidate_block(
-        &mut self,
-        proposed_block: &ProposedBlock<ClContext>,
-    ) -> bool {
-        self.candidates.remove(proposed_block).is_some()
+        self.validation_states.remove(proposed_block).is_some()
     }
 
     /// Adds new accusations from a finalized block.
@@ -198,7 +178,7 @@ where
             consensus,
             start_time,
             start_height,
-            candidates,
+            validation_states,
             newly_slashed,
             slashed,
             accusations,
@@ -234,7 +214,7 @@ where
         consensus_heap_size
             .saturating_add(start_time.estimate_heap_size())
             .saturating_add(start_height.estimate_heap_size())
-            .saturating_add(candidates.estimate_heap_size())
+            .saturating_add(validation_states.estimate_heap_size())
             .saturating_add(newly_slashed.estimate_heap_size())
             .saturating_add(slashed.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())
