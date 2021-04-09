@@ -27,6 +27,12 @@ impl VerificationStatus {
             Self::Unknown(sig) | Self::Bonded(sig) => sig,
         }
     }
+
+    fn value(&self) -> &Signature {
+        match self {
+            Self::Unknown(sig) | Self::Bonded(sig) => sig,
+        }
+    }
 }
 
 /// Finality signatures to be inserted in a block once it is available.
@@ -117,11 +123,13 @@ impl PendingSignatures {
     fn mark_bonded_helper(&mut self, public_key: PublicKey, block_hash: BlockHash) -> Option<()> {
         match self.pending_finality_signatures.entry(public_key.clone()) {
             Entry::Occupied(mut validator_sigs) => {
-                let sig = validator_sigs.get_mut().remove(&block_hash)?;
+                let sig = validator_sigs.get_mut().get(&block_hash)?;
                 if !sig.is_bonded() {
+                    let bonded_status = VerificationStatus::Bonded(sig.value().clone());
+                    drop(sig);
                     validator_sigs
                         .get_mut()
-                        .insert(block_hash, VerificationStatus::Bonded(sig.into_inner()));
+                        .insert(block_hash, bonded_status);
                 }
                 Some(())
             }
@@ -226,5 +234,24 @@ mod tests {
         let block_hash = BlockHash::random(&mut rng);
         let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key);
         assert!(!pending_sigs.add(Signature::External(Box::new(sig))));
+    }
+
+    #[test]
+    fn mark_bonded_does_not_remove() {
+        // This is a unit test added after a bug was spotted during the code review
+        // where marking a (public_key, block_hash) pair as bonded twice would remove the entry from
+        // the collection.
+        let mut rng = TestRng::new();
+        let mut pending_sigs = PendingSignatures::new();
+        let block_hash = BlockHash::random(&mut rng);
+        let sig_a = FinalitySignature::random_for_block(block_hash, 0);
+        let public_key = sig_a.public_key.clone();
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_a))));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
+        assert!(pending_sigs.mark_bonded(public_key.clone(), block_hash));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
+        // Verify that marking the same entry as bonded the second time does not remove it.
+        assert!(pending_sigs.mark_bonded(public_key.clone(), block_hash));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
     }
 }
