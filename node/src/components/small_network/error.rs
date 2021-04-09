@@ -173,7 +173,7 @@ where
 /// https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special syntax
 /// for this case and the known issue https://github.com/tokio-rs/tracing/issues/1308 has been
 /// fixed, which cuts traces short after the first cause.
-pub(crate) fn cl_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
+pub(crate) fn display_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
 where
     T: error::Error + 'a,
 {
@@ -183,9 +183,8 @@ where
 #[cfg(test)]
 mod tests {
     use thiserror::Error;
-    use tracing::Value;
 
-    use super::{cl_error, ErrFormatter};
+    use super::ErrFormatter;
 
     #[derive(Debug, Error)]
     #[error("this is baz")]
