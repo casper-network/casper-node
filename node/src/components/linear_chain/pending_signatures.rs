@@ -27,6 +27,12 @@ impl VerificationStatus {
             Self::Unknown(sig) | Self::Bonded(sig) => sig,
         }
     }
+
+    fn value(&self) -> &Signature {
+        match self {
+            Self::Unknown(sig) | Self::Bonded(sig) => sig,
+        }
+    }
 }
 
 /// Finality signatures to be inserted in a block once it is available.
@@ -61,14 +67,9 @@ impl PendingSignatures {
             .values_mut()
             .filter_map(|sigs| {
                 // Collect the signature only if it's been verified already.
-                if let Some(sig_status) = sigs.get(block_hash) {
-                    if sig_status.is_bonded() {
-                        sigs.remove(block_hash)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+                match sigs.get(block_hash) {
+                    Some(sig_status) if sig_status.is_bonded() => sigs.remove(block_hash),
+                    _ => None,
                 }
             })
             .map(|status| status.into_inner())
@@ -120,15 +121,11 @@ impl PendingSignatures {
     }
 
     fn mark_bonded_helper(&mut self, public_key: PublicKey, block_hash: BlockHash) -> Option<()> {
-        match self.pending_finality_signatures.entry(public_key) {
+        match self.pending_finality_signatures.entry(public_key.clone()) {
             Entry::Occupied(mut validator_sigs) => {
-                let sig = validator_sigs.get_mut().remove(&block_hash)?;
-                if sig.is_bonded() {
-                    return Some(());
-                }
-                validator_sigs
-                    .get_mut()
-                    .insert(block_hash, VerificationStatus::Bonded(sig.into_inner()));
+                let sig = validator_sigs.get_mut().get(&block_hash)?;
+                let bonded_status = VerificationStatus::Bonded(sig.value().clone());
+                validator_sigs.get_mut().insert(block_hash, bonded_status);
                 Some(())
             }
             Entry::Vacant(_) => {
@@ -179,7 +176,9 @@ mod tests {
         let sig_a2 = FinalitySignature::random_for_block(block_hash, 0);
         let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a1.clone()))));
+        assert!(pending_sigs.mark_bonded(sig_a1.public_key.clone(), block_hash));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a2.clone()))));
+        assert!(pending_sigs.mark_bonded(sig_a2.public_key.clone(), block_hash));
         assert!(pending_sigs.add(Signature::External(Box::new(sig_b))));
         let collected_sigs: BTreeMap<PublicKey, FinalitySignature> = pending_sigs
             .collect_pending(&block_hash)
@@ -230,5 +229,24 @@ mod tests {
         let block_hash = BlockHash::random(&mut rng);
         let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key);
         assert!(!pending_sigs.add(Signature::External(Box::new(sig))));
+    }
+
+    #[test]
+    fn mark_bonded_does_not_remove() {
+        // This is a unit test added after a bug was spotted during the code review
+        // where marking a (public_key, block_hash) pair as bonded twice would remove the entry from
+        // the collection.
+        let mut rng = TestRng::new();
+        let mut pending_sigs = PendingSignatures::new();
+        let block_hash = BlockHash::random(&mut rng);
+        let sig_a = FinalitySignature::random_for_block(block_hash, 0);
+        let public_key = sig_a.public_key.clone();
+        assert!(pending_sigs.add(Signature::External(Box::new(sig_a))));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
+        assert!(pending_sigs.mark_bonded(public_key.clone(), block_hash));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
+        // Verify that marking the same entry as bonded the second time does not remove it.
+        assert!(pending_sigs.mark_bonded(public_key.clone(), block_hash));
+        assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
     }
 }
