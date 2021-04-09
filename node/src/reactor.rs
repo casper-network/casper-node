@@ -716,7 +716,7 @@ where
                                     }
                                 }
                             } else {
-                                warn!(%event, "found non-control announcement while draining queue")
+                                debug!(%event, "found non-control announcement while draining queue")
                             }
                         }
 
