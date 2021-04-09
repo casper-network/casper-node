@@ -384,7 +384,7 @@ impl FinalizedBlock {
         }
     }
 
-    /// The timestamp from when the block payload was proposed.
+    /// The timestamp from when the block was proposed.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
@@ -710,7 +710,7 @@ impl BlockHeader {
         }
     }
 
-    /// The timestamp from when the block payload was proposed.
+    /// The timestamp from when the block was proposed.
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
