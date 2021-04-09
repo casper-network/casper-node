@@ -68,7 +68,7 @@ use crate::{
 };
 pub use config::Config;
 pub use error::Error;
-use linear_chain::LinearChain;
+use linear_chain::LinearChainComponent;
 use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
@@ -351,7 +351,7 @@ pub struct Reactor {
     deploy_gossiper: Gossiper<Deploy, Event>,
     block_proposer: BlockProposer,
     proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
-    linear_chain: LinearChain<NodeId>,
+    linear_chain: LinearChainComponent<NodeId>,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -415,13 +415,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             true,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             true,
         )?;
 
@@ -454,6 +453,7 @@ impl reactor::Reactor for Reactor {
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
+            config.block_proposer,
         )?;
 
         let initial_era = latest_block.as_ref().map_or_else(
@@ -486,17 +486,11 @@ impl reactor::Reactor for Reactor {
         contract_runtime.set_parent_map_from_block(latest_block);
 
         let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
-        let linear_chain = linear_chain::LinearChain::new(
+        let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
             *protocol_version,
-            chainspec_loader.initial_state_root_hash(),
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id(),
         )?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
@@ -958,10 +952,7 @@ impl reactor::Reactor for Reactor {
             Event::ConsensusAnnouncement(consensus_announcement) => match consensus_announcement {
                 ConsensusAnnouncement::Finalized(block) => {
                     let reactor_event =
-                        Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
-                            block: block.proto_block().clone(),
-                            height: block.height(),
-                        });
+                        Event::BlockProposer(block_proposer::Event::FinalizedBlock(block));
                     self.dispatch_event(effect_builder, rng, reactor_event)
                 }
                 ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(

@@ -29,9 +29,9 @@ fn withdraw_bid(contract_hash: ContractHash, public_key: PublicKey, unbond_amoun
 #[no_mangle]
 pub extern "C" fn call() {
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let public_key = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let public_key: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
     // unbond attempt for more than is staked should fail
     let contract_hash = system::get_auction();
-    add_bid(contract_hash, public_key, amount);
+    add_bid(contract_hash, public_key.clone(), amount);
     withdraw_bid(contract_hash, public_key, amount + 1);
 }

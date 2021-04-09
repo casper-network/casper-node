@@ -43,7 +43,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
-        our_public_signing_key: Some(*PublicKey::doc_example()),
+        our_public_signing_key: Some(PublicKey::doc_example().clone()),
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
@@ -142,7 +142,7 @@ impl From<Block> for MinimalBlockInfo {
             era_id: block.header().era_id(),
             height: block.header().height(),
             state_root_hash: *block.header().state_root_hash(),
-            creator: *block.body().proposer(),
+            creator: block.body().proposer().clone(),
         }
     }
 }

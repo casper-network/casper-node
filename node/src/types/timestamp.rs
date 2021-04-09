@@ -38,18 +38,18 @@ static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
 pub struct Timestamp(u64);
 
 impl Timestamp {
-    /// Returns the timestamp of the current moment
+    /// Returns the timestamp of the current moment.
     pub fn now() -> Self {
         let millis = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
         Timestamp(millis)
     }
 
-    /// Returns the time that has elapsed since this timestamp
+    /// Returns the time that has elapsed since this timestamp.
     pub fn elapsed(&self) -> TimeDiff {
-        Timestamp::now() - *self
+        TimeDiff(Timestamp::now().0.saturating_sub(self.0))
     }
 
-    /// Returns a zero timestamp
+    /// Returns a zero timestamp.
     pub fn zero() -> Self {
         Timestamp(0)
     }
@@ -106,14 +106,6 @@ impl FromStr for Timestamp {
             .map_err(|_| TimestampError::OutOfRange)?
             .as_millis() as u64;
         Ok(Timestamp(inner))
-    }
-}
-
-impl Sub<Timestamp> for Timestamp {
-    type Output = TimeDiff;
-
-    fn sub(self, other: Timestamp) -> TimeDiff {
-        TimeDiff(self.0 - other.0)
     }
 }
 

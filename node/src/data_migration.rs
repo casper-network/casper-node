@@ -174,8 +174,8 @@ fn write_post_migration_info(
 
     // Sign the info.
     let public_key = PublicKey::from(secret_key);
-    let signature = crypto::sign(&serialized_info, secret_key, &public_key)
-        .map_err(Error::Signature)?;
+    let signature =
+        crypto::sign(&serialized_info, secret_key, &public_key).map_err(Error::Signature)?;
     let signed_info = SignedPostMigrationInfo {
         serialized_info,
         signature,

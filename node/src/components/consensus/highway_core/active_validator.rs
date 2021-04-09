@@ -97,6 +97,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
 
 impl<C: Context> ActiveValidator<C> {
     /// Creates a new `ActiveValidator` and the timer effect for the first call.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
@@ -105,6 +106,7 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         unit_file: Option<PathBuf>,
         target_ftt: Weight,
+        instance_id: C::InstanceId,
     ) -> (Self, Vec<Effect<C>>) {
         let own_last_unit = unit_file
             .as_ref()
@@ -128,7 +130,7 @@ impl<C: Context> ActiveValidator<C> {
             paused: false,
         };
         let mut effects = av.schedule_timer(start_time, state);
-        effects.push(av.send_ping(current_time));
+        effects.push(av.send_ping(current_time, instance_id));
         (av, effects)
     }
 
@@ -228,14 +230,14 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping if necessary, to show that we're online.
         if !state.has_ping(self.vidx, timestamp) {
             warn!(%timestamp, "too many validators offline, sending ping");
-            effects.push(self.send_ping(timestamp));
+            effects.push(self.send_ping(timestamp, instance_id));
         }
         effects
     }
 
     /// Creates a Ping vertex.
-    pub(crate) fn send_ping(&self, timestamp: Timestamp) -> Effect<C> {
-        let ping = Ping::new(self.vidx, timestamp, &self.secret);
+    pub(crate) fn send_ping(&self, timestamp: Timestamp, instance_id: C::InstanceId) -> Effect<C> {
+        let ping = Ping::new(self.vidx, timestamp, instance_id, &self.secret);
         Effect::NewVertex(ValidVertex(Vertex::Ping(ping)))
     }
 
@@ -722,13 +724,21 @@ mod tests {
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
                     let (av, effects) = ActiveValidator::new(
-                        vidx, secret, start_time, start_time, &state, None, target_ftt,
+                        vidx,
+                        secret,
+                        start_time,
+                        start_time,
+                        &state,
+                        None,
+                        target_ftt,
+                        TEST_INSTANCE_ID,
                     );
 
                     let timestamp = match &*effects {
-                        [Effect::ScheduleTimer(timer), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))] => {
-                            *timer
-                        }
+                        [
+                            Effect::ScheduleTimer(timer),
+                            Effect::NewVertex(ValidVertex(Vertex::Ping(_)))
+                        ] => { *timer }
                         other => panic!("expected timer and ping effects, got={:?}", other),
                     };
 
@@ -736,7 +746,7 @@ mod tests {
                         assert_eq!(
                             timestamp, earliest_round_start,
                             "Invalid initial timer scheduled for {:?}.",
-                            vidx
+                            vidx,
                         )
                     } else {
                         let witness_offset =
@@ -745,7 +755,7 @@ mod tests {
                         assert_eq!(
                             timestamp, witness_timestamp,
                             "Invalid initial timer scheduled for {:?}.",
-                            vidx
+                            vidx,
                         )
                     }
                     timers.insert((timestamp, vidx));
@@ -957,6 +967,7 @@ mod tests {
             &state,
             None,
             Weight(2),
+            TEST_INSTANCE_ID,
         );
 
         match &*init_effects {
@@ -1005,6 +1016,7 @@ mod tests {
             &state,
             unit_file,
             Weight(2),
+            TEST_INSTANCE_ID,
         );
 
         let mut next_proposal_timer = match &*alice_init_effects {
