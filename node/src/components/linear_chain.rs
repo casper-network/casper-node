@@ -27,7 +27,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::{BlockByHeight, Timestamp},
+    types::BlockByHeight,
     NodeRng,
 };
 use casper_types::ProtocolVersion;
@@ -105,7 +105,7 @@ where
                 latest_state_root_hash,
             } => effect_builder
                 .is_bonded_validator(
-                    new_fs.public_key,
+                    new_fs.public_key.clone(),
                     new_fs.era_id,
                     latest_state_root_hash,
                     protocol_version,
@@ -189,8 +189,7 @@ where
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::PutBlockResult { block } => {
-                let completion_duration =
-                    Timestamp::now().millis() - block.header().timestamp().millis();
+                let completion_duration = block.header().timestamp().elapsed().millis();
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
@@ -216,6 +215,10 @@ where
                     is_bonded,
                 );
                 outcomes_to_effects(effect_builder, outcomes)
+            }
+            Event::KnownLinearChainBlock(block) => {
+                self.linear_chain_state.set_latest_block(*block);
+                Effects::new()
             }
         }
     }

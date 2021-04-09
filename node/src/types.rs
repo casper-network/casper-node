@@ -1,5 +1,6 @@
 //! Common types used across multiple components.
 
+pub(crate) mod appendable_block;
 mod block;
 pub mod chainspec;
 mod deploy;

@@ -37,7 +37,7 @@ in pkgs.stdenv.mkDerivation {
   name = "rustenv";
   nativeBuildInputs = with pkgs; [ pkg-config perl which protobuf ];
   buildInputs = with pkgs;
-    [ cmake pkg-config openssl.dev zlib.dev rustup ]
+    [ cmake pkg-config openssl.dev zlib.dev rustup envsubst ]
     ++ lists.optionals ops [ kubectl python skopeo git nix ]
     ++ lists.optionals dev [ black docker coreutils run-nctl ];
 

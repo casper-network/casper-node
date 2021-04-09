@@ -84,7 +84,7 @@ impl PendingSignatures {
         let block_hash = signature.block_hash();
         let sigs = self
             .pending_finality_signatures
-            .entry(public_key)
+            .entry(public_key.clone())
             .or_default();
         // Limit the memory we use for storing unknown signatures from each validator.
         if sigs.len() >= MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
@@ -161,7 +161,7 @@ mod tests {
         let block_hash_other = BlockHash::random(&mut rng);
         let sig_a = FinalitySignature::random_for_block(block_hash, 0);
         let sig_b = FinalitySignature::random_for_block(block_hash_other, 0);
-        let public_key = sig_a.public_key;
+        let public_key = sig_a.public_key.clone();
         let public_key_other = sig_b.public_key;
         assert!(pending_sigs.add(Signature::External(Box::new(sig_a))));
         assert!(pending_sigs.has_finality_signature(&public_key, &block_hash));
@@ -188,7 +188,7 @@ mod tests {
             .collect();
         let expected_sigs = vec![sig_a1.clone(), sig_a2.clone()]
             .into_iter()
-            .map(|sig| (sig.public_key, sig))
+            .map(|sig| (sig.public_key.clone(), sig))
             .collect();
         assert_eq!(collected_sigs, expected_sigs);
         assert!(
@@ -224,7 +224,7 @@ mod tests {
         let era_id = EraId::new(0);
         for _ in 0..MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
             let block_hash = BlockHash::random(&mut rng);
-            let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key);
+            let sig = FinalitySignature::new(block_hash, era_id, &sec_key, pub_key.clone());
             assert!(pending_sigs.add(Signature::External(Box::new(sig))));
         }
         let block_hash = BlockHash::random(&mut rng);

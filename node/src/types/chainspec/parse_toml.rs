@@ -25,6 +25,7 @@ use crate::utils::{self, Loadable};
 #[serde(deny_unknown_fields)]
 struct TomlNetwork {
     name: String,
+    maximum_net_message_size: u32,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -59,6 +60,7 @@ impl From<&Chainspec> for TomlChainspec {
         };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
+            maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
         };
         let core = chainspec.core_config;
         let deploys = chainspec.deploy_config;
@@ -93,6 +95,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
     let network_config = NetworkConfig {
         name: toml_chainspec.network.name,
         accounts_config,
+        maximum_net_message_size: toml_chainspec.network.maximum_net_message_size,
     };
 
     let global_state_update = Option::<GlobalStateUpdateConfig>::from_path(root)?

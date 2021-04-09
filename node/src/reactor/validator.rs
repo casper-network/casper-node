@@ -415,13 +415,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             true,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             true,
         )?;
 
@@ -454,6 +453,7 @@ impl reactor::Reactor for Reactor {
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
+            config.block_proposer,
         )?;
 
         let initial_era = latest_block.as_ref().map_or_else(
@@ -952,10 +952,7 @@ impl reactor::Reactor for Reactor {
             Event::ConsensusAnnouncement(consensus_announcement) => match consensus_announcement {
                 ConsensusAnnouncement::Finalized(block) => {
                     let reactor_event =
-                        Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
-                            block: block.proto_block().clone(),
-                            height: block.height(),
-                        });
+                        Event::BlockProposer(block_proposer::Event::FinalizedBlock(block));
                     self.dispatch_event(effect_builder, rng, reactor_event)
                 }
                 ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(

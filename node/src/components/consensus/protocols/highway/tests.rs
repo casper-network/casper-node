@@ -110,7 +110,7 @@ where
 fn test_highway_protocol_handle_message_parse_error() {
     // Build a highway_protocol for instrumentation
     let mut highway_protocol: Box<dyn ConsensusProtocol<NodeId, ClContext>> =
-        new_test_highway_protocol(vec![(*ALICE_PUBLIC_KEY, 100)], vec![]);
+        new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![]);
 
     let now = Timestamp::zero();
     let sender = NodeId(123);
@@ -140,7 +140,7 @@ pub(crate) const N: Observation<ClContext> = Observation::None;
 #[test]
 fn send_a_wire_unit_with_too_small_a_round_exp() {
     let creator: ValidatorIndex = ValidatorIndex(0);
-    let validators = vec![(*ALICE_PUBLIC_KEY, 100)];
+    let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
@@ -192,7 +192,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
 fn send_a_valid_wire_unit() {
     let standstill_timeout: TimeDiff = STANDSTILL_TIMEOUT.parse().unwrap();
     let creator: ValidatorIndex = ValidatorIndex(0);
-    let validators = vec![(*ALICE_PUBLIC_KEY, 100)];
+    let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
@@ -255,7 +255,10 @@ fn send_a_valid_wire_unit() {
 #[test]
 fn detect_doppelganger() {
     let creator: ValidatorIndex = ALICE;
-    let validators = vec![(*ALICE_PUBLIC_KEY, 100), (*BOB_PUBLIC_KEY, 100)];
+    let validators = vec![
+        (ALICE_PUBLIC_KEY.clone(), 100),
+        (BOB_PUBLIC_KEY.clone(), 100),
+    ];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N, N]);
     let seq_number = panorama.next_seq_num(&state, creator);
@@ -280,7 +283,7 @@ fn detect_doppelganger() {
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
-    let _ = highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, now, None);
+    let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert_eq!(highway_protocol.is_active(), true);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
