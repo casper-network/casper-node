@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     components::block_proposer::DeployType,
-    types::{chainspec::DeployConfig, DeployHash, ProtoBlock, Timestamp},
+    types::{chainspec::DeployConfig, BlockPayload, DeployHash, Timestamp},
 };
 
 #[derive(Debug, Error)]
@@ -108,19 +108,19 @@ impl AppendableBlock {
         Ok(())
     }
 
-    /// Creates a `ProtoBlock` with the `AppendableBlock`s deploys and transfers, and the given
+    /// Creates a `BlockPayload` with the `AppendableBlock`s deploys and transfers, and the given
     /// random bit.
-    pub(crate) fn into_proto_block(
+    pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> ProtoBlock {
+    ) -> BlockPayload {
         let AppendableBlock {
             deploy_hashes,
             transfer_hashes,
             ..
         } = self;
-        ProtoBlock::new(deploy_hashes, transfer_hashes, accusations, random_bit)
+        BlockPayload::new(deploy_hashes, transfer_hashes, accusations, random_bit)
     }
 
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no

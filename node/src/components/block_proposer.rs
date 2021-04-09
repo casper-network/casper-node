@@ -27,13 +27,13 @@ use tracing::{debug, error, info, trace};
 use crate::{
     components::Component,
     effect::{
-        requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
+        requests::{BlockPayloadRequest, BlockProposerRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Chainspec, DeployHash, DeployHeader, ProtoBlock, Timestamp,
+        BlockPayload, Chainspec, DeployHash, DeployHeader, Timestamp,
     },
     NodeRng,
 };
@@ -70,7 +70,7 @@ type FinalizationQueue = HashMap<BlockHeight, Vec<DeployHash>>;
 /// A queue of requests we can't respond to yet, because we aren't up to date on finalized blocks.
 /// The key is the height of the next block we will expect to be finalized at the point when we can
 /// fulfill the corresponding requests.
-type RequestQueue = HashMap<BlockHeight, Vec<ProtoBlockRequest>>;
+type RequestQueue = HashMap<BlockHeight, Vec<BlockPayloadRequest>>;
 
 /// Current operational state of a block proposer.
 #[derive(DataSize, Debug)]
@@ -237,7 +237,7 @@ impl BlockProposerReady {
         REv: Send + From<StateStoreRequest>,
     {
         match event {
-            Event::Request(BlockProposerRequest::RequestProtoBlock(request)) => {
+            Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
                     debug!(
                         request_next_finalized = %request.next_finalized,
@@ -250,10 +250,10 @@ impl BlockProposerReady {
                         .push(request);
                     Effects::new()
                 } else {
-                    info!(%request.next_finalized, "proposing a proto block");
+                    info!(%request.next_finalized, "proposing a block payload");
                     request
                         .responder
-                        .respond(self.propose_proto_block(
+                        .respond(self.propose_block_payload(
                             self.deploy_config,
                             request.current_instant,
                             request.past_deploys,
@@ -386,7 +386,7 @@ impl BlockProposerReady {
                 .flat_map(|request| {
                     request
                         .responder
-                        .respond(self.propose_proto_block(
+                        .respond(self.propose_block_payload(
                             self.deploy_config,
                             request.current_instant,
                             request.past_deploys,
@@ -410,14 +410,14 @@ impl BlockProposerReady {
     }
 
     /// Returns a list of candidates for inclusion into a block.
-    fn propose_proto_block(
+    fn propose_block_payload(
         &mut self,
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
         past_deploys: HashSet<DeployHash>,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> ProtoBlock {
+    ) -> BlockPayload {
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
         // We prioritize transfers over deploys, so we try to include them first.
@@ -481,7 +481,7 @@ impl BlockProposerReady {
             }
         }
 
-        appendable_block.into_proto_block(accusations, random_bit)
+        appendable_block.into_block_payload(accusations, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.

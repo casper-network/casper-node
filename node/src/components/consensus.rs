@@ -42,7 +42,7 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, Block, BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    types::{ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, Timestamp},
     NodeRng,
 };
 
@@ -76,9 +76,9 @@ pub struct TimerId(pub u8);
 pub struct ActionId(pub u8);
 
 #[derive(DataSize, Debug, From)]
-pub struct NewProtoBlock {
+pub struct NewBlockPayload {
     era_id: EraId,
-    proto_block: ProtoBlock,
+    block_payload: BlockPayload,
     block_context: BlockContext<ClContext>,
 }
 
@@ -104,7 +104,7 @@ pub enum Event<I> {
     /// A queued action to be handled by a specific era.
     Action { era_id: EraId, action_id: ActionId },
     /// We are receiving the data we require to propose a new block.
-    NewProtoBlock(NewProtoBlock),
+    NewBlockPayload(NewBlockPayload),
     #[from]
     ConsensusRequest(ConsensusRequest),
     /// A new block has been added to the linear chain.
@@ -183,14 +183,14 @@ impl<I: Debug> Display for Event<I> {
             Event::Action { era_id, action_id } => {
                 write!(f, "action (ID {}) for {}", action_id.0, era_id)
             }
-            Event::NewProtoBlock(NewProtoBlock {
+            Event::NewBlockPayload(NewBlockPayload {
                 era_id,
-                proto_block,
+                block_payload,
                 block_context,
             }) => write!(
                 f,
                 "New proto-block for era {:?}: {:?}, {:?}",
-                era_id, proto_block, block_context
+                era_id, block_payload, block_context
             ),
             Event::ConsensusRequest(request) => write!(
                 f,
@@ -247,7 +247,7 @@ pub trait ReactorEventT<I>:
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
-    + From<BlockValidationRequest<ProtoBlock, I>>
+    + From<BlockValidationRequest<BlockPayload, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
@@ -263,7 +263,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
-        + From<BlockValidationRequest<ProtoBlock, I>>
+        + From<BlockValidationRequest<BlockPayload, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
@@ -295,8 +295,8 @@ where
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewProtoBlock(new_proto_block) => {
-                handling_es.handle_new_proto_block(new_proto_block)
+            Event::NewBlockPayload(new_block_payload) => {
+                handling_es.handle_new_block_payload(new_block_payload)
             }
             Event::BlockAdded(block) => handling_es.handle_block_added(*block),
             Event::ResolveValidity(resolve_validity) => {

@@ -98,14 +98,14 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
-    let proto_block = ProtoBlock::new(deploy_hashes, vec![], vec![], random_bit);
+    let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
     let era_report = Some(EraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
     FinalizedBlock::new(
-        proto_block,
+        block_payload,
         era_report,
         timestamp,
         era_id,
@@ -187,7 +187,7 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
-/// A cryptographic hash identifying a `ProtoBlock`.
+/// A cryptographic hash identifying a `BlockPayload`.
 #[derive(
     Copy,
     Clone,
@@ -202,12 +202,12 @@ impl From<TryFromSliceError> for Error {
     Debug,
     Default,
 )]
-pub struct ProtoBlockHash(Digest);
+pub struct BlockPayloadHash(Digest);
 
-impl ProtoBlockHash {
-    /// Constructs a new `ProtoBlockHash`.
+impl BlockPayloadHash {
+    /// Constructs a new `BlockPayloadHash`.
     pub fn new(hash: Digest) -> Self {
-        ProtoBlockHash(hash)
+        BlockPayloadHash(hash)
     }
 
     /// Returns the wrapped inner hash.
@@ -216,7 +216,7 @@ impl ProtoBlockHash {
     }
 }
 
-impl Display for ProtoBlockHash {
+impl Display for BlockPayloadHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "proto-block-hash({})", self.0)
     }
@@ -226,33 +226,33 @@ impl Display for ProtoBlockHash {
 /// executed yet)
 ///
 /// From the view of the consensus protocol this is the "consensus value": The protocol deals with
-/// finalizing an order of `ProtoBlock`s. Only after consensus has been reached, the block's
+/// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
 ///
 /// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
 /// that this comes before a block in the linear, executed, finalized blockchain is produced.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ProtoBlock {
-    hash: ProtoBlockHash,
+pub struct BlockPayload {
+    hash: BlockPayloadHash,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
     accusations: Vec<PublicKey>,
     random_bit: bool,
 }
 
-impl ProtoBlock {
+impl BlockPayload {
     pub(crate) fn new(
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
         accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Self {
-        let hash = ProtoBlockHash::new(hash::hash(
+        let hash = BlockPayloadHash::new(hash::hash(
             &bincode::serialize(&(&deploy_hashes, &transfer_hashes, &accusations, random_bit))
-                .expect("serialize ProtoBlock"),
+                .expect("serialize BlockPayload"),
         ));
 
-        ProtoBlock {
+        BlockPayload {
             hash,
             deploy_hashes,
             transfer_hashes,
@@ -261,7 +261,7 @@ impl ProtoBlock {
         }
     }
 
-    pub(crate) fn hash(&self) -> &ProtoBlockHash {
+    pub(crate) fn hash(&self) -> &BlockPayloadHash {
         &self.hash
     }
 
@@ -287,11 +287,11 @@ impl ProtoBlock {
     }
 }
 
-impl Display for ProtoBlock {
+impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "proto block {}, deploys {}, transfers {}, accusations {:?}, random bit {}",
+            "block payload {}, deploys {}, transfers {}, accusations {:?}, random bit {}",
             self.hash.inner(),
             HexList(&self.deploy_hashes),
             HexList(&self.transfer_hashes),
@@ -369,7 +369,7 @@ pub struct FinalizedBlock {
 
 impl FinalizedBlock {
     pub(crate) fn new(
-        proto_block: ProtoBlock,
+        block_payload: BlockPayload,
         era_report: Option<EraReport>,
         timestamp: Timestamp,
         era_id: EraId,
@@ -377,10 +377,10 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            deploy_hashes: proto_block.deploy_hashes,
-            transfer_hashes: proto_block.transfer_hashes,
+            deploy_hashes: block_payload.deploy_hashes,
+            transfer_hashes: block_payload.transfer_hashes,
             timestamp,
-            random_bit: proto_block.random_bit,
+            random_bit: block_payload.random_bit,
             era_report,
             era_id,
             height,
@@ -388,7 +388,7 @@ impl FinalizedBlock {
         }
     }
 
-    /// The timestamp from when the proto block was proposed.
+    /// The timestamp from when the block payload was proposed.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
@@ -443,7 +443,7 @@ impl FinalizedBlock {
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let proto_block = ProtoBlock::new(deploy_hashes, vec![], vec![], random_bit);
+        let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
@@ -477,7 +477,7 @@ impl FinalizedBlock {
         let public_key = PublicKey::from(&secret_key);
 
         FinalizedBlock::new(
-            proto_block,
+            block_payload,
             era_report,
             timestamp,
             era_id,
@@ -714,7 +714,7 @@ impl BlockHeader {
         }
     }
 
-    /// The timestamp from when the proto block was proposed.
+    /// The timestamp from when the block payload was proposed.
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }

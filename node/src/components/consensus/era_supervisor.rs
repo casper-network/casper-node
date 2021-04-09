@@ -40,7 +40,7 @@ use crate::{
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
-        ActionId, Config, ConsensusMessage, Event, NewProtoBlock, ReactorEventT, ResolveValidity,
+        ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
         TimerId,
     },
     crypto::hash::Digest,
@@ -50,8 +50,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, DeployHash, DeployMetadata,
-        FinalitySignature, FinalizedBlock, ProtoBlock, TimeDiff, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, DeployHash, DeployMetadata,
+        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -692,20 +692,20 @@ where
         }
     }
 
-    pub(super) fn handle_new_proto_block(
+    pub(super) fn handle_new_block_payload(
         &mut self,
-        new_proto_block: NewProtoBlock,
+        new_block_payload: NewBlockPayload,
     ) -> Effects<Event<I>> {
-        let NewProtoBlock {
+        let NewBlockPayload {
             era_id,
-            proto_block,
+            block_payload,
             block_context,
-        } = new_proto_block;
+        } = new_block_payload;
         if !self.era_supervisor.is_bonded(era_id) {
-            warn!(era = era_id.value(), "new proto block in outdated era");
+            warn!(era = era_id.value(), "new block payload in outdated era");
             return Effects::new();
         }
-        let proposed_block = ProposedBlock::new(proto_block, block_context);
+        let proposed_block = ProposedBlock::new(block_payload, block_context);
         self.delegate_to_era(era_id, move |consensus| {
             consensus.propose(proposed_block, Timestamp::now())
         })
@@ -975,7 +975,7 @@ where
                 let past_deploys = block_context
                     .ancestor_values()
                     .iter()
-                    .flat_map(|candidate| candidate.deploys_and_transfers_iter())
+                    .flat_map(|block_payload| block_payload.deploys_and_transfers_iter())
                     .cloned()
                     .collect();
                 let accusations = self
@@ -987,17 +987,17 @@ where
                     .cloned()
                     .collect();
                 self.effect_builder
-                    .request_proto_block(
+                    .request_block_payload(
                         block_context.timestamp(),
                         past_deploys,
                         self.era_supervisor.next_block_height,
                         accusations,
                         self.rng.gen(),
                     )
-                    .event(move |proto_block| {
-                        Event::NewProtoBlock(NewProtoBlock {
+                    .event(move |block_payload| {
+                        Event::NewBlockPayload(NewBlockPayload {
                             era_id,
-                            proto_block,
+                            block_payload,
                             block_context,
                         })
                     })
@@ -1038,7 +1038,7 @@ where
                 self.era_supervisor
                     .metrics
                     .finalized_block(&finalized_block);
-                // Announce the finalized proto block.
+                // Announce the finalized block payload.
                 let mut effects = self
                     .effect_builder
                     .announce_finalized_block(finalized_block.clone())
@@ -1075,8 +1075,8 @@ where
                     .cloned()
                     .collect();
                 self.era_mut(era_id)
-                    .add_candidate(proposed_block.clone(), missing_evidence.clone());
-                let proto_block_deploys_set: BTreeSet<DeployHash> = proposed_block
+                    .add_block(proposed_block.clone(), missing_evidence.clone());
+                let block_payload_deploys_set: BTreeSet<DeployHash> = proposed_block
                     .value()
                     .deploys_and_transfers_iter()
                     .cloned()
@@ -1086,7 +1086,7 @@ where
                     .ancestor_values()
                     .iter()
                     .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
-                    .any(|deploy| proto_block_deploys_set.contains(deploy))
+                    .any(|deploy| block_payload_deploys_set.contains(deploy))
                 {
                     return self.resolve_validity(ResolveValidity {
                         era_id,
@@ -1255,18 +1255,18 @@ pub enum ReplayCheckAndValidateBlockError {
     BlockHashMissingFromStorage(BlockHash),
 }
 
-/// Checks that a [ProtoBlock] does not have deploys we have already included in blocks in previous
-/// eras. This is done by repeatedly querying storage for deploy metadata. When metadata is found
-/// storage is queried again to get the era id for the included deploy. That era id must *not* be
-/// less than the current era, otherwise the deploy is a replay attack.
+/// Checks that a [BlockPayload] does not have deploys we have already included in blocks in
+/// previous eras. This is done by repeatedly querying storage for deploy metadata. When metadata is
+/// found storage is queried again to get the era id for the included deploy. That era id must *not*
+/// be less than the current era, otherwise the deploy is a replay attack.
 async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     effect_builder: EffectBuilder<REv>,
-    proto_block_era_id: EraId,
+    block_payload_era_id: EraId,
     sender: I,
     proposed_block: ProposedBlock<ClContext>,
 ) -> Result<Event<I>, ReplayCheckAndValidateBlockError>
 where
-    REv: From<BlockValidationRequest<ProtoBlock, I>> + From<StorageRequest>,
+    REv: From<BlockValidationRequest<BlockPayload, I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
@@ -1298,11 +1298,11 @@ where
                     //
                     // If not, then it might be this is a deploy for a block we are currently
                     // coming to consensus, and we will rely on the immediate ancestors of the
-                    // proto_block within the current era to determine if we are facing a replay
+                    // block_payload within the current era to determine if we are facing a replay
                     // attack.
-                    if block_header.era_id() < proto_block_era_id {
+                    if block_header.era_id() < block_payload_era_id {
                         return Ok(Event::ResolveValidity(ResolveValidity {
-                            era_id: proto_block_era_id,
+                            era_id: block_payload_era_id,
                             sender: sender.clone(),
                             proposed_block: proposed_block.clone(),
                             valid: false,
@@ -1315,7 +1315,7 @@ where
 
     let sender_for_validate_block: I = sender.clone();
     let (valid, _) = effect_builder
-        .validate_proto_block(
+        .validate_block_payload(
             sender_for_validate_block,
             proposed_block.value().clone(),
             proposed_block.context().timestamp(),
@@ -1323,7 +1323,7 @@ where
         .await;
 
     Ok(Event::ResolveValidity(ResolveValidity {
-        era_id: proto_block_era_id,
+        era_id: block_payload_era_id,
         sender,
         proposed_block,
         valid,

@@ -25,7 +25,7 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    types::{ProtoBlock, TimeDiff, Timestamp},
+    types::{BlockPayload, TimeDiff, Timestamp},
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
@@ -200,7 +200,7 @@ fn send_a_valid_wire_unit() {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: Some(ProtoBlock::new(vec![], vec![], vec![], false)),
+        value: Some(BlockPayload::new(vec![], vec![], vec![], false)),
         seq_number,
         timestamp: now,
         round_exp: 14,
@@ -260,7 +260,7 @@ fn detect_doppelganger() {
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let now = Timestamp::zero();
-    let value = ProtoBlock::new(vec![], vec![], vec![], false);
+    let value = BlockPayload::new(vec![], vec![], vec![], false);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
