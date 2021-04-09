@@ -195,7 +195,7 @@ impl LinearChain {
         self.protocol_version
     }
 
-    fn set_latest_block(&mut self, block: Block) {
+    pub(super) fn set_latest_block(&mut self, block: Block) {
         self.latest_block = Some(block);
     }
 

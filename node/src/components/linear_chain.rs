@@ -216,6 +216,10 @@ where
                 );
                 outcomes_to_effects(effect_builder, outcomes)
             }
+            Event::KnownLinearChainBlock(block) => {
+                self.linear_chain_state.set_latest_block(*block);
+                Effects::new()
+            }
         }
     }
 }
