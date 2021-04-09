@@ -1118,7 +1118,11 @@ fn insert_to_deploy_index(
         .deploy_hashes()
         .iter()
         .chain(block_body.transfer_hashes().iter())
-        .find(|hash| deploy_hash_index.contains_key(hash))
+        .find(|hash| {
+            deploy_hash_index
+                .get(hash)
+                .map_or(false, |old_block_hash| *old_block_hash != block_hash)
+        })
     {
         return Err(Error::DuplicateDeployIndex {
             deploy_hash: *hash,
