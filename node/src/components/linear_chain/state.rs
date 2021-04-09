@@ -339,7 +339,7 @@ impl LinearChain {
         }
 
         self.pending_finality_signatures
-            .mark_bonded(new_fs.public_key, new_fs.block_hash);
+            .mark_bonded(new_fs.public_key.clone(), new_fs.block_hash);
 
         match maybe_known_signatures {
             None => {
@@ -476,8 +476,8 @@ mod tests {
         let expected_outcomes = {
             let mut tmp = vec![];
             let mut block_signatures = BlockSignatures::new(block_hash, block_era);
-            block_signatures.insert_proof(sig_a.public_key, sig_a.signature);
-            block_signatures.insert_proof(sig_b.public_key, sig_b.signature);
+            block_signatures.insert_proof(sig_a.public_key.clone(), sig_a.signature);
+            block_signatures.insert_proof(sig_b.public_key.clone(), sig_b.signature);
             tmp.push(Outcome::StoreBlockSignatures(block_signatures));
             tmp.push(Outcome::Gossip(Box::new(sig_a.clone()))); // Only `sig_a` was created locally and we don't "regossip" incoming signatures.
             tmp.push(Outcome::AnnounceSignature(Box::new(sig_a)));

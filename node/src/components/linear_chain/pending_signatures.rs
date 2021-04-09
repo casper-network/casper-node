@@ -120,7 +120,7 @@ impl PendingSignatures {
     }
 
     fn mark_bonded_helper(&mut self, public_key: PublicKey, block_hash: BlockHash) -> Option<()> {
-        match self.pending_finality_signatures.entry(public_key) {
+        match self.pending_finality_signatures.entry(public_key.clone()) {
             Entry::Occupied(mut validator_sigs) => {
                 let sig = validator_sigs.get_mut().remove(&block_hash)?;
                 if sig.is_bonded() {
