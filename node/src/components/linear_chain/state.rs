@@ -8,7 +8,7 @@ use crate::{
     crypto::hash::Digest,
     types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
-use casper_types::{EraId, ExecutionResult, ProtocolVersion};
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
@@ -20,12 +20,13 @@ pub(crate) struct LinearChain {
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: PendingSignatures,
     signature_cache: SignatureCache,
-    activation_era_id: EraId,
     /// Current protocol version of the network.
     protocol_version: ProtocolVersion,
     auction_delay: u64,
     unbonding_delay: u64,
 }
+
+#[derive(Debug)]
 pub(super) enum Outcome {
     // Store block signatures to storage.
     StoreBlockSignatures(BlockSignatures),
@@ -58,13 +59,11 @@ impl LinearChain {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
-        activation_era_id: EraId,
     ) -> Self {
         LinearChain {
             latest_block: None,
             pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
-            activation_era_id,
             protocol_version,
             auction_delay,
             unbonding_delay,
@@ -73,7 +72,7 @@ impl LinearChain {
 
     /// Returns whether we have already enqueued that finality signature.
     fn is_pending(&self, fs: &FinalitySignature) -> bool {
-        let creator = fs.public_key;
+        let creator = fs.public_key.clone();
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
             .has_finality_signature(&creator, &block_hash)
@@ -81,7 +80,12 @@ impl LinearChain {
 
     /// Returns whether we have already seen and stored the finality signature.
     fn is_new(&self, fs: &FinalitySignature) -> bool {
-        !self.signature_cache.known_signature(fs)
+        let FinalitySignature {
+            block_hash,
+            public_key,
+            ..
+        } = fs;
+        !self.signature_cache.known_signature(block_hash, public_key)
     }
 
     // New linear chain block received. Collect any pending finality signatures that
@@ -109,7 +113,7 @@ impl LinearChain {
             public_key,
             era_id,
             ..
-        } = fs;
+        } = fs.clone();
         if let Some(latest_block) = self.latest_block.as_ref() {
             // If it's a switch block it has already forgotten its own era's validators,
             // unbonded some old validators, and determined new ones. In that case, we
@@ -176,7 +180,7 @@ impl LinearChain {
             .iter()
             .for_each(|bs| {
                 for (pk, sig) in bs.proofs.iter() {
-                    signatures.insert_proof(*pk, *sig);
+                    signatures.insert_proof((*pk).clone(), *sig);
                 }
             });
         self.signature_cache.insert(signatures);
@@ -191,7 +195,7 @@ impl LinearChain {
         self.protocol_version
     }
 
-    fn set_latest_block(&mut self, block: Block) {
+    pub(super) fn set_latest_block(&mut self, block: Block) {
         self.latest_block = Some(block);
     }
 
@@ -204,7 +208,14 @@ impl LinearChain {
         self.pending_finality_signatures
             .collect_pending(block_hash)
             .into_iter()
-            .filter(|sig| !self.signature_cache.known_signature(sig.to_inner()))
+            .filter(|sig| {
+                let FinalitySignature {
+                    block_hash,
+                    public_key,
+                    ..
+                } = sig.to_inner();
+                !self.signature_cache.known_signature(block_hash, public_key)
+            })
             .collect_vec()
     }
 
@@ -336,7 +347,7 @@ impl LinearChain {
             }
             Some(mut known_signatures) => {
                 // New finality signature from a bonded validator.
-                known_signatures.insert_proof(new_fs.public_key, new_fs.signature);
+                known_signatures.insert_proof(new_fs.public_key.clone(), new_fs.signature);
                 // Cache the results in case we receive the same finality signature before we
                 // manage to store it in the database.
                 self.cache_signatures(*known_signatures.clone());
@@ -356,5 +367,146 @@ impl LinearChain {
                 outcomes
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{crypto::generate_ed25519_keypair, logging, testing::TestRng};
+    use casper_types::EraId;
+
+    use super::*;
+
+    #[test]
+    fn new_block_no_sigs() {
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block = Block::random(&mut rng);
+        let execution_results = HashMap::new();
+        let new_block_outcomes =
+            lc.handle_new_block(Box::new(block.clone()), execution_results.clone());
+        let block_hash = *block.hash();
+        match &*new_block_outcomes {
+            [Outcome::StoreBlock(outcome_block), Outcome::StoreExecutionResults(outcome_block_hash, outcome_execution_results)] =>
+            {
+                assert_eq!(&**outcome_block, &block);
+                assert_eq!(outcome_block_hash, &block_hash);
+                assert_eq!(outcome_execution_results, &execution_results);
+            }
+            others => panic!("unexpected outcome: {:?}", others),
+        }
+        let block_stored_outcomes = lc.handle_put_block(Box::new(block.clone()));
+        match &*block_stored_outcomes {
+            [Outcome::AnnounceBlock(announced_block)] => {
+                assert_eq!(&**announced_block, &block);
+            }
+            others => panic!("unexpected outcome: {:?}", others),
+        }
+        assert_eq!(
+            lc.latest_block(),
+            &Some(block),
+            "should update the latest block"
+        );
+    }
+
+    #[test]
+    fn pending_sig_rejected() {
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block_hash = BlockHash::random(&mut rng);
+        let valid_sig = FinalitySignature::random_for_block(block_hash, 0);
+        let handle_sig_outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
+        assert!(matches!(
+            &*handle_sig_outcomes,
+            &[Outcome::LoadSignatures(_)]
+        ));
+        assert!(
+            lc.handle_finality_signature(Box::new(valid_sig), false)
+                .is_empty(),
+            "adding already-pending signature should be a no-op"
+        );
+    }
+
+    // Forces caching of the finality signature. Requires confirming that creator is known to be
+    // bonded.
+    fn cache_signature(lc: &mut LinearChain, fs: FinalitySignature) {
+        // We need to signal that block is known. Otherwise we won't cache the signature.
+        let block_signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
+        let outcomes =
+            lc.handle_cached_signatures(Some(Box::new(block_signatures)), Box::new(fs.clone()));
+        match &*outcomes {
+            [Outcome::VerifyIfBonded {
+                new_fs, known_fs, ..
+            }] => {
+                assert_eq!(&fs, &**new_fs);
+                let outcomes = lc.handle_is_bonded(known_fs.clone(), Box::new(fs), true);
+                // After confirming that signature is valid and block known, we want to store the
+                // signature and announce it.
+                assert!(matches!(
+                    &*outcomes,
+                    &[
+                        Outcome::AnnounceSignature(_),
+                        Outcome::StoreBlockSignatures(_)
+                    ]
+                ));
+            }
+            others => panic!("unexpected outcomes {:?}", others),
+        }
+    }
+
+    #[test]
+    fn known_sig_rejected() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let block = Block::random(&mut rng);
+        let valid_sig =
+            FinalitySignature::random_for_block(*block.hash(), block.header().era_id().value());
+        cache_signature(&mut lc, valid_sig.clone());
+        let outcomes = lc.handle_finality_signature(Box::new(valid_sig), false);
+        assert!(
+            outcomes.is_empty(),
+            "adding already-known signature should be a no-op"
+        );
+    }
+
+    #[test]
+    fn invalid_sig_rejected() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let auction_delay = 1;
+        let unbonding_delay = 2;
+        let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        // Set the latest known block so that we can trigger the following checks.
+        let block = Block::random_with_specifics(&mut rng, EraId::new(3), 10, false);
+        let block_hash = *block.hash();
+        let block_era = block.header().era_id();
+        let put_block_outcomes = lc.handle_put_block(Box::new(block.clone()));
+        assert_eq!(put_block_outcomes.len(), 1);
+        assert_eq!(
+            lc.latest_block(),
+            &Some(block),
+            "should update the latest block"
+        );
+        // signature's era either too low or too high
+        let era_too_low_sig = FinalitySignature::random_for_block(block_hash, 0);
+        let outcomes = lc.handle_finality_signature(Box::new(era_too_low_sig), false);
+        assert!(outcomes.is_empty());
+        let era_too_high_sig =
+            FinalitySignature::random_for_block(block_hash, block_era.value() + auction_delay + 1);
+        let outcomes = lc.handle_finality_signature(Box::new(era_too_high_sig), false);
+        assert!(outcomes.is_empty());
+        // signature is not valid
+        let block_hash = BlockHash::random(&mut rng);
+        let (_, pub_key) = generate_ed25519_keypair();
+        let mut invalid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
+        // replace the public key so that the verification fails.
+        invalid_sig.public_key = pub_key;
+        let outcomes = lc.handle_finality_signature(Box::new(invalid_sig), false);
+        assert!(outcomes.is_empty())
     }
 }

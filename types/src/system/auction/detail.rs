@@ -52,7 +52,7 @@ where
             Some(bid) => bid,
             None => return Err(Error::ValidatorNotFound),
         };
-        ret.insert(*bid.validator_public_key(), bid);
+        ret.insert(bid.validator_public_key().clone(), bid);
     }
 
     Ok(ret)
@@ -297,7 +297,7 @@ where
 
         let allocation = SeigniorageAllocation::delegator(
             delegator_key,
-            validator_public_key,
+            validator_public_key.clone(),
             delegator_reward_trunc,
         );
 

@@ -12,7 +12,7 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::error;
 
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{
@@ -29,7 +29,6 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::Timestamp,
     NodeRng,
 };
 
@@ -51,15 +50,9 @@ impl<I> LinearChainComponent<I> {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
-        activation_era_id: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
-        let linear_chain_state = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
-            activation_era_id,
-        );
+        let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
@@ -113,7 +106,7 @@ where
                 latest_state_root_hash,
             } => effect_builder
                 .is_bonded_validator(
-                    new_fs.public_key,
+                    new_fs.public_key.clone(),
                     new_fs.era_id,
                     latest_state_root_hash,
                     protocol_version,
@@ -189,8 +182,7 @@ where
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::PutBlockResult { block } => {
-                let completion_duration =
-                    Timestamp::now().millis() - block.header().timestamp().millis();
+                let completion_duration = block.header().timestamp().elapsed().millis();
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
@@ -216,6 +208,10 @@ where
                     is_bonded,
                 );
                 outcomes_to_effects(effect_builder, outcomes)
+            }
+            Event::KnownLinearChainBlock(block) => {
+                self.linear_chain_state.set_latest_block(*block);
+                Effects::new()
             }
         }
     }

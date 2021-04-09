@@ -93,7 +93,6 @@ pub struct EraSupervisor<I> {
     config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
-    node_start_time: Timestamp,
     /// The height of the next block to be finalized.
     /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
     /// finalized when we request a new block. This way the Block Proposer can know whether it's up
@@ -169,9 +168,6 @@ where
             protocol_config,
             config,
             new_consensus,
-            // TODO: Find a better way to decide whether to activate validator, or get the
-            // timestamp from when the process started.
-            node_start_time: Timestamp::now(),
             next_block_height: next_height,
             metrics,
             unit_hashes_folder,
@@ -315,7 +311,7 @@ where
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
-        let our_id = self.public_signing_key;
+        let our_id = &self.public_signing_key;
         let should_activate = if !validators.contains_key(&our_id) {
             info!(era = era_id.value(), %our_id, "not voting; not a validator");
             false
@@ -341,13 +337,18 @@ where
         );
 
         if should_activate {
-            let secret = Keypair::new(self.secret_signing_key.clone(), our_id);
+            let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
             let unit_hash_file = self.unit_hashes_folder.join(format!(
                 "unit_hash_{:?}_{}.dat",
                 instance_id,
                 self.public_signing_key.to_hex()
             ));
-            outcomes.extend(consensus.activate_validator(our_id, secret, now, Some(unit_hash_file)))
+            outcomes.extend(consensus.activate_validator(
+                our_id.clone(),
+                secret,
+                now,
+                Some(unit_hash_file),
+            ))
         }
 
         let era = Era::new(
@@ -717,7 +718,7 @@ where
     }
 
     pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
-        let our_pk = self.era_supervisor.public_signing_key;
+        let our_pk = self.era_supervisor.public_signing_key.clone();
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block.header().era_id();
         self.era_supervisor.executed_block(block.header());
@@ -1070,7 +1071,7 @@ where
                 let missing_evidence: Vec<PublicKey> = candidate_block
                     .accusations()
                     .iter()
-                    .filter(|pub_key| !self.has_evidence(era_id, **pub_key))
+                    .filter(|pub_key| !self.has_evidence(era_id, (*pub_key).clone()))
                     .cloned()
                     .collect();
                 self.era_mut(era_id)
@@ -1130,7 +1131,7 @@ where
                 info!(%pub_key, era = era_id.value(), "validator equivocated");
                 let mut effects = self
                     .effect_builder
-                    .announce_fault_event(era_id, pub_key, Timestamp::now())
+                    .announce_fault_event(era_id, pub_key.clone(), Timestamp::now())
                     .ignore();
                 for e_id in self
                     .era_supervisor
@@ -1192,7 +1193,7 @@ where
         &self,
         responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
     ) -> Effects<Event<I>> {
-        let public_key = self.era_supervisor.public_signing_key;
+        let public_key = self.era_supervisor.public_signing_key.clone();
         let round_length = self
             .era_supervisor
             .active_eras
