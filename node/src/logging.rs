@@ -300,13 +300,13 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
 }
 
 /// An error formatter.
-///
-/// Stores a pointer to a trait object internally instead of using a generic `T` to avoid an
-/// explosion of monomorphized instances.
 #[derive(Clone, Copy, Debug)]
-pub struct ErrFormatter<'a>(pub &'a dyn std::error::Error);
+pub struct ErrFormatter<'a, T>(pub &'a T);
 
-impl<'a> Display for ErrFormatter<'a> {
+impl<'a, T> Display for ErrFormatter<'a, T>
+where
+    T: error::Error,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut opt_source: Option<&(dyn error::Error)> = Some(self.0);
 
@@ -334,9 +334,7 @@ impl<'a> Display for ErrFormatter<'a> {
 #[macro_export]
 macro_rules! e {
     ($orig_err:expr) => {
-        ::tracing::field::display($crate::logging::ErrFormatter(
-            ::std::borrow::Borrow::borrow(&$orig_err),
-        ))
+        ::tracing::field::display($crate::logging::ErrFormatter($orig_err))
     };
 }
 
@@ -386,7 +384,7 @@ mod tests {
     #[allow(trivial_casts)]
     fn test_e_produces_value() {
         let err = Baz;
-        let wrapped = e!(err);
+        let wrapped = e!(&err);
         let _value_ref: &dyn Value = &wrapped as &dyn Value;
     }
 }
