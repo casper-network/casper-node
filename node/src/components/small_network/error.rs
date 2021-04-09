@@ -10,6 +10,7 @@ use std::{
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
+use tracing::field;
 
 use crate::{tls::ValidationError, utils::ResolveAddressError};
 
@@ -166,19 +167,17 @@ where
 
 /// Wraps an error to ensure it gets properly captured by tracing.
 ///
-/// Ensures that errors are properly captured.
+/// # Note
 ///
-/// This macro should be removed once/if the tracing
-/// issue https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special
-/// syntax for this case and the known issue https://github.com/tokio-rs/tracing/issues/1308 has
-/// been fixed, which cuts traces short after the first cause.
-#[macro_export]
-macro_rules! cl_error {
-    ($orig_err:expr) => {
-        ::tracing::field::display($crate::components::small_network::error::ErrFormatter(
-            $orig_err,
-        ))
-    };
+/// This function should be replaced once/if the tracing issue
+/// https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special syntax
+/// for this case and the known issue https://github.com/tokio-rs/tracing/issues/1308 has been
+/// fixed, which cuts traces short after the first cause.
+pub(crate) fn cl_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
+where
+    T: error::Error + 'a,
+{
+    field::display(ErrFormatter(err))
 }
 
 #[cfg(test)]
@@ -186,8 +185,7 @@ mod tests {
     use thiserror::Error;
     use tracing::Value;
 
-    use super::ErrFormatter;
-    use crate::cl_error;
+    use super::{cl_error, ErrFormatter};
 
     #[derive(Debug, Error)]
     #[error("this is baz")]
@@ -221,13 +219,5 @@ mod tests {
             ErrFormatter(&nested).to_string().as_str(),
             "this is foo: this is bar: this is baz"
         );
-    }
-
-    #[test]
-    #[allow(trivial_casts)]
-    fn test_cl_error_produces_value() {
-        let err = Baz;
-        let wrapped = cl_error!(&err);
-        let _value_ref: &dyn Value = &wrapped as &dyn Value;
     }
 }
