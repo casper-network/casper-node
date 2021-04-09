@@ -124,13 +124,8 @@ impl PendingSignatures {
         match self.pending_finality_signatures.entry(public_key.clone()) {
             Entry::Occupied(mut validator_sigs) => {
                 let sig = validator_sigs.get_mut().get(&block_hash)?;
-                if !sig.is_bonded() {
-                    let bonded_status = VerificationStatus::Bonded(sig.value().clone());
-                    drop(sig);
-                    validator_sigs
-                        .get_mut()
-                        .insert(block_hash, bonded_status);
-                }
+                let bonded_status = VerificationStatus::Bonded(sig.value().clone());
+                validator_sigs.get_mut().insert(block_hash, bonded_status);
                 Some(())
             }
             Entry::Vacant(_) => {
