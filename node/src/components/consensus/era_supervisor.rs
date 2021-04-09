@@ -1005,7 +1005,7 @@ where
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
                 timestamp,
-                height,
+                relative_height,
                 terminal_block_data,
                 equivocators,
                 proposer,
@@ -1032,7 +1032,7 @@ where
                     era_end,
                     timestamp,
                     era_id,
-                    era.start_height + height,
+                    era.start_height + relative_height,
                     proposer,
                 );
                 self.era_supervisor

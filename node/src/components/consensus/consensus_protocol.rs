@@ -109,7 +109,7 @@ pub(crate) struct FinalizedBlock<C: Context> {
     /// The timestamp at which this value was proposed.
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
-    pub(crate) height: u64,
+    pub(crate) relative_height: u64,
     /// The validators known to be faulty as seen by this block.
     pub(crate) equivocators: Vec<C::ValidatorId>,
     /// If this is a terminal block, i.e. the last one to be finalized, this contains additional

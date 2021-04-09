@@ -479,7 +479,7 @@ where
         for FinalizedBlock {
             value,
             timestamp: _,
-            height,
+            relative_height,
             terminal_block_data,
             equivocators: _,
             proposer: _,
@@ -493,7 +493,7 @@ where
                     ""
                 },
                 value,
-                height
+                relative_height,
             );
             if let Some(t) = terminal_block_data {
                 warn!(?t.rewards, "rewards and inactive validators are not verified yet");
