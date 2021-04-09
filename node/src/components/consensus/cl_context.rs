@@ -46,12 +46,6 @@ impl ValidatorSecret for Keypair {
 }
 
 impl ConsensusValueT for BlockPayload {
-    type Hash = Digest;
-
-    fn hash(&self) -> Digest {
-        *self.hash().inner()
-    }
-
     fn needs_validation(&self) -> bool {
         !self.transfer_hashes().is_empty() || !self.deploy_hashes().is_empty()
     }
