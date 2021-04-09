@@ -492,7 +492,7 @@ mod tests {
         // Verify that all outcomes are expected.
         for outcome in outcomes {
             assert!(
-                expected_outcomes.iter().any(|&e| e == &outcome),
+                expected_outcomes.iter().any(|e| e == &outcome),
                 "unexpected outcome"
             );
         }
