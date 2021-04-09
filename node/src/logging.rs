@@ -294,3 +294,26 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     }
     .map_err(|error| anyhow!(error))
 }
+
+/// Wraps an error to ensure it gets properly captured by tracing.
+///
+/// Ensures that errors are properly captured as errors, not strings, by performing the necessary
+/// cast to a trait object. As a result, the `cause` of errors is shown.
+///
+/// This macro should be removed once/if the tracing issue
+/// https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special syntax
+/// for this case.
+///
+/// # Known issues
+///
+/// There is a known bugs in tracing where only the first source in a chain of errors is logged, see
+/// https://github.com/tokio-rs/tracing/issues/1308 for details. If this becomes an issue, this
+/// macro can be replaced with a custom `Fn(&std::error::Error) -> &str` and
+/// `($orig_err:expr) => { custom_fn($orig_err) };` to show the whole chain. At the time of this
+/// writing, most of our errors are pretty shallow though.
+#[macro_export]
+macro_rules! e {
+    ($orig_err:expr) => {
+        $orig_err.borrow() as &dyn std::error::Error
+    };
+}
