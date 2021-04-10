@@ -183,7 +183,7 @@ impl CLTyped for EraId {
 
 impl Distribution<EraId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EraId {
-        EraId(rng.gen())
+        EraId(rng.gen_range(0..1_000_000))
     }
 }
 
