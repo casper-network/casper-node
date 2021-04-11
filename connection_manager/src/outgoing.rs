@@ -230,6 +230,20 @@ where
         self.update_caches(addr, prev_state.as_ref());
     }
 
+    /// Retrieves a handle to a peer.
+    ///
+    /// Primary function to send data to peers; clients retrieve a handle to it which can then
+    /// be used to send data.
+    pub(crate) fn get_route(&self, peer_id: NodeId) -> Option<&P::Handle> {
+        let outgoing = self.outgoing.get(self.routes.get(&peer_id)?)?;
+
+        if let OutgoingState::Connected { ref handle, .. } = outgoing.state {
+            Some(handle)
+        } else {
+            None
+        }
+    }
+
     /// Notify about a potentially new address that has been discovered.
     ///
     /// Immediately triggers the connection process to said address if it was not known before.
