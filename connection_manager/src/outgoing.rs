@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, HashSet},
     error::Error,
     mem,
     net::SocketAddr,
@@ -48,8 +48,15 @@ pub(crate) trait ProtocolHandler {
 
 #[derive(Debug, Default)]
 pub(crate) struct OutgoingManager {
+    /// Mapping of address to their current connection state.
     outgoing: HashMap<SocketAddr, Outgoing>,
+    /// Routing table.
+    ///
+    /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
+    /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
+    // A cache of addresses that are in the `Connecting` state, used when housekeeping.
+    cache_connecting: HashSet<SocketAddr>,
 }
 
 impl OutgoingManager {
@@ -81,8 +88,13 @@ impl OutgoingManager {
             }
             Entry::Occupied(occupied) => {
                 let prev_state = &mut occupied.into_mut().state;
+
                 // Check if we need to update the routing table.
                 match (&prev_state, &new_state) {
+                    (OutgoingState::Connected { .. }, OutgoingState::Connected { .. }) => {
+                        trace!("no change in routing, already connected");
+                    }
+
                     // Dropping from connected to any other state requires clearing the route.
                     (OutgoingState::Connected { peer_id }, _) => {
                         debug!(%peer_id, "no more route for peer");
@@ -97,6 +109,24 @@ impl OutgoingManager {
 
                     _ => {
                         trace!("no change in routing");
+                    }
+                }
+
+                // Check if we need to consider the connection for reconnection on next sweep.
+                match (&prev_state, &new_state) {
+                    (OutgoingState::Connecting, OutgoingState::Connecting) => {
+                        trace!("no change in connecting state, already connecting");
+                    }
+                    (OutgoingState::Connecting, _) => {
+                        self.cache_connecting.remove(&addr);
+                        debug!("no longer considered connecting");
+                    }
+                    (_, OutgoingState::Connecting) => {
+                        self.cache_connecting.remove(&addr);
+                        debug!("now connecting");
+                    }
+                    _ => {
+                        trace!("no change in connecting state");
                     }
                 }
 
@@ -127,7 +157,7 @@ impl OutgoingManager {
     /// Blocks an address.
     ///
     /// Causes all current connection to the address to be terminated and future ones prohibited.
-    fn block_addr(&mut self, addr: SocketAddr) {
+    pub(crate) fn block_addr(&mut self, addr: SocketAddr) {
         let span = self.mk_span(addr);
 
         span.in_scope(move || match self.outgoing.entry(addr) {
