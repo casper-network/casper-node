@@ -1,57 +1,42 @@
 pub mod outgoing;
 
-// use std::net::SocketAddr;
-// use std::{
-//     collections::{HashMap, HashSet},
-//     time::Instant,
-// };
+use std::{
+    error,
+    fmt::{self, Display, Formatter},
+};
 
+use tracing::field;
+
+// Placeholders/copied from main source all below.
 type NodeId = u8;
 
-// struct Outgoing {
-//     addr: SocketAddr,
-//     state: OutgoingState,
-// }
+pub(crate) fn display_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
+where
+    T: error::Error + 'a,
+{
+    field::display(ErrFormatter(err))
+}
 
-// enum OutgoingState {
-//     Known,
-//     Failed,
-//     Connected,
-//     Blocked,
-// }
+/// An error formatter.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
 
-// struct OutgoingManager {
-//     outgoing: HashMap<SocketAddr, Outgoing>,
-//     routes: HashMap<NodeId, SocketAddr>,
-// }
+impl<'a, T> Display for ErrFormatter<'a, T>
+where
+    T: error::Error,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut opt_source: Option<&(dyn error::Error)> = Some(self.0);
 
-// struct Incoming {
-//     addr: SocketAddr,
-// }
+        while let Some(source) = opt_source {
+            write!(f, "{}", source)?;
+            opt_source = source.source();
 
-// struct BlacklistEntry {
-//     blacklisted_since: Instant,
-//     known_peer_addresses: SocketAddr,
-// }
+            if opt_source.is_some() {
+                f.write_str(": ")?;
+            }
+        }
 
-// struct PeerManager {
-//     routes: HashMap<NodeId, SocketAddr>,
-//     outgoing: HashMap<SocketAddr, Outgoing>,
-//     blocked_nodes: HashSet<NodeId>,
-// }
-
-// struct RemotePeer {}
-
-// enum RemotePeerState {
-//     OutgoingOnly,
-//     Established,
-//     Blacklisted,
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     #[test]
-//     fn it_works() {
-//         assert_eq!(2 + 2, 4);
-//     }
-// }
+        Ok(())
+    }
+}
