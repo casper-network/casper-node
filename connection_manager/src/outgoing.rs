@@ -113,6 +113,11 @@ where
         /// The moment the connection attempt failed.
         when: Instant,
     },
+    /// The connection was aborted, because the remote peer turned out to be a loopback.
+    Loopback {
+        /// The address used to connect.
+        addr: SocketAddr,
+    },
 }
 
 impl<P> DialOutcome<P>
@@ -124,6 +129,7 @@ where
         match self {
             DialOutcome::Successful { addr, .. } => *addr,
             DialOutcome::Failed { addr, .. } => *addr,
+            DialOutcome::Loopback { addr, .. } => *addr,
         }
     }
 }
@@ -197,7 +203,7 @@ where
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
-    // A cache of addresses that are in the `Connecting` state, used when housekeeping.
+    /// A cache of addresses that are in the `Connecting` state, used when housekeeping.
     waiting_cache: HashSet<SocketAddr>,
 }
 
@@ -519,6 +525,10 @@ where
                         },
                     )
                 }
+            }
+            DialOutcome::Loopback { addr } => {
+                info!("found loopback address");
+                self.change_outgoing_state(addr, OutgoingState::Loopback);
             }
         });
     }
