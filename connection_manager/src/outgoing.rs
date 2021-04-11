@@ -1,7 +1,7 @@
 //! Management of outgoing connections.
 //!
-//! This module implements outgoing connection management, decoupled from the underling transport or
-//! any higher-level level parts. It essentially encapsulates the reconnection and blocklisting
+//! This module implements outgoing connection management, decoupled from the underlying transport
+//! or any higher-level level parts. It essentially encapsulates the reconnection and blocklisting
 //! logic on the `SocketAddr` level.
 //!
 //! # Basic structure
