@@ -1,3 +1,35 @@
+//! Management of outgoing connections.
+//!
+//! This module implements outgoing connection management, decoupled from the underling transport or
+//! any higher-level level parts. It essentially encapsulates the reconnection and blocklisting
+//! logic on the `SocketAddr` level.
+//!
+//! # Basic structure
+//!
+//! The core structure of this module is the `OutgoingManager`, which supports the following
+//! functionality:
+//!
+//! * It can be handed `SocketAddr`s via the `learn_address` function, which will cause it to
+//!   attempt to permanently maintain a connection to the given address, only giving up if retry
+//!   thresholds are exceeded, after which it will be forgotten.
+//! * `block_address` and `redeem_address` can be used to maintain a `SocketAddr`-keyed block list.
+//! * For established connections, `OutgoingManager` maintains an internal routing table. The
+//!   `get_route` function can be used to retrieve a "route" (typically a `sync::channel` accepting
+//!   network messages) to a remote peer by `PeerId`, which can be used to send messages.
+//!
+//! # Requirements
+//!
+//! `OutgoingManager` is decoupled from the underlying protocol, all of its interactions are
+//! performed through a `Dialer`. This frees the `OutgoingManager` from having to worry about
+//! protocol specifics, but requires a dialer to be present for most actions.
+//!
+//! Two conditions not expressed in code must be fulfilled for the `OutgoingManager` to function:
+//!
+//! * The `Dialer` is expected to produce `DialOutcomes` for every dial attempt eventually. These
+//!   must be forwarded to the `OutgoingManager` via the `handle_dial_outcome` function.
+//! * The `perform_housekeeping` method must be called periodically to give the the
+//!   `OutgoingManager` a chance to initiate reconnections and collect garbage.
+
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     error::Error,
@@ -11,72 +43,111 @@ use tracing::{debug, error, error_span, info, trace, warn, Span};
 
 use super::{display_error, NodeId};
 
+/// An outgoing connection/address in various states.
 #[derive(Debug)]
 struct Outgoing<P>
 where
-    P: ProtocolHandler,
+    P: Dialer,
 {
+    /// Whether or not the address is unforgettable, see `learn_address` for details.
     is_unforgettable: bool,
+    /// The current state the connection/address is in.
     state: OutgoingState<P>,
 }
 
+/// Active state for a connection/address.
 #[derive(Debug)]
 enum OutgoingState<P>
 where
-    P: ProtocolHandler,
+    P: Dialer,
 {
-    /// The outgoing address is known and we are currently connecting.
+    /// The outgoing address has been known for the first time and we are currently connecting.
     Connecting,
-    /// The connection has failed and is waiting for a retry.
+    /// The connection has failed at least one connection attempt and is waiting for a retry.
     FailedWaiting {
+        /// Number of attempts that failed, so far.
         attempts_so_far: u8,
+        /// The most recent connection error.
         error: P::Error,
         /// The precise moment when the last connection attempt failed.
         last_failure: Instant,
-        /// Whether there is currently a connection attempt running.
+        /// Whether there is currently a reconnection attempt running.
         in_progress: bool,
     },
-    /// Functional outgoing connection.
-    Connected { peer_id: NodeId, handle: P::Handle },
-    /// The address was blocked and will not be retried.
+    /// A Functional outgoing connection.
+    Connected {
+        /// The peers remote ID.
+        peer_id: NodeId,
+        /// Handle to a communication channel that can be used to send data to the peer.
+        ///
+        /// Can be a channel to decouple sending, or even a direct connection handle.
+        handle: P::Handle,
+    },
+    /// The address was explicitly blocked and will not be retried.
     Blocked,
     /// The address is a loopback address, connecting to ourselves and will not be tried again.
     Loopback,
 }
 
+/// The result of dialing `SocketAddr`.
 #[derive(Debug)]
-pub(crate) enum ConnectionOutcome<P>
+pub(crate) enum DialOutcome<P>
 where
-    P: ProtocolHandler,
+    P: Dialer,
 {
+    /// A connection was successfully established.
     Successful {
+        /// The address dialed.
         addr: SocketAddr,
+        /// A handle to send data down the connection.
         handle: P::Handle,
+        /// The remote peer's authenticated node ID.
         node_id: NodeId,
     },
+    /// The connection attempt failed.
     Failed {
+        /// The address dialed.
         addr: SocketAddr,
+        /// The error encountered while dialing.
         error: P::Error,
+        /// The moment the connection attempt failed.
         when: Instant,
     },
 }
 
-impl<P> ConnectionOutcome<P>
+impl<P> DialOutcome<P>
 where
-    P: ProtocolHandler,
+    P: Dialer,
 {
+    /// Retrieves the socket address from the `DialOutcome`.
     fn addr(&self) -> SocketAddr {
         match self {
-            ConnectionOutcome::Successful { addr, .. } => *addr,
-            ConnectionOutcome::Failed { addr, .. } => *addr,
+            DialOutcome::Successful { addr, .. } => *addr,
+            DialOutcome::Failed { addr, .. } => *addr,
         }
     }
 }
 
-pub(crate) trait ProtocolHandler {
+/// A connection dialer.
+pub(crate) trait Dialer {
+    /// The type of handle this dialer produces. This module does not interact with handles, but
+    /// makes them available on request to other parts.
     type Handle: Debug;
+
+    /// The error produced by the `Dialer` when a connection fails.
     type Error: Debug + Display + Error + Sized;
 
+    /// Attempt to connect to the outgoing socket address.
+    ///
+    /// For every time this function is called by `OutgoingManager`, there eventually *must* be a
+    /// corresponding call to `handle_dial_outcome`.
+    ///
+    /// `OutgoingManager` guarantees that there will never be another `connect_outgoing` call for
+    /// the same `addr` before the most recent one has been been answered using
+    /// `handle_dial_outcome`.
+    ///
+    /// Any logging of connection issues should be done in the context of `span` for better log
+    /// output.
     fn connect_outgoing(&self, span: Span, addr: SocketAddr);
 }
 
@@ -102,17 +173,20 @@ impl Default for OutgoingConfig {
 impl OutgoingConfig {
     /// Calculates the backoff time.
     ///
-    /// `failed_attempts` (n) is the number of previous attempts BEFORE the current failure (thus
+    /// `failed_attempts` (n) is the number of previous attempts *before* the current failure (thus
     /// starting at 0). The backoff time will be double for each attempt.
     fn calc_backoff(&self, failed_attempts: u8) -> Duration {
         2u32.pow(failed_attempts as u32) * self.base_timeout
     }
 }
 
+/// Manager of outbound connections.
+///
+/// See the module documentation for usage suggestions.
 #[derive(Debug, Default)]
 pub(crate) struct OutgoingManager<P>
 where
-    P: ProtocolHandler,
+    P: Dialer,
 {
     /// Outgoing connections subsystem configuration.
     config: OutgoingConfig,
@@ -129,15 +203,15 @@ where
 
 impl<P> OutgoingManager<P>
 where
-    P: ProtocolHandler,
+    P: Dialer,
 {
     /// Creates a logging span for a specific connection.
     #[inline]
     fn mk_span(&self, addr: SocketAddr) -> Span {
         // Note: The jury is still out on whether we want to create a single span and cache it, or
         // create a new one each time this is called. The advantage of the former is external tools
-        // being able to easier correlate all related information, while the drawback is not being
-        // able to change the parent information.
+        // have it easier correlating all related information, while the drawback is not being able
+        // to change the parent span link, which might be awkward.
 
         if let Some(_outgoing) = self.outgoing.get(&addr) {
             error_span!("outgoing", %addr, state = "TODO")
@@ -264,7 +338,7 @@ where
 
     /// Blocks an address.
     ///
-    /// Causes all current connection to the address to be terminated and future ones prohibited.
+    /// Causes any current connection to the address to be terminated and future ones prohibited.
     pub(crate) fn block_addr(&mut self, addr: SocketAddr) {
         let span = self.mk_span(addr);
 
@@ -314,7 +388,7 @@ where
 
     /// Performs housekeeping like reconnection, etc.
     ///
-    /// This function must periodically be called. A good interval is every second.
+    /// This function must periodically be called. A good interval is every second or faster.
     fn perform_housekeeping(&mut self, proto: &mut P) {
         let mut corrupt_entries = Vec::new();
         let mut forgettable_entries = Vec::new();
@@ -393,12 +467,14 @@ where
         });
     }
 
-    /// Handle the outcome of a connection attempt.
-    pub(crate) fn handle_connection_outcome(&mut self, connection_outcome: ConnectionOutcome<P>) {
-        let span = self.mk_span(connection_outcome.addr());
+    /// Handles the outcome of a dialing attempt.
+    ///
+    /// Note that reconnects will earliest happen on the next `perform_housekeeping` call.
+    pub(crate) fn handle_dial_outcome(&mut self, dial_outcome: DialOutcome<P>) {
+        let span = self.mk_span(dial_outcome.addr());
 
-        span.in_scope(move || match connection_outcome {
-            ConnectionOutcome::Successful {
+        span.in_scope(move || match dial_outcome {
+            DialOutcome::Successful {
                 addr,
                 handle,
                 node_id,
@@ -413,7 +489,7 @@ where
                     },
                 );
             }
-            ConnectionOutcome::Failed { addr, error, when } => {
+            DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
                 if let Some(outgoing) = self.outgoing.get(&addr) {
                     if let OutgoingState::FailedWaiting {
@@ -445,13 +521,5 @@ where
                 }
             }
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn dummy() {
-        // TODO
     }
 }
