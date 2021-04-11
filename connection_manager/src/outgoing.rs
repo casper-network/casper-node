@@ -410,6 +410,7 @@ where
     fn perform_housekeeping(&mut self, proto: &mut P) {
         let mut corrupt_entries = Vec::new();
         let mut forgettable_entries = Vec::new();
+        let mut resets = Vec::new();
 
         let config = &self.config;
         let now = Instant::now();
@@ -441,10 +442,7 @@ where
                                     // Unforgettable addresses simply have their timer reset.
                                     info!("resetting unforgettable address");
 
-                                    proto.connect_outgoing(span, addr);
-
-                                    *in_progress = true;
-                                    *attempts_so_far = 0;
+                                    resets.push(addr);
                                 } else {
                                     // Address had too many attempts at reconnection, we will forget
                                     // it later if forgettable.
@@ -483,6 +481,12 @@ where
             self.outgoing.remove(addr);
             self.waiting_cache.remove(addr);
         });
+
+        // Trigger reconnections for the unforgettables.
+        resets.iter().for_each(|&addr| {
+            proto.connect_outgoing(self.mk_span(addr), addr);
+            self.change_outgoing_state(addr, OutgoingState::Connecting);
+        })
     }
 
     /// Handles the outcome of a dialing attempt.
