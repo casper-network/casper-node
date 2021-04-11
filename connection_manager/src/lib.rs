@@ -7,7 +7,7 @@ use std::{
 
 use tracing::field;
 
-// Placeholders/copied from main source all below.
+// Placeholders/copied from main source all below. No need to read further.
 type NodeId = u8;
 
 pub(crate) fn display_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>

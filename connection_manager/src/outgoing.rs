@@ -9,10 +9,10 @@
 //! The core structure of this module is the `OutgoingManager`, which supports the following
 //! functionality:
 //!
-//! * It can be handed `SocketAddr`s via the `learn_address` function, which will cause it to
-//!   attempt to permanently maintain a connection to the given address, only giving up if retry
-//!   thresholds are exceeded, after which it will be forgotten.
-//! * `block_address` and `redeem_address` can be used to maintain a `SocketAddr`-keyed block list.
+//! * It can be handed `SocketAddr`s via the `learn_addr` function, which will cause it to attempt
+//!   to permanently maintain a connection to the given address, only giving up if retry thresholds
+//!   are exceeded, after which it will be forgotten.
+//! * `block_addr` and `redeem_addr` can be used to maintain a `SocketAddr`-keyed block list.
 //! * For established connections, `OutgoingManager` maintains an internal routing table. The
 //!   `get_route` function can be used to retrieve a "route" (typically a `sync::channel` accepting
 //!   network messages) to a remote peer by `PeerId`, which can be used to send messages.
@@ -49,7 +49,7 @@ struct Outgoing<P>
 where
     P: Dialer,
 {
-    /// Whether or not the address is unforgettable, see `learn_address` for details.
+    /// Whether or not the address is unforgettable, see `learn_addr` for details.
     is_unforgettable: bool,
     /// The current state the connection/address is in.
     state: OutgoingState<P>,
@@ -289,7 +289,7 @@ where
             Entry::Vacant(vacant) => {
                 vacant.insert(Outgoing {
                     state: new_state,
-                    is_unforgettable: false, // TODO: offer interface for setting this.
+                    is_unforgettable: false,
                 });
                 None
             }
@@ -327,10 +327,10 @@ where
     /// Notify about a potentially new address that has been discovered.
     ///
     /// Immediately triggers the connection process to said address if it was not known before.
-    pub(crate) fn learn_addr(&mut self, proto: &mut P, addr: SocketAddr) {
+    pub(crate) fn learn_addr(&mut self, proto: &mut P, addr: SocketAddr, unforgettable: bool) {
         let span = self.mk_span(addr);
-        span.clone()
-            .in_scope(move || match self.outgoing.entry(addr) {
+        span.clone().in_scope(move || {
+            match self.outgoing.entry(addr) {
                 Entry::Occupied(_) => {
                     debug!("ignoring already known address");
                 }
@@ -339,7 +339,19 @@ where
                     proto.connect_outgoing(span, addr);
                     self.change_outgoing_state(addr, OutgoingState::Connecting);
                 }
-            })
+            };
+
+            if unforgettable {
+                if let Some(outgoing) = self.outgoing.get_mut(&addr) {
+                    if !outgoing.is_unforgettable {
+                        debug!("marked unforgettable");
+                        outgoing.is_unforgettable = true;
+                    }
+                } else {
+                    error!("tried to set unforgettable on lost address");
+                }
+            }
+        })
     }
 
     /// Blocks an address.
