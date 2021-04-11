@@ -3,6 +3,7 @@ use std::{
     error::Error,
     mem,
     net::SocketAddr,
+    time::{Duration, Instant},
 };
 
 use tracing::{debug, error, error_span, info, trace, warn, Span};
@@ -11,8 +12,7 @@ use super::NodeId;
 
 #[derive(Debug)]
 struct Outgoing {
-    // Note: This struct saves per-address metadata, the entire outer `Outgoing` struct can
-    // potentially be removed if there is no need to hold any information of this kind.
+    is_unforgettable: bool,
     state: OutgoingState,
 }
 
@@ -21,7 +21,11 @@ enum OutgoingState {
     /// The outgoing address is known and we are currently connecting.
     Connecting,
     /// The connection has failed and is waiting for a retry.
-    FailedWaiting,
+    FailedWaiting {
+        attempts_so_far: u8,
+        error: Box<dyn Error>,
+        last_attempt: Instant,
+    },
     /// Functional outgoing connection.
     Connected { peer_id: NodeId },
     /// The address was blocked and will not be retried.
@@ -37,17 +41,47 @@ enum ConnectionOutcome {
     },
     Failed {
         addr: SocketAddr,
-        error: Option<Box<dyn Error>>,
+        error: Box<dyn Error>,
     },
 }
 
-// TODO: Rename me.
 pub(crate) trait ProtocolHandler {
     fn connect_outgoing(&self, span: Span, addr: SocketAddr);
 }
 
+#[derive(Debug)]
+/// Connection settings for the outgoing connection manager.
+pub(crate) struct OutgoingConfig {
+    /// The maximum number of attempts before giving up and forgetting an address, if permitted.
+    pub(crate) retry_attempts: u8,
+    /// The basic timeslot for exponential backoff when reconnecting.
+    pub(crate) base_timeout: Duration,
+}
+
+impl Default for OutgoingConfig {
+    fn default() -> Self {
+        // The default configuration retries 12 times, over the course of a little over 30 minutes.
+        OutgoingConfig {
+            retry_attempts: 12,
+            base_timeout: Duration::from_millis(500),
+        }
+    }
+}
+
+impl OutgoingConfig {
+    /// Calculates the backoff time.
+    ///
+    /// `failed_attempts` (n) is the number of previous attempts BEFORE the current failure (thus
+    /// starting at 0). The backoff time will be double for each attempt.
+    fn calc_backoff(&self, failed_attempts: u8) -> Duration {
+        2u32.pow(failed_attempts as u32) * self.base_timeout
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct OutgoingManager {
+    /// Outgoing connections subsystem configuration.
+    config: OutgoingConfig,
     /// Mapping of address to their current connection state.
     outgoing: HashMap<SocketAddr, Outgoing>,
     /// Routing table.
@@ -111,14 +145,14 @@ impl OutgoingManager {
 
         // Check if we need to consider the connection for reconnection on next sweep.
         match (&prev_state, &new_state) {
-            (Some(OutgoingState::FailedWaiting), OutgoingState::FailedWaiting) => {
+            (Some(OutgoingState::FailedWaiting { .. }), OutgoingState::FailedWaiting { .. }) => {
                 trace!("no change in waiting state, already waiting");
             }
-            (Some(OutgoingState::FailedWaiting), _) => {
+            (Some(OutgoingState::FailedWaiting { .. }), _) => {
                 self.waiting_cache.remove(&addr);
                 debug!("waiting to reconnect");
             }
-            (_, OutgoingState::FailedWaiting) => {
+            (_, OutgoingState::FailedWaiting { .. }) => {
                 self.waiting_cache.remove(&addr);
                 debug!("now reconnecting");
             }
@@ -136,7 +170,10 @@ impl OutgoingManager {
     fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState) {
         let prev_state = match self.outgoing.entry(addr) {
             Entry::Vacant(vacant) => {
-                vacant.insert(Outgoing { state: new_state });
+                vacant.insert(Outgoing {
+                    state: new_state,
+                    is_unforgettable: false, // TODO: offer interface for setting this.
+                });
                 None
             }
 
@@ -166,7 +203,7 @@ impl OutgoingManager {
                 Entry::Occupied(_) => {
                     debug!("ignoring already known address");
                 }
-                Entry::Vacant(vacant) => {
+                Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
                     proto.connect_outgoing(span, addr);
                     self.change_outgoing_state(addr, OutgoingState::Connecting);
@@ -227,8 +264,78 @@ impl OutgoingManager {
     /// Performs housekeeping like reconnection, etc.
     ///
     /// This function must periodically be called. A good interval is every second.
-    fn perform_housekeeping(&mut self) {
-        todo!()
+    fn perform_housekeeping(&mut self, proto: &mut dyn ProtocolHandler) {
+        let mut corrupt_entries = Vec::new();
+        let mut forgettable_entries = Vec::new();
+
+        let config = &self.config;
+        let now = Instant::now();
+
+        for &addr in &self.waiting_cache {
+            let span = self.mk_span(addr);
+            let entry = self.outgoing.entry(addr);
+
+            span.clone().in_scope(|| match entry {
+                Entry::Vacant(_) => {
+                    error!(%addr, "corrupt cache, missing entry");
+                    corrupt_entries.push(addr);
+                }
+                Entry::Occupied(occupied) => {
+                    let outgoing = occupied.into_mut();
+                    match outgoing.state {
+                        // Decide whether to attempt reconnecting a failed-waiting address.
+                        OutgoingState::FailedWaiting {
+                            ref mut attempts_so_far,
+                            ref mut last_attempt,
+                            ..
+                        } => {
+                            if *attempts_so_far >= config.retry_attempts {
+                                if outgoing.is_unforgettable {
+                                    // Unforgettable addresses simply have their timer reset.
+                                    info!("resetting unforgettable address");
+
+                                    proto.connect_outgoing(span, addr);
+
+                                    *attempts_so_far = 0;
+                                    *last_attempt = now;
+                                } else {
+                                    // Address had too many attempts at reconnection, we will forget
+                                    // it later if forgettable.
+                                    forgettable_entries.push(addr);
+
+                                    info!("gave up on address");
+                                }
+                            } else {
+                                // The address has not exceeded the limit, so check if it is due.
+                                let due = *last_attempt + config.calc_backoff(*attempts_so_far);
+                                if due >= now {
+                                    debug!(attempts = *attempts_so_far, "attempting reconnection");
+
+                                    proto.connect_outgoing(span, addr);
+
+                                    *attempts_so_far += 1;
+                                    *last_attempt = now;
+                                }
+                            }
+                        }
+                        _ => {
+                            error!(%addr, "corrupt cache, not in failed-waiting state");
+                        }
+                    }
+                }
+            });
+        }
+
+        // There should never be any corrupt entries, but we program defensively here.
+        corrupt_entries.into_iter().for_each(|addr| {
+            self.waiting_cache.remove(&addr);
+        });
+
+        // All entries that have expired can also be removed.
+        forgettable_entries.iter().for_each(|addr| {
+            self.outgoing.remove(addr);
+            self.waiting_cache.remove(addr);
+        });
     }
 
     fn handle_event(&mut self, connection_outcome: ConnectionOutcome) {
