@@ -11,8 +11,8 @@ use super::NodeId;
 
 #[derive(Debug)]
 struct Outgoing {
-    // Note: This struct saves per-IP metadata. If nothing of this kind comes up, this wrapper can
-    //       be removed.
+    // Note: This struct saves per-address metadata, the entire outer `Outgoing` struct can
+    // potentially be removed if there is no need to hold any information of this kind.
     state: OutgoingState,
 }
 
@@ -21,7 +21,7 @@ enum OutgoingState {
     /// The outgoing address is known and we are currently connecting.
     Connecting,
     /// The connection has failed and is waiting for a retry.
-    Failed,
+    FailedWaiting,
     /// Functional outgoing connection.
     Connected { peer_id: NodeId },
     /// The address was blocked and will not be retried.
@@ -56,7 +56,7 @@ pub(crate) struct OutgoingManager {
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
     // A cache of addresses that are in the `Connecting` state, used when housekeeping.
-    cache_connecting: HashSet<SocketAddr>,
+    waiting_cache: HashSet<SocketAddr>,
 }
 
 impl OutgoingManager {
@@ -111,19 +111,19 @@ impl OutgoingManager {
 
         // Check if we need to consider the connection for reconnection on next sweep.
         match (&prev_state, &new_state) {
-            (Some(OutgoingState::Connecting), OutgoingState::Connecting) => {
-                trace!("no change in connecting state, already connecting");
+            (Some(OutgoingState::FailedWaiting), OutgoingState::FailedWaiting) => {
+                trace!("no change in waiting state, already waiting");
             }
-            (Some(OutgoingState::Connecting), _) => {
-                self.cache_connecting.remove(&addr);
-                debug!("no longer considered connecting");
+            (Some(OutgoingState::FailedWaiting), _) => {
+                self.waiting_cache.remove(&addr);
+                debug!("waiting to reconnect");
             }
-            (_, OutgoingState::Connecting) => {
-                self.cache_connecting.remove(&addr);
-                debug!("now connecting");
+            (_, OutgoingState::FailedWaiting) => {
+                self.waiting_cache.remove(&addr);
+                debug!("now reconnecting");
             }
             _ => {
-                trace!("no change in connecting state");
+                trace!("no change in waiting state");
             }
         }
     }
