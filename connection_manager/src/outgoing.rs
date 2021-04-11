@@ -11,8 +11,8 @@ use super::NodeId;
 
 #[derive(Debug)]
 struct Outgoing {
-    // TODO: Can we remove this?
-    addr: SocketAddr,
+    // Note: This struct saves per-IP metadata. If nothing of this kind comes up, this wrapper can
+    //       be removed.
     state: OutgoingState,
 }
 
@@ -75,65 +75,85 @@ impl OutgoingManager {
         }
     }
 
+    /// Updates internal caches after a state change.
+    ///
+    /// Given a potential previous state, updates all internal caches like `routes`, etc.
+    fn update_caches(&mut self, addr: SocketAddr, prev_state: Option<&OutgoingState>) {
+        // Check if we need to update the routing table.
+        let new_state = if let Some(outgoing) = self.outgoing.get(&addr) {
+            &outgoing.state
+        } else {
+            error!("tryed to update cache based on non-existant outgoing connection");
+            return;
+        };
+
+        match (&prev_state, &new_state) {
+            (Some(OutgoingState::Connected { .. }), OutgoingState::Connected { .. }) => {
+                trace!("no change in routing, already connected");
+            }
+
+            // Dropping from connected to any other state requires clearing the route.
+            (Some(OutgoingState::Connected { peer_id }), _) => {
+                debug!(%peer_id, "no more route for peer");
+                self.routes.remove(peer_id);
+            }
+
+            // Otherwise we have established a new route.
+            (_, OutgoingState::Connected { peer_id }) => {
+                debug!(%peer_id, "route added");
+                self.routes.insert(peer_id.clone(), addr);
+            }
+
+            _ => {
+                trace!("no change in routing");
+            }
+        }
+
+        // Check if we need to consider the connection for reconnection on next sweep.
+        match (&prev_state, &new_state) {
+            (Some(OutgoingState::Connecting), OutgoingState::Connecting) => {
+                trace!("no change in connecting state, already connecting");
+            }
+            (Some(OutgoingState::Connecting), _) => {
+                self.cache_connecting.remove(&addr);
+                debug!("no longer considered connecting");
+            }
+            (_, OutgoingState::Connecting) => {
+                self.cache_connecting.remove(&addr);
+                debug!("now connecting");
+            }
+            _ => {
+                trace!("no change in connecting state");
+            }
+        }
+    }
+
     /// Changes the state of an outgoing connection.
     ///
     /// Will trigger an update of the routing table if necessary.
     ///
     /// Calling this function on an unknown `addr` will emit an error but otherwise be ignored.
     fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState) {
-        match self.outgoing.entry(addr) {
-            Entry::Vacant(_) => {
-                // This should never happen, so we want about it.
-                error!("failed to change state, entry disappeared");
+        let prev_state = match self.outgoing.entry(addr) {
+            Entry::Vacant(vacant) => {
+                vacant.insert(Outgoing { state: new_state });
+                None
             }
+
             Entry::Occupied(occupied) => {
-                let prev_state = &mut occupied.into_mut().state;
-
-                // Check if we need to update the routing table.
-                match (&prev_state, &new_state) {
-                    (OutgoingState::Connected { .. }, OutgoingState::Connected { .. }) => {
-                        trace!("no change in routing, already connected");
-                    }
-
-                    // Dropping from connected to any other state requires clearing the route.
-                    (OutgoingState::Connected { peer_id }, _) => {
-                        debug!(%peer_id, "no more route for peer");
-                        self.routes.remove(peer_id);
-                    }
-
-                    // Otherwise we have established a new route.
-                    (_, OutgoingState::Connected { peer_id }) => {
-                        debug!(%peer_id, "route added");
-                        self.routes.insert(peer_id.clone(), addr);
-                    }
-
-                    _ => {
-                        trace!("no change in routing");
-                    }
-                }
-
-                // Check if we need to consider the connection for reconnection on next sweep.
-                match (&prev_state, &new_state) {
-                    (OutgoingState::Connecting, OutgoingState::Connecting) => {
-                        trace!("no change in connecting state, already connecting");
-                    }
-                    (OutgoingState::Connecting, _) => {
-                        self.cache_connecting.remove(&addr);
-                        debug!("no longer considered connecting");
-                    }
-                    (_, OutgoingState::Connecting) => {
-                        self.cache_connecting.remove(&addr);
-                        debug!("now connecting");
-                    }
-                    _ => {
-                        trace!("no change in connecting state");
-                    }
-                }
+                let prev = occupied.into_mut();
 
                 // With the routing updated, we can finally exchange the states.
-                mem::swap(prev_state, &mut new_state);
+                mem::swap(&mut prev.state, &mut new_state);
+
+                // `new_state` is actually the previous state here.
+                Some(new_state)
             }
-        }
+        };
+
+        // We would love to call `update_caches` in the match arms above, but `.entry` unfortunately
+        // borrows `self` mutably already.
+        self.update_caches(addr, prev_state.as_ref());
     }
 
     /// Notify about a potentially new address that has been discovered.
@@ -161,13 +181,13 @@ impl OutgoingManager {
         let span = self.mk_span(addr);
 
         span.in_scope(move || match self.outgoing.entry(addr) {
-            Entry::Vacant(vacant) => {
+            Entry::Vacant(_vacant) => {
                 info!("address blocked");
                 self.change_outgoing_state(addr, OutgoingState::Blocked);
             }
             // TOOD: Check what happens on close on our end, i.e. can we distinguish in logs between
             // a closed connection on our end vs one that failed?
-            Entry::Occupied(mut occupied) => match occupied.get().state {
+            Entry::Occupied(occupied) => match occupied.get().state {
                 OutgoingState::Blocked => {
                     debug!("already blocking address");
                 }
@@ -213,5 +233,13 @@ impl OutgoingManager {
 
     fn handle_event(&mut self, connection_outcome: ConnectionOutcome) {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dummy() {
+        // TODO
     }
 }
