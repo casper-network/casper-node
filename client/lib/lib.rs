@@ -70,7 +70,7 @@ pub fn put_deploy(
         deploy.try_into()?,
         payment.try_into()?,
         session.try_into()?,
-    );
+    )?;
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).put_deploy(deploy)
 }
 
@@ -109,7 +109,7 @@ pub fn make_deploy(
         }
     })?;
 
-    Deploy::with_payment_and_session(deploy.try_into()?, payment.try_into()?, session.try_into()?)
+    Deploy::with_payment_and_session(deploy.try_into()?, payment.try_into()?, session.try_into()?)?
         .write_deploy(output)
 }
 
