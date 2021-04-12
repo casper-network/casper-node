@@ -108,11 +108,11 @@ impl<I> Era<I> {
             pc.missing_evidence.retain(|pk| pk != pub_key);
         }
         self.consensus.mark_faulty(pub_key);
-        let (complete, validation_states): (HashMap<_, _>, HashMap<_, _>) = self
+        let (complete, incomplete): (HashMap<_, _>, HashMap<_, _>) = self
             .validation_states
             .drain()
             .partition(|(_, validation_state)| validation_state.is_complete());
-        self.validation_states = validation_states;
+        self.validation_states = incomplete;
         complete
             .into_iter()
             .map(|(proposed_block, _)| proposed_block)
