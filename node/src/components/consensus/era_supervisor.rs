@@ -1076,18 +1076,8 @@ where
                     .collect();
                 self.era_mut(era_id)
                     .add_block(proposed_block.clone(), missing_evidence.clone());
-                let block_deploys_set: BTreeSet<DeployHash> = proposed_block
-                    .value()
-                    .deploys_and_transfers_iter()
-                    .cloned()
-                    .collect();
-                if proposed_block
-                    .context()
-                    .ancestor_values()
-                    .iter()
-                    .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
-                    .any(|deploy| block_deploys_set.contains(deploy))
-                {
+                if let Some(deploy_hash) = proposed_block.contains_replay() {
+                    info!(%sender, %deploy_hash, "block contains a replayed deploy");
                     return self.resolve_validity(ResolveValidity {
                         era_id,
                         sender,
@@ -1328,4 +1318,18 @@ where
         proposed_block,
         valid,
     }))
+}
+
+impl ProposedBlock<ClContext> {
+    /// If this block contains a deploy that's also present in an ancestor, this returns the deploy
+    /// hash, otherwise `None`.
+    fn contains_replay(&self) -> Option<&DeployHash> {
+        let block_deploys_set: BTreeSet<DeployHash> =
+            self.value().deploys_and_transfers_iter().cloned().collect();
+        self.context()
+            .ancestor_values()
+            .iter()
+            .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
+            .find(|deploy| block_deploys_set.contains(deploy))
+    }
 }
