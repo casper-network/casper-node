@@ -193,9 +193,6 @@ impl From<TryFromSliceError> for Error {
 /// From the view of the consensus protocol this is the "consensus value": The protocol deals with
 /// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
-///
-/// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
-/// that this comes before a block in the linear, executed, finalized blockchain is produced.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BlockPayload {
     deploy_hashes: Vec<DeployHash>,
