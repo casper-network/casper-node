@@ -20,12 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{PublicKey, U512};
 
-#[cfg(not(feature = "fast-sync"))]
 use crate::components::linear_chain_sync::{self, LinearChainSync};
-#[cfg(feature = "fast-sync")]
-use crate::components::{
-    linear_chain_fast_sync as linear_chain_sync, linear_chain_fast_sync::LinearChainSync,
-};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
