@@ -43,7 +43,7 @@ mod tests;
 #[cfg(test)]
 use std::{collections::BTreeSet, convert::TryFrom};
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::PathBuf,
@@ -59,10 +59,10 @@ use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{EraId, ExecutionResult, Transfer, Transform};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
 
 use super::Component;
 #[cfg(test)]
@@ -81,7 +81,6 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
-use casper_types::ProtocolVersion;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -154,13 +153,15 @@ pub enum Error {
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
     },
-    /// Attempted to store a duplicate execution result.
-    #[error("duplicate execution result for deploy {deploy_hash} in block {block_hash}")]
-    DuplicateExecutionResult {
-        /// The deploy for which the result should be stored.
+    /// Found a duplicate switch-block-at-era-id index entry.
+    #[error("duplicate entries for blocks for deploy {deploy_hash}: {first} / {second}")]
+    DuplicateDeployIndex {
+        /// Deploy hash at which duplicate was found.
         deploy_hash: DeployHash,
-        /// The block providing the context for the deploy's execution result.
-        block_hash: BlockHash,
+        /// First block hash encountered at `deploy_hash`.
+        first: BlockHash,
+        /// Second block hash encountered at `deploy_hash`.
+        second: BlockHash,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
@@ -206,6 +207,8 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
+    /// A map of deploy hashes to hashes of blocks containing them.
+    deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -286,9 +289,11 @@ impl Storage {
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
+        let mut deploy_hash_index = BTreeMap::new();
         let mut block_txn = env.begin_rw_txn()?;
         let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
+        let mut deleted_block_hashes = HashSet::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
@@ -298,6 +303,7 @@ impl Storage {
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
                 if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
+                    let _ = deleted_block_hashes.insert(block.hash());
                     cursor.del(WriteFlags::empty())?;
                     continue;
                 }
@@ -313,16 +319,28 @@ impl Storage {
                 &mut switch_block_era_id_index,
                 &block,
             )?;
+
+            let mut body_txn = env.begin_ro_txn()?;
+            let block_body: BlockBody = body_txn
+                .get_value(block_body_db, block.body_hash())?
+                .expect("non-existent block body referred to by header");
+            // We use the opportunity for a small integrity check.
+            assert_eq!(
+                *block.body_hash(),
+                block_body.hash(),
+                "found corrupt block body in database"
+            );
+            insert_to_deploy_index(&mut deploy_hash_index, block.hash(), &block_body)?;
         }
         info!("block store reindexing complete");
         drop(cursor);
         block_txn.commit()?;
 
-        // Check the integrity of the block body database.
-        check_block_body_db(&env, &block_body_db)?;
+        let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
-        // Check the integrity of the block metadata database.
-        check_block_metadata_db(&env, &block_metadata_db)?;
+        initialize_block_body_db(&env, &block_body_db, &deleted_block_hashes_raw)?;
+        initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
+        initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_block_hashes)?;
 
         Ok(Storage {
             root,
@@ -336,6 +354,7 @@ impl Storage {
             state_store_db,
             block_height_index,
             switch_block_era_id_index,
+            deploy_hash_index,
         })
     }
 
@@ -438,6 +457,11 @@ impl Storage {
                     &mut self.switch_block_era_id_index,
                     block.header(),
                 )?;
+                insert_to_deploy_index(
+                    &mut self.deploy_hash_index,
+                    block.header().hash(),
+                    block.body(),
+                )?;
                 responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
@@ -445,6 +469,9 @@ impl Storage {
                 responder,
             } => responder
                 .respond(self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?)
+                .ignore(),
+            StorageRequest::GetBlockHeaderAtHeight { height, responder } => responder
+                .respond(self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
             StorageRequest::GetBlockAtHeight { height, responder } => responder
                 .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
@@ -455,9 +482,25 @@ impl Storage {
                     .respond(self.get_highest_block(&mut txn)?)
                     .ignore()
             }
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => responder
+                .respond(
+                    self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?,
+                )
+                .ignore(),
             StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
                 .respond(self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?)
                 .ignore(),
+            StorageRequest::GetBlockHeaderForDeploy {
+                deploy_hash,
+                responder,
+            } => {
+                responder
+                    .respond(self.get_block_header_by_deploy_hash(
+                        &mut self.env.begin_ro_txn()?,
+                        deploy_hash,
+                    )?)
+                    .ignore()
+            }
             StorageRequest::GetHighestSwitchBlock { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
@@ -528,17 +571,13 @@ impl Storage {
                         .get_deploy_metadata(&mut txn, &deploy_hash)?
                         .unwrap_or_default();
 
-                    // If we have a previous execution result, we enforce that it is the same.
+                    // If we have a previous execution result, we can continue if it is the same.
                     if let Some(prev) = metadata.execution_results.get(&block_hash) {
-                        if prev != &execution_result {
-                            return Err(Error::DuplicateExecutionResult {
-                                deploy_hash,
-                                block_hash: *block_hash,
-                            });
+                        if prev == &execution_result {
+                            continue;
+                        } else {
+                            debug!(%deploy_hash, %block_hash, "different execution result");
                         }
-
-                        // We can now skip adding, as the result is the same.
-                        continue;
                     }
 
                     if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
@@ -738,6 +777,18 @@ impl Storage {
         Ok(maybe_block_header_and_finality_signatures)
     }
 
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.block_height_index
+            .get(&height)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .transpose()
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
@@ -747,6 +798,32 @@ impl Storage {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
+
+    /// Retrieves single switch block header by era ID by looking it up in the index and returning
+    /// it.
+    fn get_switch_block_header_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .transpose()
+    }
+
+    /// Retrieves a single block header by deploy hash by looking it up in the index and returning
+    /// it.
+    fn get_block_header_by_deploy_hash<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.deploy_hash_index
+            .get(&deploy_hash)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
     }
 
@@ -1016,6 +1093,42 @@ fn insert_to_block_header_indices(
     Ok(())
 }
 
+/// Inserts the relevant entries to the index.
+///
+/// If a duplicate entry is encountered, index is not updated and an error is returned.
+fn insert_to_deploy_index(
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHash>,
+    block_hash: BlockHash,
+    block_body: &BlockBody,
+) -> Result<(), Error> {
+    if let Some(hash) = block_body
+        .deploy_hashes()
+        .iter()
+        .chain(block_body.transfer_hashes().iter())
+        .find(|hash| {
+            deploy_hash_index
+                .get(hash)
+                .map_or(false, |old_block_hash| *old_block_hash != block_hash)
+        })
+    {
+        return Err(Error::DuplicateDeployIndex {
+            deploy_hash: *hash,
+            first: deploy_hash_index[hash],
+            second: block_hash,
+        });
+    }
+
+    for hash in block_body
+        .deploy_hashes()
+        .iter()
+        .chain(block_body.transfer_hashes().iter())
+    {
+        deploy_hash_index.insert(*hash, block_hash);
+    }
+
+    Ok(())
+}
+
 /// On-disk storage configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -1169,13 +1282,22 @@ impl Storage {
     }
 }
 
-/// Utility function to check the integrity of the block_body database at bringup.
-fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<(), LmdbExtError> {
-    info!("Checking block body db");
-    let txn = env.begin_ro_txn()?;
-    let mut cursor = txn.open_ro_cursor(*block_body_db)?;
+/// Checks the integrity of the block body database and purges stale entries.
+fn initialize_block_body_db(
+    env: &Environment,
+    block_body_db: &Database,
+    deleted_block_hashes: &HashSet<&[u8]>,
+) -> Result<(), LmdbExtError> {
+    info!("initializing block body database");
+    let mut txn = env.begin_rw_txn()?;
+    let mut cursor = txn.open_rw_cursor(*block_body_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
+        if deleted_block_hashes.contains(raw_key) {
+            cursor.del(WriteFlags::empty())?;
+            continue;
+        }
+
         let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
         assert_eq!(
             raw_key,
@@ -1183,21 +1305,32 @@ fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<()
             "found corrupt block body in database"
         );
     }
-    info!("block body db check complete");
+
+    drop(cursor);
+    txn.commit()?;
+
+    info!("block body database initialized");
     Ok(())
 }
 
-/// Utility function to check the integrity of the block_metadata database at bringup.
-fn check_block_metadata_db(
+/// Checks the integrity of the block metadata database and purges stale entries.
+fn initialize_block_metadata_db(
     env: &Environment,
     block_metadata_db: &Database,
+    deleted_block_hashes: &HashSet<&[u8]>,
 ) -> Result<(), LmdbExtError> {
-    info!("Checking block_metadata_db");
-    let txn = env.begin_ro_txn()?;
-    let mut cursor = txn.open_ro_cursor(*block_metadata_db)?;
+    info!("initializing block metadata database");
+    let mut txn = env.begin_rw_txn()?;
+    let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
+        if deleted_block_hashes.contains(raw_key) {
+            cursor.del(WriteFlags::empty())?;
+            continue;
+        }
+
         let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+
         // Signature verification could be very slow process
         // It iterates over every signature and verifies them.
         match signatures.verify() {
@@ -1212,6 +1345,46 @@ fn check_block_metadata_db(
             ),
         }
     }
-    info!("Check for block_metadata_db complete");
+
+    drop(cursor);
+    txn.commit()?;
+
+    info!("block metadata database initialized");
+    Ok(())
+}
+
+/// Purges stale entries from the deploy metadata database.
+fn initialize_deploy_metadata_db(
+    env: &Environment,
+    deploy_metadata_db: &Database,
+    deleted_block_hashes: &HashSet<BlockHash>,
+) -> Result<(), LmdbExtError> {
+    info!("initializing deploy metadata database");
+    let mut txn = env.begin_rw_txn()?;
+    let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
+
+    for (raw_key, raw_val) in cursor.iter() {
+        let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+        let len_before = deploy_metadata.execution_results.len();
+
+        deploy_metadata.execution_results = deploy_metadata
+            .execution_results
+            .drain()
+            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+            .collect();
+
+        // If the deploy's execution results are now empty, we just remove them entirely.
+        if deploy_metadata.execution_results.is_empty() {
+            cursor.del(WriteFlags::empty())?;
+        } else if len_before != deploy_metadata.execution_results.len() {
+            let buffer = lmdb_ext::serialize(&deploy_metadata)?;
+            cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+        }
+    }
+
+    drop(cursor);
+    txn.commit()?;
+
+    info!("deploy metadata database initialized");
     Ok(())
 }

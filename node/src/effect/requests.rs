@@ -216,6 +216,13 @@ pub enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve block header with given height.
+    GetBlockHeaderAtHeight {
+        /// Height of the block.
+        height: BlockHeight,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
@@ -228,12 +235,26 @@ pub enum StorageRequest {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve switch block header with given era ID.
+    GetSwitchBlockHeaderAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve switch block with given era ID.
     GetSwitchBlockAtEraId {
         /// Era ID of the switch block.
         era_id: EraId,
         /// Responder.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve the header of the block containing the deploy.
+    GetBlockHeaderForDeploy {
+        /// Hash of the deploy.
+        deploy_hash: DeployHash,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve highest switch block.
     GetHighestSwitchBlock {
@@ -349,12 +370,21 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockHeaderAtHeight { height, .. } => {
+                write!(formatter, "get block header at height {}", height)
+            }
             StorageRequest::GetBlockAtHeight { height, .. } => {
                 write!(formatter, "get block at height {}", height)
             }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block header at era id {}", era_id)
+            }
             StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block at era id {}", era_id)
+            }
+            StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
+                write!(formatter, "get block header for deploy {}", deploy_hash)
             }
             StorageRequest::GetHighestSwitchBlock { .. } => {
                 write!(formatter, "get highest switch block")

@@ -288,7 +288,7 @@ mod tests {
             match Error::try_from(i) {
                 Ok(error) if i < MAX_ERROR_VALUE => assert_eq!(error as u8, i),
                 Ok(error) => panic!(
-                    "value of variant {} ({}) exceeds MAX_ERROR_VALUE ({})",
+                    "value of variant {:?} ({}) exceeds MAX_ERROR_VALUE ({})",
                     error, i, MAX_ERROR_VALUE
                 ),
                 Err(TryFromU8ForError(())) if i >= MAX_ERROR_VALUE => (),
