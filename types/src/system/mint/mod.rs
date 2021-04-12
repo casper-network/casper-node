@@ -96,6 +96,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
+        if !source.is_readable() {
+            return Err(Error::InvalidAccessRights);
+        }
         if !source.is_writeable() || !target.is_addable() {
             return Err(Error::InvalidAccessRights);
         }
