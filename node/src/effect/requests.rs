@@ -37,6 +37,7 @@ use casper_types::{
 use super::Responder;
 use crate::{
     components::{
+        block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
@@ -917,21 +918,18 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidationRequest<T, I> {
+pub struct BlockValidationRequest<I> {
     /// The block to be validated.
-    pub(crate) block: T,
+    pub(crate) block: ValidatingBlock,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///
-    /// Indicates whether or not validation was successful and returns `block` unchanged.
-    pub(crate) responder: Responder<(bool, T)>,
-    /// A check will be performed against the deploys to ensure their timestamp is
-    /// older than or equal to the block itself.
-    pub(crate) block_timestamp: Timestamp,
+    /// Indicates whether or not validation was successful.
+    pub(crate) responder: Responder<bool>,
 }
 
-impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
+impl<I: Display> Display for BlockValidationRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BlockValidationRequest { block, sender, .. } = self;
         write!(f, "validate block {} from {}", block, sender)

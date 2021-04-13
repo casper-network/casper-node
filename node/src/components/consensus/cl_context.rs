@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(DataSize)]
-pub(crate) struct Keypair {
+pub struct Keypair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
@@ -53,7 +53,7 @@ impl ConsensusValueT for BlockPayload {
 
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct ClContext;
+pub struct ClContext;
 
 impl Context for ClContext {
     type ConsensusValue = BlockPayload;

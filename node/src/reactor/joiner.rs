@@ -68,8 +68,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, BlockPayload, Deploy, ExitCode,
-        NodeId, Tag, Timestamp,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId, Tag,
+        Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -135,7 +135,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -168,17 +168,11 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
 
     /// Block proposer request.
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
-
-    /// Block payload validator request.
-    #[from]
-    BlockPayloadValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<BlockPayload, NodeId>,
-    ),
 
     /// Request for state storage.
     #[from]
@@ -303,9 +297,6 @@ impl Display for Event {
             Event::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
-            Event::BlockPayloadValidatorRequest(req) => {
-                write!(f, "block validator request: {}", req)
-            }
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
@@ -342,7 +333,7 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     linear_chain_fetcher: Fetcher<Block>,
     linear_chain_sync: LinearChainSync<NodeId>,
-    block_validator: BlockValidator<Block, NodeId>,
+    block_validator: BlockValidator<NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
     linear_chain: linear_chain::LinearChainComponent<NodeId>,
     // Handles request for linear chain block by height.
@@ -792,12 +783,6 @@ impl reactor::Reactor for Reactor {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
                 error!("ignoring block proposer request {}", request);
-                Effects::new()
-            }
-            Event::BlockPayloadValidatorRequest(request) => {
-                // During joining phase, consensus component should not be requesting
-                // validation of the block payload.
-                error!("ignoring block payload validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(

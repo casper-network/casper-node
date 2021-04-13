@@ -102,6 +102,7 @@ use casper_types::{
 use crate::{
     components::{
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        consensus::{ClContext, ProposedBlock},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1183,48 +1184,38 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network. This includes
-    /// the block's timestamp, in order that it be checked against the timestamp of the deploys
-    /// within the block.
-    pub(crate) async fn validate_block<I>(
-        self,
-        sender: I,
-        block: Block,
-        block_timestamp: Timestamp,
-    ) -> (bool, Block)
+    /// Checks whether the deploys included in the block exist on the network and the block is
+    /// valid.
+    pub(crate) async fn validate_block<I>(self, sender: I, block: Block) -> bool
     where
-        REv: From<BlockValidationRequest<Block, I>>,
+        REv: From<BlockValidationRequest<I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block,
+                block: Box::new(block).into(),
                 sender,
                 responder,
-                block_timestamp,
             },
             QueueKind::Regular,
         )
         .await
     }
 
-    /// Checks whether the deploys included in the block payload exist on the network. This
-    /// includes the block's timestamp, in order that it be checked against the timestamp of the
-    /// deploys within the block.
-    pub(crate) async fn validate_block_payload<I>(
+    /// Checks whether the deploys included in the proposed block exist on the network and the
+    /// block is valid.
+    pub(crate) async fn validate_proposed_block<I>(
         self,
         sender: I,
-        block: BlockPayload,
-        block_timestamp: Timestamp,
-    ) -> (bool, BlockPayload)
+        proposed_block: ProposedBlock<ClContext>,
+    ) -> bool
     where
-        REv: From<BlockValidationRequest<BlockPayload, I>>,
+        REv: From<BlockValidationRequest<I>>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block,
+                block: Box::new(proposed_block).into(),
                 sender,
                 responder,
-                block_timestamp,
             },
             QueueKind::Regular,
         )

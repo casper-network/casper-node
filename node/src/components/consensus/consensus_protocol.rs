@@ -1,4 +1,9 @@
-use std::{any::Any, collections::BTreeMap, fmt::Debug, path::PathBuf};
+use std::{
+    any::Any,
+    collections::BTreeMap,
+    fmt::{self, Debug, Display, Formatter},
+    path::PathBuf,
+};
 
 use anyhow::Error;
 use datasize::DataSize;
@@ -11,7 +16,7 @@ use crate::{
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
-pub(crate) struct BlockContext<C>
+pub struct BlockContext<C>
 where
     C: Context,
 {
@@ -47,7 +52,7 @@ impl<C: Context> BlockContext<C> {
 
 /// A proposed block, with context.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
-pub(crate) struct ProposedBlock<C>
+pub struct ProposedBlock<C>
 where
     C: Context,
 {
@@ -70,6 +75,20 @@ impl<C: Context> ProposedBlock<C> {
 
     pub(crate) fn destructure(self) -> (C::ConsensusValue, BlockContext<C>) {
         (self.value, self.context)
+    }
+}
+
+impl<C: Context> Display for ProposedBlock<C>
+where
+    C::ConsensusValue: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "proposed block at {}: {}",
+            self.context.timestamp(),
+            self.value
+        )
     }
 }
 

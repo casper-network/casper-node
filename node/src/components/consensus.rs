@@ -46,7 +46,7 @@ use crate::{
     NodeRng,
 };
 
-use cl_context::ClContext;
+pub(crate) use cl_context::ClContext;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
@@ -247,7 +247,7 @@ pub trait ReactorEventT<I>:
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
-    + From<BlockValidationRequest<BlockPayload, I>>
+    + From<BlockValidationRequest<I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
@@ -263,7 +263,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
-        + From<BlockValidationRequest<BlockPayload, I>>
+        + From<BlockValidationRequest<I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
