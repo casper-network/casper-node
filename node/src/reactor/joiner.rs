@@ -68,8 +68,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
-        ProtoBlock, Tag, Timestamp,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, BlockPayload, Deploy, ExitCode,
+        NodeId, Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -174,10 +174,10 @@ pub enum Event {
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
 
-    /// Proto block validator request.
+    /// Block payload validator request.
     #[from]
-    ProtoBlockValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
+    BlockPayloadValidatorRequest(
+        #[serde(skip_serializing)] BlockValidationRequest<BlockPayload, NodeId>,
     ),
 
     /// Request for state storage.
@@ -303,7 +303,9 @@ impl Display for Event {
             Event::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
-            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
+            Event::BlockPayloadValidatorRequest(req) => {
+                write!(f, "block validator request: {}", req)
+            }
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
@@ -792,10 +794,10 @@ impl reactor::Reactor for Reactor {
                 error!("ignoring block proposer request {}", request);
                 Effects::new()
             }
-            Event::ProtoBlockValidatorRequest(request) => {
+            Event::BlockPayloadValidatorRequest(request) => {
                 // During joining phase, consensus component should not be requesting
-                // validation of the proto block.
-                error!("ignoring proto block validation request {}", request);
+                // validation of the block payload.
+                error!("ignoring block payload validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(

@@ -12,8 +12,6 @@ use crate::{
     storage::global_state::StateReader,
 };
 
-pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
-
 impl From<execution::Error> for Option<ApiError> {
     fn from(exec_error: execution::Error) -> Self {
         match exec_error {
@@ -73,7 +71,7 @@ where
         let cl_value = self
             .call_contract(
                 handle_payment_contract_hash,
-                METHOD_GET_PAYMENT_PURSE,
+                handle_payment::METHOD_GET_PAYMENT_PURSE,
                 RuntimeArgs::new(),
             )
             .map_err(|exec_error| {

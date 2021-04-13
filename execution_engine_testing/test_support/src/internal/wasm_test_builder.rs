@@ -121,7 +121,7 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::initialize_logging();
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::default();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
@@ -386,22 +386,30 @@ where
         base_key: Key,
         path: &[String],
     ) -> Result<StoredValue, String> {
-        let post_state = maybe_post_state
-            .or(self.post_state_hash)
-            .expect("builder must have a post-state hash");
-
-        let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
-
-        let query_result = self
-            .engine_state
-            .run_query(CorrelationId::new(), query_request)
-            .expect("should get query response");
+        let query_result = self.query_result(maybe_post_state, base_key, path);
 
         if let QueryResult::Success { value, .. } = query_result {
             return Ok(value.deref().clone());
         }
 
         Err(format!("{:?}", query_result))
+    }
+
+    pub fn query_result(
+        &self,
+        maybe_post_state: Option<Blake2bHash>,
+        base_key: Key,
+        path: &[String],
+    ) -> QueryResult {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+
+        let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
+
+        self.engine_state
+            .run_query(CorrelationId::new(), query_request)
+            .expect("should get query response")
     }
 
     pub fn query_with_proof(
@@ -728,6 +736,15 @@ where
         self.engine_state
             .get_purse_balance(correlation_id, state_root_hash, purse)
             .expect("should get purse balance")
+    }
+
+    pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash: Blake2bHash =
+            self.post_state_hash.expect("should have post_state_hash");
+        self.engine_state
+            .get_balance(correlation_id, state_root_hash, public_key)
+            .expect("should get purse balance using public key")
     }
 
     pub fn get_proposer_purse_balance(&self) -> U512 {

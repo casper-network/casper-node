@@ -12,6 +12,7 @@ mod unbonding_purse;
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_rational::Ratio;
+use num_traits::{CheckedMul, CheckedSub};
 
 use crate::{account::AccountHash, EraId, PublicKey, U512};
 
@@ -62,7 +63,9 @@ pub trait Auction:
             .map(|(era_id, recipients)| {
                 let validator_weights = recipients
                     .into_iter()
-                    .map(|(public_key, bid)| (public_key, bid.total_stake()))
+                    .filter_map(|(public_key, bid)| {
+                        bid.total_stake().map(|stake| (public_key, stake))
+                    })
                     .collect::<ValidatorWeights>();
                 (era_id, validator_weights)
             })
@@ -358,7 +361,7 @@ pub trait Auction:
 
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let mut era_id = detail::get_era_id(self)?;
+        let mut era_id: EraId = detail::get_era_id(self)?;
         let mut bids = detail::get_bids(self)?;
 
         // Process unbond requests
@@ -412,9 +415,11 @@ pub trait Auction:
         };
 
         // Increment era
-        era_id += 1;
+        era_id = era_id.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
 
-        let delayed_era = era_id + auction_delay;
+        let delayed_era = era_id
+            .checked_add(auction_delay)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // Update seigniorage recipients for current era
         {
@@ -464,7 +469,7 @@ pub trait Auction:
                 .get(&public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
-            let total_stake = recipient.total_stake();
+            let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
             if total_stake.is_zero() {
                 // TODO: error?
                 continue;
@@ -472,10 +477,14 @@ pub trait Auction:
 
             let total_reward: Ratio<U512> = {
                 let reward_rate = Ratio::new(U512::from(reward_factor), U512::from(BLOCK_REWARD));
-                reward_rate * base_round_reward
+                reward_rate
+                    .checked_mul(&Ratio::from(base_round_reward))
+                    .ok_or(Error::ArithmeticOverflow)?
             };
 
-            let delegator_total_stake: U512 = recipient.delegator_total_stake();
+            let delegator_total_stake: U512 = recipient
+                .delegator_total_stake()
+                .ok_or(Error::ArithmeticOverflow)?;
 
             let delegators_part: Ratio<U512> = {
                 let commission_rate = Ratio::new(
@@ -483,9 +492,15 @@ pub trait Auction:
                     U512::from(DELEGATION_RATE_DENOMINATOR),
                 );
                 let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-                let delegator_reward: Ratio<U512> = total_reward * reward_multiplier;
-                let commission: Ratio<U512> = delegator_reward * commission_rate;
-                delegator_reward - commission
+                let delegator_reward: Ratio<U512> = total_reward
+                    .checked_mul(&reward_multiplier)
+                    .ok_or(Error::ArithmeticOverflow)?;
+                let commission: Ratio<U512> = delegator_reward
+                    .checked_mul(&commission_rate)
+                    .ok_or(Error::ArithmeticOverflow)?;
+                delegator_reward
+                    .checked_sub(&commission)
+                    .ok_or(Error::ArithmeticOverflow)?
             };
 
             let delegator_rewards =

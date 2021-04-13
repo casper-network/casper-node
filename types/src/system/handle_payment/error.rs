@@ -124,6 +124,9 @@ pub enum Error {
     /// Refund purse is a payment purse.
     #[cfg_attr(feature = "std", error("Refund purse is a payment purse."))]
     RefundPurseIsPaymentPurse,
+    /// An arithmetic overflow occurred
+    #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
+    ArithmeticOverflow,
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]

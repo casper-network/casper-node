@@ -64,6 +64,11 @@ impl EraId {
         EraId::from(self.0 + 1)
     }
 
+    /// Returns the current era plus `x`, or `None` if that would overflow
+    pub fn checked_add(&self, x: u64) -> Option<EraId> {
+        self.0.checked_add(x).map(EraId)
+    }
+
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.
     pub fn checked_sub(&self, x: u64) -> Option<EraId> {
         self.0.checked_sub(x).map(EraId)

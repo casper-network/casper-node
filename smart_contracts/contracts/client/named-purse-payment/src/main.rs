@@ -9,10 +9,7 @@ use casper_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{runtime_args, ApiError, RuntimeArgs, URef, U512};
-
-const GET_PAYMENT_PURSE: &str = "get_payment_purse";
-const SET_REFUND_PURSE: &str = "set_refund_purse";
+use casper_types::{runtime_args, system::handle_payment, ApiError, RuntimeArgs, URef, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";
@@ -45,13 +42,13 @@ pub extern "C" fn call() {
         let args = runtime_args! {
             ARG_PURSE => purse_uref,
         };
-        runtime::call_contract::<()>(contract_hash, SET_REFUND_PURSE, args);
+        runtime::call_contract::<()>(contract_hash, handle_payment::METHOD_SET_REFUND_PURSE, args);
     }
 
     // get payment purse for current execution
     let payment_purse: URef = runtime::call_contract(
         handle_payment_hash,
-        GET_PAYMENT_PURSE,
+        handle_payment::METHOD_GET_PAYMENT_PURSE,
         RuntimeArgs::default(),
     );
 

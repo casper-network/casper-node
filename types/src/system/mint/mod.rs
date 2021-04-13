@@ -6,6 +6,7 @@ mod storage_provider;
 mod system_provider;
 
 use num_rational::Ratio;
+use num_traits::CheckedMul;
 
 use crate::{account::AccountHash, Key, PublicKey, URef, U512};
 
@@ -71,7 +72,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::TotalSupplyNotFound)?;
 
         // decrease total supply
-        let reduced_total_supply = total_supply - amount;
+        let reduced_total_supply = total_supply
+            .checked_sub(amount)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // update total supply
         self.write(total_supply_uref, reduced_total_supply)?;
@@ -135,8 +138,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(round_seigniorage_rate_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let ret = (round_seigniorage_rate * Ratio::from(total_supply)).to_integer();
-
-        Ok(ret)
+        round_seigniorage_rate
+            .checked_mul(&Ratio::from(total_supply))
+            .map(|ratio| ratio.to_integer())
+            .ok_or(Error::ArithmeticOverflow)
     }
 }

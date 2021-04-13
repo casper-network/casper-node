@@ -5,9 +5,8 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{Phase, RuntimeArgs, URef, U512};
+use casper_types::{system::handle_payment, Phase, RuntimeArgs, URef, U512};
 
-const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 const ARG_PHASE: &str = "phase";
 const ARG_AMOUNT: &str = "amount";
 
@@ -18,7 +17,7 @@ fn standard_payment(amount: U512) {
 
     let payment_purse: URef = runtime::call_contract(
         handle_payment_pointer,
-        GET_PAYMENT_PURSE,
+        handle_payment::METHOD_GET_PAYMENT_PURSE,
         RuntimeArgs::default(),
     );
 

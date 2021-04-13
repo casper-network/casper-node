@@ -31,7 +31,7 @@ use casper_types::{
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
+            METHOD_SET_REFUND_PURSE,
         },
         mint::{
             self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
@@ -1388,15 +1388,6 @@ where
             EntryPointType::Contract,
         );
         entry_points.add_entry_point(set_refund_purse);
-
-        let get_refund_purse = EntryPoint::new(
-            METHOD_GET_REFUND_PURSE,
-            vec![],
-            CLType::Option(Box::new(CLType::URef)),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(get_refund_purse);
 
         let finalize_payment = EntryPoint::new(
             METHOD_FINALIZE_PAYMENT,

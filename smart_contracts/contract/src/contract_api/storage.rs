@@ -70,6 +70,16 @@ pub fn add<T: CLTyped + ToBytes>(uref: URef, value: T) {
     }
 }
 
+/// Deletes value under `uref` in the global state.
+pub fn delete(uref: URef) {
+    let key = Key::from(uref);
+    let (key_ptr, key_size, _bytes1) = contract_api::to_ptr(key);
+
+    unsafe {
+        ext_ffi::casper_delete(key_ptr, key_size);
+    }
+}
+
 /// Returns a new unforgeable pointer, where the value is initialized to `init`.
 pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
     let uref_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
