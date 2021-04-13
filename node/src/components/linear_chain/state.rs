@@ -341,6 +341,7 @@ impl LinearChain {
         self.pending_finality_signatures
             .mark_bonded(new_fs.public_key.clone(), new_fs.block_hash);
 
+        // Check if we've collected the block in the meantime.
         match maybe_known_signatures
             .or_else(|| self.get_signatures(&new_fs.block_hash).map(Box::new))
         {
