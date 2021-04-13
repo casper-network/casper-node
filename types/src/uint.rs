@@ -10,7 +10,10 @@ use core::{
 };
 
 use num_integer::Integer;
-use num_traits::{AsPrimitive, Bounded, Num, One, Unsigned, WrappingAdd, WrappingSub, Zero};
+use num_traits::{
+    AsPrimitive, Bounded, CheckedMul, CheckedSub, Num, One, Unsigned, WrappingAdd, WrappingSub,
+    Zero,
+};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -246,6 +249,18 @@ macro_rules! impl_traits_for_uint {
         impl WrappingSub for $type {
             fn wrapping_sub(&self, other: &$type) -> $type {
                 self.overflowing_sub(*other).0
+            }
+        }
+
+        impl CheckedMul for $type {
+            fn checked_mul(&self, v: &$type) -> Option<$type> {
+                $type::checked_mul(*self, *v)
+            }
+        }
+
+        impl CheckedSub for $type {
+            fn checked_sub(&self, v: &$type) -> Option<$type> {
+                $type::checked_sub(*self, *v)
             }
         }
 
