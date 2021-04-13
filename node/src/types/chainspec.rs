@@ -198,6 +198,7 @@ impl From<&Chainspec> for ExecConfig {
                 .activation_point
                 .genesis_timestamp()
                 .map_or(0, |timestamp| timestamp.millis()),
+            chainspec.core_config.max_associated_keys,
         )
     }
 }

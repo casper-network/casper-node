@@ -548,6 +548,7 @@ pub struct ExecConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
+    max_associated_keys: u32,
 }
 
 impl ExecConfig {
@@ -562,6 +563,7 @@ impl ExecConfig {
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: u64,
         genesis_timestamp_millis: u64,
+        max_associated_keys: u32,
     ) -> ExecConfig {
         ExecConfig {
             accounts,
@@ -573,6 +575,7 @@ impl ExecConfig {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            max_associated_keys,
         }
     }
 
@@ -656,6 +659,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let genesis_timestamp_millis = rng.gen();
 
+        let max_associated_keys = rng.gen();
+
         ExecConfig {
             accounts,
             wasm_config,
@@ -666,6 +671,7 @@ impl Distribution<ExecConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            max_associated_keys,
         }
     }
 }

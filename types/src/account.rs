@@ -162,10 +162,6 @@ impl TryFrom<i32> for SetThresholdFailure {
     }
 }
 
-/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
-/// account.
-pub const MAX_ASSOCIATED_KEYS: usize = 10;
-
 /// The number of bytes in a serialized [`Weight`].
 pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 

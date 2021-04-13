@@ -4,8 +4,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -181,9 +182,11 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
@@ -412,9 +415,11 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
@@ -845,9 +850,11 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,

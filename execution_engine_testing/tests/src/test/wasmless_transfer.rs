@@ -1,7 +1,8 @@
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -919,9 +920,11 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_mint_costs = MintCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost_value,
+        new_max_associated_keys,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
