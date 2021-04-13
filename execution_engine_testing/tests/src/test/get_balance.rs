@@ -132,7 +132,7 @@ fn get_balance_using_public_key_should_work() {
 
     let alice_main_purse = alice_account.main_purse();
 
-    let alice_balance_result = builder.get_public_key_balance_result(*ALICE_KEY);
+    let alice_balance_result = builder.get_public_key_balance_result(ALICE_KEY.clone());
 
     let alice_balance = alice_balance_result
         .motes()
