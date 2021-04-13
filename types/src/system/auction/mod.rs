@@ -400,7 +400,7 @@ pub trait Auction:
             non_founder_weights.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
             // This assumes that amount of founding validators does not exceed configured validator
-            // slots. For a case where there is exactly N validators and the limit is N, only
+            // slots. For a case where there are exactly N validators and the limit is N, only
             // founding validators will be the in the winning set. It is advised to set
             // `validator_slots` larger than amount of founding validators in accounts.toml to
             // accomodate non-genesis validators.
