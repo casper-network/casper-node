@@ -28,6 +28,7 @@ pub struct DeployConfig {
     pub(crate) max_ttl: TimeDiff,
     pub(crate) max_dependencies: u8,
     pub(crate) max_block_size: u32,
+    pub(crate) max_deploy_size: u32,
     pub(crate) block_max_deploy_count: u32,
     pub(crate) block_max_transfer_count: u32,
     pub(crate) block_gas_limit: u64,
@@ -44,6 +45,7 @@ impl DeployConfig {
         let max_ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
+        let max_deploy_size = rng.gen_range(100_000..1_000_000);
         let block_max_deploy_count = rng.gen();
         let block_max_transfer_count = rng.gen();
         let block_gas_limit = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
@@ -57,6 +59,7 @@ impl DeployConfig {
             max_ttl,
             max_dependencies,
             max_block_size,
+            max_deploy_size,
             block_max_deploy_count,
             block_max_transfer_count,
             block_gas_limit,
@@ -75,6 +78,7 @@ impl Default for DeployConfig {
             max_ttl: TimeDiff::from_str("1day").unwrap(),
             max_dependencies: 10,
             max_block_size: 10_485_760,
+            max_deploy_size: 1_048_576,
             block_max_deploy_count: 10,
             block_max_transfer_count: 1000,
             block_gas_limit: 10_000_000_000_000,
@@ -92,6 +96,7 @@ impl ToBytes for DeployConfig {
         buffer.extend(self.max_ttl.to_bytes()?);
         buffer.extend(self.max_dependencies.to_bytes()?);
         buffer.extend(self.max_block_size.to_bytes()?);
+        buffer.extend(self.max_deploy_size.to_bytes()?);
         buffer.extend(self.block_max_deploy_count.to_bytes()?);
         buffer.extend(self.block_max_transfer_count.to_bytes()?);
         buffer.extend(self.block_gas_limit.to_bytes()?);
@@ -106,6 +111,7 @@ impl ToBytes for DeployConfig {
             + self.max_ttl.serialized_length()
             + self.max_dependencies.serialized_length()
             + self.max_block_size.serialized_length()
+            + self.max_deploy_size.serialized_length()
             + self.block_max_deploy_count.serialized_length()
             + self.block_max_transfer_count.serialized_length()
             + self.block_gas_limit.serialized_length()
@@ -122,6 +128,7 @@ impl FromBytes for DeployConfig {
         let (max_ttl, remainder) = TimeDiff::from_bytes(remainder)?;
         let (max_dependencies, remainder) = u8::from_bytes(remainder)?;
         let (max_block_size, remainder) = u32::from_bytes(remainder)?;
+        let (max_deploy_size, remainder) = u32::from_bytes(remainder)?;
         let (block_max_deploy_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_transfer_count, remainder) = u32::from_bytes(remainder)?;
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
@@ -133,6 +140,7 @@ impl FromBytes for DeployConfig {
             max_ttl,
             max_dependencies,
             max_block_size,
+            max_deploy_size,
             block_max_deploy_count,
             block_max_transfer_count,
             block_gas_limit,
