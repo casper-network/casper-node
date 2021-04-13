@@ -121,6 +121,9 @@ pub enum Error {
     /// Failed to transfer funds.
     #[cfg_attr(feature = "std", error("Failed to transfer funds"))]
     Transfer,
+    /// An arithmetic overflow occurred
+    #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
+    ArithmeticOverflow,
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]
