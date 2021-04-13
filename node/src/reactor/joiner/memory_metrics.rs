@@ -35,12 +35,8 @@ pub(super) struct MemoryMetrics {
     mem_block_validator: IntGauge,
     /// Estimated heap memory usage of deploy fetcher component.
     mem_deploy_fetcher: IntGauge,
-    /// Estimated heap memory usage of block executor component.
-    mem_block_executor: IntGauge,
     /// Estimated heap memory usage of linear chain component.
     mem_linear_chain: IntGauge,
-    /// Estimated heap memory usage of consensus component.
-    mem_consensus: IntGauge,
 
     /// Histogram detailing how long it took to estimate memory usage.
     mem_estimator_runtime_s: Histogram,
@@ -89,14 +85,10 @@ impl MemoryMetrics {
             "joiner_mem_deploy_fetcher",
             "deploy_fetcher memory usage in bytes",
         )?;
-        let mem_block_executor =
-            IntGauge::new("mem_block_executor", "block_executor memory usage in bytes")?;
         let mem_linear_chain = IntGauge::new(
             "joiner_mem_linear_chain",
             "linear_chain memory usage in bytes",
         )?;
-        let mem_consensus =
-            IntGauge::new("joiner_mem_consensus", "memory usage of consensus in bytes")?;
         let mem_estimator_runtime_s = Histogram::with_opts(
             HistogramOpts::new(
                 "joiner_mem_estimator_runtime_s",
@@ -119,9 +111,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_linear_chain_sync.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
-        registry.register(Box::new(mem_block_executor.clone()))?;
         registry.register(Box::new(mem_linear_chain.clone()))?;
-        registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
 
         Ok(MemoryMetrics {
@@ -138,9 +128,7 @@ impl MemoryMetrics {
             mem_linear_chain_sync,
             mem_block_validator,
             mem_deploy_fetcher,
-            mem_block_executor,
             mem_linear_chain,
-            mem_consensus,
             mem_estimator_runtime_s,
             registry,
         })
@@ -162,9 +150,7 @@ impl MemoryMetrics {
         let linear_chain_sync = reactor.linear_chain_sync.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
-        let block_executor = reactor.block_executor.estimate_heap_size() as i64;
         let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
-        let consensus = reactor.consensus.estimate_heap_size() as i64;
 
         let total = metrics
             + network
@@ -178,9 +164,7 @@ impl MemoryMetrics {
             + linear_chain_sync
             + block_validator
             + deploy_fetcher
-            + block_executor
-            + linear_chain
-            + consensus;
+            + linear_chain;
 
         self.mem_total.set(total);
         self.mem_metrics.set(metrics);
@@ -195,9 +179,7 @@ impl MemoryMetrics {
         self.mem_linear_chain_sync.set(linear_chain_sync);
         self.mem_block_validator.set(block_validator);
         self.mem_deploy_fetcher.set(deploy_fetcher);
-        self.mem_block_executor.set(block_executor);
         self.mem_linear_chain.set(linear_chain);
-        self.mem_consensus.set(consensus);
 
         // Stop the timer explicitly, don't count logging.
         let duration_s = timer.stop_and_record();
@@ -217,9 +199,7 @@ impl MemoryMetrics {
         %linear_chain_sync,
         %block_validator,
         %deploy_fetcher,
-        %block_executor,
         %linear_chain,
-        %consensus,
         "Collected new set of memory metrics for the joiner");
     }
 }
@@ -239,9 +219,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_linear_chain_sync);
         unregister_metric!(self.registry, self.mem_block_validator);
         unregister_metric!(self.registry, self.mem_deploy_fetcher);
-        unregister_metric!(self.registry, self.mem_block_executor);
         unregister_metric!(self.registry, self.mem_linear_chain);
-        unregister_metric!(self.registry, self.mem_consensus);
         unregister_metric!(self.registry, self.mem_estimator_runtime_s);
     }
 }

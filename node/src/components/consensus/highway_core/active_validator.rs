@@ -11,7 +11,7 @@ use tracing::{error, info, trace, warn};
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{Endorsements, Ping, ValidVertex, Vertex, WireUnit},
+    highway::{Ping, ValidVertex, Vertex, WireUnit},
     state::{self, Panorama, State, Unit, Weight},
     validators::ValidatorIndex,
 };
@@ -74,9 +74,9 @@ where
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
     /// The path to the file storing the hash of our latest known unit (if any).
-    unit_hash_file: Option<PathBuf>,
-    /// The hash of the last known unit created by us.
-    own_last_unit: Option<C::Hash>,
+    unit_file: Option<PathBuf>,
+    /// The last known unit created by us.
+    own_last_unit: Option<SignedWireUnit<C>>,
     /// The target fault tolerance threshold. The validator pauses (i.e. doesn't create new units)
     /// if not enough validators are online to finalize values at this FTT.
     target_ftt: Weight,
@@ -97,24 +97,24 @@ impl<C: Context> Debug for ActiveValidator<C> {
 
 impl<C: Context> ActiveValidator<C> {
     /// Creates a new `ActiveValidator` and the timer effect for the first call.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
+        current_time: Timestamp,
         start_time: Timestamp,
         state: &State<C>,
-        unit_hash_file: Option<PathBuf>,
+        unit_file: Option<PathBuf>,
         target_ftt: Weight,
+        instance_id: C::InstanceId,
     ) -> (Self, Vec<Effect<C>>) {
-        let own_last_unit = unit_hash_file
+        let own_last_unit = unit_file
             .as_ref()
-            .map(Self::read_last_unit)
+            .map(read_last_unit)
             .transpose()
             .map_err(|err| match err.kind() {
                 io::ErrorKind::NotFound => (),
-                _ => panic!(
-                    "got an error reading unit hash file {:?}: {:?}",
-                    unit_hash_file, err
-                ),
+                _ => panic!("got an error reading unit file {:?}: {:?}", unit_file, err),
             })
             .ok()
             .flatten();
@@ -124,47 +124,54 @@ impl<C: Context> ActiveValidator<C> {
             next_round_exp: state.params().init_round_exp(),
             next_timer: state.params().start_timestamp(),
             next_proposal: None,
-            unit_hash_file,
+            unit_file,
             own_last_unit,
             target_ftt,
             paused: false,
         };
-        let effects = av.schedule_timer(start_time, state);
+        let mut effects = av.schedule_timer(start_time, state);
+        effects.push(av.send_ping(current_time, instance_id));
         (av, effects)
     }
 
-    fn read_last_unit<P: AsRef<Path>>(path: P) -> io::Result<C::Hash> {
-        let mut file = File::open(path)?;
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)?;
-        Ok(serde_json::from_slice(&bytes)?)
+    /// Returns whether validator's protocol state is fully synchronized and it's safe to start
+    /// creating units.
+    ///
+    /// If validator restarted within an era, it most likely had created units before that event. It
+    /// cannot start creating new units until its state is fully synchronized, otherwise it will
+    /// most likely equivocate.
+    fn can_vote(&self, state: &State<C>) -> bool {
+        self.own_last_unit
+            .as_ref()
+            .map_or(true, |swunit| state.has_unit(&swunit.hash()))
     }
 
-    fn write_last_unit(&mut self, hash: C::Hash) -> io::Result<()> {
-        // If there is no unit_hash_file set, do not write to it
-        let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
+    /// Returns whether validator's protocol state is synchronized up until the panorama of its own
+    /// last unit.
+    pub(crate) fn is_own_last_unit_panorama_sync(&self, state: &State<C>) -> bool {
+        self.own_last_unit.as_ref().map_or(true, |swunit| {
+            swunit
+                .wire_unit()
+                .panorama
+                .iter_correct_hashes()
+                .all(|hash| state.has_unit(hash))
+        })
+    }
+
+    pub(crate) fn take_own_last_unit(&mut self) -> Option<SignedWireUnit<C>> {
+        self.own_last_unit.take()
+    }
+
+    /// Cleans up the validator disk state.
+    /// Deletes all unit files.
+    pub(crate) fn cleanup(&self) -> io::Result<()> {
+        let unit_file = if let Some(file) = self.unit_file.as_ref() {
             file
         } else {
             return Ok(());
         };
 
-        // Otherwise, set own_last_unit to the specified hash
-        self.own_last_unit = Some(hash);
-
-        // Create the file (and its parents) as necessary
-        if let Some(parent_directory) = unit_hash_file.parent() {
-            fs::create_dir_all(parent_directory)?;
-        }
-        let mut file = File::create(unit_hash_file)?;
-
-        // Finally, write the data to file we created
-        let bytes = serde_json::to_vec(&hash)?;
-        file.write_all(&bytes)
-    }
-
-    fn can_vote(&self, state: &State<C>) -> bool {
-        self.own_last_unit
-            .map_or(true, |ref hash| state.has_unit(hash))
+        fs::remove_file(unit_file)
     }
 
     /// Sets the next round exponent to the new value.
@@ -223,15 +230,21 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping if necessary, to show that we're online.
         if !state.has_ping(self.vidx, timestamp) {
             warn!(%timestamp, "too many validators offline, sending ping");
-            let ping = Ping::new(self.vidx, timestamp, &self.secret);
-            effects.push(Effect::NewVertex(ValidVertex(Vertex::Ping(ping))));
+            effects.push(self.send_ping(timestamp, instance_id));
         }
         effects
+    }
+
+    /// Creates a Ping vertex.
+    pub(crate) fn send_ping(&self, timestamp: Timestamp, instance_id: C::InstanceId) -> Effect<C> {
+        let ping = Ping::new(self.vidx, timestamp, instance_id, &self.secret);
+        Effect::NewVertex(ValidVertex(Vertex::Ping(ping)))
     }
 
     /// Returns whether enough validators are online to finalize values with the target fault
     /// tolerance threshold, always counting this validator as online.
     fn enough_validators_online(&self, state: &State<C>, now: Timestamp) -> bool {
+        // We divide before adding, because  total_weight + target_fft  could overflow u64.
         let target_quorum = state.total_weight() / 2 + self.target_ftt / 2;
         let online_weight: Weight = state
             .weights()
@@ -458,13 +471,14 @@ impl<C: Context> ActiveValidator<C> {
             endorsed,
         }
         .into_hashed();
-        self.write_last_unit(hwunit.hash()).unwrap_or_else(|err| {
+        let swunit = SignedWireUnit::new(hwunit, &self.secret);
+        write_last_unit(&self.unit_file, swunit.clone()).unwrap_or_else(|err| {
             panic!(
                 "should successfully write unit's hash to {:?}, got {:?}",
-                self.unit_hash_file, err
+                self.unit_file, err
             )
         });
-        Some(SignedWireUnit::new(hwunit, &self.secret))
+        Some(swunit)
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
@@ -506,7 +520,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns the most recent unit by this validator.
-    fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
+    pub(crate) fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
             .get(self.vidx)
@@ -556,10 +570,7 @@ impl<C: Context> ActiveValidator<C> {
     fn endorse(&self, vhash: &C::Hash) -> Vertex<C> {
         let endorsement = Endorsement::new(*vhash, self.vidx);
         let signature = self.secret.sign(&endorsement.hash());
-        Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
-            endorsement,
-            signature,
-        )]))
+        Vertex::Endorsements(SignedEndorsement::new(endorsement, signature).into())
     }
 
     /// Returns a panorama that is valid to use in our own unit at the given timestamp.
@@ -587,7 +598,7 @@ impl<C: Context> ActiveValidator<C> {
             Vertex::Unit(swunit) => {
                 // If we already have the unit in our local state,
                 // we must have had created it ourselves earlier and it is now gossiped back to us.
-                !state.has_unit(&swunit.hash()) && self.is_our_unit(swunit.wire_unit())
+                self.is_our_unit(swunit.wire_unit()) && !state.has_unit(&swunit.hash())
             }
             Vertex::Endorsements(endorsements) => {
                 if state::TODO_ENDORSEMENT_EVIDENCE_DISABLED {
@@ -612,16 +623,54 @@ impl<C: Context> ActiveValidator<C> {
     }
 }
 
+pub(crate) fn read_last_unit<C, P>(path: P) -> io::Result<SignedWireUnit<C>>
+where
+    C: Context,
+    P: AsRef<Path>,
+{
+    let mut file = File::open(path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+pub(crate) fn write_last_unit<C: Context>(
+    unit_file: &Option<PathBuf>,
+    swunit: SignedWireUnit<C>,
+) -> io::Result<()> {
+    // If there is no unit_file set, do not write to it
+    let unit_file = if let Some(file) = unit_file.as_ref() {
+        file
+    } else {
+        return Ok(());
+    };
+
+    // Create the file (and its parents) as necessary
+    if let Some(parent_directory) = unit_file.parent() {
+        fs::create_dir_all(parent_directory)?;
+    }
+    let mut file = File::create(unit_file)?;
+
+    // Finally, write the data to file we created
+    let bytes = serde_json::to_vec(&swunit)?;
+
+    file.write_all(&bytes)
+}
+
 #[cfg(test)]
+#[allow(clippy::integer_arithmetic)] // Overflows in tests panic anyway.
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
+    use tempfile::tempdir;
 
-    use crate::components::consensus::highway_core::validators::ValidatorMap;
+    use crate::components::consensus::highway_core::{
+        highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
+    };
 
     use super::{
         super::{
             finality_detector::FinalityDetector,
-            state::{tests::*, Weight},
+            state::{tests::*, State, Weight},
         },
         Vertex, *,
     };
@@ -641,7 +690,7 @@ mod tests {
             if let Eff::ScheduleTimer(timestamp) = self {
                 timestamp
             } else {
-                panic!("Unexpected effect: {:?}", self);
+                panic!("expected `ScheduleTimer`, got: {:?}", self)
             }
         }
     }
@@ -667,21 +716,37 @@ mod tests {
             let earliest_round_start = if start_time == current_round_id {
                 start_time
             } else {
-                current_round_id + (1 << state.params().init_round_exp()).into()
+                current_round_id + state::round_len(state.params().init_round_exp())
             };
             let target_ftt = state.total_weight() / 3;
             let active_validators = validators
                 .into_iter()
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
-                    let (av, effects) =
-                        ActiveValidator::new(vidx, secret, start_time, &state, None, target_ftt);
-                    let timestamp = unwrap_single(&effects).unwrap_timer();
+                    let (av, effects) = ActiveValidator::new(
+                        vidx,
+                        secret,
+                        start_time,
+                        start_time,
+                        &state,
+                        None,
+                        target_ftt,
+                        TEST_INSTANCE_ID,
+                    );
+
+                    let timestamp = match &*effects {
+                        [
+                            Effect::ScheduleTimer(timer),
+                            Effect::NewVertex(ValidVertex(Vertex::Ping(_)))
+                        ] => { *timer }
+                        other => panic!("expected timer and ping effects, got={:?}", other),
+                    };
+
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(
                             timestamp, earliest_round_start,
                             "Invalid initial timer scheduled for {:?}.",
-                            vidx
+                            vidx,
                         )
                     } else {
                         let witness_offset =
@@ -690,7 +755,7 @@ mod tests {
                         assert_eq!(
                             timestamp, witness_timestamp,
                             "Invalid initial timer scheduled for {:?}.",
-                            vidx
+                            vidx,
                         )
                     }
                     timers.insert((timestamp, vidx));
@@ -850,7 +915,7 @@ mod tests {
             [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
                 block_context: bctx,
                 ..
-            }] if *timestamp == 426.into() => bctx.clone(),
+            }] if *timestamp == 426.into() => *bctx,
             effects => panic!("unexpected effects {:?}", effects),
         };
         assert_eq!(
@@ -889,5 +954,139 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(Some(&new_unit.hash()), test.next_finalized());
+    }
+
+    #[test]
+    fn ping_on_startup() {
+        let state = State::new_test(&[Weight(3)], 0);
+        let (_alice, init_effects) = ActiveValidator::new(
+            ALICE,
+            TestSecret(ALICE.0),
+            410.into(),
+            410.into(),
+            &state,
+            None,
+            Weight(2),
+            TEST_INSTANCE_ID,
+        );
+
+        match &*init_effects {
+            &[Effect::ScheduleTimer(_), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))] => {}
+            other => panic!(
+                "expected two effects on startup: timer and ping. Got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn waits_until_synchronized() -> Result<(), AddUnitError<TestContext>> {
+        let instance_id = TEST_INSTANCE_ID;
+        let mut state = State::new_test(&[Weight(3)], 0);
+        let a0 = {
+            let a0 = add_unit!(state, ALICE, 0xB0; N)?;
+            state.wire_unit(&a0, instance_id).unwrap()
+        };
+        let a1 = {
+            let a1 = add_unit!(state, ALICE, None; a0.hash())?;
+            state.wire_unit(&a1, instance_id).unwrap()
+        };
+        let a2 = {
+            let a2 = add_unit!(state, ALICE, None; a1.hash())?;
+            state.wire_unit(&a2, instance_id).unwrap()
+        };
+        // Clean state. We want Alice to synchronize first.
+        state.retain_evidence_only();
+
+        let unit_file = {
+            let tmp_dir = tempdir().unwrap();
+            let unit_hashes_folder = tmp_dir.path().to_path_buf();
+            Some(unit_hashes_folder.join(format!("unit_hash_{:?}.dat", instance_id)))
+        };
+
+        // Store `a2` unit as the Alice's last unit.
+        write_last_unit(&unit_file, a2.clone()).expect("storing unit should succeed");
+
+        // Alice's last unit is `a2` but `State` is empty. She must synchronize first.
+        let (mut alice, alice_init_effects) = ActiveValidator::new(
+            ALICE,
+            TestSecret(ALICE.0),
+            410.into(),
+            410.into(),
+            &state,
+            unit_file,
+            Weight(2),
+            TEST_INSTANCE_ID,
+        );
+
+        let mut next_proposal_timer = match &*alice_init_effects {
+            &[Effect::ScheduleTimer(timestamp), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))]
+                if timestamp == 416.into() =>
+            {
+                timestamp
+            }
+            other => panic!("unexpected effects {:?}", other),
+        };
+
+        // Alice has to synchronize up until `a2` (including) before she starts proposing.
+        for unit in vec![a0, a1, a2.clone()] {
+            next_proposal_timer =
+                assert_no_proposal(&mut alice, &state, instance_id, next_proposal_timer);
+            state.add_unit(unit)?;
+        }
+
+        // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a
+        // new block.
+        let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id) {
+            [Eff::ScheduleTimer(_), Eff::RequestNewBlock {
+                block_context: bctx,
+                ..
+            }] => *bctx,
+            effects => panic!("unexpected effects {:?}", effects),
+        };
+
+        let proposal_wunit =
+            unwrap_single(&alice.propose(0xC0FFEE, bctx, &state, instance_id)).unwrap_unit();
+        assert_eq!(
+            proposal_wunit.wire_unit().seq_number,
+            a2.wire_unit().seq_number + 1,
+            "new unit should have correct seq_number"
+        );
+        assert_eq!(
+            proposal_wunit.wire_unit().panorama,
+            panorama!(a2.hash()),
+            "new unit should cite the latest unit"
+        );
+
+        Ok(())
+    }
+
+    // Triggers new proposal by `validator` and verifies that it's empty – no block was proposed.
+    // Captuers the next witness timer and calls the `validator` with that to return the timer for
+    // the next proposal.
+    fn assert_no_proposal(
+        validator: &mut ActiveValidator<TestContext>,
+        state: &State<TestContext>,
+        instance_id: u64,
+        proposal_timer: Timestamp,
+    ) -> Timestamp {
+        let (witness_timestamp, bctx) =
+            match &*validator.handle_timer(proposal_timer, &state, instance_id) {
+                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock {
+                    block_context: bctx,
+                    ..
+                }] => (*witness_timestamp, *bctx),
+                effects => panic!("unexpected effects {:?}", effects),
+            };
+
+        let effects = validator.propose(0xC0FFEE, bctx, state, instance_id);
+        assert!(
+            effects.is_empty(),
+            "should not propose blocks until its dependencies are synchronized: {:?}",
+            effects
+        );
+
+        unwrap_single(&validator.handle_timer(witness_timestamp, &state, instance_id))
+            .unwrap_timer()
     }
 }

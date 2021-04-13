@@ -10,12 +10,11 @@ use std::{
 
 use serde::Serialize;
 
-use casper_types::{ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, consensus::EraId, deploy_acceptor::Error,
-        small_network::GossipedAddress,
+        chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
     },
     effect::Responder,
     types::{
@@ -158,11 +157,11 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 
 /// A consensus announcement.
 #[derive(Debug)]
-pub enum ConsensusAnnouncement<I> {
+pub enum ConsensusAnnouncement {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
-    /// A linear chain block has been handled.
-    Handled(Box<Block>),
+    /// A finality signature was created.
+    CreatedFinalitySignature(Box<FinalitySignature>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -172,25 +171,17 @@ pub enum ConsensusAnnouncement<I> {
         /// The timestamp when the evidence of the equivocation was detected.
         timestamp: Timestamp,
     },
-    /// We want to disconnect from a peer due to its transgressions.
-    DisconnectFromPeer(I),
 }
 
-impl<I> Display for ConsensusAnnouncement<I>
-where
-    I: Display,
-{
+impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
             }
-            ConsensusAnnouncement::Handled(block) => write!(
-                formatter,
-                "Linear chain block has been handled by consensus, height={}, hash={}",
-                block.height(),
-                block.hash()
-            ),
+            ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
+                write!(formatter, "signed an executed block: {}", fs)
+            }
             ConsensusAnnouncement::Fault {
                 era_id,
                 public_key,
@@ -200,30 +191,77 @@ where
                 "Validator fault with public key: {} has been identified at time: {} in era: {}",
                 public_key, timestamp, era_id,
             ),
-            ConsensusAnnouncement::DisconnectFromPeer(peer) => {
-                write!(formatter, "Consensus wanting to disconnect from {}", peer)
+        }
+    }
+}
+
+/// A block-list related announcement.
+#[derive(Debug, Serialize)]
+pub enum BlocklistAnnouncement<I> {
+    /// A given peer committed a blockable offense.
+    OffenseCommitted(Box<I>),
+}
+
+impl<I> Display for BlocklistAnnouncement<I>
+where
+    I: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlocklistAnnouncement::OffenseCommitted(peer) => {
+                write!(f, "peer {} committed offense", peer)
             }
         }
     }
 }
 
-/// A BlockExecutor announcement.
+/// A ContractRuntime announcement.
 #[derive(Debug)]
-pub enum BlockExecutorAnnouncement {
+pub enum ContractRuntimeAnnouncement {
     /// A new block from the linear chain was produced.
-    LinearChainBlock {
-        /// The block.
-        block: Block,
-        /// The results of executing the deploys in this block.
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    },
+    LinearChainBlock(Box<LinearChainBlock>),
+    /// A block was requested to be executed, but it had been executed before.
+    BlockAlreadyExecuted(Box<Block>),
 }
 
-impl Display for BlockExecutorAnnouncement {
+impl ContractRuntimeAnnouncement {
+    /// Create a ContractRuntimeAnnouncement::LinearChainBlock from it's parts.
+    pub fn linear_chain_block(
+        block: Block,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    ) -> Self {
+        Self::LinearChainBlock(Box::new(LinearChainBlock {
+            block,
+            execution_results,
+        }))
+    }
+    /// Create a ContractRuntimeAnnouncement::BlockAlreadyExecuted from a Block.
+    pub fn block_already_executed(block: Block) -> Self {
+        Self::BlockAlreadyExecuted(Box::new(block))
+    }
+}
+
+/// A ContractRuntimeAnnouncement's block.
+#[derive(Debug)]
+pub struct LinearChainBlock {
+    /// The block.
+    pub block: Block,
+    /// The results of executing the deploys in this block.
+    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+}
+
+impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockExecutorAnnouncement::LinearChainBlock { block, .. } => {
-                write!(f, "created linear chain block {}", block.hash())
+            ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block) => {
+                write!(
+                    f,
+                    "created linear chain block {}",
+                    linear_chain_block.block.hash()
+                )
+            }
+            ContractRuntimeAnnouncement::BlockAlreadyExecuted(block) => {
+                write!(f, "block had been executed before: {}", block.hash())
             }
         }
     }

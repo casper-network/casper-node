@@ -24,7 +24,8 @@ function main()
                 "id": 1,
                 "jsonrpc": "2.0",
                 "method": "rpc.discover"
-            }' | jq '.result.schema.methods[] | select(.name == "'$ENDPOINT'")'
+            }' | jq '.result.schema.methods[] | select(.name == "'"$ENDPOINT"'")'
+
     fi
 }
 

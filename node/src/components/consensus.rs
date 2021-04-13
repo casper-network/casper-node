@@ -1,5 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
+#![warn(clippy::integer_arithmetic)]
+
 mod candidate_block;
 mod cl_context;
 mod config;
@@ -17,7 +19,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
-    mem,
     time::Duration,
 };
 
@@ -27,17 +28,16 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{PublicKey, U512};
+use casper_types::{EraId, PublicKey, U512};
 
 use crate::{
     components::Component,
     crypto::hash::Digest,
     effect::{
-        announcements::ConsensusAnnouncement,
+        announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
         requests::{
-            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            NetworkRequest, StorageRequest,
+            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
+            ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -51,7 +51,7 @@ use crate::{
 use crate::effect::EffectExt;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport};
-pub(crate) use era_supervisor::{EraId, EraSupervisor};
+pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
@@ -82,8 +82,6 @@ pub struct ActionId(pub u8);
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
-    /// We connected to a peer.
-    NewPeer(I),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -101,6 +99,8 @@ pub enum Event<I> {
     },
     #[from]
     ConsensusRequest(ConsensusRequest),
+    /// A new block has been added to the linear chain.
+    BlockAdded(Box<Block>),
     /// The proto-block has been validated.
     ResolveValidity {
         era_id: EraId,
@@ -130,12 +130,7 @@ pub enum Event<I> {
         /// This is empty except if the activation era still needs to be instantiated: Its
         /// validator set is read from the global state, not from a key block.
         validators: BTreeMap<PublicKey, U512>,
-        timestamp: Timestamp,
     },
-    /// An event instructing us to shutdown if the latest era received no votes.
-    Shutdown,
-    /// An event fired when the joiner reactor transitions into validator.
-    FinishedJoining(Timestamp),
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
 }
@@ -144,11 +139,11 @@ impl Debug for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload: _ } => {
-                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+                write!(f, "Protocol {{ era_id: {:?}, .. }}", era_id)
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
                 .debug_struct("EvidenceRequest")
-                .field("era_id.0", &era_id.0)
+                .field("era_id", era_id)
                 .field("pub_key", pub_key)
                 .finish(),
         }
@@ -174,18 +169,17 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
-            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer {
                 era_id,
                 timestamp,
                 timer_id,
             } => write!(
                 f,
-                "timer (ID {}) for era {} scheduled for timestamp {}",
-                timer_id.0, era_id.0, timestamp,
+                "timer (ID {}) for {} scheduled for timestamp {}",
+                timer_id.0, era_id, timestamp,
             ),
             Event::Action { era_id, action_id } => {
-                write!(f, "action (ID {}) for era {}", action_id.0, era_id.0)
+                write!(f, "action (ID {}) for {}", action_id.0, era_id)
             }
             Event::NewProtoBlock {
                 era_id,
@@ -201,6 +195,11 @@ impl<I: Debug> Display for Event<I> {
                 f,
                 "A request for consensus component hash been receieved: {:?}",
                 request
+            ),
+            Event::BlockAdded(block) => write!(
+                f,
+                "A block has been added to the linear chain: {}",
+                block.hash()
             ),
             Event::ResolveValidity {
                 era_id,
@@ -221,8 +220,8 @@ impl<I: Debug> Display for Event<I> {
                 era_id, faulty_num, ..
             } => write!(
                 f,
-                "Deactivate old era {} unless additional faults are observed; faults so far: {}",
-                era_id.0, faulty_num
+                "Deactivate old {} unless additional faults are observed; faults so far: {}",
+                era_id, faulty_num
             ),
             Event::CreateNewEra {
                 booking_block_hash,
@@ -233,10 +232,6 @@ impl<I: Debug> Display for Event<I> {
                 booking_block_hash, block
             ),
             Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
-            Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
-            Event::FinishedJoining(timestamp) => {
-                write!(f, "The node finished joining the network at {}", timestamp)
-            }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
@@ -252,13 +247,13 @@ pub trait ReactorEventT<I>:
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
-    + From<ConsensusAnnouncement<I>>
-    + From<BlockExecutorRequest>
+    + From<ConsensusAnnouncement>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
     + From<LinearChainRequest<I>>
+    + From<BlocklistAnnouncement<I>>
 {
 }
 
@@ -268,13 +263,13 @@ impl<REv, I> ReactorEventT<I> for REv where
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
-        + From<ConsensusAnnouncement<I>>
-        + From<BlockExecutorRequest>
+        + From<ConsensusAnnouncement>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + From<LinearChainRequest<I>>
+        + From<BlocklistAnnouncement<I>>
 {
 }
 
@@ -301,16 +296,13 @@ where
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
                 block_context,
                 parent,
             } => handling_es.handle_new_proto_block(era_id, proto_block, block_context, parent),
-            Event::ConsensusRequest(ConsensusRequest::HandleLinearBlock(block, responder)) => {
-                handling_es.handle_linear_chain_block(*block, responder)
-            }
+            Event::BlockAdded(block) => handling_es.handle_block_added(*block),
             Event::ResolveValidity {
                 era_id,
                 sender,
@@ -348,37 +340,9 @@ where
                 key_blocks,
                 booking_blocks,
                 validators,
-                timestamp,
-            } => {
-                let mut effects = handling_es.handle_initialize_eras(
-                    key_blocks,
-                    booking_blocks,
-                    validators,
-                    timestamp,
-                );
-
-                // TODO: remove that when possible
-                // This is needed because we want to make sure that we only try to handle linear
-                // chain blocks once the eras are initialized. It's possible that we will get
-                // events with linear chain blocks before that - in such a case we cache the
-                // requests and only handle them here.
-                for queued_request in mem::take(&mut handling_es.era_supervisor.enqueued_requests) {
-                    effects.extend(handling_es.era_supervisor.handle_event(
-                        effect_builder,
-                        handling_es.rng,
-                        queued_request.into(),
-                    ));
-                }
-
-                effects
-            }
-            Event::Shutdown => handling_es.shutdown_if_necessary(),
-            Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 handling_es.got_upgrade_activation_point(activation_point)
-            }
-            Event::ConsensusRequest(ConsensusRequest::IsBondedValidator(era_id, pk, responder)) => {
-                handling_es.is_bonded_validator(era_id, pk, responder)
             }
             Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
                 handling_es.status(responder)

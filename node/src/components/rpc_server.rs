@@ -23,7 +23,6 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::join;
-use semver::Version;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -95,7 +94,7 @@ impl RpcServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -153,7 +152,7 @@ impl RpcServer {
     ) -> Effects<Event> {
         let request = EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
         effect_builder
-            .get_era_validators(request)
+            .get_era_validators_from_contract_runtime(request)
             .event(move |result| Event::QueryEraValidatorsResult {
                 result,
                 main_responder: responder,

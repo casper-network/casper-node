@@ -7,10 +7,10 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, gossiper, small_network, storage, storage::Storage},
+    components::{gossiper, small_network, storage, storage::Storage},
     crypto::AsymmetricKeyExt,
     reactor::validator,
     testing::{
@@ -181,13 +181,13 @@ impl TestChain {
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
-        validator_config.consensus.unit_hashes_folder = temp_dir.path().to_path_buf();
+        validator_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         validator_config.storage = storage_config;
 
         // Bundle our config with a chainspec for creating a multi-stage reactor
         let config = InitializerReactorConfigWithChainspec {
-            config: WithDir::new(&*CONFIG_DIR, validator_config),
+            config: (false, WithDir::new(&*CONFIG_DIR, validator_config)),
             chainspec: Arc::clone(&self.chainspec),
         };
 
@@ -203,7 +203,7 @@ impl TestChain {
 /// Given an era number, returns a predicate to check if all of the nodes are in the specified era.
 fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
     move |nodes: &Nodes<MultiStageTestReactor>| {
-        let era_id = EraId(era_num);
+        let era_id = EraId::from(era_num);
         nodes.values().all(|runner| {
             runner
                 .reactor()
@@ -309,6 +309,7 @@ async fn get_switch_block_hash(
     *switch_block_hash
 }
 
+/// Test a node joining to a single node network
 #[ignore]
 #[tokio::test]
 async fn test_joiner() {
@@ -347,6 +348,49 @@ async fn test_joiner() {
         2,
         "There should be two validators in the network (one bonded and one read only)"
     );
+
+    let era_num = 3;
+    info!("Waiting for Era {} to end", era_num);
+    chain
+        .network
+        .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+        .await;
+}
+
+/// Test a node joining to a network with five nodes
+#[ignore]
+#[tokio::test]
+async fn test_joiner_network() {
+    testing::init_logging();
+
+    const INITIAL_NETWORK_SIZE: usize = 5;
+
+    let mut rng = crate::new_rng();
+
+    let mut chain = TestChain::new(INITIAL_NETWORK_SIZE, &mut rng).await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        INITIAL_NETWORK_SIZE,
+        "Wrong number of bonded validators in the network"
+    );
+
+    // Get the first switch block hash
+    let first_switch_block_hash = get_switch_block_hash(1, &mut chain.network, &mut rng).await;
+
+    // Have a node join the network with that hash
+    info!("Joining with trusted hash {}", first_switch_block_hash);
+    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    chain
+        .add_node(
+            false,
+            joiner_node_secret_key,
+            Some(first_switch_block_hash),
+            &mut rng,
+        )
+        .await;
+
+    assert_eq!(chain.network.nodes().len(), INITIAL_NETWORK_SIZE + 1,);
 
     let era_num = 3;
     info!("Waiting for Era {} to end", era_num);

@@ -1,10 +1,8 @@
 use std::{io, net::SocketAddr, result, time::SystemTimeError};
 
-use openssl::error::ErrorStack;
+use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
-use tokio::net::TcpStream;
-use tokio_openssl::HandshakeError;
 
 use crate::{tls::ValidationError, utils::ResolveAddressError};
 
@@ -42,6 +40,13 @@ pub enum Error {
     /// Failed to get TCP listener address.
     #[error("failed to get listener addr")]
     ListenerAddr(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// Failed to set listener to non-blocking.
+    #[error("failed to set listener to non-blocking")]
+    ListenerSetNonBlocking(
         #[serde(skip_serializing)]
         #[source]
         io::Error,
@@ -95,7 +100,7 @@ pub enum Error {
     Handshake(
         #[serde(skip_serializing)]
         #[from]
-        HandshakeError<TcpStream>,
+        ssl::Error,
     ),
     /// TLS validation error.
     #[error("TLS validation error: {0}")]

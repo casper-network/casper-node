@@ -61,7 +61,7 @@ impl<C: Context> FinalityDetector<C> {
         }
         Ok(iter::from_fn(move || {
             let bhash = self.next_finalized(state)?;
-            // Index exists, since we have units from them.
+            // Safe to unwrap: Index exists, since we have units from them.
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
             let unit = state.unit(bhash);
@@ -125,17 +125,20 @@ impl<C: Context> FinalityDetector<C> {
     }
 
     /// Returns the quorum required by a summit with the specified level and the required FTT.
+    #[allow(clippy::integer_arithmetic)] // See comments.
     fn quorum_for_lvl(&self, lvl: usize, total_w: Weight) -> Weight {
         // A level-lvl summit with quorum  total_w/2 + t  has relative FTT  2t(1 − 1/2^lvl). So:
         // quorum = total_w / 2 + ftt / 2 / (1 - 1/2^lvl)
         //        = total_w / 2 + 2^lvl * ftt / 2 / (2^lvl - 1)
         //        = ((2^lvl - 1) total_w + 2^lvl ftt) / (2 * 2^lvl - 2))
-        assert!(lvl < 64, "lvl must be less than 64");
-        let pow_lvl = 1u128 << lvl;
+        // Levels higher than 63 have negligible effect. With 63, this can't overflow.
+        let pow_lvl = 1u128 << lvl.min(63);
         // Since  pow_lvl <= 2^63,  we have  numerator < (2^64 - 1) * 2^64.
+        // It is safe to subtract because  pow_lvl > 0.
         let numerator = (pow_lvl - 1) * u128::from(total_w) + pow_lvl * u128::from(self.ftt);
         // And  denominator < 2^64,  so  numerator + denominator < 2^128.
         let denominator = 2 * pow_lvl - 2;
+        // The numerator is positive because  ftt > 0.
         // Since this is a lower bound for the quorum, we round up when dividing.
         Weight(((numerator + denominator - 1) / denominator) as u64)
     }
@@ -149,6 +152,8 @@ impl<C: Context> FinalityDetector<C> {
 
     /// Returns the height of the next block that will be finalized.
     fn next_height(&self, state: &State<C>) -> u64 {
+        // In a trillion years, we need to make block height u128.
+        #[allow(clippy::integer_arithmetic)]
         let height_plus_1 = |bhash| state.block(bhash).height + 1;
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }
@@ -170,6 +175,7 @@ impl<C: Context> FinalityDetector<C> {
         unit: &Unit<C>,
         highway: &Highway<C>,
     ) -> TerminalBlockData<C> {
+        // Safe to unwrap: Index exists, since we have units from them.
         let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
         let state = highway.state();
 
@@ -180,6 +186,7 @@ impl<C: Context> FinalityDetector<C> {
 
         // Report inactive validators, but only if they had sufficient time to create a unit, i.e.
         // if at least one maximum-length round passed between the first and last block.
+        // Safe to unwrap: Ancestor at height 0 always exists.
         let first_bhash = state.find_ancestor(bhash, 0).unwrap();
         let sufficient_time_for_activity =
             unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();

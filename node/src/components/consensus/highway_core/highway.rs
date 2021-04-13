@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use datasize::DataSize;
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     components::consensus::{
@@ -50,6 +50,8 @@ pub(crate) enum PingError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
+    #[error("The ping is for a different consensus protocol instance.")]
+    InstanceId,
 }
 
 /// A vertex that has passed initial validation.
@@ -190,22 +192,27 @@ impl<C: Context> Highway<C> {
         unit_hash_file: Option<PathBuf>,
         target_ftt: Weight,
     ) -> Vec<Effect<C>> {
-        assert!(
-            self.active_validator.is_none(),
-            "activate_validator called twice"
-        );
-        let idx = self
-            .validators
-            .get_index(&id)
-            .expect("missing own validator ID");
+        if self.active_validator.is_some() {
+            error!(?id, "activate_validator called twice");
+            return vec![];
+        }
+        let idx = match self.validators.get_index(&id) {
+            Some(idx) => idx,
+            None => {
+                error!(?id, "missing own validator ID");
+                return vec![];
+            }
+        };
         let start_time = current_time.max(self.state.params().start_timestamp());
         let (av, effects) = ActiveValidator::new(
             idx,
             secret,
+            current_time,
             start_time,
             &self.state,
             unit_hash_file,
             target_ftt,
+            self.instance_id,
         );
         self.active_validator = Some(av);
         effects
@@ -213,7 +220,15 @@ impl<C: Context> Highway<C> {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
-        self.active_validator = None;
+        if let Some(av) = self.active_validator.take() {
+            match av.cleanup() {
+                Ok(_) => {}
+                Err(err) => warn!(
+                    ?err,
+                    "error occurred when cleaning up active validator state"
+                ),
+            }
+        }
     }
 
     /// Switches the active validator to a new round exponent.
@@ -355,9 +370,7 @@ impl<C: Context> Highway<C> {
             },
             Dependency::Endorsement(hash) => match self.state.maybe_endorsements(hash) {
                 None => GetDepOutcome::None,
-                Some(e) => {
-                    GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
-                }
+                Some(e) => GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(e))),
             },
             Dependency::Ping(_, _) => GetDepOutcome::None, // We don't store ping signatures.
         }
@@ -543,7 +556,7 @@ impl<C: Context> Highway<C> {
                 }
                 Ok(())
             }
-            Vertex::Ping(ping) => ping.validate(&self.validators),
+            Vertex::Ping(ping) => ping.validate(&self.validators, &self.instance_id),
         }
     }
 
@@ -588,7 +601,28 @@ impl<C: Context> Highway<C> {
             })
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_unit(&unit_hash, now));
+        evidence_effects.extend(self.add_own_last_unit(now));
         evidence_effects
+    }
+
+    /// If validator's protocol state is synchronized, adds its own last unit (if any) to the
+    /// protocol state
+    fn add_own_last_unit(&mut self, now: Timestamp) -> Vec<Effect<C>> {
+        self.map_active_validator(
+            |av, state| {
+                if av.is_own_last_unit_panorama_sync(state) {
+                    if let Some(own_last_unit) = av.take_own_last_unit() {
+                        vec![Effect::NewVertex(ValidVertex(Vertex::Unit(own_last_unit)))]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            },
+            now,
+        )
+        .unwrap_or_default()
     }
 
     /// Adds endorsements to the state. If there are conflicting endorsements, `NewVertex` effects
@@ -644,7 +678,7 @@ pub(crate) mod tests {
             highway_core::{
                 evidence::{Evidence, EvidenceError},
                 highway::{
-                    Dependency, Endorsements, Highway, SignedWireUnit, UnitError, Vertex,
+                    vertex::Ping, Dependency, Highway, SignedWireUnit, UnitError, Vertex,
                     VertexError, WireUnit,
                 },
                 highway_testing::TEST_INSTANCE_ID,
@@ -737,7 +771,7 @@ pub(crate) mod tests {
             active_validator: None,
         };
 
-        let vertex_end_a = Vertex::Endorsements(Endorsements::new(end_a));
+        let vertex_end_a = Vertex::Endorsements(end_a);
         let pvv_a = highway.pre_validate_vertex(Vertex::Unit(wunit_a)).unwrap();
         let pvv_end_a = highway.pre_validate_vertex(vertex_end_a).unwrap();
         let pvv_ev_c = highway.pre_validate_vertex(Vertex::Evidence(ev_c)).unwrap();
@@ -873,5 +907,29 @@ pub(crate) mod tests {
             Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
             validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)
         );
+    }
+
+    #[test]
+    fn invalid_ping_ndrs1077_regression() {
+        let now: Timestamp = 500.into();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let highway = Highway {
+            instance_id: TEST_INSTANCE_ID,
+            validators: test_validators(),
+            state,
+            active_validator: None,
+        };
+
+        // Ping by validator that is not bonded, with an index that is outside of boundaries of the
+        // state.
+        let ping: Vertex<TestContext> =
+            Vertex::Ping(Ping::new(DAN, now, TEST_INSTANCE_ID, &DAN_SEC));
+        assert!(
+            DAN.0 >= WEIGHTS.len() as u32,
+            "should use validator that is not bonded"
+        );
+        // Verify that sending a Ping from a non-existing validator does not panic.
+        assert_eq!(highway.has_vertex(&ping), false);
     }
 }

@@ -43,7 +43,7 @@ mod tests;
 #[cfg(test)]
 use std::{collections::BTreeSet, convert::TryFrom};
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::PathBuf,
@@ -54,7 +54,6 @@ use derive_more::From;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
@@ -62,11 +61,13 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
+use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_types::{EraId, ExecutionResult, ProtocolVersion, Transfer, Transform};
+
 use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
-    components::consensus::EraId,
     effect::{
         requests::{StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -74,14 +75,12 @@ use crate::{
     fatal,
     reactor::ReactorEvent,
     types::{
-        Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, TimeDiff,
+        Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, TimeDiff,
     },
     utils::WithDir,
     NodeRng,
 };
-use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{ExecutionResult, ProtocolVersion, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// Filename for the LMDB database created by the Storage component.
@@ -235,7 +234,7 @@ impl Storage {
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
-        version: Version,
+        protocol_version: ProtocolVersion,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -281,13 +280,9 @@ impl Storage {
         let mut block_txn = env.begin_rw_txn()?;
         let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
+        let mut deleted_block_hashes = HashSet::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
-        let protocol_version = ProtocolVersion::from_parts(
-            version.major as u32,
-            version.minor as u32,
-            version.patch as u32,
-        );
         for (raw_key, raw_val) in cursor.iter() {
             let block: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
@@ -295,6 +290,7 @@ impl Storage {
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
                 if block.era_id() >= invalid_era && block.protocol_version() < protocol_version {
+                    let _ = deleted_block_hashes.insert(block.hash());
                     cursor.del(WriteFlags::empty())?;
                     continue;
                 }
@@ -315,11 +311,11 @@ impl Storage {
         drop(cursor);
         block_txn.commit()?;
 
-        // Check the integrity of the block body database.
-        check_block_body_db(&env, &block_body_db)?;
+        let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
-        // Check the integrity of the block metadata database.
-        check_block_metadata_db(&env, &block_metadata_db)?;
+        initialize_block_body_db(&env, &block_body_db, &deleted_block_hashes_raw)?;
+        initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
+        initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_block_hashes)?;
 
         Ok(Storage {
             root,
@@ -443,6 +439,9 @@ impl Storage {
             } => responder
                 .respond(self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?)
                 .ignore(),
+            StorageRequest::GetBlockHeaderAtHeight { height, responder } => responder
+                .respond(self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)?)
+                .ignore(),
             StorageRequest::GetBlockAtHeight { height, responder } => responder
                 .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
@@ -452,6 +451,11 @@ impl Storage {
                     .respond(self.get_highest_block(&mut txn)?)
                     .ignore()
             }
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => responder
+                .respond(
+                    self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?,
+                )
+                .ignore(),
             StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
                 .respond(self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?)
                 .ignore(),
@@ -610,6 +614,8 @@ impl Storage {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(block_hash, block.header().era_id()),
                 };
+                assert!(signatures.verify().is_ok());
+
                 responder.respond(Some((block, signatures))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
@@ -693,6 +699,54 @@ impl Storage {
         })
     }
 
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_and_metadata_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+        let block_hash = match self.block_height_index.get(&height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+        let block_header = match self.get_single_block_header(tx, block_hash)? {
+            None => return Ok(None),
+            Some(block_header) => block_header,
+        };
+        let block_signatures = match self.get_finality_signatures(tx, block_hash)? {
+            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            Some(signatures) => signatures,
+        };
+        Ok(Some(BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }))
+    }
+
+    // Retrieves a block header to handle a network request.
+    pub fn read_block_header_and_finality_signatures_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_header_and_finality_signatures =
+            self.get_block_header_and_metadata_by_height(&mut txn, height)?;
+        drop(txn);
+        Ok(maybe_block_header_and_finality_signatures)
+    }
+
+    /// Retrieves single block header by height by looking it up in the index and returning it.
+    fn get_block_header_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.block_height_index
+            .get(&height)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .transpose()
+    }
+
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
@@ -702,6 +756,19 @@ impl Storage {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .transpose()
+    }
+
+    /// Retrieves single switch block header by era ID by looking it up in the index and returning
+    /// it.
+    fn get_switch_block_header_by_era_id<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        era_id: EraId,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.switch_block_era_id_index
+            .get(&era_id)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
     }
 
@@ -812,12 +879,12 @@ impl Storage {
         Some(blake_hashes)
     }
 
-    /// Retrieves a single block in a separate transaction from storage.
-    fn get_single_block<Tx: Transaction>(
+    /// Retrieves a single block header in a separate transaction from storage.
+    fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Block>, LmdbExtError> {
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
         let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -828,7 +895,31 @@ impl Storage {
                 queried_block_hash: *block_hash,
                 found_block_header_hash,
             });
-        }
+        };
+        Ok(Some(block_header))
+    }
+
+    // Retrieves a block header to handle a network request.
+    pub fn read_block_header_by_hash(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let maybe_block_header = self.get_single_block_header(&mut txn, block_hash)?;
+        drop(txn);
+        Ok(maybe_block_header)
+    }
+
+    /// Retrieves a single block in a separate transaction from storage.
+    fn get_single_block<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Block>, LmdbExtError> {
+        let block_header: BlockHeader = match self.get_single_block_header(tx, block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
         let block_body: BlockBody =
             match tx.get_value(self.block_body_db, block_header.body_hash())? {
                 Some(block_header) => block_header,
@@ -954,7 +1045,7 @@ pub struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
-    pub(crate) path: PathBuf,
+    pub path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.
@@ -1090,7 +1181,7 @@ impl Storage {
         let switch_block = self
             .get_switch_block_by_era_id(
                 &mut read_only_lmdb_transaction,
-                EraId(switch_block_era_num),
+                EraId::from(switch_block_era_num),
             )
             .expect("LMDB panicked trying to get switch block");
         read_only_lmdb_transaction
@@ -1100,13 +1191,22 @@ impl Storage {
     }
 }
 
-/// Utility function to check the integrity of the block_body database at bringup.
-fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<(), LmdbExtError> {
-    info!("Checking block body db");
-    let txn = env.begin_ro_txn()?;
-    let mut cursor = txn.open_ro_cursor(*block_body_db)?;
+/// Checks the integrity of the block body database and purges stale entries.
+fn initialize_block_body_db(
+    env: &Environment,
+    block_body_db: &Database,
+    deleted_block_hashes: &HashSet<&[u8]>,
+) -> Result<(), LmdbExtError> {
+    info!("initializing block body database");
+    let mut txn = env.begin_rw_txn()?;
+    let mut cursor = txn.open_rw_cursor(*block_body_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
+        if deleted_block_hashes.contains(raw_key) {
+            cursor.del(WriteFlags::empty())?;
+            continue;
+        }
+
         let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
         assert_eq!(
             raw_key,
@@ -1114,21 +1214,32 @@ fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<()
             "found corrupt block body in database"
         );
     }
-    info!("block body db check complete");
+
+    drop(cursor);
+    txn.commit()?;
+
+    info!("block body database initialized");
     Ok(())
 }
 
-/// Utility function to check the integrity of the block_metadata database at bringup.
-fn check_block_metadata_db(
+/// Checks the integrity of the block metadata database and purges stale entries.
+fn initialize_block_metadata_db(
     env: &Environment,
     block_metadata_db: &Database,
+    deleted_block_hashes: &HashSet<&[u8]>,
 ) -> Result<(), LmdbExtError> {
-    info!("Checking block_metadata_db");
-    let txn = env.begin_ro_txn()?;
-    let mut cursor = txn.open_ro_cursor(*block_metadata_db)?;
+    info!("initializing block metadata database");
+    let mut txn = env.begin_rw_txn()?;
+    let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
 
     for (raw_key, raw_val) in cursor.iter() {
+        if deleted_block_hashes.contains(raw_key) {
+            cursor.del(WriteFlags::empty())?;
+            continue;
+        }
+
         let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+
         // Signature verification could be very slow process
         // It iterates over every signature and verifies them.
         match signatures.verify() {
@@ -1143,6 +1254,46 @@ fn check_block_metadata_db(
             ),
         }
     }
-    info!("Check for block_metadata_db complete");
+
+    drop(cursor);
+    txn.commit()?;
+
+    info!("block metadata database initialized");
+    Ok(())
+}
+
+/// Purges stale entries from the deploy metadata database.
+fn initialize_deploy_metadata_db(
+    env: &Environment,
+    deploy_metadata_db: &Database,
+    deleted_block_hashes: &HashSet<BlockHash>,
+) -> Result<(), LmdbExtError> {
+    info!("initializing deploy metadata database");
+    let mut txn = env.begin_rw_txn()?;
+    let mut cursor = txn.open_rw_cursor(*deploy_metadata_db)?;
+
+    for (raw_key, raw_val) in cursor.iter() {
+        let mut deploy_metadata: DeployMetadata = lmdb_ext::deserialize(raw_val)?;
+        let len_before = deploy_metadata.execution_results.len();
+
+        deploy_metadata.execution_results = deploy_metadata
+            .execution_results
+            .drain()
+            .filter(|(block_hash, _)| !deleted_block_hashes.contains(block_hash))
+            .collect();
+
+        // If the deploy's execution results are now empty, we just remove them entirely.
+        if deploy_metadata.execution_results.is_empty() {
+            cursor.del(WriteFlags::empty())?;
+        } else if len_before != deploy_metadata.execution_results.len() {
+            let buffer = lmdb_ext::serialize(&deploy_metadata)?;
+            cursor.put(&raw_key, &buffer, WriteFlags::empty())?;
+        }
+    }
+
+    drop(cursor);
+    txn.commit()?;
+
+    info!("deploy metadata database initialized");
     Ok(())
 }

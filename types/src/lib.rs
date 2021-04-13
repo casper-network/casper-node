@@ -10,7 +10,7 @@
     not(feature = "no-unstable-features"),
     feature(min_specialization, try_reserve)
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/1.0.1")]
+#![doc(html_root_url = "https://docs.rs/casper-types/1.1.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -34,6 +34,7 @@ mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
 mod deploy_info;
+mod era_id;
 mod execution_result;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
@@ -75,10 +76,13 @@ pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use runtime_args::{NamedArg, RuntimeArgs};
-pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
+pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use tagged::Tagged;
 pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH};
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
 
-pub use crate::uint::{UIntParseError, U128, U256, U512};
+pub use crate::{
+    era_id::EraId,
+    uint::{UIntParseError, U128, U256, U512},
+};

@@ -127,7 +127,7 @@ lint:
 
 .PHONY: audit
 audit:
-	$(CARGO) audit --ignore RUSTSEC-2020-0123 --ignore RUSTSEC-2020-0146
+	$(CARGO) audit
 
 .PHONY: build-docs-stable-rs
 build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
@@ -168,7 +168,6 @@ build-for-packaging: build-client-contracts
 
 .PHONY: deb
 deb: setup build-for-packaging
-	cd node && $(CARGO) deb -p casper-node --no-build
 	cd client && $(CARGO) deb -p casper-client --no-build
 
 .PHONY: package

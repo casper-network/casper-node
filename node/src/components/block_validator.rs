@@ -10,30 +10,51 @@
 mod keyed_counter;
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     convert::Infallible,
     fmt::Debug,
+    hash::Hash,
     sync::Arc,
 };
 
 use datasize::DataSize;
 use derive_more::{Display, From};
+use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::info;
 
 use crate::{
-    components::Component,
+    components::{block_proposer::DeployType, Component},
     effect::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Chainspec, Deploy, DeployHash, Timestamp},
+    types::{appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash, ProtoBlock},
     NodeRng,
 };
-use casper_types::bytesrepr::ToBytes;
 use keyed_counter::KeyedCounter;
 
 use super::fetcher::FetchResult;
+
+// TODO: Consider removing this trait.
+pub trait BlockLike: Eq + Hash {
+    fn deploys(&self) -> Vec<&DeployHash>;
+}
+
+impl BlockLike for Block {
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+            .collect()
+    }
+}
+
+impl BlockLike for ProtoBlock {
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploys_and_transfers_iter().collect()
+    }
+}
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
@@ -46,16 +67,16 @@ pub enum Event<T, I> {
     #[display(fmt = "deploy {} found", deploy_hash)]
     DeployFound {
         deploy_hash: DeployHash,
-        deploy_size: usize,
+        deploy_type: Box<DeployType>,
     },
 
     /// A request to find a specific deploy, potentially from a peer, failed.
     #[display(fmt = "deploy {} missing", _0)]
     DeployMissing(DeployHash),
 
-    /// Deploy was invalid. Failed the chainspec test.
+    /// Deploy was invalid. Unable to convert to a deploy type.
     #[display(fmt = "deploy {} invalid", _0)]
-    DeployInvalid(DeployHash),
+    CannotConvertDeploy(DeployHash),
 }
 
 /// State of the current process of block validation.
@@ -63,16 +84,14 @@ pub enum Event<T, I> {
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidationState<T, I> {
-    /// Total running size of the deploys in the block, which is used to validate against the
-    /// chainspec's deploy.max_block_size.
-    deploy_size_running_total: usize,
+    /// Appendable block ensuring that the deploys satisfy the validity conditions.
+    appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
     missing_deploys: HashSet<DeployHash>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<(bool, T)>; 2]>,
     /// Peers that should have the data.
     sources: VecDeque<I>,
-    context: (Arc<Chainspec>, Timestamp),
 }
 
 impl<T, I> BlockValidationState<T, I>
@@ -110,7 +129,7 @@ pub(crate) struct BlockValidator<T, I> {
 impl<T, I> BlockValidator<T, I>
 where
     T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static + Send,
+    I: Clone + Debug + Send + 'static + Send,
 {
     /// Creates a new block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
@@ -119,6 +138,24 @@ where
             validation_states: HashMap::new(),
             in_flight: KeyedCounter::default(),
         }
+    }
+
+    /// Prints a log message about an invalid block with duplicated deploys.
+    fn log_block_with_replay(&self, sender: I, block: &T) {
+        let mut deploy_counts = BTreeMap::new();
+        for deploy_hash in block.deploys() {
+            *deploy_counts.entry(*deploy_hash).or_default() += 1;
+        }
+        let duplicates = deploy_counts
+            .into_iter()
+            .filter_map(|(deploy_hash, count): (DeployHash, usize)| {
+                (count > 1).then(|| format!("{} * {:?}", count, deploy_hash))
+            })
+            .join(", ");
+        info!(
+            ?sender, %duplicates,
+            "received invalid block containing duplicated deploys"
+        );
     }
 }
 
@@ -157,10 +194,7 @@ where
                     .map(|deploy_hash| **deploy_hash)
                     .collect();
                 if block_deploys.len() != deploy_count {
-                    info!(
-                        deploys = ?block.deploys(), ?sender,
-                        "received invalid block containing duplicated deploys"
-                    );
+                    self.log_block_with_replay(sender, &block);
                     return responder.respond((false, block)).ignore();
                 }
                 if block_deploys.is_empty() {
@@ -191,38 +225,31 @@ where
                             entry.key().deploys().iter().map(|hash| **hash).collect();
 
                         let in_flight = &mut self.in_flight;
-                        let chainspec = Arc::clone(&self.chainspec);
                         let fetch_effects: Effects<Event<T, I>> = block_deploys
                             .iter()
                             .flat_map(|deploy_hash| {
                                 // For every request, increase the number of in-flight...
                                 in_flight.inc(deploy_hash);
                                 // ...then request it.
-                                fetch_deploy(
-                                    effect_builder,
-                                    Arc::clone(&chainspec),
-                                    block_timestamp,
-                                    *deploy_hash,
-                                    sender.clone(),
-                                )
+                                fetch_deploy(effect_builder, *deploy_hash, sender.clone())
                             })
                             .collect();
                         effects.extend(fetch_effects);
 
+                        let deploy_config = self.chainspec.deploy_config;
                         entry.insert(BlockValidationState {
-                            deploy_size_running_total: 0,
+                            appendable_block: AppendableBlock::new(deploy_config, block_timestamp),
                             missing_deploys,
                             responders: smallvec![responder],
                             sources: VecDeque::new(), /* This is empty b/c we create the first
                                                        * request using `sender`. */
-                            context: (chainspec, block_timestamp),
                         });
                     }
                 }
             }
             Event::DeployFound {
                 deploy_hash,
-                deploy_size,
+                deploy_type,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
                 self.in_flight.dec(&deploy_hash);
@@ -231,23 +258,13 @@ where
                 // mark it for removal.
                 let mut invalid = Vec::new();
 
-                let max_block_size = self.chainspec.deploy_config.max_block_size as usize;
-
                 // Our first pass updates all validation states, crossing off the found deploy.
                 for (key, state) in self.validation_states.iter_mut() {
                     if state.missing_deploys.remove(&deploy_hash) {
-                        let valid_new_total = state
-                            .deploy_size_running_total
-                            .checked_add(deploy_size)
-                            .filter(|new_total| *new_total <= max_block_size);
-
-                        match valid_new_total {
-                            Some(new_total) => state.deploy_size_running_total = new_total,
-                            None => {
-                                // Notify everyone still waiting on it that all is lost.
-                                info!(block=?key, %deploy_hash, %max_block_size, "block size exceeded");
-                                invalid.push(key.clone());
-                            }
+                        if let Err(err) = state.appendable_block.add(deploy_hash, &*deploy_type) {
+                            // Notify everyone still waiting on it that all is lost.
+                            info!(block=?key, %deploy_hash, ?deploy_type, ?err, "block invalid");
+                            invalid.push(key.clone());
                         }
                     }
                 }
@@ -293,11 +310,8 @@ where
                         Some(peer) => {
                             info!(%deploy_hash, ?peer, "trying the next peer");
                             // There's still hope to download the deploy.
-                            let (chainspec, block_timestamp) = &state.context;
                             effects.extend(
                                 fetch_deploy(effect_builder,
-                                    Arc::clone(chainspec),
-                                    *block_timestamp,
                                     deploy_hash,
                                     peer,
                                 ));
@@ -322,8 +336,8 @@ where
                     self.in_flight.inc(&deploy_hash);
                 }
             }
-            Event::DeployInvalid(deploy_hash) => {
-                info!(%deploy_hash, "deploy invalid");
+            Event::CannotConvertDeploy(deploy_hash) => {
+                info!(%deploy_hash, "cannot convert deploy to deploy type");
                 // Deploy is invalid. There's no point waiting for other in-flight requests to
                 // finish.
                 self.in_flight.dec(&deploy_hash);
@@ -351,8 +365,6 @@ where
 /// Returns effects that fetch the deploy and validate it.
 fn fetch_deploy<REv, T, I>(
     effect_builder: EffectBuilder<REv>,
-    chainspec: Arc<Chainspec>,
-    block_timestamp: Timestamp,
     deploy_hash: DeployHash,
     sender: I,
 ) -> Effects<Event<T, I>>
@@ -366,20 +378,14 @@ where
     I: Clone + Send + PartialEq + Eq + 'static,
 {
     let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
-        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
-            if deploy
-                .header()
-                .is_valid(&chainspec.deploy_config, block_timestamp)
-            {
-                let deploy_size = deploy.serialized_length();
+        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => deploy
+            .deploy_type()
+            .map_or(Event::CannotConvertDeploy(deploy_hash), |deploy_type| {
                 Event::DeployFound {
                     deploy_hash,
-                    deploy_size,
+                    deploy_type: Box::new(deploy_type),
                 }
-            } else {
-                Event::DeployInvalid(deploy_hash)
-            }
-        }
+            }),
     };
 
     effect_builder

@@ -18,6 +18,8 @@ source "$NCTL"/sh/utils/main.sh
 #######################################
 function _set_accounts()
 {
+    log "... setting accounts.toml"
+
     local PATH_TO_NET
     local PATH_TO_ACCOUNTS
     local IDX
@@ -31,7 +33,7 @@ function _set_accounts()
     cat >> "$PATH_TO_ACCOUNTS" <<- EOM
 # FAUCET.
 [[accounts]]
-public_key = "$(cat ""$PATH_TO_NET"/faucet/public_key_hex")"
+public_key = "$(cat "$PATH_TO_NET/faucet/public_key_hex")"
 balance = "$NCTL_INITIAL_BALANCE_FAUCET"
 EOM
 
@@ -42,7 +44,7 @@ EOM
 
 # VALIDATOR $IDX.
 [[accounts]]
-public_key = "$(cat ""$PATH_TO_NET"/nodes/node-"$IDX"/keys/public_key_hex")"
+public_key = "$(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex")"
 balance = "$NCTL_INITIAL_BALANCE_VALIDATOR"
 EOM
         if [ "$IDX" -le "$(get_count_of_genesis_nodes)" ]; then
@@ -63,17 +65,17 @@ EOM
 
 # USER $IDX.
 [[delegators]]
-validator_public_key = "$(cat ""$PATH_TO_NET"/nodes/node-"$IDX"/keys/public_key_hex")"
-delegator_public_key = "$(cat ""$PATH_TO_NET"/users/user-"$IDX"/public_key_hex")"
+validator_public_key = "$(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex")"
+delegator_public_key = "$(cat "$PATH_TO_NET/users/user-$IDX/public_key_hex")"
 balance = "$NCTL_INITIAL_BALANCE_USER"
-delegated_amount = "$((NCTL_INITIAL_DELEGATION_AMOUNT + $IDX))"
+delegated_amount = "$((NCTL_INITIAL_DELEGATION_AMOUNT + IDX))"
 EOM
         else
         cat >> "$PATH_TO_ACCOUNTS" <<- EOM
 
 # USER $IDX.
 [[accounts]]
-public_key = "$(cat ""$PATH_TO_NET"/users/user-"$IDX"/public_key_hex")"
+public_key = "$(cat "$PATH_TO_NET/users/user-$IDX/public_key_hex")"
 balance = "$NCTL_INITIAL_BALANCE_USER"
 EOM
         fi
@@ -85,6 +87,8 @@ EOM
 #######################################
 function _set_accounts_from_template()
 {
+    log "... setting accounts.toml (from template)"    
+
     local ACCOUNT_KEY
     local PATH_TO_ACCOUNTS
     local PATH_TO_TEMPLATE=${1}
@@ -93,7 +97,7 @@ function _set_accounts_from_template()
 
     # Copy across template.    
     PATH_TO_ACCOUNTS="$(get_path_to_net)"/chainspec/accounts.toml
-    cp $PATH_TO_TEMPLATE $PATH_TO_ACCOUNTS
+    cp "$PATH_TO_TEMPLATE" "$PATH_TO_ACCOUNTS"
 
     # Set faucet.
     PBK_KEY="PBK_FAUCET"
@@ -122,10 +126,16 @@ function _set_accounts_from_template()
 #######################################
 function _set_binaries()
 {
-    local PATH_TO_CLIENT
-    local PATH_TO_NET="$(get_path_to_net)"
+    log "... setting binaries"
+
+    local PATH_TO_NET
     local PATH_TO_NODE_BIN
     local PATH_TO_NODE_BIN_SEMVAR
+    local PATH_TO_CONTRACT
+    local CONTRACT
+    local IDX
+
+    PATH_TO_NET="$(get_path_to_net)"
 
     # Set node binaries.
     for IDX in $(seq 1 "$(get_count_of_nodes)")
@@ -142,15 +152,25 @@ function _set_binaries()
         fi
     done
 
-    # Set client binaries.
+    # Set client binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         cp "$NCTL_CASPER_HOME"/target/debug/casper-client "$PATH_TO_NET"/bin
     else
         cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_NET"/bin
     fi
-	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
+
+    # Set client contracts.
+	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
 	do
-        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_NET"/bin
+        PATH_TO_CONTRACT="$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT"
+        if [ -f "$PATH_TO_CONTRACT" ]; then
+            cp "$PATH_TO_CONTRACT" "$PATH_TO_NET"/bin/auction
+        fi
+	done  
+	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
+	do
+        PATH_TO_CONTRACT="$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT"
+        cp "$PATH_TO_CONTRACT" "$PATH_TO_NET"/bin/transfers
 	done  
 }
 
@@ -162,12 +182,12 @@ function _set_binaries()
 #######################################
 function _set_chainspec()
 {
+    log "... setting chainspec.toml"
+
     local GENESIS_DELAY=${1}
     local PATH_TO_CHAINSPEC_TEMPLATE=${2}
+    local PATH_TO_CHAINSPEC_FILE
     local PATH_TO_NET
-    local PATH_TO_CHAINSPEC
-    local GENESIS_NAME
-    local GENESIS_TIMESTAMP
     local SCRIPT
 
     # Set file.
@@ -195,6 +215,8 @@ function _set_chainspec()
 #######################################
 function _set_daemon()
 {
+    log "... setting daemon config"
+
     if [ "$NCTL_DAEMON_TYPE" = "supervisord" ]; then
         source "$NCTL"/sh/assets/setup_supervisord.sh
     fi
@@ -208,13 +230,20 @@ function _set_daemon()
 #######################################
 function _set_directories()
 {
+    log "... setting directories"
+
     local COUNT_NODES=${1}
     local COUNT_USERS=${2}
-    local PATH_TO_NET="$(get_path_to_net)"
+    local PATH_TO_NET
     local PATH_TO_NODE
     local IDX
 
+    PATH_TO_NET="$(get_path_to_net)"
+
     mkdir "$PATH_TO_NET"/bin 
+    mkdir "$PATH_TO_NET"/bin/auction
+    mkdir "$PATH_TO_NET"/bin/eco
+    mkdir "$PATH_TO_NET"/bin/transfers
     mkdir "$PATH_TO_NET"/chainspec
     mkdir "$PATH_TO_NET"/daemon
     mkdir "$PATH_TO_NET"/daemon/config
@@ -249,6 +278,8 @@ function _set_directories()
 #######################################
 function _set_keys()
 {
+    log "... setting cryptographic keys"
+
     "$(get_path_to_client)" keygen -f "$(get_path_to_net)"/faucet > /dev/null 2>&1
     for IDX in $(seq 1 "$(get_count_of_nodes)")
     do
@@ -265,6 +296,8 @@ function _set_keys()
 #######################################
 function _set_nodes()
 {
+    log "... setting node config"
+    
     local IDX
     local PATH_TO_FILE
     local PATH_TO_NODE
@@ -281,7 +314,7 @@ function _set_nodes()
             "import toml;"
             "cfg=toml.load('$PATH_TO_FILE');"
             "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
-            "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
+            "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
             "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
             "cfg['network']['bind_address']='$(get_network_bind_address "$IDX")';"
             "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
@@ -343,9 +376,8 @@ function _main()
     fi
     mkdir -p "$PATH_TO_NET"
 
-    log "net-$NET_ID: asset setup begins ... please wait"
-
-    # Set artefacts.
+    # Setup new.
+    log "asset setup begins ... please wait"
     _set_directories "$COUNT_NODES" "$COUNT_USERS"
     _set_binaries
     _set_keys
@@ -357,8 +389,7 @@ function _main()
         _set_accounts_from_template "$ACCOUNTS_PATH"
     fi
     _set_nodes
-
-    log "net-$NET_ID: asset setup complete"
+    log "asset setup complete"
 }
 
 # ----------------------------------------------------------------

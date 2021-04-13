@@ -39,7 +39,7 @@ impl Status {
             return Some(Status::Inactive);
         }
         if state.last_seen(idx) + state.params().max_round_length() < now {
-            let seconds = (now - state.last_seen(idx)).millis() / 1000;
+            let seconds = now.saturating_diff(state.last_seen(idx)).millis() / 1000;
             return Some(Status::LastSeenSecondsAgo(seconds));
         }
         None
@@ -62,6 +62,7 @@ where
 impl<C: Context> Participation<C> {
     /// Creates a new `Participation` map, showing validators seen as faulty or inactive by the
     /// Highway instance.
+    #[allow(clippy::integer_arithmetic)] // We use u128 to prevent overflows in weight calculation.
     pub(crate) fn new(highway: &Highway<C>) -> Self {
         let now = Timestamp::now();
         let state = highway.state();

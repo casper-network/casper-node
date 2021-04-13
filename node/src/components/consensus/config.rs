@@ -1,15 +1,12 @@
-use std::path::PathBuf;
-
 use datasize::DataSize;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::SecretKey;
+use casper_types::{ProtocolVersion, SecretKey};
 
 use crate::{
-    components::consensus::EraId,
+    components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
     crypto::hash::Digest,
-    types::{chainspec::HighwayConfig, Chainspec, TimeDiff, Timestamp},
+    types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
     utils::External,
 };
 
@@ -20,22 +17,15 @@ use crate::{
 pub struct Config {
     /// Path to secret key file.
     pub secret_key_path: External<SecretKey>,
-    /// Path to the folder where unit hash files will be stored.
-    pub unit_hashes_folder: PathBuf,
-    /// The duration for which incoming vertices with missing dependencies are kept in a queue.
-    pub pending_vertex_timeout: TimeDiff,
-    /// The maximum number of blocks by which execution is allowed to lag behind finalization.
-    /// If it is more than that, consensus will pause, and resume once the executor has caught up.
-    pub max_execution_delay: u64,
+    /// Highway-specific node configuration.
+    pub highway: HighwayConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
             secret_key_path: External::Missing,
-            unit_hashes_folder: Default::default(),
-            pending_vertex_timeout: "10sec".parse().unwrap(),
-            max_execution_delay: 3,
+            highway: HighwayConfig::default(),
         }
     }
 }
@@ -43,7 +33,7 @@ impl Default for Config {
 /// Consensus protocol configuration.
 #[derive(DataSize, Debug)]
 pub(crate) struct ProtocolConfig {
-    pub(crate) highway_config: HighwayConfig,
+    pub(crate) highway_config: HighwayProtocolConfig,
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
     /// Number of eras before an auction actually defines the set of validators.
@@ -53,7 +43,7 @@ pub(crate) struct ProtocolConfig {
     pub(crate) unbonding_delay: u64,
     /// The network protocol version.
     #[data_size(skip)]
-    pub(crate) protocol_version: Version,
+    pub(crate) protocol_version: ProtocolVersion,
     /// The first era ID after the last upgrade
     pub(crate) last_activation_point: EraId,
     /// Name of the network.
@@ -72,7 +62,7 @@ impl From<&Chainspec> for ProtocolConfig {
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,
             unbonding_delay: chainspec.core_config.unbonding_delay,
-            protocol_version: chainspec.protocol_config.version.clone(),
+            protocol_version: chainspec.protocol_config.version,
             last_activation_point: chainspec.protocol_config.activation_point.era_id(),
             name: chainspec.network_config.name.clone(),
             genesis_timestamp: chainspec

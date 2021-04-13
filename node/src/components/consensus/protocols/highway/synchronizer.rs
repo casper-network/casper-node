@@ -160,8 +160,10 @@ where
     vertices_to_be_added: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
-    /// Instance ID of an era for which this synchronizer is constructed for.
-    era_id: C::InstanceId,
+    /// The duration between two consecutive requests of the latest state.
+    request_latest_state_timeout: TimeDiff,
+    /// Instance ID of an era for which this synchronizer is constructed.
+    instance_id: C::InstanceId,
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
     /// Used only for logging.
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
@@ -173,18 +175,18 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
     pub(crate) fn new(
         pending_vertex_timeout: TimeDiff,
+        request_latest_state_timeout: TimeDiff,
         validator_len: usize,
-        era_id: C::InstanceId,
+        instance_id: C::InstanceId,
     ) -> Self {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
             pending_vertex_timeout,
-            oldest_seen_panorama: ValidatorMap::from(
-                iter::repeat(None).take(validator_len).collect_vec(),
-            ),
-            era_id,
+            request_latest_state_timeout,
+            oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
+            instance_id,
             current_era: true,
         }
     }
@@ -218,7 +220,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     pub(crate) fn log_len(&self) {
         debug!(
-            era_id = ?self.era_id,
+            era_id = ?self.instance_id,
             vertices_to_be_added_later = self.vertices_to_be_added_later_len(),
             vertex_deps = self.vertex_deps_len(),
             vertices_to_be_added = self.vertices_to_be_added_len(),
@@ -249,11 +251,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .entry(future_timestamp)
             .or_default()
             .add(sender, pvv, now);
-    }
-
-    /// Returns the timestamps at which we are supposed to add cached vertices.
-    pub(crate) fn timestamps_to_add_vertices(&self) -> Vec<Timestamp> {
-        self.vertices_to_be_added_later.keys().cloned().collect()
     }
 
     /// Schedules calls to `add_vertex` on any vertices in `vertices_to_be_added_later` which are
@@ -309,6 +306,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .filter(|dep| highway.has_dependency(dep))
             .cloned()
             .collect_vec();
+        // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
         let pvs = satisfied_deps
             .into_iter()
             .flat_map(|dep| self.vertex_deps.remove(&dep).unwrap())
@@ -370,6 +368,11 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
     pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
         self.pending_vertex_timeout
+    }
+
+    /// Returns the duration between two consecutive requests of the latest state.
+    pub(crate) fn request_latest_state_timeout(&self) -> TimeDiff {
+        self.request_latest_state_timeout
     }
 
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and

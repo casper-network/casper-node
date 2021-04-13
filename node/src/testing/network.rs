@@ -131,8 +131,12 @@ where
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
-        let span = error_span!("crank", node_id = %node_id);
-        if runner.try_crank(rng).instrument(span).await.is_some() {
+        if runner
+            .try_crank(rng)
+            .instrument(error_span!("crank", node_id = %node_id))
+            .await
+            .is_some()
+        {
             1
         } else {
             0
@@ -166,7 +170,7 @@ where
         loop {
             if self.crank(node_id, rng).await == 0 {
                 Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                time::delay_for(POLL_INTERVAL).await;
+                time::sleep(POLL_INTERVAL).await;
                 continue;
             }
 
@@ -188,8 +192,12 @@ where
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            let span = error_span!("crank", node_id = %node_id);
-            event_count += if node.try_crank(rng).instrument(span).await.is_some() {
+            event_count += if node
+                .try_crank(rng)
+                .instrument(error_span!("crank", node_id = %node_id))
+                .await
+                .is_some()
+            {
                 1
             } else {
                 0
@@ -226,7 +234,7 @@ where
                 } else {
                     no_events = true;
                     Instant::advance_time(quiet_for.as_millis() as u64);
-                    time::delay_for(quiet_for).await;
+                    time::sleep(quiet_for).await;
                 }
             } else {
                 no_events = false;
@@ -266,7 +274,7 @@ where
             if self.crank_all(rng).await == 0 {
                 // No events processed, wait for a bit to avoid 100% cpu usage.
                 Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                time::delay_for(POLL_INTERVAL).await;
+                time::sleep(POLL_INTERVAL).await;
             }
         }
     }
@@ -303,10 +311,9 @@ where
     {
         let runner = self.nodes.get_mut(node_id).unwrap();
         let node_id = runner.reactor().node_id();
-        let span = error_span!("inject", node_id = %node_id);
         runner
             .process_injected_effects(create_effects)
-            .instrument(span)
+            .instrument(error_span!("inject", node_id = %node_id))
             .await
     }
 }

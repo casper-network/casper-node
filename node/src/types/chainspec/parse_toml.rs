@@ -8,10 +8,10 @@
 
 use std::{convert::TryFrom, path::Path};
 
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_types::ProtocolVersion;
 
 use super::{
     accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
@@ -32,7 +32,7 @@ struct TomlNetwork {
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 struct TomlProtocol {
-    version: Version,
+    version: ProtocolVersion,
     hard_reset: bool,
     activation_point: ActivationPoint,
 }
@@ -54,7 +54,7 @@ pub(super) struct TomlChainspec {
 impl From<&Chainspec> for TomlChainspec {
     fn from(chainspec: &Chainspec) -> Self {
         let protocol = TomlProtocol {
-            version: chainspec.protocol_config.version.clone(),
+            version: chainspec.protocol_config.version,
             hard_reset: chainspec.protocol_config.hard_reset,
             activation_point: chainspec.protocol_config.activation_point,
         };

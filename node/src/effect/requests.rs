@@ -21,28 +21,23 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResults,
         genesis::GenesisResult,
         query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
     },
-    shared::{
-        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
-        transform::Transform,
-    },
-    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     system::auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
+    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
 
 use super::Responder;
 use crate::{
     components::{
-        consensus::EraId,
+        chainspec_loader::CurrentRunInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
         fetcher::FetchResult,
@@ -51,8 +46,8 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
+        NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -221,6 +216,13 @@ pub enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve block header with given height.
+    GetBlockHeaderAtHeight {
+        /// Height of the block.
+        height: BlockHeight,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
@@ -232,6 +234,13 @@ pub enum StorageRequest {
     GetHighestBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve switch block header with given era ID.
+    GetSwitchBlockHeaderAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve switch block with given era ID.
     GetSwitchBlockAtEraId {
@@ -354,10 +363,16 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockHeaderAtHeight { height, .. } => {
+                write!(formatter, "get block header at height {}", height)
+            }
             StorageRequest::GetBlockAtHeight { height, .. } => {
                 write!(formatter, "get block at height {}", height)
             }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block header at era id {}", era_id)
+            }
             StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block at era id {}", era_id)
             }
@@ -683,6 +698,9 @@ impl<I> Display for RestRequest<I> {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
+    /// A request to execute a block.
+    ExecuteBlock(FinalizedBlock),
+
     /// Get `ProtocolData` by `ProtocolVersion`.
     GetProtocolData {
         /// The protocol version.
@@ -696,24 +714,6 @@ pub enum ContractRuntimeRequest {
         chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisResult, engine_state::Error>>,
-    },
-    /// An `ExecuteRequest` that contains multiple deploys that will be executed.
-    Execute {
-        /// Execution request containing deploys.
-        #[serde(skip_serializing)]
-        execute_request: Box<ExecuteRequest>,
-        /// Responder to call with the execution result.
-        responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
-    },
-    /// A request to commit existing execution transforms.
-    Commit {
-        /// A valid state root hash.
-        state_root_hash: Digest,
-        /// Effects obtained through `ExecutionResult`
-        #[serde(skip_serializing)]
-        effects: AdditiveMap<Key, Transform>,
-        /// Responder to call with the commit result.
-        responder: Responder<Result<CommitResult, engine_state::Error>>,
     },
     /// A request to run upgrade.
     Upgrade {
@@ -811,6 +811,9 @@ pub enum ContractRuntimeRequest {
 impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
+                write!(formatter, "finalized_block {}", finalized_block)
+            }
             ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
                 write!(
                     formatter,
@@ -818,23 +821,6 @@ impl Display for ContractRuntimeRequest {
                     chainspec.protocol_config.version
                 )
             }
-            ContractRuntimeRequest::Execute {
-                execute_request, ..
-            } => write!(
-                formatter,
-                "execute request: {}",
-                execute_request.parent_state_hash
-            ),
-
-            ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                ..
-            } => write!(
-                formatter,
-                "commit request: {} {:?}",
-                state_root_hash, effects
-            ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
                 write!(formatter, "upgrade request: {:?}", upgrade_config)
@@ -915,24 +901,6 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
     }
 }
 
-/// A contract runtime request.
-#[derive(Debug)]
-#[must_use]
-pub enum BlockExecutorRequest {
-    /// A request to execute finalized block.
-    ExecuteBlock(FinalizedBlock),
-}
-
-impl Display for BlockExecutorRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockExecutorRequest::ExecuteBlock(finalized_block) => {
-                write!(f, "execute block {}", finalized_block)
-            }
-        }
-    }
-}
-
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
@@ -991,12 +959,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 #[must_use]
 /// Consensus component requests.
 pub enum ConsensusRequest {
-    /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<Block>, Responder<Option<FinalitySignature>>),
-    /// Check whether validator identifying with the public key is bonded.
-    IsBondedValidator(EraId, PublicKey, Responder<bool>),
     /// Request for our public key, and if we're a validator, the next round length.
-    Status(Responder<(PublicKey, Option<TimeDiff>)>),
+    Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
 }
 
 /// ChainspecLoader component requests.
@@ -1004,12 +968,15 @@ pub enum ConsensusRequest {
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
+    /// Request for information about the current run.
+    GetCurrentRunInfo(Responder<CurrentRunInfo>),
 }
 
 impl Display for ChainspecLoaderRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
+            ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
         }
     }
 }

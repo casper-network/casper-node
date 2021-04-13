@@ -3,7 +3,7 @@ use crate::system::auction::EraId;
 use super::DelegationRate;
 
 /// Initial value of era id we start at genesis.
-pub const INITIAL_ERA_ID: EraId = 0;
+pub const INITIAL_ERA_ID: EraId = EraId::new(0);
 
 /// Initial value of era end timestamp.
 pub const INITIAL_ERA_END_TIMESTAMP_MILLIS: u64 = 0;
@@ -82,8 +82,6 @@ pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
 pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for era-end timestamp.
 pub const ERA_END_TIMESTAMP_MILLIS_KEY: &str = "era_end_timestamp_millis";
-/// Storage for `SeigniorageRecipientsSnapshot`.
-pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
 /// Total validator slots allowed.
 pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 /// Amount of auction delay.

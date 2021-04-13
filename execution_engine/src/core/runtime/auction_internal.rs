@@ -6,9 +6,9 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
         AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-        StorageProvider, SystemProvider, UnbondingPurse,
+        SeigniorageRecipients, StorageProvider, SystemProvider, UnbondingPurse,
     },
-    CLTyped, CLValue, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, EraId, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 use super::Runtime;
@@ -99,6 +99,35 @@ where
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
+
+    fn read_era_validators(
+        &mut self,
+        era_id: EraId,
+    ) -> Result<Option<SeigniorageRecipients>, Error> {
+        match self.context.read_gs(&Key::EraValidators(era_id)) {
+            Ok(Some(StoredValue::EraValidators(recipients))) => Ok(Some(recipients)),
+            Ok(Some(_)) => Err(Error::Storage),
+            Ok(None) => Ok(None),
+            Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
+            // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
+            // also [`Runtime::reverter`] and [`to_auction_error`]
+            Err(execution::Error::GasLimit) => Err(Error::GasLimit),
+            Err(_) => Err(Error::Storage),
+        }
+    }
+
+    fn write_era_validators(
+        &mut self,
+        era_id: EraId,
+        recipients: SeigniorageRecipients,
+    ) -> Result<(), Error> {
+        self.context
+            .metered_write_gs_unsafe(
+                Key::EraValidators(era_id),
+                StoredValue::EraValidators(recipients),
+            )
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
 }
 
 impl<'a, R> SystemProvider for Runtime<'a, R>
@@ -133,7 +162,7 @@ where
         }
     }
 
-    fn record_era_info(&mut self, era_id: u64, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
         Runtime::record_era_info(self, era_id, era_info)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::RecordEraInfo))
     }
