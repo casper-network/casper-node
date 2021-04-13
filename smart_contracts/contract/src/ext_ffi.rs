@@ -700,6 +700,16 @@ extern "C" {
         out_ptr: *mut u8,
         out_size: usize,
     ) -> i32;
+    /// This function deletes the a value under the provided key (read via de-serializing the bytes
+    /// in wasm memory from offset `key_ptr` to `key_ptr + key_size`) in the global state. This
+    /// function will cause a `Trap` if the key or value fail to de-serialize or if deleting that
+    /// key is not permitted.
+    ///
+    /// # Arguments
+    ///
+    /// * `key_ptr` - pointer to bytes representing the key to delete
+    /// * `key_size` - size of the key (in bytes)
+    pub fn casper_delete(key_ptr: *const u8, key_size: usize);
     /// Prints data directly to stanadard output on the host.
     ///
     /// # Arguments

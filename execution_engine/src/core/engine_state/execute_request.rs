@@ -42,7 +42,9 @@ impl ExecuteRequest {
 
 impl Default for ExecuteRequest {
     fn default() -> Self {
-        let proposer = SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]).into();
+        let proposer = SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
         Self {
             parent_state_hash: Blake2bHash::new(&[]),
             block_time: 0,

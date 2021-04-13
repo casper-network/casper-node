@@ -17,7 +17,7 @@ use crate::storage::{
     transaction_source::{Transaction, TransactionSource},
     trie::{merkle_proof::TrieMerkleProof, Trie},
     trie_store::{
-        operations::{read, write, ReadResult, WriteResult},
+        operations::{delete, read, write, DeleteResult, ReadResult, WriteResult},
         TrieStore,
     },
 };
@@ -132,6 +132,33 @@ pub trait StateProvider {
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 
+pub enum ModifyResult {
+    WriteResult(WriteResult),
+    DeleteResult(DeleteResult),
+}
+
+impl ModifyResult {
+    pub fn updated_root(&self) -> Option<Blake2bHash> {
+        match self {
+            ModifyResult::WriteResult(WriteResult::Written(root_hash)) => Some(*root_hash),
+            ModifyResult::DeleteResult(DeleteResult::Deleted(root_hash)) => Some(*root_hash),
+            _ => None,
+        }
+    }
+}
+
+impl From<WriteResult> for ModifyResult {
+    fn from(write_result: WriteResult) -> Self {
+        ModifyResult::WriteResult(write_result)
+    }
+}
+
+impl From<DeleteResult> for ModifyResult {
+    fn from(delete_result: DeleteResult) -> Self {
+        ModifyResult::DeleteResult(delete_result)
+    }
+}
+
 pub fn commit<'a, R, S, H, E>(
     environment: &'a R,
     store: &S,
@@ -153,32 +180,70 @@ where
 
     if maybe_root.is_none() {
         return Ok(CommitResult::RootNotFound);
-    };
+    }
 
     for (key, transform) in effects.into_iter() {
         let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
 
-        let value = match (read_result, transform) {
-            (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
+        let modify_result: ModifyResult = match (read_result, transform) {
+            // If we do not find a value, and the given transform is a write, then we should write
+            // the value at the given key.
+            (ReadResult::NotFound, Transform::Write(new_value)) => write::<_, _, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &state_root,
+                &key,
+                &new_value,
+            )
+            .map(Into::into)?,
+            (ReadResult::NotFound, Transform::Delete) => {
+                ModifyResult::DeleteResult(DeleteResult::DoesNotExist)
+            }
+            // If we do not find a value, and the given transform is a write, and the transform is
+            // not a write, we should do something.
             (ReadResult::NotFound, _) => {
                 return Ok(CommitResult::KeyNotFound(key));
             }
+            // If we find a value, apply the given transform to it
             (ReadResult::Found(current_value), transform) => match transform.apply(current_value) {
-                Ok(updated_value) => updated_value,
+                // A Some returned from Transform::Apply indicates that the value should be written
+                // at the given key.
+                Ok(Some(updated_value)) => write::<_, _, _, _, E>(
+                    correlation_id,
+                    &mut txn,
+                    store,
+                    &state_root,
+                    &key,
+                    &updated_value,
+                )
+                .map(Into::into)?,
+                // A None returned from Transform::Apply indicates that the value under the given
+                // key should be deleted.
+                Ok(None) => {
+                    delete::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key)
+                        .map(Into::into)?
+                }
                 Err(err) => return Ok(err.into()),
             },
             _x @ (ReadResult::RootNotFound, _) => panic!(stringify!(_x._1)),
         };
 
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
-
-        match write_result {
-            WriteResult::Written(root_hash) => {
+        match modify_result {
+            ModifyResult::WriteResult(WriteResult::Written(root_hash)) => {
                 state_root = root_hash;
             }
-            WriteResult::AlreadyExists => (),
-            _x @ WriteResult::RootNotFound => panic!(stringify!(_x)),
+            ModifyResult::WriteResult(WriteResult::AlreadyExists) => (),
+            ModifyResult::WriteResult(_x @ WriteResult::RootNotFound) => {
+                panic!(stringify!(_x))
+            }
+            ModifyResult::DeleteResult(DeleteResult::Deleted(root_hash)) => {
+                state_root = root_hash;
+            }
+            ModifyResult::DeleteResult(DeleteResult::DoesNotExist) => (),
+            ModifyResult::DeleteResult(DeleteResult::RootNotFound) => {
+                panic!(stringify!(_x))
+            }
         }
     }
 

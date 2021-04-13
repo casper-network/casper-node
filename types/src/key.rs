@@ -704,6 +704,8 @@ impl<'de> Deserialize<'de> for Key {
 
 #[cfg(test)]
 mod tests {
+    use std::string::ToString;
+
     use proptest::proptest;
 
     use super::*;

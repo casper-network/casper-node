@@ -45,9 +45,9 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
+        Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
+        Item, NodeId, StatusFeed, TimeDiff, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -216,6 +216,13 @@ pub enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve block header with given height.
+    GetBlockHeaderAtHeight {
+        /// Height of the block.
+        height: BlockHeight,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
@@ -228,12 +235,26 @@ pub enum StorageRequest {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
+    /// Retrieve switch block header with given era ID.
+    GetSwitchBlockHeaderAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve switch block with given era ID.
     GetSwitchBlockAtEraId {
         /// Era ID of the switch block.
         era_id: EraId,
         /// Responder.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve the header of the block containing the deploy.
+    GetBlockHeaderForDeploy {
+        /// Hash of the deploy.
+        deploy_hash: DeployHash,
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve highest switch block.
     GetHighestSwitchBlock {
@@ -349,12 +370,21 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockHeaderAtHeight { height, .. } => {
+                write!(formatter, "get block header at height {}", height)
+            }
             StorageRequest::GetBlockAtHeight { height, .. } => {
                 write!(formatter, "get block at height {}", height)
             }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block header at era id {}", era_id)
+            }
             StorageRequest::GetSwitchBlockAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block at era id {}", era_id)
+            }
+            StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
+                write!(formatter, "get block header for deploy {}", deploy_hash)
             }
             StorageRequest::GetHighestSwitchBlock { .. } => {
                 write!(formatter, "get highest switch block")
@@ -452,7 +482,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct ProtoBlockRequest {
+pub struct BlockPayloadRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
     /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
@@ -462,10 +492,12 @@ pub struct ProtoBlockRequest {
     /// request was made. Block Proposer uses this in order to determine if there might be any
     /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
     pub(crate) next_finalized: u64,
-    /// Random bit with which to construct the `ProtoBlock` requested.
+    /// A list of validators reported as malicious in this block.
+    pub(crate) accusations: Vec<PublicKey>,
+    /// Random bit with which to construct the `BlockPayload` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<ProtoBlock>,
+    pub(crate) responder: Responder<BlockPayload>,
 }
 
 /// A `BlockProposer` request.
@@ -473,17 +505,18 @@ pub struct ProtoBlockRequest {
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
-    RequestProtoBlock(ProtoBlockRequest),
+    RequestBlockPayload(BlockPayloadRequest),
 }
 
 impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
+            BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                 current_instant,
                 past_deploys,
                 next_finalized,
                 responder: _,
+                accusations: _,
                 random_bit: _,
             }) => write!(
                 formatter,

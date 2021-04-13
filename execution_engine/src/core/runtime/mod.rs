@@ -2498,6 +2498,11 @@ where
             .map_err(Into::into)
     }
 
+    /// Deletes value under `key` in global state.
+    fn delete(&mut self, key: &Key) -> Result<(), Trap> {
+        self.context.delete_gs(key).map_err(Into::into)
+    }
+
     /// Records a transfer.
     fn record_transfer(
         &mut self,
@@ -3503,7 +3508,9 @@ mod tests {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let mut map = BTreeMap::new();
         map.insert(
-            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(
+                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             uref,
         );
         let cl_value = CLValue::from_t(map).unwrap();
@@ -3516,7 +3523,9 @@ mod tests {
         let key = Key::from(uref);
         let mut map = BTreeMap::new();
         map.insert(
-            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(
+                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             key,
         );
         let cl_value = CLValue::from_t(map).unwrap();
