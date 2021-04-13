@@ -163,6 +163,13 @@ where
     fn source(&mut self) -> Option<I> {
         self.sources.pop_front()
     }
+
+    fn respond<REv>(&mut self, value: bool) -> Effects<REv> {
+        self.responders
+            .drain(..)
+            .flat_map(|responder| responder.respond(value).ignore())
+            .collect()
+    }
 }
 
 #[derive(DataSize, Debug)]
@@ -314,16 +321,12 @@ where
                 // Now we remove all states that have finished and notify the requestors.
                 self.validation_states.retain(|key, state| {
                     if invalid.contains(key) {
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond(false).ignore());
-                        });
+                        effects.extend(state.respond(false));
                         return false;
                     }
                     if state.missing_deploys.is_empty() {
                         // This one is done and valid.
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond(true).ignore());
-                        });
+                        effects.extend(state.respond(true));
                         return false;
                     }
                     true
@@ -364,9 +367,7 @@ where
                             );
                             // This validation state contains a failed deploy hash, it can never
                             // succeed.
-                            state.responders.drain(..).for_each(|responder| {
-                                effects.extend(responder.respond(false).ignore());
-                            });
+                            effects.extend(state.respond(false));
                             false
                         }
                     }
@@ -391,9 +392,7 @@ where
                         );
                         // This validation state contains a failed deploy hash, it can never
                         // succeed.
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond(false).ignore());
-                        });
+                        effects.extend(state.respond(false));
                         false
                     } else {
                         true
