@@ -324,7 +324,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             Err((pvv, err)) => {
                 info!(?pvv, ?err, "invalid vertex");
                 let vertices = vec![pvv.inner().id()];
-                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
+                let faulty_senders = self.synchronizer.invalid_vertices(vertices);
                 outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
                 return outcomes;
             }
@@ -560,7 +560,7 @@ where
                     Err((_, err)) => {
                         trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
-                        let faulty_senders = self.synchronizer.drop_dependent_vertices(vec![v_id]);
+                        let faulty_senders = self.synchronizer.invalid_vertices(vec![v_id]);
                         return iter::once(ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
@@ -790,9 +790,7 @@ where
                 })
                 .collect();
             // recursively remove vertices depending on the dropped ones
-            let _faulty_senders = self
-                .synchronizer
-                .drop_dependent_vertices(dropped_vertex_ids);
+            let _faulty_senders = self.synchronizer.invalid_vertices(dropped_vertex_ids);
             // We don't disconnect from the faulty senders here: The block validator considers the
             // value "invalid" even if it just couldn't download the deploys, which could just be
             // because the original sender went offline.

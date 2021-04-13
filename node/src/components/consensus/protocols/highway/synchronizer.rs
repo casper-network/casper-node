@@ -378,10 +378,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and
     /// returns the set of their senders. If the specified dependencies are known to be invalid,
     /// those senders must be faulty.
-    pub(crate) fn drop_dependent_vertices(
-        &mut self,
-        mut vertices: Vec<Dependency<C>>,
-    ) -> HashSet<I> {
+    pub(crate) fn invalid_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> HashSet<I> {
         let mut senders = HashSet::new();
         while !vertices.is_empty() {
             let (new_vertices, new_senders) = self.do_drop_dependent_vertices(vertices);
