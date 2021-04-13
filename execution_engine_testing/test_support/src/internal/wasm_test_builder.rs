@@ -121,7 +121,7 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::initialize_logging();
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::default();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
@@ -736,6 +736,15 @@ where
         self.engine_state
             .get_purse_balance(correlation_id, state_root_hash, purse)
             .expect("should get purse balance")
+    }
+
+    pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash: Blake2bHash =
+            self.post_state_hash.expect("should have post_state_hash");
+        self.engine_state
+            .get_balance(correlation_id, state_root_hash, public_key)
+            .expect("should get purse balance using public key")
     }
 
     pub fn get_proposer_purse_balance(&self) -> U512 {

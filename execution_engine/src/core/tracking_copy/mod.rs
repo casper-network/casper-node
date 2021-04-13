@@ -29,6 +29,8 @@ use crate::{
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
+use super::engine_state::EngineConfig;
+
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
     Success {
@@ -37,6 +39,9 @@ pub enum TrackingCopyQueryResult {
     },
     ValueNotFound(String),
     CircularReference(String),
+    DepthLimit {
+        depth: u64,
+    },
 }
 
 /// Struct containing state relating to a given query.
@@ -53,6 +58,8 @@ struct Query {
     /// Path components which have been followed, held in the same order in which they were
     /// provided to the `query()` call.
     visited_names: Vec<String>,
+    /// Current depth of the query.
+    depth: u64,
 }
 
 impl Query {
@@ -63,6 +70,7 @@ impl Query {
             unvisited_names: path.iter().cloned().collect(),
             visited_names: Vec::new(),
             visited_keys: HashSet::new(),
+            depth: 0,
         }
     }
 
@@ -71,6 +79,11 @@ impl Query {
         let next_name = self.unvisited_names.pop_front().unwrap();
         self.visited_names.push(next_name);
         self.visited_names.last().unwrap()
+    }
+
+    fn navigate(&mut self, key: Key) {
+        self.current_key = key.normalize();
+        self.depth += 1;
     }
 
     fn into_not_found_result(self, msg_prefix: &str) -> TrackingCopyQueryResult {
@@ -85,6 +98,10 @@ impl Query {
             self.current_path()
         );
         TrackingCopyQueryResult::CircularReference(msg)
+    }
+
+    fn into_depth_limit_result(self) -> TrackingCopyQueryResult {
+        TrackingCopyQueryResult::DepthLimit { depth: self.depth }
     }
 
     fn current_path(&self) -> String {
@@ -441,6 +458,7 @@ where
     pub fn query(
         &self,
         correlation_id: CorrelationId,
+        config: &EngineConfig,
         base_key: Key,
         path: &[String],
     ) -> Result<TrackingCopyQueryResult, R::Error> {
@@ -449,9 +467,14 @@ where
         let mut proofs = Vec::new();
 
         loop {
+            if query.depth >= config.max_query_depth {
+                return Ok(query.into_depth_limit_result());
+            }
+
             if !query.visited_keys.insert(query.current_key) {
                 return Ok(query.into_circular_ref_result());
             }
+
             let stored_value = match self
                 .reader
                 .read_with_proof(correlation_id, &query.current_key)?
@@ -479,7 +502,7 @@ where
                 StoredValue::Account(account) => {
                     let name = query.next_name();
                     if let Some(key) = account.named_keys().get(name) {
-                        query.current_key = key.normalize();
+                        query.navigate(*key);
                     } else {
                         let msg_prefix = format!("Name {} not found in Account", name);
                         return Ok(query.into_not_found_result(&msg_prefix));
@@ -487,7 +510,7 @@ where
                 }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
-                        query.current_key = key.normalize();
+                        query.navigate(key);
                     } else {
                         return Ok(query.into_not_found_result("Failed to parse CLValue as Key"));
                     }
@@ -503,7 +526,7 @@ where
                 StoredValue::Contract(contract) => {
                     let name = query.next_name();
                     if let Some(key) = contract.named_keys().get(name) {
-                        query.current_key = key.normalize();
+                        query.navigate(*key);
                     } else {
                         let msg_prefix = format!("Name {} not found in Contract", name);
                         return Ok(query.into_not_found_result(&msg_prefix));
