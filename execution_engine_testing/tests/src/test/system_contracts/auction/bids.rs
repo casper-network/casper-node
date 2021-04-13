@@ -2963,9 +2963,8 @@ fn should_validate_genesis_delegators_bond_amount() {
 fn check_validator_slots_for_accounts(accounts: usize) {
     let accounts = {
         let range = 1..=accounts;
-        let (capacity, _) = range.size_hint();
 
-        let mut tmp: Vec<GenesisAccount> = Vec::with_capacity(capacity);
+        let mut tmp: Vec<GenesisAccount> = Vec::with_capacity(accounts);
 
         for count in range.map(U256::from) {
             let secret_key = {
