@@ -145,9 +145,15 @@ mod tests {
 
     #[test]
     fn test_overflow_in_delegation_rate() {
-        let delegator_1_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
-        let delegator_2_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
-        let delegator_3_key = SecretKey::ed25519([44; SecretKey::ED25519_LENGTH]).into();
+        let delegator_1_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_2_key = SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_3_key = SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
         let seigniorage_recipient = SeigniorageRecipient {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
@@ -162,9 +168,15 @@ mod tests {
 
     #[test]
     fn test_overflow_in_delegation_total_stake() {
-        let delegator_1_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
-        let delegator_2_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
-        let delegator_3_key = SecretKey::ed25519([44; SecretKey::ED25519_LENGTH]).into();
+        let delegator_1_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_2_key = SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_3_key = SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
         let seigniorage_recipient = SeigniorageRecipient {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
