@@ -23,7 +23,7 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepResult},
             BalanceResult, EngineConfig, EngineState, GenesisResult, GetBidsRequest, QueryRequest,
-            QueryResult, UpgradeConfig, UpgradeResult, SYSTEM_ACCOUNT_ADDR,
+            QueryResult, UpgradeConfig, UpgradeResult,
         },
         execution,
     },
@@ -66,7 +66,7 @@ use casper_types::{
 };
 
 use crate::internal::{
-    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -336,7 +336,7 @@ where
     }
 
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(SYSTEM_ACCOUNT_ADDR);
+        let system_account = Key::Account(PublicKey::System.to_account_hash());
 
         let genesis_result = self
             .engine_state
@@ -386,22 +386,30 @@ where
         base_key: Key,
         path: &[String],
     ) -> Result<StoredValue, String> {
-        let post_state = maybe_post_state
-            .or(self.post_state_hash)
-            .expect("builder must have a post-state hash");
-
-        let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
-
-        let query_result = self
-            .engine_state
-            .run_query(CorrelationId::new(), query_request)
-            .expect("should get query response");
+        let query_result = self.query_result(maybe_post_state, base_key, path);
 
         if let QueryResult::Success { value, .. } = query_result {
             return Ok(value.deref().clone());
         }
 
         Err(format!("{:?}", query_result))
+    }
+
+    pub fn query_result(
+        &self,
+        maybe_post_state: Option<Blake2bHash>,
+        base_key: Key,
+        path: &[String],
+    ) -> QueryResult {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+
+        let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
+
+        self.engine_state
+            .run_query(CorrelationId::new(), query_request)
+            .expect("should get query response")
     }
 
     pub fn query_with_proof(
@@ -547,10 +555,9 @@ where
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
     ) -> &mut Self {
-        const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
         let auction = self.get_auction_contract_hash();
         let run_request = ExecuteRequestBuilder::contract_call_by_hash(
-            SYSTEM_ADDR,
+            *SYSTEM_ADDR,
             auction,
             METHOD_RUN_AUCTION,
             runtime_args! {

@@ -24,7 +24,9 @@ use casper_types::{system::auction::BLOCK_REWARD, U512};
 use crate::{
     components::consensus::{
         config::{Config, ProtocolConfig},
-        consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome, ProtocolOutcomes},
+        consensus_protocol::{
+            BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
+        },
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
@@ -61,7 +63,7 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
 const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
-/// The timer for sending the latest panorama reqeuest.
+/// The timer for sending the latest panorama request.
 const TIMER_ID_PANORAMA_REQUEST: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
@@ -74,7 +76,7 @@ where
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
-    pending_values: HashMap<<C::ConsensusValue as ConsensusValueT>::Hash, Vec<ValidVertex<C>>>,
+    pending_values: HashMap<ProposedBlock<C>, Vec<ValidVertex<C>>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
@@ -251,15 +253,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     TIMER_ID_ACTIVE_VALIDATOR,
                 )]
             }
-            AvEffect::RequestNewBlock {
-                block_context,
-                fork_choice,
-            } => {
-                let past_values = self.non_finalized_values(fork_choice).cloned().collect();
-                vec![ProtocolOutcome::CreateNewBlock {
-                    block_context,
-                    past_values,
-                }]
+            AvEffect::RequestNewBlock(block_context) => {
+                vec![ProtocolOutcome::CreateNewBlock(block_context)]
             }
             AvEffect::WeAreFaulty(fault) => {
                 error!("this validator is faulty: {:?}", fault);
@@ -335,19 +330,26 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
         };
 
-        // If the vertex contains a consensus value, request validation.
+        // If the vertex contains a consensus value, i.e. it is a proposal, request validation.
         let vertex = vv.inner();
-        if let (Some(value), Some(timestamp)) = (vertex.value(), vertex.timestamp()) {
+        if let (Some(value), Some(timestamp), Some(swunit)) =
+            (vertex.value(), vertex.timestamp(), vertex.unit())
+        {
+            let panorama = &swunit.wire_unit().panorama;
+            let fork_choice = self.highway.state().fork_choice(panorama);
             if value.needs_validation() {
                 self.log_proposal(vertex, "requesting proposal validation");
-                let cv = value.clone();
+                let ancestor_values = self.ancestors(fork_choice).cloned().collect();
+                let block_context = BlockContext::new(timestamp, ancestor_values);
+                let proposed_block = ProposedBlock::new(value.clone(), block_context);
                 self.pending_values
-                    .entry(value.hash())
+                    .entry(proposed_block.clone())
                     .or_default()
                     .push(vv);
-                outcomes.push(ProtocolOutcome::ValidateConsensusValue(
-                    sender, cv, timestamp,
-                ));
+                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                    sender,
+                    proposed_block,
+                });
                 return outcomes;
             } else {
                 self.log_proposal(vertex, "proposal does not need validation");
@@ -409,20 +411,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.round_success_meter.next_era(era_start_timestamp)
     }
 
-    /// Returns an iterator over all the values that are expected to become finalized, but are not
-    /// finalized yet.
-    fn non_finalized_values(
-        &self,
-        mut fork_choice: Option<C::Hash>,
-    ) -> impl Iterator<Item = &C::ConsensusValue> {
-        let last_finalized = self.finality_detector.last_finalized();
+    /// Returns an iterator over all the values that are in parents of the given block.
+    fn ancestors<'a>(
+        &'a self,
+        mut maybe_hash: Option<&'a C::Hash>,
+    ) -> impl Iterator<Item = &'a C::ConsensusValue> {
         iter::from_fn(move || {
-            if fork_choice.as_ref() == last_finalized {
-                return None;
-            }
-            let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
-            let value = maybe_block.map(|block| &block.value);
-            fork_choice = maybe_block.and_then(|block| block.parent().cloned());
+            let hash = maybe_hash.take()?;
+            let block = self.highway.state().block(hash);
+            let value = Some(&block.value);
+            maybe_hash = block.parent();
             value
         })
     }
@@ -753,24 +751,24 @@ where
 
     fn propose(
         &mut self,
-        value: C::ConsensusValue,
-        block_context: BlockContext,
+        proposed_block: ProposedBlock<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
+        let (value, block_context) = proposed_block.destructure();
         let effects = self.highway.propose(value, block_context);
         self.process_av_effects(effects, now)
     }
 
     fn resolve_validity(
         &mut self,
-        value: &C::ConsensusValue,
+        proposed_block: ProposedBlock<C>,
         valid: bool,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
         if valid {
             let mut outcomes = self
                 .pending_values
-                .remove(&value.hash())
+                .remove(&proposed_block)
                 .into_iter()
                 .flatten()
                 .flat_map(|vv| self.add_valid_vertex(vv, now))
@@ -781,8 +779,8 @@ where
         } else {
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
-            let dropped_vertices = self.pending_values.remove(&value.hash());
-            warn!(?value, ?dropped_vertices, "consensus value is invalid");
+            let dropped_vertices = self.pending_values.remove(&proposed_block);
+            warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");
             let dropped_vertex_ids = dropped_vertices
                 .into_iter()
                 .flatten()

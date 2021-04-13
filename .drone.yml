@@ -29,7 +29,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit --ignore RUSTSEC-2020-0123 --ignore RUSTSEC-2020-0146
+      - cargo audit
 
 trigger:
   branch:
@@ -415,6 +415,30 @@ steps:
       from_secret: vault_token
     CL_VAULT_HOST:
       from_secret: vault_host
+
+- name: publish-repo-prod
+  image: casperlabs/aptly:latest
+  failure: ignore
+  environment:
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: aptly_prod_secret_key
+    AWS_ACCESS_KEY_ID:
+      from_secret: aptly_prod_key_id
+  settings:
+    repo_name:
+      from_secret: aptly_prod_repo
+    region:
+      from_secret: aptly_prod_region
+    gpg_key:
+      from_secret: aptly_prod_gpg_key
+    gpg_pass:
+      from_secret: aptly_prod_gpg_pass
+    distribution_id:
+      from_secret: aptly_prod_dist_id
+    acl: 'public-read'
+    prefix: 'releases'
+    deb_path: './target/debian'
+    deb_name: '*.deb'
 
 - name: build-upgrade-package
   image: casperlabs/node-build-u1804

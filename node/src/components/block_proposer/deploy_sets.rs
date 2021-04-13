@@ -12,8 +12,9 @@ use crate::types::{Chainspec, DeployHash, DeployHeader, Timestamp};
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct BlockProposerDeploySets {
-    /// The collection of deploys pending for inclusion in a block.
-    pub(super) pending: HashMap<DeployHash, DeployType>,
+    /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
+    /// received them.
+    pub(super) pending: HashMap<DeployHash, (DeployType, Timestamp)>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -42,10 +43,16 @@ impl Default for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    pub(super) fn with_next_finalized(self, next_finalized: BlockHeight) -> Self {
+    /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys.
+    pub(super) fn from_finalized(
+        finalized_deploys: Vec<(DeployHash, DeployHeader)>,
+        next_finalized_height: u64,
+    ) -> BlockProposerDeploySets {
         BlockProposerDeploySets {
-            next_finalized,
-            ..self
+            pending: HashMap::new(),
+            finalized_deploys: finalized_deploys.into_iter().collect(),
+            next_finalized: next_finalized_height,
+            finalization_queue: Default::default(),
         }
     }
 }
@@ -97,10 +104,10 @@ pub(super) fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// total deploys pruned
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, DeployType>,
+    deploys: &mut HashMap<DeployHash, (DeployType, Timestamp)>,
     current_instant: Timestamp,
 ) -> usize {
     let initial_len = deploys.len();
-    deploys.retain(|_hash, wrapper| !wrapper.header().expired(current_instant));
+    deploys.retain(|_hash, (deploy_type, _)| !deploy_type.header().expired(current_instant));
     initial_len - deploys.len()
 }

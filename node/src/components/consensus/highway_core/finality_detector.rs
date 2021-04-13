@@ -71,7 +71,7 @@ impl<C: Context> FinalityDetector<C> {
             let finalized_block = FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
-                height: block.height,
+                relative_height: block.height,
                 terminal_block_data,
                 equivocators: unit.panorama.iter_faulty().map(to_id).collect(),
                 proposer: to_id(unit.creator),

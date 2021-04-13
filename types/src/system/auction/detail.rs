@@ -52,7 +52,7 @@ where
             Some(bid) => bid,
             None => return Err(Error::ValidatorNotFound),
         };
-        ret.insert(*bid.validator_public_key(), bid);
+        ret.insert(bid.validator_public_key().clone(), bid);
     }
 
     Ok(ret)
@@ -191,7 +191,7 @@ where
 ///
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<(), Error> {
-    if provider.get_caller() != SYSTEM_ACCOUNT {
+    if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller);
     }
 
@@ -297,7 +297,7 @@ where
 
         let allocation = SeigniorageAllocation::delegator(
             delegator_key,
-            validator_public_key,
+            validator_public_key.clone(),
             delegator_reward_trunc,
         );
 

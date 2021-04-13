@@ -8,7 +8,7 @@ use casper_engine_test_support::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
         DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
-        TIMESTAMP_MILLIS_INCREMENT,
+        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -32,20 +32,37 @@ const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
-static VALIDATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
-static VALIDATOR_2: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
-static VALIDATOR_3: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([7; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([204; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_2: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_3: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([208; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
+static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
+static VALIDATOR_3: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
+static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
+static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
+static DELEGATOR_3: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([208; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
 
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
@@ -154,7 +171,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -196,7 +213,7 @@ fn should_distribute_delegation_rate_zero() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -206,8 +223,8 @@ fn should_distribute_delegation_rate_zero() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -217,8 +234,8 @@ fn should_distribute_delegation_rate_zero() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -256,12 +273,12 @@ fn should_distribute_delegation_rate_zero() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -274,7 +291,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let validator_1_balance = {
         let vaildator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
 
@@ -293,7 +310,7 @@ fn should_distribute_delegation_rate_zero() {
     let delegator_1_balance = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_balance = (expected_total_reward * participant_portion).to_integer();
@@ -302,7 +319,7 @@ fn should_distribute_delegation_rate_zero() {
     let delegator_2_balance = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_2_balance = (expected_total_reward * participant_portion).to_integer();
@@ -316,10 +333,10 @@ fn should_distribute_delegation_rate_zero() {
         withdraw_bid(
             &mut builder,
             *VALIDATOR_1_ADDR,
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             validator_1_balance + U512::from(VALIDATOR_1_STAKE),
         );
-        let validator_1_bid = get_validator_bid(&mut builder, *VALIDATOR_1).unwrap();
+        let validator_1_bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
         assert!(validator_1_bid.inactive());
         assert!(validator_1_bid.staked_amount().is_zero());
         U512::zero()
@@ -328,7 +345,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let delegator_1_balance = {
         assert!(
-            get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_1).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
             "validator withdrawing full stake also removes delegator 1 reinvested funds"
         );
         U512::zero()
@@ -337,7 +354,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let delegator_2_balance = {
         assert!(
-            get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_2).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
             "validator withdrawing full stake also removes delegator 2 reinvested funds"
         );
         U512::zero()
@@ -358,19 +375,19 @@ fn should_distribute_delegation_rate_zero() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -392,7 +409,7 @@ fn should_withdraw_bids_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -434,7 +451,7 @@ fn should_withdraw_bids_after_distribute() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -444,8 +461,8 @@ fn should_withdraw_bids_after_distribute() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -455,8 +472,8 @@ fn should_withdraw_bids_after_distribute() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -494,12 +511,12 @@ fn should_withdraw_bids_after_distribute() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -512,7 +529,7 @@ fn should_withdraw_bids_after_distribute() {
 
     let validator_1_balance = {
         let vaildator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
 
@@ -531,7 +548,7 @@ fn should_withdraw_bids_after_distribute() {
     let delegator_1_balance = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_balance = (expected_total_reward * participant_portion).to_integer();
@@ -540,7 +557,7 @@ fn should_withdraw_bids_after_distribute() {
     let delegator_2_balance = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_2_balance = (expected_total_reward * participant_portion).to_integer();
@@ -551,19 +568,19 @@ fn should_withdraw_bids_after_distribute() {
 
     let delegator_1_unstaked_amount = {
         assert!(
-            get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_1).is_some(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_some(),
             "delegator 1 should have a stake"
         );
         let undelegate_amount = U512::from(DELEGATOR_1_STAKE) + delegator_1_balance;
         undelegate(
             &mut builder,
             *DELEGATOR_1_ADDR,
-            *DELEGATOR_1,
-            *VALIDATOR_1,
+            DELEGATOR_1.clone(),
+            VALIDATOR_1.clone(),
             undelegate_amount,
         );
         assert!(
-            get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_1).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
             "delegator 1 did not unstake full expected amount"
         );
         delegator_1_balance
@@ -575,19 +592,19 @@ fn should_withdraw_bids_after_distribute() {
 
     let delegator_2_unstaked_amount = {
         assert!(
-            get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_2).is_some(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_some(),
             "delegator 2 should have a stake"
         );
         let undelegate_amount = U512::from(DELEGATOR_2_STAKE) + delegator_2_balance;
         undelegate(
             &mut builder,
             *DELEGATOR_2_ADDR,
-            *DELEGATOR_2,
-            *VALIDATOR_1,
+            DELEGATOR_2.clone(),
+            VALIDATOR_1.clone(),
             undelegate_amount,
         );
         assert!(
-            get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_2).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
             "delegator 2 did not unstake full expected amount"
         );
         delegator_2_balance
@@ -599,18 +616,18 @@ fn should_withdraw_bids_after_distribute() {
 
     let validator_1_balance = {
         assert!(
-            get_validator_bid(&mut builder, *VALIDATOR_1).is_some(),
+            get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_some(),
             "validator 1 should have a stake"
         );
         let withdraw_bid_amount = validator_1_balance + U512::from(VALIDATOR_1_STAKE);
         withdraw_bid(
             &mut builder,
             *VALIDATOR_1_ADDR,
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             withdraw_bid_amount,
         );
 
-        let bid = get_validator_bid(&mut builder, *VALIDATOR_1).unwrap();
+        let bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
         assert!(bid.inactive());
         assert!(bid.staked_amount().is_zero());
 
@@ -632,19 +649,19 @@ fn should_withdraw_bids_after_distribute() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -666,7 +683,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -708,7 +725,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -718,8 +735,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -729,8 +746,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -768,12 +785,12 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -784,13 +801,13 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     builder.exec(distribute_request_1).commit().expect_success();
 
-    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
     let delegator_1_staked_amount_1 =
-        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
     let delegator_2_staked_amount_1 =
-        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
 
     let validator_1_updated_stake_1 = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
@@ -845,19 +862,19 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     };
 
     assert!(matches!(
-        era_info_1.select(*VALIDATOR_1).next(),
+        era_info_1.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout_1
     ));
 
     assert!(matches!(
-        era_info_1.select(*DELEGATOR_1).next(),
+        era_info_1.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_payout_1
     ));
 
     assert!(matches!(
-        era_info_1.select(*DELEGATOR_2).next(),
+        era_info_1.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_2_payout_1
     ));
@@ -872,7 +889,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert!(total_supply_2 > initial_supply);
 
     let distribute_request_2 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -887,13 +904,13 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
 
-    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
     let delegator_1_staked_amount_2 =
-        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
     let delegator_2_staked_amount_2 =
-        get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
 
     let validator_1_updated_stake_2 = {
         let validator_stake_before = validator_1_staked_amount_1;
@@ -952,19 +969,19 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let expected_validator_1_payout_2 = expected_validator_1_balance_ratio_2.to_integer();
 
     assert!(matches!(
-        era_info_2.select(*VALIDATOR_1).next(),
+        era_info_2.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount, .. })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout_2
     ));
 
     assert!(matches!(
-        era_info_2.select(*DELEGATOR_1).next(),
+        era_info_2.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_payout_2
     ));
 
     assert!(matches!(
-        era_info_2.select(*DELEGATOR_2).next(),
+        era_info_2.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_2_payout_2
     ));
@@ -975,12 +992,13 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     undelegate(
         &mut builder,
         *DELEGATOR_1_ADDR,
-        *DELEGATOR_1,
-        *VALIDATOR_1,
+        DELEGATOR_1.clone(),
+        VALIDATOR_1.clone(),
         delegator_1_rewards,
     );
-    let remaining_delegator_1_bid = get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_1)
-        .expect("should have delegator bid");
+    let remaining_delegator_1_bid =
+        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+            .expect("should have delegator bid");
     assert_eq!(
         *remaining_delegator_1_bid.staked_amount(),
         U512::from(DELEGATOR_1_STAKE)
@@ -991,12 +1009,13 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     undelegate(
         &mut builder,
         *DELEGATOR_2_ADDR,
-        *DELEGATOR_2,
-        *VALIDATOR_1,
+        DELEGATOR_2.clone(),
+        VALIDATOR_1.clone(),
         delegator_2_rewards,
     );
-    let remaining_delegator_2_bid = get_delegator_bid(&mut builder, *VALIDATOR_1, *DELEGATOR_2)
-        .expect("should have delegator bid");
+    let remaining_delegator_2_bid =
+        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
+            .expect("should have delegator bid");
     assert_eq!(
         *remaining_delegator_2_bid.staked_amount(),
         U512::from(DELEGATOR_2_STAKE)
@@ -1008,11 +1027,11 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     withdraw_bid(
         &mut builder,
         *VALIDATOR_1_ADDR,
-        *VALIDATOR_1,
+        VALIDATOR_1.clone(),
         validator_1_rewards,
     );
     let remaining_validator_1_bid =
-        get_validator_bid(&mut builder, *VALIDATOR_1).expect("should have validator bid");
+        get_validator_bid(&mut builder, VALIDATOR_1.clone()).expect("should have validator bid");
     assert_eq!(
         *remaining_validator_1_bid.staked_amount(),
         U512::from(VALIDATOR_1_STAKE)
@@ -1042,7 +1061,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1084,7 +1103,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -1095,7 +1114,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -1106,7 +1125,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -1144,14 +1163,14 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 
     let reward_factors_1: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR_1);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR_1);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR_1);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR_1);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR_1);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR_1);
         tmp
     };
 
     let distribute_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1162,15 +1181,15 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 
     builder.exec(distribute_request_1).commit().expect_success();
 
-    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
 
-    let validator_2_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_2)
+    let validator_2_staked_amount_1 = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
         .expect("should have validator bid")
         .staked_amount();
 
-    let validator_3_staked_amount_1 = *get_validator_bid(&mut builder, *VALIDATOR_3)
+    let validator_3_staked_amount_1 = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
         .expect("should have validator bid")
         .staked_amount();
 
@@ -1224,19 +1243,19 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     };
 
     assert!(matches!(
-        era_info_1.select(*VALIDATOR_1).next(),
+        era_info_1.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
     ));
 
     assert!(matches!(
-        era_info_1.select(*VALIDATOR_2).next(),
+        era_info_1.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout_1
     ));
 
     assert!(matches!(
-        era_info_1.select(*VALIDATOR_3).next(),
+        era_info_1.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout_1
     ));
@@ -1253,14 +1272,14 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 
     let reward_factors_2 = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR_2);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR_2);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR_2);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR_2);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR_2);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR_2);
         tmp
     };
 
     let distribute_request_2 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1275,15 +1294,15 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert!(expected_total_reward_2 > expected_total_reward_1);
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
 
-    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_1)
+    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
 
-    let validator_2_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_2)
+    let validator_2_staked_amount_2 = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
         .expect("should have validator bid")
         .staked_amount();
 
-    let validator_3_staked_amount_2 = *get_validator_bid(&mut builder, *VALIDATOR_3)
+    let validator_3_staked_amount_2 = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
         .expect("should have validator bid")
         .staked_amount();
 
@@ -1348,19 +1367,19 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert_ne!(era_info_1, era_info_2);
 
     assert!(matches!(
-        era_info_2.select(*VALIDATOR_1).next(),
+        era_info_2.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout_2
     ));
 
     assert!(matches!(
-        era_info_2.select(*VALIDATOR_2).next(),
+        era_info_2.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout_2
     ));
 
     assert!(matches!(
-        era_info_2.select(*VALIDATOR_3).next(),
+        era_info_2.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout_2
     ));
@@ -1371,11 +1390,11 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     withdraw_bid(
         &mut builder,
         *VALIDATOR_1_ADDR,
-        *VALIDATOR_1,
+        VALIDATOR_1.clone(),
         validator_1_reward,
     );
     let remaining_validator_1_bid =
-        get_validator_bid(&mut builder, *VALIDATOR_1).expect("should have validator bid");
+        get_validator_bid(&mut builder, VALIDATOR_1.clone()).expect("should have validator bid");
     assert_eq!(
         *remaining_validator_1_bid.staked_amount(),
         U512::from(VALIDATOR_1_STAKE)
@@ -1386,11 +1405,11 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     withdraw_bid(
         &mut builder,
         *VALIDATOR_2_ADDR,
-        *VALIDATOR_2,
+        VALIDATOR_2.clone(),
         validator_2_reward,
     );
     let remaining_validator_2_bid =
-        get_validator_bid(&mut builder, *VALIDATOR_2).expect("should have validator bid");
+        get_validator_bid(&mut builder, VALIDATOR_2.clone()).expect("should have validator bid");
     assert_eq!(
         *remaining_validator_2_bid.staked_amount(),
         U512::from(VALIDATOR_2_STAKE)
@@ -1401,11 +1420,11 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     withdraw_bid(
         &mut builder,
         *VALIDATOR_3_ADDR,
-        *VALIDATOR_3,
+        VALIDATOR_3.clone(),
         validator_3_reward,
     );
     let remaining_validator_3_bid =
-        get_validator_bid(&mut builder, *VALIDATOR_3).expect("should have validator bid");
+        get_validator_bid(&mut builder, VALIDATOR_3.clone()).expect("should have validator bid");
     assert_eq!(
         *remaining_validator_3_bid.staked_amount(),
         U512::from(VALIDATOR_3_STAKE)
@@ -1433,7 +1452,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1475,7 +1494,7 @@ fn should_distribute_delegation_rate_half() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -1485,8 +1504,8 @@ fn should_distribute_delegation_rate_half() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -1496,8 +1515,8 @@ fn should_distribute_delegation_rate_half() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -1535,12 +1554,12 @@ fn should_distribute_delegation_rate_half() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1553,7 +1572,7 @@ fn should_distribute_delegation_rate_half() {
 
     let validator_1_balance = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1566,7 +1585,7 @@ fn should_distribute_delegation_rate_half() {
     let delegator_1_balance = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_balance = (expected_total_reward * delegator_shares).to_integer();
@@ -1575,7 +1594,7 @@ fn should_distribute_delegation_rate_half() {
     let delegator_2_balance = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_2_balance = (expected_total_reward * delegator_shares).to_integer();
@@ -1598,19 +1617,19 @@ fn should_distribute_delegation_rate_half() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -1629,7 +1648,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1671,7 +1690,7 @@ fn should_distribute_delegation_rate_full() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -1681,8 +1700,8 @@ fn should_distribute_delegation_rate_full() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -1692,8 +1711,8 @@ fn should_distribute_delegation_rate_full() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -1731,12 +1750,12 @@ fn should_distribute_delegation_rate_full() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1749,7 +1768,7 @@ fn should_distribute_delegation_rate_full() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1761,7 +1780,7 @@ fn should_distribute_delegation_rate_full() {
     let delegator_1_updated_stake = {
         let validator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let validator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         validator_stake_after - validator_stake_before
     };
     let expected_delegator_1_balance = U512::zero();
@@ -1770,7 +1789,7 @@ fn should_distribute_delegation_rate_full() {
     let delegator_2_balance = {
         let validator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let validator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         validator_stake_after - validator_stake_before
     };
     let expected_delegator_2_balance = U512::zero();
@@ -1793,19 +1812,19 @@ fn should_distribute_delegation_rate_full() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -1830,7 +1849,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1872,7 +1891,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -1882,8 +1901,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -1893,8 +1912,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -1932,12 +1951,12 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -1950,7 +1969,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1962,7 +1981,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     let delegator_1_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_payout = (expected_total_reward * delegator_1_portion).to_integer();
@@ -1971,7 +1990,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     let delegator_2_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_2_payout = (expected_total_reward * delegator_2_portion).to_integer();
@@ -1995,19 +2014,19 @@ fn should_distribute_uneven_delegation_rate_zero() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_payout
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_2_payout
     ));
@@ -2032,7 +2051,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2074,7 +2093,7 @@ fn should_distribute_by_factor() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -2085,7 +2104,7 @@ fn should_distribute_by_factor() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -2096,7 +2115,7 @@ fn should_distribute_by_factor() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -2134,14 +2153,14 @@ fn should_distribute_by_factor() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2154,7 +2173,7 @@ fn should_distribute_by_factor() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2166,7 +2185,7 @@ fn should_distribute_by_factor() {
 
     let validator_2_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2177,7 +2196,7 @@ fn should_distribute_by_factor() {
 
     let validator_3_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2206,19 +2225,19 @@ fn should_distribute_by_factor() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
     ));
@@ -2243,7 +2262,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2285,7 +2304,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -2296,7 +2315,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -2307,7 +2326,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -2345,14 +2364,14 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2365,7 +2384,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2377,7 +2396,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_2_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2388,7 +2407,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_3_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2416,19 +2435,19 @@ fn should_distribute_by_factor_regardless_of_stake() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
     ));
@@ -2455,7 +2474,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2497,7 +2516,7 @@ fn should_distribute_by_factor_uneven() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -2508,7 +2527,7 @@ fn should_distribute_by_factor_uneven() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -2519,7 +2538,7 @@ fn should_distribute_by_factor_uneven() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -2557,14 +2576,14 @@ fn should_distribute_by_factor_uneven() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2577,7 +2596,7 @@ fn should_distribute_by_factor_uneven() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2587,7 +2606,7 @@ fn should_distribute_by_factor_uneven() {
 
     let validator_2_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2597,7 +2616,7 @@ fn should_distribute_by_factor_uneven() {
 
     let validator_3_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2624,19 +2643,19 @@ fn should_distribute_by_factor_uneven() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_balance
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
     ));
@@ -2667,7 +2686,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2739,7 +2758,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -2750,7 +2769,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_2_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -2761,7 +2780,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_3_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -2771,8 +2790,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -2782,8 +2801,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -2793,8 +2812,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_3_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_2,
-            ARG_DELEGATOR => *DELEGATOR_3,
+            ARG_VALIDATOR => VALIDATOR_2.clone(),
+            ARG_DELEGATOR => DELEGATOR_3.clone(),
         },
     )
     .build();
@@ -2838,14 +2857,14 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -2858,7 +2877,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2866,7 +2885,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_2_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2874,7 +2893,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_3_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2883,21 +2902,21 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     let delegator_1_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
 
     let delegator_2_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
 
     let delegator_3_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_3_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_2, *DELEGATOR_3);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_2.clone(), DELEGATOR_3.clone());
         delegator_stake_after - delegator_stake_before
     };
 
@@ -2929,37 +2948,37 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_updated_stake
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_updated_stake
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_updated_stake
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_updated_stake
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_updated_stake
     ));
 
     assert!(matches!(
-        era_info.select(*DELEGATOR_3).next(),
+        era_info.select(DELEGATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == *DELEGATOR_3 && *amount == delegator_3_updated_stake
     ));
@@ -2993,7 +3012,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -3065,7 +3084,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -3076,7 +3095,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -3087,7 +3106,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -3097,8 +3116,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3108,8 +3127,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_2,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_2.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3119,8 +3138,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_3,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_3.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3164,14 +3183,14 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3184,7 +3203,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_1_updated_stake = {
         let validator_balance_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -3195,7 +3214,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_2_updated_stake = {
         let validator_balance_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, *VALIDATOR_2)
+        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -3205,7 +3224,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_3_updated_stake = {
         let validator_balance_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, *VALIDATOR_3)
+        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -3220,7 +3239,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_1_updated_stake = {
         let delegator_balance_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_balance_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_balance_after - delegator_balance_before
     };
     let expected_delegator_1_validator_1_payout =
@@ -3234,7 +3253,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_2_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_2, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_2.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_validator_2_payout =
@@ -3247,7 +3266,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_3_updated_stake = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_3, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_3.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_validator_3_payout =
@@ -3285,48 +3304,48 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     };
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_balance
     ));
 
     assert!(matches!(
-        era_info.select(*VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_updated_stake
     ));
 
     let delegator_1_allocations: Vec<SeigniorageAllocation> =
-        era_info.select(*DELEGATOR_1).cloned().collect();
+        era_info.select(DELEGATOR_1.clone()).cloned().collect();
 
     assert_eq!(delegator_1_allocations.len(), 3);
 
     assert!(
         delegator_1_allocations.contains(&SeigniorageAllocation::delegator(
-            *DELEGATOR_1,
-            *VALIDATOR_1,
+            DELEGATOR_1.clone(),
+            VALIDATOR_1.clone(),
             expected_delegator_1_validator_1_payout,
         ))
     );
 
     assert!(
         delegator_1_allocations.contains(&SeigniorageAllocation::delegator(
-            *DELEGATOR_1,
-            *VALIDATOR_2,
+            DELEGATOR_1.clone(),
+            VALIDATOR_2.clone(),
             expected_delegator_1_validator_2_payout,
         ))
     );
 
     assert!(
         delegator_1_allocations.contains(&SeigniorageAllocation::delegator(
-            *DELEGATOR_1,
-            *VALIDATOR_3,
+            DELEGATOR_1.clone(),
+            VALIDATOR_3.clone(),
             expected_delegator_1_validator_3_payout,
         ))
     );
@@ -3351,7 +3370,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -3423,7 +3442,7 @@ fn should_increase_total_supply_after_distribute() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -3434,7 +3453,7 @@ fn should_increase_total_supply_after_distribute() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_2_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_2,
+            ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -3445,7 +3464,7 @@ fn should_increase_total_supply_after_distribute() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_3_STAKE),
             ARG_DELEGATION_RATE => DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_3,
+            ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
     .build();
@@ -3455,8 +3474,8 @@ fn should_increase_total_supply_after_distribute() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3466,8 +3485,8 @@ fn should_increase_total_supply_after_distribute() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_2,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_2.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3477,8 +3496,8 @@ fn should_increase_total_supply_after_distribute() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_3,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_3.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3534,14 +3553,14 @@ fn should_increase_total_supply_after_distribute() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_2, VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(*VALIDATOR_3, VALIDATOR_3_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3574,7 +3593,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            ARG_TARGET => SYSTEM_ADDR,
+            ARG_TARGET => *SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -3616,7 +3635,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -3626,8 +3645,8 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -3637,8 +3656,8 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -3676,12 +3695,12 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3694,7 +3713,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let validator_1_stake_before = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -3707,7 +3726,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let delegator_1_stake_before = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_payout_before = U512::zero();
@@ -3716,7 +3735,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let delegator_2_stake_before = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_2_balance = U512::zero();
@@ -3758,12 +3777,12 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
         let mut tmp = BTreeMap::new();
-        tmp.insert(*VALIDATOR_1, BLOCK_REWARD);
+        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
         tmp
     };
 
     let distribute_request = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
+        *SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
@@ -3783,7 +3802,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 
     let validator_1_balance_after = {
-        let validator_staked_amount = *get_validator_bid(&mut builder, *VALIDATOR_1)
+        let validator_staked_amount = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_staked_amount - validator_1_stake_before - U512::from(VALIDATOR_1_STAKE)
@@ -3797,7 +3816,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let delegator_1_balance_after = {
         let delegator_staked_amount =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_1);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_staked_amount - delegator_1_stake_before - U512::from(DELEGATOR_1_STAKE)
     };
     let expected_delegator_1_balance_after = U512::zero();
@@ -3808,7 +3827,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let delegator_2_balance_after = {
         let delegator_staked_amount =
-            get_delegator_staked_amount(&mut builder, *VALIDATOR_1, *DELEGATOR_2);
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_staked_amount - delegator_2_stake_before - U512::from(DELEGATOR_2_STAKE)
     };
     let expected_delegator_2_balance_after = U512::zero();

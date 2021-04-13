@@ -50,6 +50,7 @@ pub enum FunctionIndex {
     Blake2b,
     RecordTransfer,
     RecordEraInfo,
+    Delete,
 }
 
 impl Into<usize> for FunctionIndex {

@@ -68,8 +68,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
-        ProtoBlock, Tag, Timestamp,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, BlockPayload, Deploy, ExitCode,
+        NodeId, Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -174,10 +174,10 @@ pub enum Event {
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
 
-    /// Proto block validator request.
+    /// Block payload validator request.
     #[from]
-    ProtoBlockValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
+    BlockPayloadValidatorRequest(
+        #[serde(skip_serializing)] BlockValidationRequest<BlockPayload, NodeId>,
     ),
 
     /// Request for state storage.
@@ -303,7 +303,9 @@ impl Display for Event {
             Event::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
-            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
+            Event::BlockPayloadValidatorRequest(req) => {
+                write!(f, "block validator request: {}", req)
+            }
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
@@ -342,7 +344,7 @@ pub struct Reactor {
     linear_chain_sync: LinearChainSync<NodeId>,
     block_validator: BlockValidator<Block, NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
-    linear_chain: linear_chain::LinearChain<NodeId>,
+    linear_chain: linear_chain::LinearChainComponent<NodeId>,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -403,13 +405,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             false,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             false,
         )?;
 
@@ -460,11 +461,11 @@ impl reactor::Reactor for Reactor {
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            protocol_version.clone(),
+            *protocol_version,
         )?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), protocol_version.clone())?;
+            EventStreamServer::new(config.event_stream_server.clone(), *protocol_version)?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
@@ -491,17 +492,11 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_block_header(),
         );
 
-        let linear_chain = linear_chain::LinearChain::new(
+        let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
-            protocol_version.clone(),
-            chainspec_loader.initial_state_root_hash(),
+            *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id(),
         )?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
@@ -528,6 +523,10 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::LinearChainSync,
             init_sync_effects,
+        ));
+        effects.extend(reactor::wrap_effects(
+            Event::ChainspecLoader,
+            chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
         Ok((
@@ -795,10 +794,10 @@ impl reactor::Reactor for Reactor {
                 error!("ignoring block proposer request {}", request);
                 Effects::new()
             }
-            Event::ProtoBlockValidatorRequest(request) => {
+            Event::BlockPayloadValidatorRequest(request) => {
                 // During joining phase, consensus component should not be requesting
-                // validation of the proto block.
-                error!("ignoring proto block validation request {}", request);
+                // validation of the block payload.
+                error!("ignoring block payload validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(
@@ -825,9 +824,6 @@ impl reactor::Reactor for Reactor {
                 );
                 let reactor_event =
                     Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                let reactor_event =
-                    Event::ChainspecLoader(chainspec_loader::Event::CheckForNextUpgrade);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }

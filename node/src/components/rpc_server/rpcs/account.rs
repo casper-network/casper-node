@@ -10,10 +10,11 @@ use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
+
+use casper_types::ProtocolVersion;
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -30,7 +31,7 @@ static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),
 });
 static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy_hash: *Deploy::doc_example().id(),
 });
 
@@ -54,7 +55,7 @@ impl DocExample for PutDeployParams {
 pub struct PutDeployResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: Version,
+    pub api_version: ProtocolVersion,
     /// The deploy hash.
     pub deploy_hash: DeployHash,
 }
@@ -79,7 +80,7 @@ impl RpcWithParamsExt for PutDeploy {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         params: Self::RequestParams,
-        api_version: Version,
+        api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let deploy_hash = *params.deploy.id();

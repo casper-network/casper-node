@@ -33,6 +33,7 @@ pub mod validator;
 #[cfg(test)]
 use std::sync::Arc;
 use std::{
+    any,
     collections::HashMap,
     env,
     fmt::{Debug, Display},
@@ -444,7 +445,10 @@ where
         // right now, since storage size of events is not an issue per se, but copying might be
         // expensive if events get too large.
         if event_size > 16 * mem::size_of::<usize>() {
-            warn!(%event_size, "large event size, consider reducing it or boxing");
+            warn!(
+                %event_size, type_name = ?any::type_name::<R::Event>(),
+                "large event size, consider reducing it or boxing"
+            );
         }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
@@ -702,6 +706,24 @@ where
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                        // TODO: Workaround, until we actually use control announcements for
+                        // exiting: Go over the entire remaining event queue and look for a control
+                        // announcement. This approach is hacky, and should be replaced with
+                        // `ControlAnnouncement` handling instead.
+
+                        for event in self.scheduler.drain_queue(QueueKind::Control).await {
+                            if let Some(ctrl_ann) = event.as_control() {
+                                match ctrl_ann {
+                                    ControlAnnouncement::FatalError { file, line, msg } => {
+                                        warn!(%file, line=*line, %msg, "exiting due to fatal error scheduled before reactor completion");
+                                        return ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                                    }
+                                }
+                            } else {
+                                debug!(%event, "found non-control announcement while draining queue")
+                            }
+                        }
+
                         break reactor_exit;
                     }
                     if !self.crank(rng).await {

@@ -53,13 +53,10 @@ mod internal {
     use crate::{
         account::AccountHash,
         system::handle_payment::{Error, MintProvider, RuntimeProvider},
-        Key, Phase, URef, U512,
+        Key, Phase, PublicKey, URef, U512,
     };
 
     use super::{PAYMENT_PURSE_KEY, REFUND_PERCENTAGE, REFUND_PURSE_KEY};
-
-    /// Account used to run system functions (in particular `finalize_payment`).
-    const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
 
     /// Returns the purse for accepting payment for transactions.
     pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
@@ -106,7 +103,7 @@ mod internal {
         target: URef,
     ) -> Result<(), Error> {
         let caller = provider.get_caller();
-        if caller != SYSTEM_ACCOUNT {
+        if caller != PublicKey::System.to_account_hash() {
             return Err(Error::SystemFunctionCalledByUserAccount);
         }
 

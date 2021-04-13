@@ -123,6 +123,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     remove_contract_user_group_urefs: HostFunction::fixed(0),
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
+    delete: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -232,7 +233,7 @@ fn should_verify_isolated_auction_storage_is_free() {
             .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_AMOUNT => bond_amount,
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
