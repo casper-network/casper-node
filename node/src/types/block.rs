@@ -221,16 +221,17 @@ impl BlockPayload {
         &self.accusations
     }
 
-    /// The list of deploy hashes included in the block.
+    /// The list of deploy hashes included in the block, excluding transfers.
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
         &self.deploy_hashes
     }
 
-    /// The list of deploy hashes included in the block.
+    /// The list of transfer hashes included in the block.
     pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
         &self.transfer_hashes
     }
 
+    /// Returns an iterator over all deploys and transfers.
     pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes()
             .iter()
