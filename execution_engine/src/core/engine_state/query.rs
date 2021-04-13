@@ -11,6 +11,9 @@ pub enum QueryResult {
     RootNotFound,
     ValueNotFound(String),
     CircularReference(String),
+    DepthLimit {
+        depth: u64,
+    },
     Success {
         value: Box<StoredValue>,
         proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
@@ -57,6 +60,7 @@ impl From<TrackingCopyQueryResult> for QueryResult {
                 let value = Box::new(value);
                 QueryResult::Success { value, proofs }
             }
+            TrackingCopyQueryResult::DepthLimit { depth } => QueryResult::DepthLimit { depth },
         }
     }
 }

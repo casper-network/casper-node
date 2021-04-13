@@ -413,7 +413,12 @@ where
         let tracking_copy = tracking_copy.borrow();
 
         Ok(tracking_copy
-            .query(correlation_id, query_request.key(), query_request.path())
+            .query(
+                correlation_id,
+                &self.config,
+                query_request.key(),
+                query_request.path(),
+            )
             .map_err(|err| Error::Exec(err.into()))?
             .into())
     }
