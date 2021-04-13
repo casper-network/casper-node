@@ -6,9 +6,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    runtime_args,
-    system::handle_payment,
-    ApiError, Phase, RuntimeArgs, URef, U512,
+    runtime_args, system::handle_payment, ApiError, Phase, RuntimeArgs, URef, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
