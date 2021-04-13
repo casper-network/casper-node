@@ -8,7 +8,10 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus, gossiper, small_network::GossipedAddress},
+    components::{
+        consensus, gossiper,
+        small_network::{GossipedAddress, Payload},
+    },
     types::{Deploy, FinalitySignature, Item, Tag},
 };
 
@@ -42,6 +45,8 @@ pub enum Message {
     #[from]
     FinalitySignature(Box<FinalitySignature>),
 }
+
+impl Payload for Message {}
 
 impl Message {
     pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, bincode::Error> {

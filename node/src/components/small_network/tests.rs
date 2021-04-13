@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork,
+    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, Payload,
+    SmallNetwork,
 };
 use crate::{
     components::{
@@ -114,6 +115,8 @@ impl Display for Message {
         Debug::fmt(self, f)
     }
 }
+
+impl Payload for Message {}
 
 /// Test reactor.
 ///

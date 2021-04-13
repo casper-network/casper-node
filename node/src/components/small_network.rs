@@ -101,6 +101,12 @@ const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
+/// Network message payload.
+///
+/// Payloads are what is transferred across the network outside of control messages from the
+/// networking component itself.
+pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
@@ -180,7 +186,7 @@ where
 
 impl<REv, P> SmallNetwork<REv, P>
 where
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Payload + 'static,
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
@@ -935,7 +941,7 @@ where
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Payload,
 {
     type Event = Event<P>;
     type ConstructionError = Infallible;
