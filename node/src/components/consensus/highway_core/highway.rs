@@ -402,7 +402,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
@@ -511,7 +511,7 @@ impl<C: Context> Highway<C> {
                     result.extend(self.add_valid_vertex(vv.clone(), timestamp))
                 }
                 Effect::WeAreFaulty(_) => self.deactivate_validator(),
-                Effect::ScheduleTimer(_) | Effect::RequestNewBlock { .. } => (),
+                Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
         }
         result.extend(effects);

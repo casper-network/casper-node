@@ -160,10 +160,11 @@ fn should_add_and_take_deploys() {
         DEFAULT_TEST_GAS_PRICE,
     );
 
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time2,
         no_deploys.clone(),
+        vec![],
         true,
     );
     assert!(block.deploy_hashes().is_empty());
@@ -175,10 +176,11 @@ fn should_add_and_take_deploys() {
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time1,
         no_deploys.clone(),
+        vec![],
         true,
     );
     assert!(block.deploy_hashes().is_empty());
@@ -186,20 +188,22 @@ fn should_add_and_take_deploys() {
 
     // if we try to create a block with a timestamp that is too late, we shouldn't get any
     // deploys, either
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time3,
         no_deploys.clone(),
+        vec![],
         true,
     );
     assert!(block.deploy_hashes().is_empty());
     assert!(block.transfer_hashes().is_empty());
 
     // take the deploys out
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time2,
         no_deploys.clone(),
+        vec![],
         true,
     );
     assert!(block.transfer_hashes().is_empty());
@@ -208,10 +212,11 @@ fn should_add_and_take_deploys() {
     assert!(block.deploy_hashes().contains(&deploy2.id()));
 
     // take the deploys out
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time2,
         no_deploys.clone(),
+        vec![],
         true,
     );
     assert!(block.transfer_hashes().is_empty());
@@ -219,10 +224,11 @@ fn should_add_and_take_deploys() {
 
     // but they shouldn't be returned if we include it in the past deploys
     let deploy_hashes = block.deploys_and_transfers_iter().copied().collect_vec();
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time2,
         block.deploys_and_transfers_iter().copied().collect(),
+        vec![],
         true,
     );
     assert!(block.deploy_hashes().is_empty());
@@ -235,8 +241,13 @@ fn should_add_and_take_deploys() {
     proposer.add_deploy_or_transfer(block_time2, *deploy3.id(), deploy3.deploy_type().unwrap());
     proposer.add_deploy_or_transfer(block_time2, *deploy4.id(), deploy4.deploy_type().unwrap());
 
-    let block =
-        proposer.propose_proto_block(DeployConfig::default(), block_time2, no_deploys, true);
+    let block = proposer.propose_block_payload(
+        DeployConfig::default(),
+        block_time2,
+        no_deploys,
+        vec![],
+        true,
+    );
 
     // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
     assert!(block.transfer_hashes().is_empty());
@@ -578,7 +589,7 @@ fn test_proposer_with(
         );
     }
 
-    let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
+    let block = proposer.propose_block_payload(config, test_time, past_deploys, vec![], true);
     let all_deploys = block.deploys_and_transfers_iter().collect_vec();
     proposer.finalized_deploys(all_deploys.iter().map(|hash| **hash));
     println!("proposed deploys {}", block.deploy_hashes().len());
@@ -632,10 +643,11 @@ fn should_return_deploy_dependencies() {
     proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
 
     // deploy2 has an unsatisfied dependency
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time,
         no_deploys.clone(),
+        vec![],
         true,
     );
     assert!(block.deploy_hashes().is_empty());
@@ -644,10 +656,11 @@ fn should_return_deploy_dependencies() {
     // add deploy1
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
 
-    let block = proposer.propose_proto_block(
+    let block = proposer.propose_block_payload(
         DeployConfig::default(),
         block_time,
         no_deploys.clone(),
+        vec![],
         true,
     );
     let deploys: Vec<DeployHash> = block.deploys_and_transfers_iter().cloned().collect();
@@ -658,7 +671,13 @@ fn should_return_deploy_dependencies() {
     // the deploy will be included in block 1
     proposer.finalized_deploys(deploys.iter().copied());
 
-    let block = proposer.propose_proto_block(DeployConfig::default(), block_time, no_deploys, true);
+    let block = proposer.propose_block_payload(
+        DeployConfig::default(),
+        block_time,
+        no_deploys,
+        vec![],
+        true,
+    );
     // `blocks` contains a block that contains deploy1 now, so we should get deploy2
     let deploys2 = block.deploy_hashes();
     assert_eq!(deploys2.len(), 1);
@@ -684,8 +703,9 @@ fn should_respect_deploy_delay() {
 
     // Add the deploy at time 100. So at 109 it cannot be proposed yet, but at time 110 it can.
     proposer.add_deploy_or_transfer(100.into(), *deploy.id(), deploy.deploy_type().unwrap());
-    let block = proposer.propose_proto_block(deploy_config, 109.into(), no_deploys.clone(), true);
+    let block =
+        proposer.propose_block_payload(deploy_config, 109.into(), no_deploys.clone(), vec![], true);
     assert!(block.deploy_hashes().is_empty());
-    let block = proposer.propose_proto_block(deploy_config, 110.into(), no_deploys, true);
+    let block = proposer.propose_block_payload(deploy_config, 110.into(), no_deploys, vec![], true);
     assert_eq!(&vec![*deploy.id()], block.deploy_hashes());
 }

@@ -143,12 +143,11 @@ pub struct ContractRuntime {
 
     protocol_version: ProtocolVersion,
 
-    /// A mapping from proto block to executed block's ID and post-state hash, to allow
+    /// A mapping from block height to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
     /// The key is a tuple of block's height (it's a linear chain so it's monotonically
-    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
-    /// created from that proto block.
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.

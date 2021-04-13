@@ -1,11 +1,11 @@
 //! Block validator
 //!
-//! The block validator checks whether all the deploys included in the proto block exist, either
+//! The block validator checks whether all the deploys included in the block payload exist, either
 //! locally or on the network.
 //!
-//! When multiple requests are made to validate the same proto block, they will eagerly return true
-//! if valid, but only fail if all sources have been exhausted. This is only relevant when calling
-//! for validation of the same protoblock multiple times at the same time.
+//! When multiple requests are made to validate the same block payload, they will eagerly return
+//! true if valid, but only fail if all sources have been exhausted. This is only relevant when
+//! calling for validation of the same protoblock multiple times at the same time.
 
 mod keyed_counter;
 
@@ -29,7 +29,9 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash, ProtoBlock},
+    types::{
+        appendable_block::AppendableBlock, Block, BlockPayload, Chainspec, Deploy, DeployHash,
+    },
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
@@ -50,7 +52,7 @@ impl BlockLike for Block {
     }
 }
 
-impl BlockLike for ProtoBlock {
+impl BlockLike for BlockPayload {
     fn deploys(&self) -> Vec<&DeployHash> {
         self.deploys_and_transfers_iter().collect()
     }
