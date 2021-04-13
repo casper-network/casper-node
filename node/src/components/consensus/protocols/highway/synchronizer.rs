@@ -158,6 +158,9 @@ where
     /// Vertices that might be ready to add to the protocol state: We are not currently waiting for
     /// a requested dependency.
     vertices_to_be_added: PendingVertices<I, C>,
+    /// Collection of vertices that are being synchronized.
+    /// Ensures that we're not requesting the same dependency twice.
+    pending_vertices: HashSet<Dependency<C>>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
     /// The duration between two consecutive requests of the latest state.
@@ -183,6 +186,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             vertex_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_to_be_added: Default::default(),
+            pending_vertices: Default::default(),
             pending_vertex_timeout,
             request_latest_state_timeout,
             oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
@@ -247,6 +251,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         sender: I,
         pvv: PreValidatedVertex<C>,
     ) {
+        if self.pending_vertices.contains(&pvv.inner().id()) {
+            return;
+        }
+        self.pending_vertices.insert(pvv.inner().id());
         self.vertices_to_be_added_later
             .entry(future_timestamp)
             .or_default()
@@ -344,6 +352,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // There are still vertices in the queue: schedule next call.
                 outcomes.push(ProtocolOutcome::QueueAction(ACTION_ID_VERTEX));
             }
+            self.remove_deps_from_pending(&[pv.vertex().id()]);
             return (Some(pv), outcomes);
         }
     }
@@ -402,6 +411,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     {
         let was_empty = self.vertices_to_be_added.is_empty();
         for pv in pending_vertices {
+            if self.pending_vertices.contains(&pv.vertex().id()) {
+                continue;
+            }
+            self.pending_vertices.insert(pv.vertex().id().clone());
             self.vertices_to_be_added.push(pv);
         }
         if was_empty && !self.vertices_to_be_added.is_empty() {
@@ -418,7 +431,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         vertices: Vec<Dependency<C>>,
     ) -> (Vec<Dependency<C>>, HashSet<I>) {
         // collect the vertices that depend on the ones we got in the argument and their senders
-        vertices
+        let (dependencies, senders): (Vec<Dependency<C>>, HashSet<I>) = vertices
             .into_iter()
             // filtering by is_unit, so that we don't drop vertices depending on invalid evidence
             // or endorsements - we can still get valid ones from someone else and eventually
@@ -427,7 +440,19 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .flat_map(|vertex| self.vertex_deps.remove(&vertex))
             .flatten()
             .map(|pv| (pv.pvv.inner().id(), pv.sender))
-            .unzip()
+            .unzip();
+
+        self.remove_deps_from_pending(&dependencies);
+        (dependencies, senders)
+    }
+
+    // Removes a dependency from the collection of pending vertices.
+    // Must be called only when a dependency is being added to the protocol state or dropped
+    // entirely.
+    fn remove_deps_from_pending(&mut self, deps: &[Dependency<C>]) {
+        for dep in deps {
+            self.pending_vertices.remove(dep);
+        }
     }
 
     /// Removes all expired entries from a `BTreeMap` of `Vec`s.
