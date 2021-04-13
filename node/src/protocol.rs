@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         consensus, gossiper,
-        small_network::{GossipedAddress, Payload},
+        small_network::{GossipedAddress, Payload, PayloadKind},
     },
     types::{Deploy, FinalitySignature, Item, Tag},
 };
@@ -46,7 +46,28 @@ pub enum Message {
     FinalitySignature(Box<FinalitySignature>),
 }
 
-impl Payload for Message {}
+impl Payload for Message {
+    #[inline]
+    fn classify(&self) -> PayloadKind {
+        match self {
+            Message::Consensus(_) => PayloadKind::Consensus,
+            Message::DeployGossiper(_) => PayloadKind::DeployGossip,
+            Message::AddressGossiper(_) => PayloadKind::AddressGossip,
+            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
+                match tag {
+                    Tag::Deploy => PayloadKind::DeployTransfer,
+                    Tag::Block => PayloadKind::BlockTransfer,
+                    // This is a weird message, which we should not encounter here?
+                    Tag::GossipedAddress => PayloadKind::Other,
+                    Tag::BlockByHeight => PayloadKind::BlockTransfer,
+                    Tag::BlockHeaderByHash => PayloadKind::BlockTransfer,
+                    Tag::BlockHeaderAndFinalitySignaturesByHeight => PayloadKind::BlockTransfer,
+                }
+            }
+            Message::FinalitySignature(_) => PayloadKind::BlockTransfer,
+        }
+    }
+}
 
 impl Message {
     pub(crate) fn new_get_request<T: Item>(id: &T::Id) -> Result<Self, bincode::Error> {

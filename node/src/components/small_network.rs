@@ -105,7 +105,28 @@ static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
-pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {}
+pub(crate) trait Payload:
+    Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static
+{
+    fn classify(&self) -> PayloadKind;
+}
+
+/// A classification system for network payloads.
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum PayloadKind {
+    /// Messages directly related to consensus.
+    Consensus,
+    /// Deploys being gossiped.
+    DeployGossip,
+    /// Addresses begin gossiped.
+    AddressGossip,
+    /// Deploys being transferred directly (via requests).
+    DeployTransfer,
+    /// Blocks for finality signatures being transferred directly (via requests and other means).
+    BlockTransfer,
+    /// Any other kind of payload (or missing classification).
+    Other,
+}
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {

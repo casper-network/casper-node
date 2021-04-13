@@ -19,7 +19,7 @@ use tracing::{debug, info};
 
 use super::{
     chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, Payload,
-    SmallNetwork,
+    PayloadKind, SmallNetwork,
 };
 use crate::{
     components::{
@@ -116,7 +116,14 @@ impl Display for Message {
     }
 }
 
-impl Payload for Message {}
+impl Payload for Message {
+    #[inline]
+    fn classify(&self) -> PayloadKind {
+        match self {
+            Message::AddressGossiper(_) => PayloadKind::AddressGossip,
+        }
+    }
+}
 
 /// Test reactor.
 ///
