@@ -1,9 +1,8 @@
 //! Fully connected overlay network
 //!
-//! The *small network* is an overlay network where each node participating is connected to every
-//! other node on the network. The *small* portion of the name stems from the fact that this
-//! approach is not scalable, as it requires at least $O(n)$ network connections and broadcast will
-//! result in $O(n^2)$ messages.
+//! The *small network* is an overlay network where each node participating is attempting to main a
+//! connection to every other node identified on the same network. The component does not guarantee
+//! message delivery, so in between reconnections, messages may be lost.
 //!
 //! # Node IDs
 //!
@@ -12,25 +11,17 @@
 //! connected to the correct node and sends its own certificate during the TLS handshake,
 //! establishing identity.
 //!
-//! # Messages and payloads
-//!
-//! The network itself is best-effort, during regular operation, no messages should be lost.
-//!
 //! # Connection
 //!
 //! Every node has an ID and a public listening address. The objective of each node is to constantly
 //! maintain an outgoing connection to each other node (and thus have an incoming connection from
 //! these nodes as well).
 //!
-//! Any incoming connection is strictly read from, while any outgoing connection is strictly used
-//! for sending messages.
+//! Any incoming connection is, after a handshake process, strictly read from, while any outgoing
+//! connection is strictly used for sending messages, also after a handshake.
 //!
-//! Nodes gossip their public listening addresses periodically, and on learning of a new address,
-//! a node will try to establish an outgoing connection.
-//!
-//! On losing an incoming or outgoing connection for a given peer, the other connection is closed.
-//! No explicit reconnect is attempted. Instead, if the peer is still online, the normal gossiping
-//! process will cause both peers to connect again.
+//! Nodes gossip their public listening addresses periodically, and will try to establish and
+//! maintain an outgoing connection to any new address learned.
 
 mod chain_info;
 mod config;
