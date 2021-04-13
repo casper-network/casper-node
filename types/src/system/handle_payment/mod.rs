@@ -151,10 +151,6 @@ mod internal {
             return Ok(());
         }
 
-        // if let Some(refund_purse) = refund_purse {
-        //     assert_ne!(refund_purse.addr(), payment_purse.a);
-        // }
-
         // give refund
         let refund_purse = match refund_purse {
             Some(uref) => uref,
