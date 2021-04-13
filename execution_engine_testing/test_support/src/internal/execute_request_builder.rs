@@ -142,7 +142,7 @@ impl Default for ExecuteRequestBuilder {
         let execute_request = ExecuteRequest {
             block_time: DEFAULT_BLOCK_TIME,
             protocol_version: ProtocolVersion::V1_0_0,
-            proposer: *DEFAULT_PROPOSER_PUBLIC_KEY,
+            proposer: DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
             ..Default::default()
         };
         ExecuteRequestBuilder { execute_request }

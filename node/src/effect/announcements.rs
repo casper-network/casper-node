@@ -177,7 +177,7 @@ impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusAnnouncement::Finalized(block) => {
-                write!(formatter, "finalized proto block {}", block)
+                write!(formatter, "finalized block payload {}", block)
             }
             ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
                 write!(formatter, "signed an executed block: {}", fs)
