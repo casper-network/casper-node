@@ -111,3 +111,107 @@ fn purge_vertices() {
     assert!(outcomes.is_empty());
     assert!(sync.is_empty());
 }
+
+#[test]
+/// Test that when a vertex depends on a dependency that has already been synchronized, and is
+/// waiting in the synchronizer queue state, but is not yet added to the protocol state – that we
+/// don't request it again.
+fn do_not_download_synchronized_dependencies() {
+    let params = test_params(0);
+    // A Highway and state instances that are used to create PreValidatedVertex instances below.
+
+    let mut state = State::new(WEIGHTS, params.clone(), vec![]);
+    let util_highway =
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
+
+    // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
+    //
+    // time:  0x00 0x0A 0x1A 0x2A 0x3A
+    //
+    // Carol   c0 — c1 — c2
+    //                \
+    // Bob             — b0
+
+    let c0 = add_unit!(state, CAROL, 0x00, 4u8, 0xA; N, N, N).unwrap();
+    let c1 = add_unit!(state, CAROL, 0x0A, 4u8, None; N, N, c0).unwrap();
+    let c2 = add_unit!(state, CAROL, 0x1A, 4u8, None; N, N, c1).unwrap();
+    let b0 = add_unit!(state, BOB, 0x2A, 4u8, None; N, N, c1).unwrap();
+
+    // Returns the WireUnit with the specified hash.
+    let unit = |hash: u64| Vertex::Unit(state.wire_unit(&hash, TEST_INSTANCE_ID).unwrap());
+    // Returns the PreValidatedVertex with the specified hash.
+    let pvv = |hash: u64| util_highway.pre_validate_vertex(unit(hash)).unwrap();
+
+    let peer0 = NodeId(0);
+
+    // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
+    let mut sync = Synchronizer::<NodeId, TestContext>::new(
+        0x20.into(),
+        0x20.into(),
+        WEIGHTS.len(),
+        TEST_INSTANCE_ID,
+    );
+
+    let highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let now = 0x20.into();
+
+    assert!(matches!(
+        *sync.schedule_add_vertex(peer0, pvv(c2), now),
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
+    // `c2` can't be added to the protocol state yet b/c it's missing its `c1` dependency.
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    assert!(pv.is_none());
+    assert_targeted_message(
+        &unwrap_single(outcomes),
+        &peer0,
+        HighwayMessage::RequestDependency(Dependency::Unit(c1)),
+    );
+    // Simulate `c1` being downloaded…
+    let c1_outcomes = sync.schedule_add_vertex(peer0, pvv(c1), now);
+    assert!(matches!(
+        *c1_outcomes,
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
+    // `c1` is now part of the synchronizer's state, we should not try requesting it if other
+    // vertices depend on it.
+    assert!(sync.schedule_add_vertex(peer0, pvv(b0), now).is_empty());
+    // `b0` can't be added to the protocol state b/c it's missing its `c1` dependency,
+    // but `c1` has already been downloaded so we should not request it again. We will only request
+    // `c0` as that's what `c1` depends on.
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    assert!(pv.is_none());
+    assert_targeted_message(
+        &unwrap_single(outcomes),
+        &peer0,
+        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
+    );
+}
+
+#[cfg(test)]
+fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
+    assert_eq!(
+        vec.len(),
+        1,
+        "expected single element in the vector {:?}",
+        vec
+    );
+    vec.into_iter().next().unwrap()
+}
+
+#[cfg(test)]
+fn assert_targeted_message(
+    outcome: &ProtocolOutcome<NodeId, TestContext>,
+    peer: &NodeId,
+    expected: HighwayMessage<TestContext>,
+) {
+    match outcome {
+        ProtocolOutcome::CreatedTargetedMessage(msg, peer0) => {
+            assert_eq!(peer, peer0);
+            let highway_message: HighwayMessage<TestContext> =
+                bincode::deserialize(msg.as_slice()).expect("deserialization to pass");
+            assert_eq!(highway_message, expected);
+        }
+        _ => panic!("unexpected outcome: {:?}", outcome),
+    }
+}

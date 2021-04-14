@@ -76,6 +76,11 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
         Some(PendingVertex::new(sender, pvv, timestamp))
     }
 
+    /// Returns whether depedency exists in the pending vertices collection.
+    fn contains_dependency(&self, d: &Dependency<C>) -> bool {
+        self.0.keys().any(|pvv| &pvv.inner().id() == d)
+    }
+
     /// Drops all pending vertices other than evidence.
     pub(crate) fn retain_evidence_only(&mut self) {
         self.0.retain(|pvv, _| pvv.inner().is_evidence());
@@ -334,6 +339,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 Some(pv) => pv,
             };
             if let Some(dep) = highway.missing_dependency(pv.pvv()) {
+                if self.dep_already_downloaded(&dep) {
+                    // `dep` is already downloaded and waiting in the synchronizer queue to be
+                    // added, we don't have to request it again. Add the `pv`
+                    // back to the queue so that it can be retried later when,
+                    // `dep` is added to the protocol state.
+                    self.add_missing_dependency(dep.clone(), pv);
+                    continue;
+                }
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
                 let sender = pv.sender().clone();
@@ -349,6 +362,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             }
             return (Some(pv), outcomes);
         }
+    }
+
+    fn dep_already_downloaded(&self, dep: &Dependency<C>) -> bool {
+        self.vertices_no_deps.contains_dependency(&dep)
+            || self
+                .vertices_awaiting_deps
+                .values()
+                .any(|pv| pv.contains_dependency(dep))
     }
 
     /// Adds a vertex with a known missing dependency to the queue.
