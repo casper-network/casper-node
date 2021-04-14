@@ -64,7 +64,7 @@ where
     /// The outgoing address has been known for the first time and we are currently connecting.
     Connecting,
     /// The connection has failed at least one connection attempt and is waiting for a retry.
-    FailedWaiting {
+    Waiting {
         /// Number of attempts that failed, so far.
         attempts_so_far: u8,
         /// The most recent connection error.
@@ -202,7 +202,7 @@ where
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
-    /// A cache of addresses that are in the `Connecting` state, used when housekeeping.
+    /// A cache of addresses that are in the `Waiting` state, used during housekeeping.
     waiting_cache: HashSet<SocketAddr>,
 }
 
@@ -261,14 +261,14 @@ where
 
         // Check if we need to consider the connection for reconnection on next sweep.
         match (&prev_state, &new_state) {
-            (Some(OutgoingState::FailedWaiting { .. }), OutgoingState::FailedWaiting { .. }) => {
+            (Some(OutgoingState::Waiting { .. }), OutgoingState::Waiting { .. }) => {
                 trace!("no change in waiting state, already waiting");
             }
-            (Some(OutgoingState::FailedWaiting { .. }), _) => {
+            (Some(OutgoingState::Waiting { .. }), _) => {
                 self.waiting_cache.remove(&addr);
                 debug!("waiting to reconnect");
             }
-            (_, OutgoingState::FailedWaiting { .. }) => {
+            (_, OutgoingState::Waiting { .. }) => {
                 self.waiting_cache.remove(&addr);
                 debug!("now reconnecting");
             }
@@ -427,10 +427,10 @@ where
                     let outgoing = occupied.into_mut();
                     match outgoing.state {
                         // Decide whether to attempt reconnecting a failed-waiting address.
-                        OutgoingState::FailedWaiting { in_progress, .. } if in_progress => {
+                        OutgoingState::Waiting { in_progress, .. } if in_progress => {
                             trace!("ignoring in-progress connection attempt");
                         }
-                        OutgoingState::FailedWaiting {
+                        OutgoingState::Waiting {
                             ref mut attempts_so_far,
                             ref mut last_failure,
                             ref mut in_progress,
@@ -513,7 +513,7 @@ where
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
                 if let Some(outgoing) = self.outgoing.get(&addr) {
-                    if let OutgoingState::FailedWaiting {
+                    if let OutgoingState::Waiting {
                         attempts_so_far, ..
                     } = outgoing.state
                     {
@@ -521,7 +521,7 @@ where
                         // progress state information.
                         self.change_outgoing_state(
                             addr,
-                            OutgoingState::FailedWaiting {
+                            OutgoingState::Waiting {
                                 attempts_so_far: attempts_so_far + 1,
                                 error,
                                 last_failure: when,
@@ -532,7 +532,7 @@ where
                 } else {
                     self.change_outgoing_state(
                         addr,
-                        OutgoingState::FailedWaiting {
+                        OutgoingState::Waiting {
                             attempts_so_far: 0,
                             error,
                             last_failure: when,
