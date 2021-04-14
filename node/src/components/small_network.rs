@@ -25,6 +25,7 @@
 
 mod chain_info;
 mod config;
+mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
