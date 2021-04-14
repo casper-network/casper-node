@@ -74,7 +74,7 @@ where
         /// Whether there is currently a reconnection attempt running.
         in_progress: bool,
     },
-    /// A Functional outgoing connection.
+    /// An established outgoing connection.
     Connected {
         /// The peers remote ID.
         peer_id: NodeId,
