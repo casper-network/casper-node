@@ -152,7 +152,7 @@ fn do_not_download_synchronized_dependencies() {
         TEST_INSTANCE_ID,
     );
 
-    let highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
     let now = 0x20.into();
 
     assert!(matches!(
@@ -186,6 +186,26 @@ fn do_not_download_synchronized_dependencies() {
         &peer0,
         HighwayMessage::RequestDependency(Dependency::Unit(c0)),
     );
+    // "Download" the last dependency.
+    let _ = sync.schedule_add_vertex(peer0, pvv(c0), now);
+    // Now, the whole chain can be added to the protocol state.
+    for unit in &[c0, c1, b0, c2] {
+        let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
+        assert_eq!(Dependency::Unit(*unit), maybe_pv.unwrap().vertex().id());
+        // Verify that we don't request any dependency now.
+        assert!(
+            !outcomes
+                .iter()
+                .any(|outcome| matches!(outcome, ProtocolOutcome::CreatedTargetedMessage(_, _))),
+            "unexpected dependency request {:?}", outcomes
+        );
+        let vv = highway
+            .validate_vertex(pvv(*unit))
+            .unwrap_or_else(|_| panic!("{:?} unit is valid", unit));
+        highway.add_valid_vertex(vv, now);
+        let _ = sync.remove_satisfied_deps(&highway);
+    }
+    assert!(sync.is_empty());
 }
 
 #[cfg(test)]
