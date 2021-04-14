@@ -120,9 +120,9 @@ where
     },
 }
 
-impl<P> DialOutcome<P>
+impl<D> DialOutcome<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     /// Retrieves the socket address from the `DialOutcome`.
     fn addr(&self) -> SocketAddr {
@@ -190,14 +190,14 @@ impl OutgoingConfig {
 ///
 /// See the module documentation for usage suggestions.
 #[derive(Debug, Default)]
-pub(crate) struct OutgoingManager<P>
+pub(crate) struct OutgoingManager<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     /// Outgoing connections subsystem configuration.
     config: OutgoingConfig,
     /// Mapping of address to their current connection state.
-    outgoing: HashMap<SocketAddr, Outgoing<P>>,
+    outgoing: HashMap<SocketAddr, Outgoing<D>>,
     /// Routing table.
     ///
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
@@ -207,9 +207,9 @@ where
     waiting_cache: HashSet<SocketAddr>,
 }
 
-impl<P> OutgoingManager<P>
+impl<D> OutgoingManager<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     /// Creates a logging span for a specific connection.
     #[inline]
@@ -229,7 +229,7 @@ where
     /// Updates internal caches after a state change.
     ///
     /// Given a potential previous state, updates all internal caches like `routes`, etc.
-    fn update_caches(&mut self, addr: SocketAddr, prev_state: Option<&OutgoingState<P>>) {
+    fn update_caches(&mut self, addr: SocketAddr, prev_state: Option<&OutgoingState<D>>) {
         // Check if we need to update the routing table.
         let new_state = if let Some(outgoing) = self.outgoing.get(&addr) {
             &outgoing.state
@@ -284,7 +284,7 @@ where
     /// Will trigger an update of the routing table if necessary.
     ///
     /// Calling this function on an unknown `addr` will emit an error but otherwise be ignored.
-    fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState<P>) {
+    fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState<D>) {
         let prev_state = match self.outgoing.entry(addr) {
             Entry::Vacant(vacant) => {
                 vacant.insert(Outgoing {
@@ -314,7 +314,7 @@ where
     ///
     /// Primary function to send data to peers; clients retrieve a handle to it which can then
     /// be used to send data.
-    pub(crate) fn get_route(&self, peer_id: NodeId) -> Option<&P::Handle> {
+    pub(crate) fn get_route(&self, peer_id: NodeId) -> Option<&D::Handle> {
         let outgoing = self.outgoing.get(self.routes.get(&peer_id)?)?;
 
         if let OutgoingState::Connected { ref handle, .. } = outgoing.state {
@@ -327,7 +327,7 @@ where
     /// Notify about a potentially new address that has been discovered.
     ///
     /// Immediately triggers the connection process to said address if it was not known before.
-    pub(crate) fn learn_addr(&mut self, proto: &mut P, addr: SocketAddr, unforgettable: bool) {
+    pub(crate) fn learn_addr(&mut self, proto: &mut D, addr: SocketAddr, unforgettable: bool) {
         let span = self.mk_span(addr);
         span.clone().in_scope(move || {
             match self.outgoing.entry(addr) {
@@ -385,7 +385,7 @@ where
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
-    pub(crate) fn redeem_addr(&mut self, proto: &mut P, addr: SocketAddr) {
+    pub(crate) fn redeem_addr(&mut self, proto: &mut D, addr: SocketAddr) {
         let span = self.mk_span(addr);
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
@@ -407,7 +407,7 @@ where
     /// Performs housekeeping like reconnection, etc.
     ///
     /// This function must periodically be called. A good interval is every second or faster.
-    fn perform_housekeeping(&mut self, proto: &mut P) {
+    fn perform_housekeeping(&mut self, proto: &mut D) {
         let mut corrupt_entries = Vec::new();
         let mut forgettable_entries = Vec::new();
         let mut resets = Vec::new();
@@ -492,7 +492,7 @@ where
     /// Handles the outcome of a dialing attempt.
     ///
     /// Note that reconnects will earliest happen on the next `perform_housekeeping` call.
-    pub(crate) fn handle_dial_outcome(&mut self, dial_outcome: DialOutcome<P>) {
+    pub(crate) fn handle_dial_outcome(&mut self, dial_outcome: DialOutcome<D>) {
         let span = self.mk_span(dial_outcome.addr());
 
         span.in_scope(move || match dial_outcome {
