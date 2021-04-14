@@ -46,6 +46,16 @@ pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;
 
+/// This is used to define the number of events to buffer in the tokio broadcast channel to help
+/// slower clients to try to avoid missing events (See
+/// https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging for further details).  The
+/// resulting broadcast channel size is `ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE` percent
+/// greater than `config.event_stream_buffer_length`.
+///
+/// We always want the broadcast channel size to be greater than the event stream buffer length so
+/// that a new client can retrieve the entire set of buffered events if desired.
+const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
+
 /// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
 /// work with.
 pub trait ReactorEventT: From<Event> + Send {}
@@ -77,8 +87,10 @@ impl EventStreamServer {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.
+        let broadcast_channel_size = config.event_stream_buffer_length / 100
+            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE);
         let (broadcaster, new_subscriber_info_receiver, sse_filter) =
-            sse_server::create_channels_and_filter(config.broadcast_channel_size);
+            sse_server::create_channels_and_filter(broadcast_channel_size as usize);
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
