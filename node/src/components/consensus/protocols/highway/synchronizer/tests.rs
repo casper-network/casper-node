@@ -67,10 +67,7 @@ fn purge_vertices() {
     assert!(maybe_pv.is_none());
     assert!(matches!(
         *outcomes,
-        [
-            ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0)),
-            ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0)),
-        ]
+        [ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0))]
     ));
 
     // At 0x23, c0 gets enqueued and added.
@@ -197,7 +194,8 @@ fn do_not_download_synchronized_dependencies() {
             !outcomes
                 .iter()
                 .any(|outcome| matches!(outcome, ProtocolOutcome::CreatedTargetedMessage(_, _))),
-            "unexpected dependency request {:?}", outcomes
+            "unexpected dependency request {:?}",
+            outcomes
         );
         let vv = highway
             .validate_vertex(pvv(*unit))
