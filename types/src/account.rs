@@ -408,8 +408,7 @@ impl Distribution<AccountHash> for Standard {
 #[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
-    /// There are already [`MAX_ASSOCIATED_KEYS`] [`AccountHash`]s associated with the given
-    /// account.
+    /// There are already maximum [`AccountHash`]s associated with the given account.
     #[cfg_attr(
         feature = "std",
         error("Unable to add new associated key because maximum amount of keys is reached")

@@ -8,8 +8,9 @@ use crate::storage::protocol_data::DEFAULT_MAX_ASSOCIATED_KEYS;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct CoreConfig {
-    /// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a
-    /// single account.
+    /// Maximum number of associated keys (i.e. map of
+    /// [`AccountHash`](casper_types::account::AccountHash)s to
+    /// [`Weight`](casper_types::account::Weight)s) for a single account.
     max_associated_keys: u32,
 }
 
