@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.0.1'
+version = '1.0.2'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 140
+activation_point = 359
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by

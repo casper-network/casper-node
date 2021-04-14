@@ -26,7 +26,6 @@ abbreviate_modules = false
 # Configuration options for consensus
 # ===================================
 [consensus]
-
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
