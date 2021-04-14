@@ -13,16 +13,12 @@ use self::{
     auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts, mint_costs::MintCosts,
     standard_payment_costs::StandardPaymentCosts,
 };
-use crate::storage::protocol_data::{DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_WASMLESS_TRANSFER_COST};
+use crate::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
-pub struct SystemConfig {
+pub struct SystemCosts {
     /// Wasmless transfer cost expressed in gas.
     wasmless_transfer_cost: u32,
-
-    /// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a
-    /// single account.
-    max_associated_keys: u32,
 
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
@@ -37,10 +33,9 @@ pub struct SystemConfig {
     standard_payment_costs: StandardPaymentCosts,
 }
 
-impl SystemConfig {
+impl SystemCosts {
     pub fn new(
         wasmless_transfer_cost: u32,
-        max_associated_keys: u32,
         auction_costs: AuctionCosts,
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
@@ -48,7 +43,6 @@ impl SystemConfig {
     ) -> Self {
         Self {
             wasmless_transfer_cost,
-            max_associated_keys,
             auction_costs,
             mint_costs,
             handle_payment_costs,
@@ -58,10 +52,6 @@ impl SystemConfig {
 
     pub fn wasmless_transfer_cost(&self) -> u32 {
         self.wasmless_transfer_cost
-    }
-
-    pub fn max_associated_keys(&self) -> u32 {
-        self.max_associated_keys
     }
 
     pub fn auction_costs(&self) -> &AuctionCosts {
@@ -81,11 +71,10 @@ impl SystemConfig {
     }
 }
 
-impl Default for SystemConfig {
+impl Default for SystemCosts {
     fn default() -> Self {
         Self {
             wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
-            max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             auction_costs: AuctionCosts::default(),
             mint_costs: MintCosts::default(),
             handle_payment_costs: HandlePaymentCosts::default(),
@@ -94,11 +83,10 @@ impl Default for SystemConfig {
     }
 }
 
-impl Distribution<SystemConfig> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemConfig {
-        SystemConfig {
+impl Distribution<SystemCosts> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemCosts {
+        SystemCosts {
             wasmless_transfer_cost: rng.gen(),
-            max_associated_keys: rng.gen(),
             auction_costs: rng.gen(),
             mint_costs: rng.gen(),
             handle_payment_costs: rng.gen(),
@@ -107,12 +95,11 @@ impl Distribution<SystemConfig> for Standard {
     }
 }
 
-impl ToBytes for SystemConfig {
+impl ToBytes for SystemCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
         ret.append(&mut self.wasmless_transfer_cost.to_bytes()?);
-        ret.append(&mut self.max_associated_keys.to_bytes()?);
         ret.append(&mut self.auction_costs.to_bytes()?);
         ret.append(&mut self.mint_costs.to_bytes()?);
         ret.append(&mut self.handle_payment_costs.to_bytes()?);
@@ -123,7 +110,6 @@ impl ToBytes for SystemConfig {
 
     fn serialized_length(&self) -> usize {
         self.wasmless_transfer_cost.serialized_length()
-            + self.max_associated_keys.serialized_length()
             + self.auction_costs.serialized_length()
             + self.mint_costs.serialized_length()
             + self.handle_payment_costs.serialized_length()
@@ -131,18 +117,16 @@ impl ToBytes for SystemConfig {
     }
 }
 
-impl FromBytes for SystemConfig {
+impl FromBytes for SystemCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
         let (wasmless_transfer_cost, rem) = FromBytes::from_bytes(bytes)?;
-        let (max_associated_keys, rem) = FromBytes::from_bytes(rem)?;
         let (auction_costs, rem) = FromBytes::from_bytes(rem)?;
         let (mint_costs, rem) = FromBytes::from_bytes(rem)?;
         let (handle_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         let (standard_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         Ok((
-            SystemConfig::new(
+            SystemCosts::new(
                 wasmless_transfer_cost,
-                max_associated_keys,
                 auction_costs,
                 mint_costs,
                 handle_payment_costs,
@@ -160,21 +144,19 @@ pub mod gens {
     use super::{
         auction_costs::gens::auction_costs_arb,
         handle_payment_costs::gens::handle_payment_costs_arb, mint_costs::gens::mint_costs_arb,
-        standard_payment_costs::gens::standard_payment_costs_arb, SystemConfig,
+        standard_payment_costs::gens::standard_payment_costs_arb, SystemCosts,
     };
 
     prop_compose! {
-        pub fn system_config_arb()(
+        pub fn system_costs_arb()(
             wasmless_transfer_cost in num::u32::ANY,
-            max_associated_keys in num::u32::ANY,
             auction_costs in auction_costs_arb(),
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
-        ) -> SystemConfig {
-            SystemConfig {
+        ) -> SystemCosts {
+            SystemCosts {
                 wasmless_transfer_cost,
-                max_associated_keys,
                 auction_costs,
                 mint_costs,
                 handle_payment_costs,

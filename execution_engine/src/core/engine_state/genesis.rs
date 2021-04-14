@@ -57,11 +57,12 @@ use crate::{
     },
     shared::{
         account::Account,
+        core_config::CoreConfig,
         gas::Gas,
         motes::Motes,
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
-        system_config::SystemConfig,
+        system_costs::SystemCosts,
         wasm_config::WasmConfig,
         TypeMismatch,
     },
@@ -541,14 +542,14 @@ impl Distribution<GenesisConfig> for Standard {
 pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
-    system_config: SystemConfig,
+    core_config: CoreConfig,
+    system_costs: SystemCosts,
     validator_slots: u32,
     auction_delay: u64,
     locked_funds_period_millis: u64,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
-    max_associated_keys: u32,
 }
 
 impl ExecConfig {
@@ -556,26 +557,26 @@ impl ExecConfig {
     pub fn new(
         accounts: Vec<GenesisAccount>,
         wasm_config: WasmConfig,
-        system_config: SystemConfig,
+        core_config: CoreConfig,
+        system_costs: SystemCosts,
         validator_slots: u32,
         auction_delay: u64,
         locked_funds_period_millis: u64,
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: u64,
         genesis_timestamp_millis: u64,
-        max_associated_keys: u32,
     ) -> ExecConfig {
         ExecConfig {
             accounts,
             wasm_config,
-            system_config,
+            core_config,
+            system_costs,
             validator_slots,
             auction_delay,
             locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
-            max_associated_keys,
         }
     }
 
@@ -583,8 +584,12 @@ impl ExecConfig {
         &self.wasm_config
     }
 
-    pub fn system_config(&self) -> &SystemConfig {
-        &self.system_config
+    pub fn core_config(&self) -> &CoreConfig {
+        &self.core_config
+    }
+
+    pub fn system_costs(&self) -> &SystemCosts {
+        &self.system_costs
     }
 
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
@@ -642,7 +647,9 @@ impl Distribution<ExecConfig> for Standard {
 
         let wasm_config = rng.gen();
 
-        let system_config = rng.gen();
+        let core_config = rng.gen();
+
+        let system_costs = rng.gen();
 
         let validator_slots = rng.gen();
 
@@ -659,19 +666,17 @@ impl Distribution<ExecConfig> for Standard {
 
         let genesis_timestamp_millis = rng.gen();
 
-        let max_associated_keys = rng.gen();
-
         ExecConfig {
             accounts,
             wasm_config,
-            system_config,
+            core_config,
+            system_costs,
             validator_slots,
             auction_delay,
             locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
-            max_associated_keys,
         }
     }
 }

@@ -21,7 +21,7 @@ use casper_execution_engine::{
 use casper_types::Key;
 
 use super::{
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_CORE_CONFIG, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_COSTS,
     DEFAULT_UNBONDING_DELAY,
 };
 use crate::internal::{
@@ -137,25 +137,25 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
 
 pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let wasm_config = *DEFAULT_WASM_CONFIG;
-    let system_config = *DEFAULT_SYSTEM_CONFIG;
+    let core_config = *DEFAULT_CORE_CONFIG;
+    let system_costs = *DEFAULT_SYSTEM_COSTS;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     ExecConfig::new(
         accounts,
         wasm_config,
-        system_config,
+        core_config,
+        system_costs,
         validator_slots,
         auction_delay,
         locked_funds_period_millis,
         round_seigniorage_rate,
         unbonding_delay,
         genesis_timestamp_millis,
-        max_associated_keys,
     )
 }
 

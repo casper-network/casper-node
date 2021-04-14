@@ -886,9 +886,9 @@ where
         let account = {
             let mut account: Account = self.read_gs_typed(&key)?;
 
-            let system_config = self.protocol_data().system_config();
+            let core_config = self.protocol_data().core_config();
 
-            if account.associated_keys().len() >= (system_config.max_associated_keys() as usize) {
+            if account.associated_keys().len() >= (core_config.max_associated_keys() as usize) {
                 return Err(Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
             }
 

@@ -4,6 +4,7 @@ use num::rational::Ratio;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::shared::core_config::CoreConfig as EECoreConfig;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
@@ -108,6 +109,12 @@ impl FromBytes for CoreConfig {
             max_associated_keys,
         };
         Ok((config, remainder))
+    }
+}
+
+impl From<CoreConfig> for EECoreConfig {
+    fn from(core_config: CoreConfig) -> Self {
+        EECoreConfig::new(core_config.max_associated_keys)
     }
 }
 

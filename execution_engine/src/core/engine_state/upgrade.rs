@@ -12,9 +12,10 @@ use casper_types::{
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
     shared::{
+        core_config::CoreConfig,
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
-        system_config::SystemConfig,
+        system_costs::SystemCosts,
         wasm_config::WasmConfig,
         TypeMismatch,
     },
@@ -78,7 +79,8 @@ pub struct UpgradeConfig {
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     wasm_config: Option<WasmConfig>,
-    system_config: Option<SystemConfig>,
+    core_config: Option<CoreConfig>,
+    system_costs: Option<SystemCosts>,
     activation_point: Option<EraId>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
@@ -95,7 +97,8 @@ impl UpgradeConfig {
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         wasm_config: Option<WasmConfig>,
-        system_config: Option<SystemConfig>,
+        core_config: Option<CoreConfig>,
+        system_costs: Option<SystemCosts>,
         activation_point: Option<EraId>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
@@ -109,7 +112,8 @@ impl UpgradeConfig {
             current_protocol_version,
             new_protocol_version,
             wasm_config,
-            system_config,
+            core_config,
+            system_costs,
             activation_point,
             new_validator_slots,
             new_auction_delay,
@@ -136,8 +140,12 @@ impl UpgradeConfig {
         self.wasm_config.as_ref()
     }
 
-    pub fn system_config(&self) -> Option<&SystemConfig> {
-        self.system_config.as_ref()
+    pub fn core_config(&self) -> Option<&CoreConfig> {
+        self.core_config.as_ref()
+    }
+
+    pub fn system_costs(&self) -> Option<&SystemCosts> {
+        self.system_costs.as_ref()
     }
 
     pub fn activation_point(&self) -> Option<EraId> {

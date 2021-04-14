@@ -927,11 +927,11 @@ fn should_meter_for_gas_storage_add() {
 #[test]
 fn associated_keys_add_full() {
     let final_add_result = test(Default::default(), |mut rc| {
-        let system_config = rc.protocol_data().system_config();
+        let core_config = rc.protocol_data().core_config();
 
         let associated_keys_before = rc.account().associated_keys().len();
 
-        for count in 0..(system_config.max_associated_keys() as usize - associated_keys_before) {
+        for count in 0..(core_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {
                 let mut addr = AccountHashBytes::default();
                 U256::from(count).to_big_endian(&mut addr);
