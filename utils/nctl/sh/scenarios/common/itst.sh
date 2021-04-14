@@ -156,6 +156,9 @@ function get_switch_block_equivocators() {
     fi
 }
 
+# Function is used to walk back the blocks to check if a transfer
+# is included under transfer_hashes. If the transfer is not found
+# within the walkback, it will error out.
 function verify_transfer_inclusion() {
     local NODE_ID=${1}
     # Number of blocks to walkback before erroring out
