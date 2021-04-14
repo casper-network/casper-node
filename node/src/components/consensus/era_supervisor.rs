@@ -1256,9 +1256,6 @@ where
         // We have found the deploy in the database. If it was from a previous era, it was a
         // replay attack.
         //
-        // If the deploy was included in a block which is from before the current era_id
-        // then this must have been a replay attack.
-        //
         // If not, then it might be this is a deploy for a block we are currently
         // coming to consensus, and we will rely on the immediate ancestors of the
         // block_payload within the current era to determine if we are facing a replay
