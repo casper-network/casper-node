@@ -76,7 +76,7 @@ use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
-use self::error::Result;
+use self::{counting_format::CountingFormat, error::Result};
 pub(crate) use self::{
     error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
 };
@@ -1339,7 +1339,7 @@ type Transport = SslStream<TcpStream>;
 type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
-    SymmetricalBincode<Message<P>>,
+    CountingFormat<SymmetricalBincode<Message<P>>>,
 >;
 
 /// Constructs a new framed transport on a stream.
@@ -1350,9 +1350,10 @@ fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTranspor
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
     );
+
     SymmetricallyFramed::new(
         length_delimited,
-        SymmetricalBincode::<Message<P>>::default(),
+        CountingFormat::new(SymmetricalBincode::<Message<P>>::default()),
     )
 }
 
