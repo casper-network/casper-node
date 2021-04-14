@@ -46,11 +46,11 @@ use crate::{
     crypto::hash::Digest,
     effect::{
         requests::{BlockValidationRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, DeployHash, DeployMetadata,
+        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, DeployHash,
         FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
@@ -1097,24 +1097,15 @@ where
                 let effect_builder = self.effect_builder;
                 effects.extend(
                     async move {
-                        match check_deploys_for_replay_in_previous_eras_and_validate_block(
+                        check_deploys_for_replay_in_previous_eras_and_validate_block(
                             effect_builder,
                             era_id,
                             sender,
                             proposed_block,
                         )
                         .await
-                        {
-                            Ok(event) => Some(event),
-                            Err(error) => {
-                                effect_builder
-                                    .fatal(file!(), line!(), format!("{:?}", error))
-                                    .await;
-                                None
-                            }
-                        }
                     }
-                    .map_some(std::convert::identity),
+                    .event(std::convert::identity),
                 );
                 effects
             }
@@ -1240,11 +1231,6 @@ pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: E
         .max(protocol_config.last_activation_point)
 }
 
-#[derive(thiserror::Error, Debug, derive_more::Display)]
-pub enum ReplayCheckAndValidateBlockError {
-    BlockHashMissingFromStorage(BlockHash),
-}
-
 /// Checks that a [BlockPayload] does not have deploys we have already included in blocks in
 /// previous eras. This is done by repeatedly querying storage for deploy metadata. When metadata is
 /// found storage is queried again to get the era id for the included deploy. That era id must *not*
@@ -1254,52 +1240,36 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     proposed_block_era_id: EraId,
     sender: I,
     proposed_block: ProposedBlock<ClContext>,
-) -> Result<Event<I>, ReplayCheckAndValidateBlockError>
+) -> Event<I>
 where
     REv: From<BlockValidationRequest<BlockPayload, I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
-        let execution_results = match effect_builder
-            .get_deploy_and_metadata_from_storage(*deploy_hash)
+        let block_header = match effect_builder
+            .get_block_header_for_deploy_from_storage(*deploy_hash)
             .await
         {
             None => continue,
-            Some((_, DeployMetadata { execution_results })) => execution_results,
+            Some(header) => header,
         };
-        // We have found the deploy in the database.  If it was from a previous era, it was a
-        // replay attack.  Get the block header for that deploy to check if it is provably a replay
+        // We have found the deploy in the database. If it was from a previous era, it was a
+        // replay attack.
+        //
+        // If the deploy was included in a block which is from before the current era_id
+        // then this must have been a replay attack.
+        //
+        // If not, then it might be this is a deploy for a block we are currently
+        // coming to consensus, and we will rely on the immediate ancestors of the
+        // block_payload within the current era to determine if we are facing a replay
         // attack.
-        for (block_hash, _) in execution_results {
-            match effect_builder
-                .get_block_header_from_storage(block_hash)
-                .await
-            {
-                None => {
-                    // The block hash referenced by the deploy does not exist.  This is
-                    // a critical database integrity failure.
-                    return Err(
-                        ReplayCheckAndValidateBlockError::BlockHashMissingFromStorage(block_hash),
-                    );
-                }
-                Some(block_header) => {
-                    // If the deploy was included in a block which is from before the current era_id
-                    // then this must have been a replay attack.
-                    //
-                    // If not, then it might be this is a deploy for a block we are currently
-                    // coming to consensus, and we will rely on the immediate ancestors of the
-                    // block_payload within the current era to determine if we are facing a replay
-                    // attack.
-                    if block_header.era_id() < proposed_block_era_id {
-                        return Ok(Event::ResolveValidity(ResolveValidity {
-                            era_id: proposed_block_era_id,
-                            sender: sender.clone(),
-                            proposed_block: proposed_block.clone(),
-                            valid: false,
-                        }));
-                    }
-                }
-            }
+        if block_header.era_id() < proposed_block_era_id {
+            return Event::ResolveValidity(ResolveValidity {
+                era_id: proposed_block_era_id,
+                sender: sender.clone(),
+                proposed_block: proposed_block.clone(),
+                valid: false,
+            });
         }
     }
 
@@ -1312,12 +1282,12 @@ where
         )
         .await;
 
-    Ok(Event::ResolveValidity(ResolveValidity {
+    Event::ResolveValidity(ResolveValidity {
         era_id: proposed_block_era_id,
         sender,
         proposed_block,
         valid,
-    }))
+    })
 }
 
 impl ProposedBlock<ClContext> {
