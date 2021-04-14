@@ -8,6 +8,8 @@
 //! calling for validation of the same protoblock multiple times at the same time.
 
 mod keyed_counter;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
@@ -234,6 +236,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut effects = Effects::new();
+        println!("event: {:?}", event);
         match event {
             Event::Request(BlockValidationRequest {
                 block,
