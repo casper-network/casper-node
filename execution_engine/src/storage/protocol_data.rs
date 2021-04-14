@@ -9,7 +9,7 @@ use crate::shared::{core_config::CoreConfig, system_costs::SystemCosts, wasm_con
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
-pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 10;
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
