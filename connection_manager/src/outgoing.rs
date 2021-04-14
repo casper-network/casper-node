@@ -145,12 +145,11 @@ pub(crate) trait Dialer {
 
     /// Attempt to connect to the outgoing socket address.
     ///
-    /// For every time this function is called by `OutgoingManager`, there eventually *must* be a
-    /// corresponding call to `handle_dial_outcome`.
+    /// For every time this function is called, there must be a corresponding call to
+    /// `handle_dial_outcome` eventually.
     ///
-    /// `OutgoingManager` guarantees that there will never be another `connect_outgoing` call for
-    /// the same `addr` before the most recent one has been been answered using
-    /// `handle_dial_outcome`.
+    /// The caller is responsible for ensuring that there is always only one `connect_outgoing` call
+    /// that has not been answered by `handle_dial_outcome` for every `addr`.
     ///
     /// Any logging of connection issues should be done in the context of `span` for better log
     /// output.
