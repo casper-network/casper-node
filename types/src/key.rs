@@ -18,14 +18,13 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, AccountHashBytes, ACCOUNT_HASH_FORMATTED_STRING_PREFIX},
+    account::{self, AccountHash, AccountHashBytes},
     bytesrepr::{self, Error, FromBytes, ToBytes},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, EraId, Tagged, TransferAddr, TransferFromStrError, DEPLOY_HASH_LENGTH,
-    TRANSFER_ADDR_FORMATTED_STRING_PREFIX, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
-    UREF_FORMATTED_STRING_PREFIX,
+    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -234,9 +233,10 @@ impl Key {
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a `Key`.
     pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
-        if input.starts_with(ACCOUNT_HASH_FORMATTED_STRING_PREFIX) {
-            let account_hash = AccountHash::from_formatted_str(input)?;
-            return Ok(Key::Account(account_hash));
+        match AccountHash::from_formatted_str(input) {
+            Ok(account_hash) => return Ok(Key::Account(account_hash)),
+            Err(account::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(error.into()),
         }
 
         if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
@@ -255,14 +255,16 @@ impl Key {
             return Ok(Key::DeployInfo(DeployHash::new(hash_array)));
         }
 
-        if input.starts_with(TRANSFER_ADDR_FORMATTED_STRING_PREFIX) {
-            let transfer_addr = TransferAddr::from_formatted_str(input)?;
-            return Ok(Key::Transfer(transfer_addr));
+        match TransferAddr::from_formatted_str(input) {
+            Ok(transfer_addr) => return Ok(Key::Transfer(transfer_addr)),
+            Err(TransferFromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(error.into()),
         }
 
-        if input.starts_with(UREF_FORMATTED_STRING_PREFIX) {
-            let uref = URef::from_formatted_str(input)?;
-            return Ok(Key::URef(uref));
+        match URef::from_formatted_str(input) {
+            Ok(uref) => return Ok(Key::URef(uref)),
+            Err(uref::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(error.into()),
         }
 
         if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
@@ -737,8 +739,11 @@ mod tests {
 
     use super::*;
     use crate::{
+        account::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
         bytesrepr::{Error, FromBytes},
         gens::era_id_arb,
+        transfer::TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
+        uref::UREF_FORMATTED_STRING_PREFIX,
         AccessRights, URef,
     };
 
