@@ -106,15 +106,14 @@ static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
-pub(crate) trait Payload:
-    Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static
-{
+pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
+    /// Classifies the payload based on its contents.
     fn classify(&self) -> PayloadKind;
 }
 
 /// A classification system for network payloads.
 #[derive(Copy, Clone, Debug)]
-pub(crate) enum PayloadKind {
+pub enum PayloadKind {
     /// Messages directly related to consensus.
     Consensus,
     /// Deploys being gossiped.
@@ -200,7 +199,7 @@ where
 
     /// Networking metrics.
     #[data_size(skip)]
-    net_metrics: NetworkingMetrics,
+    net_metrics: Arc<NetworkingMetrics>,
 
     /// Known addresses for this node.
     known_addresses: HashSet<SocketAddr>,
@@ -274,7 +273,7 @@ where
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
                 is_stopped: Arc::new(AtomicBool::new(true)),
-                net_metrics: NetworkingMetrics::new(&Registry::default())?,
+                net_metrics: Arc::new(NetworkingMetrics::new(&Registry::default())?),
             };
             return Ok((model, Effects::new()));
         }
@@ -342,7 +341,7 @@ where
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             is_stopped: Arc::new(AtomicBool::new(false)),
-            net_metrics,
+            net_metrics: Arc::new(net_metrics),
         };
 
         // Bootstrap process.
@@ -528,8 +527,12 @@ where
 
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) =
-                    framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+                let (mut sink, stream) = framed::<P>(
+                    self.net_metrics.clone(),
+                    transport,
+                    self.chain_info.maximum_net_message_size,
+                )
+                .split();
                 let handshake = self.chain_info.create_handshake(self.public_address);
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -610,8 +613,12 @@ where
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) =
-            framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+        let (sink, stream) = framed::<P>(
+            self.net_metrics.clone(),
+            transport,
+            self.chain_info.maximum_net_message_size,
+        )
+        .split();
         debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -1224,7 +1231,7 @@ async fn handshake_reader<REv, P>(
     peer_id: NodeId,
     peer_address: SocketAddr,
 ) where
-    P: DeserializeOwned + Send + Display,
+    P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
     if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
@@ -1263,7 +1270,7 @@ async fn message_reader<REv, P>(
     peer_id: NodeId,
 ) -> io::Result<()>
 where
-    P: DeserializeOwned + Send + Display,
+    P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
     let read_messages = async move {
@@ -1320,7 +1327,7 @@ async fn message_sender<P>(
     handshake: Message<P>,
 ) -> Result<()>
 where
-    P: Serialize + Send,
+    P: Serialize + Send + Payload,
 {
     sink.send(handshake).await.map_err(Error::MessageNotSent)?;
     while let Some(payload) = queue.recv().await {
@@ -1343,7 +1350,11 @@ type FramedTransport<P> = SymmetricallyFramed<
 >;
 
 /// Constructs a new framed transport on a stream.
-fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTransport<P> {
+fn framed<P>(
+    metrics: Arc<NetworkingMetrics>,
+    stream: Transport,
+    maximum_net_message_size: u32,
+) -> FramedTransport<P> {
     let length_delimited = Framed::new(
         stream,
         LengthDelimitedCodec::builder()
@@ -1353,7 +1364,7 @@ fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTranspor
 
     SymmetricallyFramed::new(
         length_delimited,
-        CountingFormat::new(SymmetricalBincode::<Message<P>>::default()),
+        CountingFormat::new(metrics, SymmetricalBincode::<Message<P>>::default()),
     )
 }
 

@@ -1,8 +1,10 @@
 use prometheus::{IntCounter, IntGauge, Registry};
 
+use super::small_network::PayloadKind;
 use crate::unregister_metric;
 
 /// Network-type agnostic networking metrics.
+#[derive(Debug)]
 pub(super) struct NetworkingMetrics {
     /// How often a request was made by a component to broadcast.
     pub(super) broadcast_requests: IntCounter,
@@ -188,6 +190,36 @@ impl NetworkingMetrics {
             write_futures_total,
             registry: registry.clone(),
         })
+    }
+
+    /// Records an outgoing payload.
+    pub(crate) fn record_payload_out(&self, kind: PayloadKind, size: u64) {
+        match kind {
+            PayloadKind::Consensus => {
+                self.out_bytes_consensus.inc_by(size);
+                self.out_count_consensus.inc();
+            }
+            PayloadKind::DeployGossip => {
+                self.out_bytes_deploy_gossip.inc_by(size);
+                self.out_count_deploy_gossip.inc();
+            }
+            PayloadKind::AddressGossip => {
+                self.out_bytes_address_gossip.inc_by(size);
+                self.out_count_address_gossip.inc();
+            }
+            PayloadKind::DeployTransfer => {
+                self.out_bytes_deploy_transfer.inc_by(size);
+                self.out_count_deploy_transfer.inc();
+            }
+            PayloadKind::BlockTransfer => {
+                self.out_bytes_block_transfer.inc_by(size);
+                self.out_count_block_transfer.inc();
+            }
+            PayloadKind::Other => {
+                self.out_bytes_other.inc_by(size);
+                self.out_count_other.inc();
+            }
+        }
     }
 }
 
