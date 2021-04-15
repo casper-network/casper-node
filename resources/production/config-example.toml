@@ -41,7 +41,6 @@ pending_vertex_timeout = '30min'
 max_execution_delay = 3
 
 
-
 # ====================================
 # Configuration options for networking
 # ====================================
