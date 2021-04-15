@@ -214,7 +214,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     // Returns number of elements in `vertex_deps` queue.
-    fn vertex_deps_len(&self) -> u64 {
+    fn vertices_awaiting_deps_len(&self) -> u64 {
         self.vertices_awaiting_deps
             .iter()
             .map(|(_, pv)| pv.len())
@@ -222,7 +222,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     // Returns number of elements in `vertices_to_be_added` queue.
-    fn vertices_to_be_added_len(&self) -> u64 {
+    fn vertices_no_deps_len(&self) -> u64 {
         self.vertices_no_deps.len()
     }
 
@@ -230,8 +230,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         debug!(
             era_id = ?self.instance_id,
             vertices_to_be_added_later = self.vertices_to_be_added_later_len(),
-            vertex_deps = self.vertex_deps_len(),
-            vertices_to_be_added = self.vertices_to_be_added_len(),
+            vertices_no_deps = self.vertices_no_deps_len(),
+            vertices_awaiting_deps = self.vertices_awaiting_deps_len(),
             "synchronizer queue lengths"
         );
         // All units seen have seq_number == 0.
