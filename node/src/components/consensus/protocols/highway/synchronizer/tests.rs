@@ -65,13 +65,11 @@ fn purge_vertices() {
     // The missing dependencies of c1 and c2 are requested.
     let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
     assert!(maybe_pv.is_none());
-    assert!(matches!(
-        *outcomes,
-        [
-            ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0)),
-            ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0))
-        ]
-    ));
+    assert_targeted_message(
+        &unwrap_single(outcomes),
+        &peer0,
+        HighwayMessage::RequestDependency(Dependency::Unit(c0))
+    );
 
     // At 0x23, c0 gets enqueued and added.
     // That puts c1 back into the main queue, since its dependency is satisfied.
@@ -206,8 +204,7 @@ fn do_not_download_synchronized_dependencies() {
         .into_iter()
         .map(Dependency::Unit)
         .collect();
-    for _ in 0..units.len() {
-        let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    while let (Some(pv), outcomes) = sync.pop_vertex_to_add(&highway) {
         // Verify that we don't request any dependency now.
         assert!(
             !outcomes
@@ -216,7 +213,7 @@ fn do_not_download_synchronized_dependencies() {
             "unexpected dependency request {:?}",
             outcomes
         );
-        let pv_dep = maybe_pv.unwrap().vertex().id();
+        let pv_dep = pv.vertex().id();
         assert!(units.contains(&pv_dep), "unexpected dependency");
         match pv_dep {
             Dependency::Unit(hash) => {

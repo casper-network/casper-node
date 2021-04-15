@@ -339,7 +339,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 Some(pv) => pv,
             };
             if let Some(dep) = highway.missing_dependency(pv.pvv()) {
-                if self.vertices_no_deps.contains_dependency(&dep) {
+                // Find the first dependency that `pv` needs that we haven't synchronized yet
+                // and request it from the sender of `pv`. Since it relies on it, it should have
+                // it as well.
+                let transitive_dependency = self.find_transitive_dependency(dep.clone());
+                if self
+                    .vertices_no_deps
+                    .contains_dependency(&transitive_dependency)
+                {
                     // `dep` is already downloaded and waiting in the synchronizer queue to be
                     // added, we don't have to request it again. Add the `pv`
                     // back to the queue so that it can be retried later. `dep` does not wait for
@@ -349,13 +356,18 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 }
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
-                // Find the first dependency that `pv` needs that we haven't synchronized yet
-                // and request it from the sender of `pv`. Since it relies on it, it should have
-                // it as well.
-                let transitive_dependency = self.find_transitive_dependency(dep.clone());
                 let sender = pv.sender().clone();
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
-                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
+                if !outcomes.iter().any(|o| match o {
+                    // If we've already requested the same dependency from the same peer, ignore.
+                    ProtocolOutcome::CreatedTargetedMessage(msg, peer) => {
+                        msg == &ser_msg && peer == &sender
+                    }
+                    _ => false,
+                }) {
+                    let outcome = ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender);
+                    outcomes.push(outcome);
+                }
                 self.add_missing_dependency(dep.clone(), pv);
                 continue;
             }
