@@ -79,10 +79,10 @@ mod tests {
         101, 115, 116, 177, 49, 50, 46, 51, 52, 46, 53, 54, 46, 55, 56, 58, 49, 50, 51, 52, 54,
     ];
 
-    // Note: MessagePack messages can be visualized using the message pack visualizer at
-    // https://sugendran.github.io/msgpack-visualizer/. Rust arrays can be copy&pasted and converted
-    // to base64 using the following one-liner: `import base64; base64.b64encode(bytes([129, 0,
-    // ...]))`
+    // Note: MessagePacke messages can be visualized using the message pack visualizer at
+    // https://sugendran.github.io/msgpack-visualizer/
+    // Rust arrays can be copy&pasted and converted to base64 using the following one-liner:
+    // `import base64; base64.b64encode(bytes([129, 0, ...]))`
 
     // It is very important to note that different versions of the message pack codec crate set the
     // human-readable flag in a different manner. Thus the V1.0.0 handshake can be serialized in two

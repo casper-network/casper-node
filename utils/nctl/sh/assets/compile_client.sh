@@ -21,7 +21,6 @@ else
 fi
 
 # Build client side contracts.
-make build-contract-rs/activate-bid
 make build-contract-rs/add-bid
 make build-contract-rs/delegate
 make build-contract-rs/transfer-to-account-u512

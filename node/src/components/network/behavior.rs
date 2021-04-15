@@ -121,7 +121,9 @@ impl Behavior {
     /// Performs a random kademlia lookup in order to refresh the routing table.
     pub(super) fn discover_peers(&mut self) {
         let random_address = PeerId::random();
-        let query_id = self.kademlia_behavior.get_closest_peers(random_address);
+        let query_id = self
+            .kademlia_behavior
+            .get_closest_peers(random_address.clone());
         debug!(
             "{}: random kademlia lookup for peers closest to {} with {:?}",
             self.our_id, random_address, query_id
@@ -130,7 +132,7 @@ impl Behavior {
 
     /// Initiates gossiping the given message.
     pub(super) fn gossip(&mut self, message: GossipMessage) {
-        if let Err(error) = self.gossip_behavior.publish(TOPIC.clone(), message) {
+        if let Err(error) = self.gossip_behavior.publish(&*TOPIC, message) {
             warn!(?error, "{}: failed to gossip new message", self.our_id);
         }
     }

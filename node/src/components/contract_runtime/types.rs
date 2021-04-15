@@ -1,7 +1,8 @@
+use crate::components::consensus::EraId;
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::newtypes::Blake2bHash,
 };
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]

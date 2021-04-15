@@ -72,7 +72,7 @@ impl<C: Context> Unit<C> {
             hash // A unit with a new block votes for itself.
         } else {
             // If the unit didn't introduce a new block, it votes for the fork choice itself.
-            // `pre_validate_unit` checks that the panorama has a `Correct` entry.
+            // `Highway::add_unit` checks that the panorama is not empty.
             fork_choice
                 .cloned()
                 .expect("nonempty panorama has nonempty fork choice")

@@ -31,28 +31,19 @@ impl Weight {
     pub fn checked_add(self, rhs: Weight) -> Option<Weight> {
         Some(Weight(self.0.checked_add(rhs.0)?))
     }
-
-    /// Saturating addition. Returns `Weight(u64::MAX)` if overflow would occur.
-    pub fn saturating_add(self, rhs: Weight) -> Weight {
-        Weight(self.0.saturating_add(rhs.0))
-    }
-
-    /// Returns `true` if this weight is zero.
-    pub fn is_zero(self) -> bool {
-        self.0 == 0
-    }
 }
 
 impl<'a> Sum<&'a Weight> for Weight {
     fn sum<I: Iterator<Item = &'a Weight>>(iter: I) -> Self {
-        Weight(iter.map(|w| w.0).sum())
+        let mut sum = 0u64;
+        iter.for_each(|w| sum += w.0);
+        Weight(sum)
     }
 }
 
 impl Mul<u64> for Weight {
     type Output = Self;
 
-    #[allow(clippy::integer_arithmetic)] // The caller needs to prevent overflows.
     fn mul(self, rhs: u64) -> Self {
         Weight(self.0 * rhs)
     }
@@ -61,7 +52,6 @@ impl Mul<u64> for Weight {
 impl Div<u64> for Weight {
     type Output = Self;
 
-    #[allow(clippy::integer_arithmetic)] // The caller needs to avoid dividing by zero.
     fn div(self, rhs: u64) -> Self {
         Weight(self.0 / rhs)
     }

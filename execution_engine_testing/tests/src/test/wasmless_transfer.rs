@@ -7,7 +7,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
+        engine_state::{
+            upgrade::ActivationPoint, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+        },
         execution::Error as ExecError,
     },
     shared::{
@@ -24,7 +26,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, ApiError, EraId, Key, ProtocolVersion, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, Key, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -913,7 +915,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     .expect("gas overflow");
 
     let transfer_amount = U512::one();
-    const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
+    const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();

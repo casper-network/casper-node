@@ -17,10 +17,9 @@ use crate::{
     contracts::{
         ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
     },
-    transfer::TransferAddr,
     AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
-    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
+    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Key, NamedArg,
+    Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
 };
 
 use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
@@ -31,15 +30,6 @@ pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
         let mut res = [0u8; 32];
         res.clone_from_slice(b.as_slice());
         res
-    })
-}
-
-pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
-    array::uniform32(any::<u8>()).prop_map(|mut arr| {
-        for byte in arr.iter_mut() {
-            *byte &= 0b11;
-        }
-        arr
     })
 }
 
@@ -73,10 +63,6 @@ pub fn uref_arb() -> impl Strategy<Value = URef> {
         .prop_map(|(id, access_rights)| URef::new(id, access_rights))
 }
 
-pub fn era_id_arb() -> impl Strategy<Value = EraId> {
-    any::<u64>().prop_map(EraId::from)
-}
-
 pub fn key_arb() -> impl Strategy<Value = Key> {
     prop_oneof![
         account_hash_arb().prop_map(Key::Account),
@@ -84,20 +70,10 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         uref_arb().prop_map(Key::URef),
         transfer_addr_arb().prop_map(Key::Transfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
-        era_id_arb().prop_map(Key::EraInfo),
+        any::<u64>().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
         account_hash_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Withdraw),
-        era_id_arb().prop_map(Key::EraValidators),
-    ]
-}
-
-pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
-    prop_oneof![
-        u2_slice_32().prop_map(|bytes| Key::Account(AccountHash::new(bytes))),
-        u2_slice_32().prop_map(Key::Hash),
-        u2_slice_32().prop_map(|bytes| Key::URef(URef::new(bytes, AccessRights::NONE))),
-        u2_slice_32().prop_map(|bytes| Key::Transfer(TransferAddr::new(bytes))),
     ]
 }
 

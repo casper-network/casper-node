@@ -2,14 +2,14 @@ use std::mem;
 
 use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
-use super::deploy_item::DeployItem;
+use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
 use crate::shared::newtypes::Blake2bHash;
 
 #[derive(Debug)]
 pub struct ExecuteRequest {
     pub parent_state_hash: Blake2bHash,
     pub block_time: u64,
-    pub deploys: Vec<DeployItem>,
+    pub deploys: Vec<Result<DeployItem, ExecutionResult>>,
     pub protocol_version: ProtocolVersion,
     pub proposer: PublicKey,
 }
@@ -18,7 +18,7 @@ impl ExecuteRequest {
     pub fn new(
         parent_state_hash: Blake2bHash,
         block_time: u64,
-        deploys: Vec<DeployItem>,
+        deploys: Vec<Result<DeployItem, ExecutionResult>>,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
     ) -> Self {
@@ -31,20 +31,18 @@ impl ExecuteRequest {
         }
     }
 
-    pub fn take_deploys(&mut self) -> Vec<DeployItem> {
+    pub fn take_deploys(&mut self) -> Vec<Result<DeployItem, ExecutionResult>> {
         mem::replace(&mut self.deploys, vec![])
     }
 
-    pub fn deploys(&self) -> &Vec<DeployItem> {
+    pub fn deploys(&self) -> &Vec<Result<DeployItem, ExecutionResult>> {
         &self.deploys
     }
 }
 
 impl Default for ExecuteRequest {
     fn default() -> Self {
-        let proposer = SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+        let proposer = SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]).into();
         Self {
             parent_state_hash: Blake2bHash::new(&[]),
             block_time: 0,

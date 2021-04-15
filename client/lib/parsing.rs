@@ -856,7 +856,7 @@ mod tests {
     fn should_parse_public_key_via_args_simple() {
         let hex_value = "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1";
         let value = PublicKey::from_hex(hex_value).unwrap();
-        valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value.clone());
+        valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value);
         valid_simple_args_test(&format!("x:opt_public_key='{}'", hex_value), Some(value));
         valid_simple_args_test::<Option<PublicKey>>("x:opt_public_key=null", None);
     }

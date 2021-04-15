@@ -31,8 +31,6 @@ impl<C: Context> Block<C> {
             None => return Block::initial(value),
             Some(hash) => (state.block(&hash), vec![hash]),
         };
-        // In a trillion years, we need to make block height u128.
-        #[allow(clippy::integer_arithmetic)]
         let height = parent.height + 1;
         for i in 0..height.trailing_zeros() as usize {
             let ancestor = state.block(&skip_idx[i]);

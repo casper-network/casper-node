@@ -11,10 +11,7 @@ use tokio::net::TcpStream;
 
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
 use crate::{
-    effect::{
-        announcements::BlocklistAnnouncement,
-        requests::{NetworkInfoRequest, NetworkRequest},
-    },
+    effect::requests::{NetworkInfoRequest, NetworkRequest},
     protocol::Message as ProtocolMessage,
 };
 
@@ -83,10 +80,6 @@ pub enum Event<P> {
     GossipOurAddress,
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
-
-    /// Blocklist announcement
-    #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
 }
 
 impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {
@@ -152,9 +145,6 @@ impl<P: Display> Display for Event<P> {
             Event::GossipOurAddress => write!(f, "gossip our address"),
             Event::PeerAddressReceived(gossiped_address) => {
                 write!(f, "received gossiped peer address {}", gossiped_address)
-            }
-            Event::BlocklistAnnouncement(ann) => {
-                write!(f, "handling blocklist announcement: {}", ann)
             }
         }
     }

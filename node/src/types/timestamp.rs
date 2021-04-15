@@ -38,18 +38,18 @@ static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
 pub struct Timestamp(u64);
 
 impl Timestamp {
-    /// Returns the timestamp of the current moment.
+    /// Returns the timestamp of the current moment
     pub fn now() -> Self {
         let millis = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
         Timestamp(millis)
     }
 
-    /// Returns the time that has elapsed since this timestamp.
+    /// Returns the time that has elapsed since this timestamp
     pub fn elapsed(&self) -> TimeDiff {
-        TimeDiff(Timestamp::now().0.saturating_sub(self.0))
+        Timestamp::now() - *self
     }
 
-    /// Returns a zero timestamp.
+    /// Returns a zero timestamp
     pub fn zero() -> Self {
         Timestamp(0)
     }
@@ -106,6 +106,14 @@ impl FromStr for Timestamp {
             .map_err(|_| TimestampError::OutOfRange)?
             .as_millis() as u64;
         Ok(Timestamp(inner))
+    }
+}
+
+impl Sub<Timestamp> for Timestamp {
+    type Output = TimeDiff;
+
+    fn sub(self, other: Timestamp) -> TimeDiff {
+        TimeDiff(self.0 - other.0)
     }
 }
 
@@ -239,11 +247,6 @@ impl TimeDiff {
     pub const fn from_seconds(seconds: u32) -> Self {
         TimeDiff(seconds as u64 * 1_000)
     }
-
-    /// Returns the product, or `TimeDiff(u64::MAX)` if it would overflow.
-    pub fn saturating_mul(self, rhs: u64) -> Self {
-        TimeDiff(self.0.saturating_mul(rhs))
-    }
 }
 
 impl Mul<u64> for TimeDiff {
@@ -259,14 +262,6 @@ impl Div<u64> for TimeDiff {
 
     fn div(self, rhs: u64) -> TimeDiff {
         TimeDiff(self.0 / rhs)
-    }
-}
-
-impl Div<TimeDiff> for TimeDiff {
-    type Output = u64;
-
-    fn div(self, rhs: TimeDiff) -> u64 {
-        self.0 / rhs.0
     }
 }
 

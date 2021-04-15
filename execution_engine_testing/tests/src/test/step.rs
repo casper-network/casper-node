@@ -16,25 +16,22 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::{
-        auction::{Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD},
+        auction::{
+            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
-static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_1_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([200; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_1_BALANCE: u64 = 100_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000_000;
 
-static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_2_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([202; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
@@ -57,7 +54,7 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            ACCOUNT_1_PK.clone(),
+            *ACCOUNT_1_PK,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -65,7 +62,7 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
             )),
         );
         let account_2 = GenesisAccount::account(
-            ACCOUNT_2_PK.clone(),
+            *ACCOUNT_2_PK,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -90,14 +87,16 @@ fn should_step() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), BLOCK_REWARD / 2))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), BLOCK_REWARD / 2))
-        .with_next_era_id(EraId::from(1))
+        .with_slash_item(SlashItem::new(*ACCOUNT_1_PK))
+        .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, BLOCK_REWARD / 2))
+        .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .with_next_era_id(1)
         .build();
 
+    let auction_hash = builder.get_auction_contract_hash();
+
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_seigniorage_recipients_snapshot();
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
     let bids_before_slashing: Bids = builder.get_bids();
     assert!(
@@ -128,11 +127,13 @@ fn should_step() {
 
     // seigniorage snapshot should have changed after auction
     let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_seigniorage_recipients_snapshot();
-
-    assert!(before_auction_seigniorage
-        .keys()
-        .ne(after_auction_seigniorage.keys()))
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    assert!(
+        !before_auction_seigniorage
+            .keys()
+            .all(|key| after_auction_seigniorage.contains_key(key)),
+        "run auction should have changed seigniorage keys"
+    );
 }
 
 /// Should be able to step slashing, rewards, and run auction.
@@ -162,11 +163,11 @@ fn should_adjust_total_supply() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
-        .with_slash_item(SlashItem::new(ACCOUNT_2_PK.clone()))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), 0))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), BLOCK_REWARD / 2))
-        .with_next_era_id(EraId::from(1))
+        .with_slash_item(SlashItem::new(*ACCOUNT_1_PK))
+        .with_slash_item(SlashItem::new(*ACCOUNT_2_PK))
+        .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, 0))
+        .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .with_next_era_id(1)
         .build();
 
     builder.step(step_request);

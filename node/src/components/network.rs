@@ -39,7 +39,7 @@ use libp2p::{
 use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
-use tokio::{select, sync::watch, task::JoinHandle, time};
+use tokio::{select, sync::watch, task::JoinHandle};
 use tracing::{debug, error, info, trace, warn};
 
 pub(crate) use self::event::Event;
@@ -142,7 +142,6 @@ pub struct Network<REv, P> {
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
-    #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Networking metrics.
@@ -224,7 +223,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .map_err(Error::StaticKeypairSigning)?;
 
         let mut mplex_config = MplexConfig::default();
-        mplex_config.set_max_buffer_behaviour(MaxBufferBehaviour::Block);
+        mplex_config.max_buffer_len_behaviour(MaxBufferBehaviour::Block);
 
         // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `mplex`
         // for multiplexing of substreams on a TCP stream.
@@ -330,7 +329,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             }
         };
 
-        let _ = self.peers.insert(peer_id, endpoint);
+        let _ = self.peers.insert(peer_id.clone(), endpoint);
 
         self.net_metrics.peers.set(self.peers.len() as i64);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
@@ -399,16 +398,16 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(*peer_id, payload.clone());
+            self.send_message(peer_id.clone(), payload.clone());
         }
 
-        peer_ids.into_iter().copied().collect()
+        peer_ids.into_iter().cloned().collect()
     }
 
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
+        self.our_id.clone()
     }
 
     /// Returns the set of known addresses.
@@ -419,7 +418,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 }
 
 fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
-    NodeId::P2p(*Swarm::local_peer_id(swarm))
+    NodeId::P2p(Swarm::local_peer_id(swarm).clone())
 }
 
 // TODO: Already refactored in branch.
@@ -484,13 +483,13 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                     }
                 }
 
-                maybe_shutdown = shutdown_receiver.changed() => {
+                maybe_shutdown = shutdown_receiver.recv() => {
                     // Since a `watch` channel is always constructed with an initial value enqueued,
                     // ignore this (and any others) from the `shutdown_receiver`.
                     //
-                    // When the receiver yields an `Err`, the sender has been dropped, indicating we
+                    // When the receiver yields a `None`, the sender has been dropped, indicating we
                     // should exit this loop.
-                    if maybe_shutdown.is_err() {
+                    if maybe_shutdown.is_none() {
                         info!("{}: shutting down libp2p", our_id(&swarm));
                         break;
                     }
@@ -580,7 +579,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                     // (Re)schedule connection attempts to known peers.
 
                     // Before reconnecting wait RECONNECT_DELAY
-                    time::sleep(RECONNECT_DELAY).await;
+                    tokio::time::delay_for(RECONNECT_DELAY).await;
 
                     // Now that we've slept and re-awoken, grab the mutex again
                     match known_addresses_mut.lock() {
@@ -712,14 +711,6 @@ async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
                 our_id(swarm)
             )
         }
-        RequestResponseEvent::ResponseSent { peer, request_id } => {
-            warn!(
-                ?peer,
-                ?request_id,
-                "{}: response should not have been sent for a one-way message",
-                our_id(swarm)
-            )
-        }
     }
 }
 
@@ -729,17 +720,13 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
     event: GossipsubEvent,
 ) {
     match event {
-        GossipsubEvent::Message {
-            propagation_source,
-            message,
-            ..
-        } => {
+        GossipsubEvent::Message(_sender, _message_id, message) => {
             // We've received a gossiped message: announce it via the reactor on the
             // `NetworkIncoming` queue.
             let sender = match message.source {
                 Some(source) => NodeId::from(source),
                 None => {
-                    warn!(sender=%propagation_source, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
+                    warn!(%_sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
                     return;
                 }
             };
@@ -954,7 +941,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 if let Some(ref old_peer_id) = old_peer {
                     self.seen_peers.remove(old_peer_id);
                 }
-                self.seen_peers.insert(peer);
+                self.seen_peers.insert(peer.clone());
 
                 debug!(
                     inserted = ?peer,
@@ -1014,7 +1001,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                         .peers
                         .iter()
                         .map(|(node_id, endpoint)| {
-                            (*node_id, endpoint.get_remote_address().to_string())
+                            (node_id.clone(), endpoint.get_remote_address().to_string())
                         })
                         .collect();
                     responder.respond(peers).ignore()

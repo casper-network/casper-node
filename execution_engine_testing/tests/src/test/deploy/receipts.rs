@@ -25,12 +25,9 @@ const TRANSFER_ARG_TARGETS: &str = "targets";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_STORED: &str = "transfer_purse_to_accounts_stored.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL: &str = "transfer_purse_to_accounts_subcall.wasm";
 
-static ALICE_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([3; 32]).unwrap().into());
-static BOB_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([5; 32]).unwrap().into());
-static CAROL_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([7; 32]).unwrap().into());
+static ALICE_KEY: Lazy<PublicKey> = Lazy::new(|| SecretKey::ed25519([3; 32]).into());
+static BOB_KEY: Lazy<PublicKey> = Lazy::new(|| SecretKey::ed25519([5; 32]).into());
+static CAROL_KEY: Lazy<PublicKey> = Lazy::new(|| SecretKey::ed25519([7; 32]).into());
 
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE_KEY));
 static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));
@@ -62,6 +59,8 @@ fn should_record_wasmless_transfer() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
+            .map(Result::as_ref)
+            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -128,6 +127,8 @@ fn should_record_wasm_transfer() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
+            .map(Result::as_ref)
+            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -194,6 +195,8 @@ fn should_record_wasm_transfer_with_id() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
+            .map(Result::as_ref)
+            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -274,6 +277,8 @@ fn should_record_wasm_transfers() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
+            .map(Result::as_ref)
+            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]
@@ -420,6 +425,8 @@ fn should_record_wasm_transfers_with_subcall() {
         let deploy_items: Vec<DeployHash> = transfer_request
             .deploys()
             .iter()
+            .map(Result::as_ref)
+            .filter_map(Result::ok)
             .map(|deploy_item| deploy_item.deploy_hash)
             .collect();
         deploy_items[0]

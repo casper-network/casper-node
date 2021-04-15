@@ -30,7 +30,7 @@ impl ExecuteRequestBuilder {
     }
 
     pub fn push_deploy(mut self, deploy: DeployItem) -> Self {
-        self.execute_request.deploys.push(deploy);
+        self.execute_request.deploys.push(Ok(deploy));
         self
     }
 
@@ -142,7 +142,7 @@ impl Default for ExecuteRequestBuilder {
         let execute_request = ExecuteRequest {
             block_time: DEFAULT_BLOCK_TIME,
             protocol_version: ProtocolVersion::V1_0_0,
-            proposer: DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+            proposer: *DEFAULT_PROPOSER_PUBLIC_KEY,
             ..Default::default()
         };
         ExecuteRequestBuilder { execute_request }

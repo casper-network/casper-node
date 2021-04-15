@@ -26,16 +26,15 @@ use casper_types::{
     },
     system::{
         self,
-        auction::{self, Auction, EraInfo},
+        auction::{self, Auction, EraId, EraInfo},
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
         SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef, U128,
-    U256, U512,
+    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase, ProtocolVersion,
+    PublicKey, RuntimeArgs, Transfer, TransferResult, TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -99,7 +98,6 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
-        Key::EraValidators(_) => None,
     }
 }
 
@@ -3503,9 +3501,7 @@ mod tests {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let mut map = BTreeMap::new();
         map.insert(
-            PublicKey::from(
-                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
-            ),
+            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
             uref,
         );
         let cl_value = CLValue::from_t(map).unwrap();
@@ -3518,9 +3514,7 @@ mod tests {
         let key = Key::from(uref);
         let mut map = BTreeMap::new();
         map.insert(
-            PublicKey::from(
-                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
-            ),
+            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
             key,
         );
         let cl_value = CLValue::from_t(map).unwrap();

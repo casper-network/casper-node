@@ -3,7 +3,6 @@ use std::result;
 use base64::DecodeError;
 use hex::FromHexError;
 use pem::PemError;
-use signature::Error as SignatureError;
 use thiserror::Error;
 
 use crate::utils::{ReadFileError, WriteFileError};
@@ -54,14 +53,6 @@ pub enum Error {
     /// Error trying to manipulate the system key.
     #[error("invalid operation on system key: {0}")]
     System(String),
-
-    /// Error related to the underlying signature crate.
-    #[error("error in signature")]
-    Signature(SignatureError),
-
-    /// Error in getting random bytes from the system's preferred random number source.
-    #[error("failed to get random bytes: {0}")]
-    GetRandomBytes(#[from] getrandom::Error),
 }
 
 impl From<PemError> for Error {
@@ -76,7 +67,6 @@ impl From<crypto::Error> for Error {
             crypto::Error::AsymmetricKey(string) => Error::AsymmetricKey(string),
             crypto::Error::FromHex(error) => Error::FromHex(error),
             crypto::Error::FromBase64(error) => Error::FromBase64(error),
-            crypto::Error::SignatureError(error) => Error::Signature(error),
         }
     }
 }

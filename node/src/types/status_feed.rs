@@ -9,13 +9,15 @@ use std::{
 
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{EraId, ProtocolVersion, PublicKey};
+use casper_types::PublicKey;
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade,
+        consensus::EraId,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
     crypto::{hash::Digest, AsymmetricKeyExt},
@@ -23,10 +25,7 @@ use crate::{
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade::new(
-        ActivationPoint::EraId(EraId::from(42)),
-        ProtocolVersion::from_parts(2, 0, 1),
-    );
+    let next_upgrade = NextUpgrade::new(ActivationPoint::EraId(EraId(42)), Version::new(2, 0, 1));
     ChainspecInfo {
         name: String::from("casper-example"),
         starting_state_root_hash: Digest::from([2u8; Digest::LENGTH]),
@@ -38,16 +37,16 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
     let mut peers = BTreeMap::new();
-    peers.insert(*node_id, socket_addr.to_string());
+    peers.insert(node_id.clone(), socket_addr.to_string());
     let status_feed = StatusFeed::<NodeId> {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
-        our_public_signing_key: Some(PublicKey::doc_example().clone()),
+        our_public_signing_key: *PublicKey::doc_example(),
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
     };
-    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
+    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION.clone())
 });
 
 /// Summary information from the chainspec.
@@ -93,7 +92,7 @@ pub struct StatusFeed<I> {
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
     /// Our public signing key.
-    pub our_public_signing_key: Option<PublicKey>,
+    pub our_public_signing_key: PublicKey,
     /// The next round length if this node is a validator.
     pub round_length: Option<TimeDiff>,
     /// The compiled node version.
@@ -105,12 +104,8 @@ impl<I> StatusFeed<I> {
         last_added_block: Option<Block>,
         peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
-        consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
+        (our_public_signing_key, round_length): (PublicKey, Option<TimeDiff>),
     ) -> Self {
-        let (our_public_signing_key, round_length) = match consensus_status {
-            Some((public_key, round_length)) => (Some(public_key), round_length),
-            None => (None, None),
-        };
         StatusFeed {
             last_added_block,
             peers,
@@ -142,7 +137,7 @@ impl From<Block> for MinimalBlockInfo {
             era_id: block.header().era_id(),
             height: block.header().height(),
             state_root_hash: *block.header().state_root_hash(),
-            creator: block.body().proposer().clone(),
+            creator: *block.body().proposer(),
         }
     }
 }
@@ -153,7 +148,7 @@ impl From<Block> for MinimalBlockInfo {
 pub struct GetStatusResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: Version,
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash used at the start of the current session.
@@ -163,7 +158,7 @@ pub struct GetStatusResult {
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
     /// Our public signing key.
-    pub our_public_signing_key: Option<PublicKey>,
+    pub our_public_signing_key: PublicKey,
     /// The next round length if this node is a validator.
     pub round_length: Option<TimeDiff>,
     /// Information about the next scheduled upgrade.
@@ -173,7 +168,7 @@ pub struct GetStatusResult {
 }
 
 impl GetStatusResult {
-    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: ProtocolVersion) -> Self {
+    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: Version) -> Self {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,

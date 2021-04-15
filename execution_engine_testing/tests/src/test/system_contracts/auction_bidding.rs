@@ -28,7 +28,7 @@ use casper_types::{
         self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
         METHOD_SLASH,
     },
-    ApiError, EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -54,7 +54,7 @@ const DELEGATION_RATE: DelegationRate = 42;
 #[ignore]
 #[test]
 fn should_run_successful_bond_and_unbond_and_slashing() {
-    let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
+    let default_public_key_arg = *DEFAULT_ACCOUNT_PUBLIC_KEY;
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -81,7 +81,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
-            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_PUBLIC_KEY => default_public_key_arg,
             ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
@@ -117,7 +117,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => unbond_amount,
-            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_PUBLIC_KEY => default_public_key_arg,
         },
     )
     .build();
@@ -202,9 +202,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
     let account_1_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+        SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]).into();
     let account_1_hash = AccountHash::from(&account_1_public_key);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -252,16 +250,14 @@ fn should_fail_bonding_with_insufficient_funds() {
 #[test]
 fn should_fail_unbonding_validator_with_locked_funds() {
     let account_1_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+        SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
     let account_1_hash = AccountHash::from(&account_1_public_key);
     let account_1_balance = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::account(
-            account_1_public_key.clone(),
+            account_1_public_key,
             Motes::new(account_1_balance),
             Some(GenesisValidator::new(
                 Motes::new(GENESIS_VALIDATOR_STAKE.into()),
@@ -316,7 +312,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(42),
-            ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
         },
     )
     .build();
@@ -347,7 +343,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 #[ignore]
 #[test]
 fn should_run_successful_bond_and_unbond_with_release() {
-    let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
+    let default_public_key_arg = *DEFAULT_ACCOUNT_PUBLIC_KEY;
 
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -382,7 +378,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
-            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_PUBLIC_KEY => default_public_key_arg,
             ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
@@ -417,7 +413,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => unbond_amount,
-            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_PUBLIC_KEY => default_public_key_arg,
         },
     )
     .build();
@@ -502,7 +498,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 #[ignore]
 #[test]
 fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
-    let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
+    let default_public_key_arg = *DEFAULT_ACCOUNT_PUBLIC_KEY;
 
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -516,7 +512,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let sem_ver = old_protocol_version.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
-    let default_activation_point = EraId::from(0);
+    let default_activation_point = 0;
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -557,7 +553,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
-            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_PUBLIC_KEY => default_public_key_arg,
             ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
@@ -593,7 +589,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => unbond_amount,
-            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_PUBLIC_KEY => default_public_key_arg,
         },
     )
     .with_protocol_version(new_protocol_version)

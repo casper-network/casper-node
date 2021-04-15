@@ -29,7 +29,7 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     let auction = builder.get_auction_contract_hash();
 
     let args = runtime_args! {
-        auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
         auction::ARG_AMOUNT => bid_amount,
         auction::ARG_DELEGATION_RATE => LARGE_DELEGATION_RATE,
     };

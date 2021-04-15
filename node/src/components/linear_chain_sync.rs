@@ -36,9 +36,10 @@ use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use self::event::{BlockByHashResult, DeploysResult};
-use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
+use casper_types::{ProtocolVersion, PublicKey, U512};
 
 use super::{
+    consensus::EraId,
     fetcher::FetchResult,
     storage::{self, Storage},
     Component,
@@ -104,7 +105,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let timeout_event = effect_builder
             .set_timeout(five_minutes.into())
             .event(|_| Event::InitializeTimeout);
-        let protocol_version = chainspec.protocol_config.version;
+        let protocol_version = ProtocolVersion::from_parts(
+            chainspec.protocol_config.version.major as u32,
+            chainspec.protocol_config.version.minor as u32,
+            chainspec.protocol_config.version.patch as u32,
+        );
         if let Some(state) = read_init_state(storage, chainspec)? {
             let linear_chain_sync = LinearChainSync::from_state(
                 registry,
@@ -240,8 +245,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    fn mark_done(&mut self, latest_block: Option<Block>) {
-        let latest_block = latest_block.map(Box::new);
+    fn mark_done(&mut self) {
+        let latest_block = self.latest_block().cloned().map(Box::new);
         self.state = State::Done(latest_block);
     }
 
@@ -266,10 +271,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             self.state.new_switch_block(&block);
         }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
-            info!(
-                era = block.header().era_id().value(),
-                "shutting down for upgrade"
-            );
+            info!(era = block.header().era_id().0, "shutting down for upgrade");
             return effect_builder
                 .immediately()
                 .event(|_| Event::InitUpgradeShutdown);
@@ -355,20 +357,20 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
-                        era=block.header().era_id().value(),
+                        era=block.header().era_id().0,
                         "downloaded recent block. finished synchronization"
                     );
-                    self.mark_done(Some(*latest_block.clone()));
+                    self.mark_done();
                     return Effects::new();
                 }
                 if self.is_currently_active_era(&maybe_switch_block) {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
-                        era=block.header().era_id().value(),
+                        era=block.header().era_id().0,
                         "downloaded switch block of a new era. finished synchronization"
                     );
-                    self.mark_done(Some(*latest_block.clone()));
+                    self.mark_done();
                     return Effects::new();
                 }
                 self.state = curr_state;
@@ -581,7 +583,7 @@ where
                                     "finished synchronizing descendants of the trusted hash. \
                                     cleaning state."
                                 );
-                                self.mark_done(self.latest_block().cloned());
+                                self.mark_done();
                                 Effects::new()
                             }
                             Some(peer) => {
@@ -632,8 +634,8 @@ where
                         if block.protocol_version() != self.protocol_version {
                             warn!(
                                 %peer,
-                                protocol_version = %self.protocol_version,
-                                block_version = %block.protocol_version(),
+                                protocol_version = ?self.protocol_version,
+                                block_version = ?block.protocol_version(),
                                 "block protocol version mismatch",
                             );
                             // NOTE: Signal misbehaving validator to networking layer.
@@ -792,7 +794,7 @@ where
                 effects
             }
             Event::GotUpgradeActivationPoint(next_upgrade_activation_point) => {
-                trace!(%next_upgrade_activation_point, "new activation point");
+                trace!(?next_upgrade_activation_point, "new activation point");
                 self.next_upgrade_activation_point = Some(next_upgrade_activation_point);
                 Effects::new()
             }
@@ -802,7 +804,7 @@ where
                 self.handle_upgrade_shutdown(effect_builder)
             }
             Event::Shutdown(upgrade) => {
-                info!(%upgrade, "ready for shutdown");
+                info!(?upgrade, "ready for shutdown");
                 self.stop_for_upgrade = upgrade;
                 Effects::new()
             }

@@ -8,10 +8,13 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus, gossiper, small_network, storage},
+    components::{
+        consensus::{self, EraId},
+        gossiper, small_network, storage,
+    },
     crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
     testing::{self, network::Network, TestRng},
@@ -40,11 +43,7 @@ impl TestChain {
         let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
         let stakes = keys
             .iter()
-            .map(|secret_key| {
-                // We use very large stakes so we would catch overflow issues.
-                let stake = U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX);
-                (PublicKey::from(secret_key), stake)
-            })
+            .map(|secret_key| (PublicKey::from(secret_key), rng.gen_range(100..999)))
             .collect();
         Self::new_with_keys(rng, keys, stakes)
     }
@@ -55,19 +54,21 @@ impl TestChain {
     fn new_with_keys(
         rng: &mut TestRng,
         keys: Vec<SecretKey>,
-        stakes: BTreeMap<PublicKey, U512>,
+        stakes: BTreeMap<PublicKey, u64>,
     ) -> Self {
         // Load the `local` chainspec.
         let mut chainspec = Chainspec::from_resources("local");
 
         // Override accounts with those generated from the keys.
         let accounts = stakes
-            .into_iter()
-            .map(|(public_key, bonded_amount)| {
-                let validator_config =
-                    ValidatorConfig::new(Motes::new(bonded_amount), DelegationRate::zero());
+            .iter()
+            .map(|(public_key, bounded_amounts_u64)| {
+                let validator_config = ValidatorConfig::new(
+                    Motes::new(U512::from(*bounded_amounts_u64)),
+                    DelegationRate::zero(),
+                );
                 AccountConfig::new(
-                    public_key,
+                    *public_key,
                     Motes::new(U512::from(rng.gen_range(10000..99999999))),
                     Some(validator_config),
                 )
@@ -111,7 +112,7 @@ impl TestChain {
 
         // Additionally set up storage in a temporary directory.
         let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
-        cfg.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
+        cfg.consensus.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 
@@ -132,7 +133,7 @@ impl TestChain {
 
             // We create an initializer reactor here and run it to completion.
             let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
-                (false, WithDir::new(root.clone(), cfg)),
+                WithDir::new(root.clone(), cfg),
                 Arc::clone(&self.chainspec),
             )
             .await?;
@@ -185,10 +186,10 @@ async fn run_validator_network() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
+    net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(90))
         .await;
 
-    net.settle_on(&mut rng, is_in_era(EraId::from(2)), Duration::from_secs(60))
+    net.settle_on(&mut rng, is_in_era(EraId(2)), Duration::from_secs(60))
         .await;
 }
 
@@ -202,11 +203,11 @@ async fn run_equivocator_network() {
     let alice_sk = SecretKey::random(&mut rng);
     let size: usize = 2;
     let mut keys: Vec<SecretKey> = (1..size).map(|_| SecretKey::random(&mut rng)).collect();
-    let mut stakes: BTreeMap<PublicKey, U512> = keys
+    let mut stakes: BTreeMap<PublicKey, u64> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(secret_key), U512::from(100)))
+        .map(|secret_key| (PublicKey::from(secret_key), 100))
         .collect();
-    stakes.insert(PublicKey::from(&alice_sk), U512::from(1));
+    stakes.insert(PublicKey::from(&alice_sk), 1);
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
@@ -219,25 +220,21 @@ async fn run_equivocator_network() {
         .expect("network initialization failed");
 
     info!("Waiting for Era 0 to end");
-    net.settle_on(
-        &mut rng,
-        is_in_era(EraId::from(1)),
-        Duration::from_secs(600),
-    )
-    .await;
+    net.settle_on(&mut rng, is_in_era(EraId(1)), Duration::from_secs(600))
+        .await;
 
     let last_era_number = 5;
     let timeout = Duration::from_secs(90);
 
     for era_number in 2..last_era_number {
         info!("Waiting for Era {} to end", era_number);
-        net.settle_on(&mut rng, is_in_era(EraId::from(era_number)), timeout)
+        net.settle_on(&mut rng, is_in_era(EraId(era_number)), timeout)
             .await;
     }
 
     // Make sure we waited long enough for this test to include unbonding and dropping eras.
     let oldest_bonded_era_id =
-        consensus::oldest_bonded_era(&protocol_config, EraId::from(last_era_number));
+        consensus::oldest_bonded_era(&protocol_config, EraId(last_era_number));
     let oldest_evidence_era_id =
         consensus::oldest_bonded_era(&protocol_config, oldest_bonded_era_id);
     assert!(!oldest_evidence_era_id.is_genesis());

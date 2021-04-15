@@ -26,35 +26,23 @@ const ARG_AMOUNT: &str = "amount";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
-static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_1_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([200; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 
-static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_2_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([202; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
-static ACCOUNT_3_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_3_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([204; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_3_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_3_BOND: u64 = 200_000;
 
-static ACCOUNT_4_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_4_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
 const ACCOUNT_4_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_4_BOND: u64 = 200_000;
 
@@ -62,7 +50,7 @@ const ACCOUNT_4_BOND: u64 = 200_000;
 #[test]
 fn should_run_ee_1045_squash_validators() {
     let account_1 = GenesisAccount::account(
-        ACCOUNT_1_PK.clone(),
+        *ACCOUNT_1_PK,
         Motes::new(ACCOUNT_1_BALANCE.into()),
         Some(GenesisValidator::new(
             Motes::new(ACCOUNT_1_BOND.into()),
@@ -70,7 +58,7 @@ fn should_run_ee_1045_squash_validators() {
         )),
     );
     let account_2 = GenesisAccount::account(
-        ACCOUNT_2_PK.clone(),
+        *ACCOUNT_2_PK,
         Motes::new(ACCOUNT_2_BALANCE.into()),
         Some(GenesisValidator::new(
             Motes::new(ACCOUNT_2_BOND.into()),
@@ -78,7 +66,7 @@ fn should_run_ee_1045_squash_validators() {
         )),
     );
     let account_3 = GenesisAccount::account(
-        ACCOUNT_3_PK.clone(),
+        *ACCOUNT_3_PK,
         Motes::new(ACCOUNT_3_BALANCE.into()),
         Some(GenesisValidator::new(
             Motes::new(ACCOUNT_3_BOND.into()),
@@ -86,7 +74,7 @@ fn should_run_ee_1045_squash_validators() {
         )),
     );
     let account_4 = GenesisAccount::account(
-        ACCOUNT_4_PK.clone(),
+        *ACCOUNT_4_PK,
         Motes::new(ACCOUNT_4_BALANCE.into()),
         Some(GenesisValidator::new(
             Motes::new(ACCOUNT_4_BOND.into()),
@@ -94,8 +82,8 @@ fn should_run_ee_1045_squash_validators() {
         )),
     );
 
-    let round_1_validator_squash = vec![ACCOUNT_2_PK.clone(), ACCOUNT_4_PK.clone()];
-    let round_2_validator_squash = vec![ACCOUNT_1_PK.clone(), ACCOUNT_3_PK.clone()];
+    let round_1_validator_squash = vec![*ACCOUNT_2_PK, *ACCOUNT_4_PK];
+    let round_2_validator_squash = vec![*ACCOUNT_1_PK, *ACCOUNT_3_PK];
 
     let extra_accounts = vec![account_1, account_2, account_3, account_4];
 
@@ -180,10 +168,10 @@ fn should_run_ee_1045_squash_validators() {
 
     assert_ne!(genesis_validator_weights, post_round_1_auction_weights);
 
-    let lhs: BTreeSet<_> = genesis_validator_weights.keys().cloned().collect();
-    let rhs: BTreeSet<_> = post_round_1_auction_weights.keys().cloned().collect();
+    let lhs: BTreeSet<_> = genesis_validator_weights.keys().copied().collect();
+    let rhs: BTreeSet<_> = post_round_1_auction_weights.keys().copied().collect();
     assert_eq!(
-        lhs.difference(&rhs).cloned().collect::<BTreeSet<_>>(),
+        lhs.difference(&rhs).copied().collect::<BTreeSet<_>>(),
         round_1_validator_squash.into_iter().collect()
     );
 
@@ -203,10 +191,10 @@ fn should_run_ee_1045_squash_validators() {
 
     assert_ne!(genesis_validator_weights, post_round_2_auction_weights);
 
-    let lhs: BTreeSet<_> = post_round_1_auction_weights.keys().cloned().collect();
-    let rhs: BTreeSet<_> = post_round_2_auction_weights.keys().cloned().collect();
+    let lhs: BTreeSet<_> = post_round_1_auction_weights.keys().copied().collect();
+    let rhs: BTreeSet<_> = post_round_2_auction_weights.keys().copied().collect();
     assert_eq!(
-        lhs.difference(&rhs).cloned().collect::<BTreeSet<_>>(),
+        lhs.difference(&rhs).copied().collect::<BTreeSet<_>>(),
         round_2_validator_squash.into_iter().collect()
     );
 

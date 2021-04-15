@@ -100,7 +100,11 @@ impl Chainspec {
 
     /// Returns the protocol version of the chainspec.
     pub(crate) fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_config.version
+        ProtocolVersion::from_parts(
+            self.protocol_config.version.major as u32,
+            self.protocol_config.version.minor as u32,
+            self.protocol_config.version.patch as u32,
+        )
     }
 }
 
@@ -208,6 +212,7 @@ mod tests {
 
     use num_rational::Ratio;
     use once_cell::sync::Lazy;
+    use semver::Version;
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
@@ -217,7 +222,7 @@ mod tests {
         stored_value::StoredValue,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, ProtocolVersion, U512};
+    use casper_types::U512;
 
     use super::*;
     use crate::{
@@ -304,10 +309,7 @@ mod tests {
 
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
-            assert_eq!(
-                spec.protocol_config.version,
-                ProtocolVersion::from_parts(0, 9, 0)
-            );
+            assert_eq!(spec.protocol_config.version, Version::from((0, 9, 0)));
             assert_eq!(
                 spec.protocol_config.activation_point.genesis_timestamp(),
                 Some(Timestamp::from(1600454700000))
@@ -330,14 +332,8 @@ mod tests {
                 );
             }
         } else {
-            assert_eq!(
-                spec.protocol_config.version,
-                ProtocolVersion::from_parts(1, 0, 0)
-            );
-            assert_eq!(
-                spec.protocol_config.activation_point.era_id(),
-                EraId::from(1)
-            );
+            assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
+            assert_eq!(spec.protocol_config.activation_point.era_id().0, 1);
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
             for value in spec.protocol_config.global_state_update.unwrap().0.values() {
@@ -373,7 +369,6 @@ mod tests {
         assert_eq!(spec.wasm_config, *EXPECTED_GENESIS_WASM_COSTS);
     }
 
-    #[ignore = "We probably need to reconsider our approach here"]
     #[test]
     fn check_bundled_spec() {
         let chainspec = Chainspec::from_resources("test/valid/0_9_0");
@@ -389,7 +384,6 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&chainspec);
     }
 
-    #[ignore = "We probably need to reconsider our approach here"]
     #[test]
     fn should_have_deterministic_chainspec_hash() {
         const PATH: &str = "test/valid/0_9_0";

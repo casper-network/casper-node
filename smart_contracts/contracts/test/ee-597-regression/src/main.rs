@@ -13,10 +13,7 @@ use casper_types::{
 const DELEGATION_RATE: DelegationRate = 42;
 
 fn bond(contract_hash: ContractHash, bond_amount: U512) {
-    let valid_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+    let valid_public_key: PublicKey = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
 
     let runtime_args = runtime_args! {
         auction::ARG_PUBLIC_KEY => valid_public_key,

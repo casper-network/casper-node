@@ -16,7 +16,6 @@ function main()
     local BID_AMOUNT=${2}
     local BID_DELEGATION_RATE=${3}
     local QUIET=${4:-"FALSE"}
-
     local CHAIN_NAME
     local GAS_PRICE
     local GAS_PAYMENT
@@ -31,7 +30,7 @@ function main()
     GAS_PAYMENT=${GAS_PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
     NODE_ADDRESS=$(get_node_address_rpc)
     PATH_TO_CLIENT=$(get_path_to_client)
-    PATH_TO_CONTRACT=$(get_path_to_contract "auction/add_bid.wasm")
+    PATH_TO_CONTRACT=$(get_path_to_contract "add_bid.wasm")
 
     BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
     BIDDER_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
@@ -91,4 +90,4 @@ done
 
 main "${NODE_ID:-6}" \
      "${AMOUNT:-$(get_node_staking_weight "${NODE_ID:-6}")}" \
-     "${DELEGATION_RATE:-6}"
+     "${DELEGATION_RATE:-2}"

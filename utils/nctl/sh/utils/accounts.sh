@@ -9,10 +9,8 @@ function get_account_balance()
 {
     local PURSE_UREF=${1}
     local STATE_ROOT_HASH=${2:-$(get_state_root_hash)}
-    local ACCOUNT_BALANCE
-    local NODE_ADDRESS
+    local NODE_ADDRESS=$(get_node_address_rpc)
 
-    NODE_ADDRESS=$(get_node_address_rpc)
     ACCOUNT_BALANCE=$(
         $(get_path_to_client) get-balance \
             --node-address "$NODE_ADDRESS" \
@@ -21,8 +19,8 @@ function get_account_balance()
             | jq '.result.balance_value' \
             | sed -e 's/^"//' -e 's/"$//'
         )    
-
-    echo "$ACCOUNT_BALANCE"
+    
+    echo $ACCOUNT_BALANCE
 }
 
 #######################################

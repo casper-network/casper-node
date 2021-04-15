@@ -69,8 +69,6 @@ function assert_chain_stalled() {
     # n-seconds apart doesnt progress
     log_step "ensuring chain stalled"
     local SLEEP_TIME=${1}
-    # Sleep 5 seconds to allow for final message propagation.
-    sleep 5
     local LFB_1_PRE=$(do_read_lfb_hash 1)
     local LFB_2_PRE=$(do_read_lfb_hash 2)
     log "Sleeping ${SLEEP_TIME}s..."

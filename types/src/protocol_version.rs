@@ -1,5 +1,5 @@
 use alloc::{format, string::String, vec::Vec};
-use core::{convert::TryFrom, fmt, str::FromStr};
+use core::{convert::TryFrom, fmt};
 
 use datasize::DataSize;
 
@@ -9,7 +9,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
-    ParseSemVerError, SemVer,
+    SemVer,
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
@@ -142,15 +142,6 @@ impl FromBytes for ProtocolVersion {
         let (version, rem) = SemVer::from_bytes(bytes)?;
         let protocol_version = ProtocolVersion::new(version);
         Ok((protocol_version, rem))
-    }
-}
-
-impl FromStr for ProtocolVersion {
-    type Err = ParseSemVerError;
-
-    fn from_str(s: &str) -> Result<Self, ParseSemVerError> {
-        let version = SemVer::try_from(s)?;
-        Ok(ProtocolVersion::new(version))
     }
 }
 

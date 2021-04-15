@@ -12,17 +12,13 @@ function main()
 {
     local AMOUNT=${1}
     local CHAIN_NAME
-    local DEPLOY_HASH
     local GAS_PRICE
     local GAS_PAYMENT
     local NODE_ADDRESS
     local PATH_TO_CLIENT
-    local USER_1_ACCOUNT_HASH
-    local USER_1_ACCOUNT_KEY
-    local USER_1_ID
-    local USER_2_ACCOUNT_HASH
-    local USER_2_ACCOUNT_KEY
-    local USER_2_ID
+    local CONTRACT_OWNER_SECRET_KEY
+    local USER_ACCOUNT_KEY
+    local USER_ACCOUNT_HASH
 
     # Set standard deploy parameters.
     CHAIN_NAME=$(get_chain_name)
@@ -33,6 +29,7 @@ function main()
 
     # Set contract owner account key - i.e. faucet account.
     CONTRACT_OWNER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")
+    CONTRACT_OWNER_ACCOUNT_HASH=$(get_account_hash "$CONTRACT_OWNER_ACCOUNT_KEY")
 
     # Set contract owner secret key.
     CONTRACT_OWNER_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_FAUCET")
@@ -50,9 +47,11 @@ function main()
             USER_2_ID=1
         fi
 
-        # Set user account info. 
+        # Set user account keys. 
         USER_1_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$USER_1_ID")
         USER_2_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$USER_2_ID")
+
+        # Set user account hashes. 
         USER_1_ACCOUNT_HASH=$(get_account_hash "$USER_1_ACCOUNT_KEY")
         USER_2_ACCOUNT_HASH=$(get_account_hash "$USER_2_ACCOUNT_KEY")
 
@@ -68,7 +67,7 @@ function main()
                 --session-hash "$CONTRACT_HASH" \
                 --session-entry-point "transferFrom" \
                 --session-arg "$(get_cl_arg_account_hash 'owner' "$USER_1_ACCOUNT_HASH")" \
-                --session-arg "$(get_cl_arg_account_hash 'recipient' "$USER_2_ACCOUNT_HASH")" \
+                --session-arg "$(get_cl_arg_account_hash 'recipient' "$USER_1_ACCOUNT_HASH")" \
                 --session-arg "$(get_cl_arg_u256 'amount' "$AMOUNT")" \
                 | jq '.result.deploy_hash' \
                 | sed -e 's/^"//' -e 's/"$//'

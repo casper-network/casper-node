@@ -3,6 +3,7 @@ use std::{
     io::{self, BufReader, Read, Write},
 };
 
+use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
@@ -10,7 +11,7 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::{ProtocolVersion, SecretKey};
+use casper_types::SecretKey;
 
 use crate::{
     error::{Error, Result},
@@ -49,7 +50,7 @@ impl RpcClient for Transfer {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ListDeploysResult {
     /// The RPC API version.
-    pub api_version: ProtocolVersion,
+    pub api_version: Version,
     /// The deploy hashes of the block, if found.
     pub deploy_hashes: Option<Vec<DeployHash>>,
     /// The transfer deploy hashes of the block, if found.

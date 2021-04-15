@@ -13,7 +13,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_rational::Ratio;
 
-use crate::{account::AccountHash, EraId, PublicKey, U512};
+use crate::{account::AccountHash, PublicKey, U512};
 
 pub use bid::Bid;
 pub use constants::*;
@@ -34,6 +34,9 @@ pub type Bids = BTreeMap<PublicKey, Bid>;
 
 /// Weights of validators. "Weight" in this context means a sum of their stakes.
 pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
+
+/// Era index type.
+pub type EraId = u64;
 
 /// List of era validators
 pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;
@@ -77,10 +80,12 @@ pub trait Auction:
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
-        match self.read_era_validators(era_index)? {
-            Some(seigniorage_recipients) => Ok(seigniorage_recipients),
-            None => Err(Error::MissingSeigniorageRecipients),
-        }
+        let mut seigniorage_recipients_snapshot =
+            detail::get_seigniorage_recipients_snapshot(self)?;
+        let seigniorage_recipients = seigniorage_recipients_snapshot
+            .remove(&era_index)
+            .ok_or(Error::MissingSeigniorageRecipients)?;
+        Ok(seigniorage_recipients)
     }
 
     /// For a non-founder validator, this adds, or modifies, an entry in the `bids` collection and
@@ -162,8 +167,8 @@ pub trait Auction:
 
         detail::create_unbonding_purse(
             self,
-            public_key.clone(),
-            public_key.clone(), // validator is the unbonder
+            public_key,
+            public_key, // validator is the unbonder
             *bid.bonding_purse(),
             amount,
         )?;
@@ -173,8 +178,8 @@ pub trait Auction:
             for (delegator_public_key, delegator) in bid.delegators() {
                 detail::create_unbonding_purse(
                     self,
-                    public_key.clone(),
-                    delegator_public_key.clone(),
+                    public_key,
+                    *delegator_public_key,
                     *delegator.bonding_purse(),
                     *delegator.staked_amount(),
                 )?;
@@ -236,12 +241,12 @@ pub trait Auction:
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::unlocked(
-                    delegator_public_key.clone(),
+                    delegator_public_key,
                     amount,
                     bonding_purse,
                     validator_public_key,
                 );
-                delegators.insert(delegator_public_key.clone(), delegator);
+                delegators.insert(delegator_public_key, delegator);
                 amount
             }
         };
@@ -281,7 +286,7 @@ pub trait Auction:
                 detail::create_unbonding_purse(
                     self,
                     validator_public_key,
-                    delegator_public_key.clone(),
+                    delegator_public_key,
                     *delegator.bonding_purse(),
                     amount,
                 )?;
@@ -358,6 +363,7 @@ pub trait Auction:
 
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
+        let snapshot_size = auction_delay as usize + 1;
         let mut era_id = detail::get_era_id(self)?;
         let mut bids = detail::get_bids(self)?;
 
@@ -383,7 +389,7 @@ pub trait Auction:
                 .filter(|(_public_key, bid)| bid.vesting_schedule().is_some() && !bid.inactive())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
-                    Ok((public_key.clone(), total_staked_amount))
+                    Ok((*public_key, total_staked_amount))
                 })
                 .collect::<Result<ValidatorWeights, Error>>()?;
 
@@ -393,7 +399,7 @@ pub trait Auction:
                 .filter(|(_public_key, bid)| bid.vesting_schedule().is_none() && !bid.inactive())
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
-                    Ok((public_key.clone(), total_staked_amount))
+                    Ok((*public_key, total_staked_amount))
                 })
                 .collect::<Result<Vec<(PublicKey, U512)>, Error>>()?;
 
@@ -418,6 +424,8 @@ pub trait Auction:
 
         // Update seigniorage recipients for current era
         {
+            let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+
             let mut recipients = SeigniorageRecipients::new();
 
             for era_validator in winners.keys() {
@@ -425,10 +433,14 @@ pub trait Auction:
                     Some(bid) => bid.into(),
                     None => return Err(Error::BidNotFound),
                 };
-                recipients.insert(era_validator.clone(), seigniorage_recipient);
+                recipients.insert(*era_validator, seigniorage_recipient);
             }
 
-            self.write_era_validators(delayed_era, recipients)?;
+            let previous_recipients = snapshot.insert(delayed_era, recipients);
+            assert!(previous_recipients.is_none());
+
+            let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
+            detail::set_seigniorage_recipients_snapshot(self, snapshot)?;
         }
 
         detail::set_era_id(self, era_id)?;
@@ -495,12 +507,12 @@ pub trait Auction:
                     .map(|(delegator_key, delegator_stake)| {
                         let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
                         let reward = delegators_part * reward_multiplier;
-                        (delegator_key.clone(), reward)
+                        (*delegator_key, reward)
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
                 self,
                 &mut seigniorage_allocations,
-                public_key.clone(),
+                public_key,
                 delegator_rewards,
             )?;
             let total_delegator_payout = delegator_payouts
@@ -513,7 +525,7 @@ pub trait Auction:
             let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
                 &mut seigniorage_allocations,
-                public_key.clone(),
+                public_key,
                 validator_reward,
             )?;
             // TODO: add "mint into existing purse" facility

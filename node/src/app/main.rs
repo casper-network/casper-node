@@ -42,16 +42,12 @@ fn panic_hook(info: &PanicInfo) {
     process::abort()
 }
 
-/// Main function.
 fn main() -> anyhow::Result<()> {
-    // The exit code is determined in a block to ensure that all acquired resources are dropped
-    // before exiting with the given exit code.
     let exit_code = {
-        let num_cpus = num_cpus::get();
-        let runtime = Builder::new_multi_thread()
+        let mut runtime = Builder::new()
+            .threaded_scheduler()
             .enable_all()
-            .worker_threads(num_cpus)
-            .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
+            .max_threads(MAX_THREAD_COUNT)
             .build()
             .unwrap();
 
@@ -62,7 +58,6 @@ fn main() -> anyhow::Result<()> {
 
         runtime.block_on(async { opts.run().await })?
     };
-
     info!(%exit_code, "exiting casper-node");
-    process::exit(exit_code)
+    process::exit(exit_code);
 }

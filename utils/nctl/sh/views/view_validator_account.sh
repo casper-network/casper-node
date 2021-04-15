@@ -41,11 +41,11 @@ function render()
     PURSE_UREF=$(get_main_purse_uref "$ACCOUNT_KEY" "$STATE_ROOT_HASH")
     ACCOUNT_BALANCE=$(get_account_balance "$PURSE_UREF" "$STATE_ROOT_HASH")
 
-    log "validator #$NODE_ID a/c secret key    : $PATH_TO_ACCOUNT_SKEY"
-    log "validator #$NODE_ID a/c key           : $ACCOUNT_KEY"
-    log "validator #$NODE_ID a/c hash          : $ACCOUNT_HASH"
-    log "validator #$NODE_ID a/c purse         : $PURSE_UREF"
-    log "validator #$NODE_ID a/c purse balance : $ACCOUNT_BALANCE"
+    log "validator #$NODE_ID a/c secret key    : "$PATH_TO_ACCOUNT_SKEY
+    log "validator #$NODE_ID a/c key           : "$ACCOUNT_KEY
+    log "validator #$NODE_ID a/c hash          : "$ACCOUNT_HASH
+    log "validator #$NODE_ID a/c purse         : "$PURSE_UREF
+    log "validator #$NODE_ID a/c purse balance : "$ACCOUNT_BALANCE
     log "validator #$NODE_ID on-chain account  : see below"
     render_account "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
 }
@@ -62,7 +62,6 @@ do
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         node) NODE_ID=${VALUE} ;;
-        validator) NODE_ID=${VALUE} ;;
         *)
     esac
 done

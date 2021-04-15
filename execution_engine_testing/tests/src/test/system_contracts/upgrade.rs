@@ -5,18 +5,22 @@ use casper_engine_test_support::internal::{
     DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
 };
 
-use casper_execution_engine::shared::{
-    host_function_costs::HostFunctionCosts,
-    opcode_costs::{
-        OpcodeCosts, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
-        DEFAULT_CONTROL_FLOW_COST, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST,
-        DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
-        DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MUL_COST,
-        DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST,
+use casper_execution_engine::{
+    core::engine_state::upgrade::ActivationPoint,
+    shared::{
+        host_function_costs::HostFunctionCosts,
+        opcode_costs::{
+            OpcodeCosts, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
+            DEFAULT_CONTROL_FLOW_COST, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST,
+            DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
+            DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+            DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST,
+            DEFAULT_UNREACHABLE_COST,
+        },
+        storage_costs::StorageCosts,
+        stored_value::StoredValue,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
-    storage_costs::StorageCosts,
-    stored_value::StoredValue,
-    wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
 };
 use casper_types::{
     system::{
@@ -25,12 +29,12 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    CLValue, EraId, ProtocolVersion, U512,
+    CLValue, ProtocolVersion, U512,
 };
 use num_rational::Ratio;
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
-const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
+const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
 fn get_upgraded_wasm_config() -> WasmConfig {
     let opcode_cost = OpcodeCosts {

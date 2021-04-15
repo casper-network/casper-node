@@ -54,7 +54,6 @@ macro_rules! add_unit {
             .unwrap_or($state.params().start_timestamp());
         // If this is a block: Find the next time we're a leader.
         if value.is_some() {
-            #[allow(clippy::integer_arithmetic)]
             let r_len = TimeDiff::from(1 << round_exp);
             timestamp = state::round_id(timestamp + r_len - TimeDiff::from(1), round_exp);
             while $state.leader(timestamp) != creator {
@@ -115,13 +114,16 @@ macro_rules! endorse {
         }
     };
     ($state: ident, $creator: expr, $vote: expr) => {{
-        use crate::components::consensus::highway_core::endorsement::{
-            Endorsement, SignedEndorsement,
+        use crate::components::consensus::highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
+            highway::Endorsements,
         };
 
         let endorsement: Endorsement<TestContext> = Endorsement::new($vote, ($creator));
         let signature = TestSecret(($creator).0).sign(&endorsement.hash());
-        let endorsements = SignedEndorsement::new(endorsement, signature).into();
+        let signed_endorsement = SignedEndorsement::new(endorsement, signature);
+        let endorsements: Endorsements<TestContext> =
+            Endorsements::new(vec![signed_endorsement].into_iter());
         let evidence = $state.find_conflicting_endorsements(&endorsements, &TEST_INSTANCE_ID);
         $state.add_endorsements(endorsements);
         for ev in evidence {

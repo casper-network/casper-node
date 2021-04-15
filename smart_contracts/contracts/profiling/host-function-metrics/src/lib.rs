@@ -57,9 +57,8 @@ impl From<Error> for ApiError {
 
 fn create_random_names(rng: &mut SmallRng) -> impl Iterator<Item = String> + '_ {
     iter::repeat_with(move || {
-        let key_length: usize = rng.gen_range(MIN_NAMED_KEY_NAME_LENGTH..MAX_NAMED_KEY_NAME_LENGTH);
+        let key_length: usize = rng.gen_range(MIN_NAMED_KEY_NAME_LENGTH, MAX_NAMED_KEY_NAME_LENGTH);
         rng.sample_iter(&Alphanumeric)
-            .map(char::from)
             .take(key_length)
             .collect::<String>()
     })
@@ -67,7 +66,7 @@ fn create_random_names(rng: &mut SmallRng) -> impl Iterator<Item = String> + '_ 
 }
 
 fn truncate_named_keys(named_keys: NamedKeys, rng: &mut SmallRng) -> NamedKeys {
-    let truncated_len = rng.gen_range(1..=named_keys.len());
+    let truncated_len = rng.gen_range(1, named_keys.len() + 1);
     let mut vec = named_keys.into_iter().collect::<Vec<_>>();
     vec.truncate(truncated_len);
     vec.into_iter().collect()
@@ -133,7 +132,8 @@ pub extern "C" fn call() {
     // Store large function with no named keys, then execute it to get named keys returned.
     let mut rng = SmallRng::seed_from_u64(seed);
     let large_function_name = String::from_iter(
-        iter::repeat('l').take(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH)),
+        iter::repeat('l')
+            .take(rng.gen_range(MIN_FUNCTION_NAME_LENGTH, MAX_FUNCTION_NAME_LENGTH + 1)),
     );
 
     let entry_point_name = &large_function_name;
@@ -153,7 +153,8 @@ pub extern "C" fn call() {
 
     // Small function
     let small_function_name = String::from_iter(
-        iter::repeat('s').take(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH)),
+        iter::repeat('s')
+            .take(rng.gen_range(MIN_FUNCTION_NAME_LENGTH, MAX_FUNCTION_NAME_LENGTH + 1)),
     );
 
     let entry_point_name = &small_function_name;

@@ -88,15 +88,15 @@ function get_key_value_session_arg ()
     local KEY_VALUE=${2}
 
     if [ "$KEY_TYPE" == "string" ]; then
-        get_cl_arg_string 'value' "$KEY_VALUE"
+        echo $(get_cl_arg_string 'value' "$KEY_VALUE")
     elif [ "$KEY_TYPE" == "u64" ]; then
-        get_cl_arg_u64 'value' "$KEY_VALUE"
+        echo $(get_cl_arg_u64 'value' "$KEY_VALUE")
     elif [ "$KEY_TYPE" == "u512" ]; then
-        get_cl_arg_u512 'value' "$KEY_VALUE"
+        echo $(get_cl_arg_u512 'value' "$KEY_VALUE")
     elif [ "$KEY_TYPE" == "account-hash" ]; then
-        get_cl_arg_account_hash 'value' "$KEY_VALUE"
+        echo $(get_cl_arg_account_hash 'value' "$KEY_VALUE")
     else
-        get_cl_arg_string 'value' "$KEY_VALUE"
+        echo $(get_cl_arg_string 'value' "$KEY_VALUE")
     fi
 }
 

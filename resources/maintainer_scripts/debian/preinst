@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -e
+
+# Default Variables
+# ---
+DEFAULT_USERNAME="casper"
+DEFAULT_CONFIG_DIRECTORY="/etc/${DEFAULT_USERNAME}"
+DEFAULT_DATA_DIRECTORY="/var/lib/${DEFAULT_USERNAME}"
+DEFAULT_LOG_DIRECOTRY="/var/log/${DEFAULT_USERNAME}"
+
+# Creation of Files/Directories
+# ---
+# Assure DEFAULT_DATA_DIRECTORY is available for state data
+if [ -d ${DEFAULT_DATA_DIRECTORY} ] ; then
+    echo "Directory ${DEFAULT_DATA_DIRECTORY} already exists."
+else
+    mkdir -p ${DEFAULT_DATA_DIRECTORY}
+fi
+
+# Assure DEFAULT_CONFIG_DIRECTORY is available for config data
+if [ -d ${DEFAULT_CONFIG_DIRECTORY} ] ; then
+    echo "Directory ${DEFAULT_CONFIG_DIRECTORY} already exists."
+else
+    mkdir -p ${DEFAULT_CONFIG_DIRECTORY}
+fi
+
+# Assure DEFAULT_LOG_DIRECOTRY is available for logging
+if [ -d ${DEFAULT_LOG_DIRECOTRY} ] ; then
+    echo "Directory ${DEFAULT_LOG_DIRECOTRY} already exists."
+else
+    mkdir -p ${DEFAULT_LOG_DIRECOTRY}
+fi
+
+# This is required for replacement to insert scripts for systemd by cargo-deb
+#DEBHELPER#

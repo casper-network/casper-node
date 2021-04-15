@@ -211,7 +211,7 @@ pub(super) mod ttl {
 
     const ARG_NAME: &str = "ttl";
     const ARG_VALUE_NAME: &str = "DURATION";
-    const ARG_DEFAULT: &str = "30min";
+    const ARG_DEFAULT: &str = "1hour";
     const ARG_HELP: &str =
         "Time that the deploy will remain valid for. A deploy can only be included in a block \
         between `timestamp` and `timestamp + ttl`. Input examples: '1hr 12min', '30min 50sec', \

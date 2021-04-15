@@ -1,0 +1,20 @@
+[Unit]
+Description=Casper Node
+Documentation=https://docs.casperlabs.io
+ConditionPathExists=/etc/casper/config.toml
+ConditionPathExists=/etc/casper/accounts.toml
+ConditionPathExists=/etc/casper/chainspec.toml
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/etc/casper/systemd_pre_start.sh
+#StandardOutput can only append log files from systemd version 240 + (Ubuntu 20.04). Use ExecStart with redirection as workaround.
+#seperate stderr logging as it outputs non-JSON stack traces
+ExecStart=/bin/sh -c 'exec /usr/bin/casper-node validator /etc/casper/config.toml 1>> /var/log/casper/casper-node.log 2>> /var/log/casper/casper-node.stderr.log'
+Restart=no
+User=casper
+Group=casper
+
+[Install]
+WantedBy=multi-user.target

@@ -103,7 +103,7 @@ mod tests {
     });
 
     fn random_element_count() -> u8 {
-        rand::thread_rng().gen_range(MIN_ELEMENTS..=MAX_ELEMENTS)
+        rand::thread_rng().gen_range(MIN_ELEMENTS, MAX_ELEMENTS + 1)
     }
 
     struct TestFixture {

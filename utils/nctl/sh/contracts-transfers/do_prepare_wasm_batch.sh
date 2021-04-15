@@ -29,7 +29,7 @@ function main()
     GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
     GAS_PAYMENT=${GAS_PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
     PATH_TO_CLIENT=$(get_path_to_client)
-    PATH_TO_CONTRACT=$(get_path_to_contract "transfers/transfer_to_account_u512.wasm")
+    PATH_TO_CONTRACT=$(get_path_to_contract "transfer_to_account_u512.wasm")
     PATH_TO_NET=$(get_path_to_net)    
 
     CP1_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_FAUCET")
@@ -65,16 +65,14 @@ function main()
                     --secret-key "$CP1_SECRET_KEY" \
                     --session-arg "$(get_cl_arg_u512 'amount' "$AMOUNT")" \
                     --session-arg "$(get_cl_arg_account_hash 'target' "$CP2_ACCOUNT_HASH")" \
-                    --session-path "$PATH_TO_CONTRACT" > \
-                    /dev/null 2>&1
+                    --session-path "$PATH_TO_CONTRACT" 
 
                 # Set signed deploy.
                 PATH_TO_OUTPUT_SIGNED="$PATH_TO_OUTPUT/transfer-$TRANSFER_ID.json"
                 $PATH_TO_CLIENT sign-deploy \
                     --secret-key "$CP1_SECRET_KEY" \
                     --input "$PATH_TO_OUTPUT_UNSIGNED" \
-                    --output "$PATH_TO_OUTPUT_SIGNED" \
-                    > /dev/null 2>&1
+                    --output "$PATH_TO_OUTPUT_SIGNED"
                 
                 # Tidy up.
                 rm "$PATH_TO_OUTPUT_UNSIGNED"

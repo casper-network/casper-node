@@ -9,22 +9,20 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    system::auction::{Bid, Bids, DelegationRate, Delegator, EraValidators},
-    AccessRights, EraId, PublicKey, SecretKey, URef, U512,
+    system::auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
+    AccessRights, PublicKey, SecretKey, URef, U512,
 };
 
 use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
-    let public_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into();
+    let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
 
     let mut validator_weights = BTreeMap::new();
     validator_weights.insert(public_key_1, U512::from(10));
 
     let mut era_validators = BTreeMap::new();
-    era_validators.insert(EraId::from(10u64), validator_weights);
+    era_validators.insert(10u64, validator_weights);
 
     era_validators
 });
@@ -33,26 +31,20 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
-    let validator_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
-    let delegator_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+    let validator_public_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+    let delegator_public_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
 
     let delegator = Delegator::unlocked(
-        delegator_public_key.clone(),
+        delegator_public_key,
         U512::from(10),
         bonding_purse,
-        validator_public_key.clone(),
+        validator_public_key,
     );
     let mut delegators = BTreeMap::new();
     delegators.insert(delegator_public_key, delegator);
 
     let bid = Bid::locked(
-        validator_public_key.clone(),
+        validator_public_key,
         bonding_purse,
         staked_amount,
         DelegationRate::zero(),
@@ -118,10 +110,10 @@ impl From<Bid> for JsonBid {
         let mut json_delegators: Vec<JsonDelegator> = Vec::with_capacity(bid.delegators().len());
         for (public_key, delegator) in bid.delegators().iter() {
             json_delegators.push(JsonDelegator {
-                public_key: public_key.clone(),
+                public_key: *public_key,
                 staked_amount: *delegator.staked_amount(),
                 bonding_purse: *delegator.bonding_purse(),
-                delegatee: delegator.validator_public_key().clone(),
+                delegatee: *delegator.validator_public_key(),
             });
         }
         JsonBid {
@@ -169,7 +161,7 @@ impl AuctionState {
             let mut json_validator_weights: Vec<JsonValidatorWeights> = Vec::new();
             for (public_key, weight) in validator_weights.iter() {
                 json_validator_weights.push(JsonValidatorWeights {
-                    public_key: public_key.clone(),
+                    public_key: *public_key,
                     weight: *weight,
                 });
             }
@@ -183,7 +175,7 @@ impl AuctionState {
         for (public_key, bid) in bids.unwrap().iter() {
             let json_bid = JsonBid::from(bid.clone());
             json_bids.push(JsonBids {
-                public_key: public_key.clone(),
+                public_key: *public_key,
                 bid: json_bid,
             });
         }

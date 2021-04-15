@@ -28,13 +28,8 @@ mod sse_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
-use tokio::sync::{
-    mpsc::{self, UnboundedSender},
-    oneshot,
-};
-use tracing::{info, warn};
-
-use casper_types::ProtocolVersion;
+use semver::Version;
+use tokio::sync::mpsc::{self, UnboundedSender};
 
 use super::Component;
 use crate::{
@@ -42,6 +37,7 @@ use crate::{
     utils::{self, ListeningError},
     NodeRng,
 };
+
 pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;
@@ -61,45 +57,14 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(
-        config: Config,
-        api_version: ProtocolVersion,
-    ) -> Result<Self, ListeningError> {
-        let required_address = utils::resolve_address(&config.address).map_err(|error| {
-            warn!(
-                %error,
-                address=%config.address,
-                "failed to start event stream server, cannot parse address"
-            );
-            ListeningError::ResolveAddress(error)
-        })?;
-
+    pub(crate) fn new(config: Config, api_version: Version) -> Result<Self, ListeningError> {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-
-        // Event stream channels and filter.
-        let (broadcaster, new_subscriber_info_receiver, sse_filter) =
-            sse_server::create_channels_and_filter(config.broadcast_channel_size);
-
-        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-
-        let (actual_address, server_with_shutdown) = warp::serve(sse_filter)
-            .try_bind_with_graceful_shutdown(required_address, async {
-                shutdown_receiver.await.ok();
-            })
-            .map_err(|error| ListeningError::Listen {
-                address: required_address,
-                error: Box::new(error),
-            })?;
-        info!(address=%actual_address, "started event stream server");
-
+        let builder = utils::start_listening(&config.address)?;
         tokio::spawn(http_server::run(
             config,
             api_version,
-            server_with_shutdown,
-            shutdown_sender,
+            builder,
             sse_data_receiver,
-            broadcaster,
-            new_subscriber_info_receiver,
         ));
 
         Ok(EventStreamServer { sse_data_sender })
@@ -126,8 +91,8 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
-                block_hash: *block.hash(),
+            Event::BlockAdded { block_hash, block } => self.broadcast(SseData::BlockAdded {
+                block_hash,
                 block: Box::new(*block),
             }),
             Event::DeployProcessed {
@@ -137,7 +102,7 @@ where
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash: Box::new(deploy_hash),
-                account: Box::new(deploy_header.account().clone()),
+                account: *deploy_header.account(),
                 timestamp: deploy_header.timestamp(),
                 ttl: deploy_header.ttl(),
                 dependencies: deploy_header.dependencies().clone(),
