@@ -65,12 +65,24 @@ impl DeployOrTransferHash {
     }
 }
 
-#[derive(DataSize, Debug, Display, From, Clone, Hash, Eq, PartialEq)]
+#[derive(DataSize, Debug, Display, Clone, Hash, Eq, PartialEq)]
 pub enum ValidatingBlock {
     #[display(fmt = "{}", _0.display())]
     Block(Box<Block>),
     #[display(fmt = "{}", _0.display())]
     ProposedBlock(Box<ProposedBlock<ClContext>>),
+}
+
+impl From<Block> for ValidatingBlock {
+    fn from(block: Block) -> ValidatingBlock {
+        ValidatingBlock::Block(Box::new(block))
+    }
+}
+
+impl From<ProposedBlock<ClContext>> for ValidatingBlock {
+    fn from(proposed_block: ProposedBlock<ClContext>) -> ValidatingBlock {
+        ValidatingBlock::ProposedBlock(Box::new(proposed_block))
+    }
 }
 
 impl ValidatingBlock {

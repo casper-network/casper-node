@@ -166,7 +166,7 @@ async fn validate_block(
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.
     let validation_result =
-        tokio::spawn(effect_builder.validate_proposed_block("Bob", proposed_block.clone()));
+        tokio::spawn(effect_builder.validate_block("Bob", proposed_block.clone()));
     let event = reactor.expect_block_validator_event().await;
     let effects = block_validator.handle_event(effect_builder, rng, event);
 

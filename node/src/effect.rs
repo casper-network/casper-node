@@ -101,8 +101,8 @@ use casper_types::{
 
 use crate::{
     components::{
+        block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{ClContext, ProposedBlock},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1186,34 +1186,14 @@ impl<REv> EffectBuilder<REv> {
 
     /// Checks whether the deploys included in the block exist on the network and the block is
     /// valid.
-    pub(crate) async fn validate_block<I>(self, sender: I, block: Block) -> bool
+    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> bool
     where
         REv: From<BlockValidationRequest<I>>,
+        T: Into<ValidatingBlock>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block: Box::new(block).into(),
-                sender,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Checks whether the deploys included in the proposed block exist on the network and the
-    /// block is valid.
-    pub(crate) async fn validate_proposed_block<I>(
-        self,
-        sender: I,
-        proposed_block: ProposedBlock<ClContext>,
-    ) -> bool
-    where
-        REv: From<BlockValidationRequest<I>>,
-    {
-        self.make_request(
-            |responder| BlockValidationRequest {
-                block: Box::new(proposed_block).into(),
+                block: block.into(),
                 sender,
                 responder,
             },

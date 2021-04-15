@@ -1272,7 +1272,7 @@ where
 
     let sender_for_validate_block: I = sender.clone();
     let valid = effect_builder
-        .validate_proposed_block(sender_for_validate_block, proposed_block.clone())
+        .validate_block(sender_for_validate_block, proposed_block.clone())
         .await;
 
     Event::ResolveValidity(ResolveValidity {
