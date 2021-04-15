@@ -76,64 +76,64 @@ impl NetworkingMetrics {
             "net_queued_direct_messages",
             "number of messages waiting to be sent out",
         )?;
-        let peers = IntGauge::new("peers", "Number of connected peers.")?;
+        let peers = IntGauge::new("peers", "Number of connected peers")?;
 
         let out_count_protocol = IntCounter::new(
             "net_out_count_protocol",
-            "count of outgoing messages that are protocol overhead.",
+            "count of outgoing messages that are protocol overhead",
         )?;
         let out_count_consensus = IntCounter::new(
             "net_out_count_consensus",
-            "count of outgoing messages with consensus payload.",
+            "count of outgoing messages with consensus payload",
         )?;
         let out_count_deploy_gossip = IntCounter::new(
             "net_out_count_deploy_gossip",
-            "count of outgoing messages with deploy gossiper payload.",
+            "count of outgoing messages with deploy gossiper payload",
         )?;
         let out_count_address_gossip = IntCounter::new(
             "net_out_count_address_gossip",
-            "count of outgoing messages with address gossiper payload.",
+            "count of outgoing messages with address gossiper payload",
         )?;
         let out_count_deploy_transfer = IntCounter::new(
             "net_out_count_deploy_transfer",
-            "count of outgoing messages with deploy request/response payload.",
+            "count of outgoing messages with deploy request/response payload",
         )?;
         let out_count_block_transfer = IntCounter::new(
             "net_out_count_block_transfer",
-            "count of outgoing messages with block request/response payload.",
+            "count of outgoing messages with block request/response payload",
         )?;
         let out_count_other = IntCounter::new(
             "net_out_count_other",
-            "count of outgoing messages with other payload.",
+            "count of outgoing messages with other payload",
         )?;
 
         let out_bytes_protocol = IntCounter::new(
             "net_out_bytes_protocol",
-            "volume in bytes of outgoing messages that are protocol overhead.",
+            "volume in bytes of outgoing messages that are protocol overhead",
         )?;
         let out_bytes_consensus = IntCounter::new(
             "net_out_bytes_consensus",
-            "volume in bytes of outgoing messages with consensus payload.",
+            "volume in bytes of outgoing messages with consensus payload",
         )?;
         let out_bytes_deploy_gossip = IntCounter::new(
             "net_out_bytes_deploy_gossip",
-            "volume in bytes of outgoing messages with deploy gossiper payload.",
+            "volume in bytes of outgoing messages with deploy gossiper payload",
         )?;
         let out_bytes_address_gossip = IntCounter::new(
             "net_out_bytes_address_gossip",
-            "volume in bytes of outgoing messages with address gossiper payload.",
+            "volume in bytes of outgoing messages with address gossiper payload",
         )?;
         let out_bytes_deploy_transfer = IntCounter::new(
             "net_out_bytes_deploy_transfer",
-            "volume in bytes of outgoing messages with deploy request/response payload.",
+            "volume in bytes of outgoing messages with deploy request/response payload",
         )?;
         let out_bytes_block_transfer = IntCounter::new(
             "net_out_bytes_block_transfer",
-            "volume in bytes of outgoing messages with block request/response payload.",
+            "volume in bytes of outgoing messages with block request/response payload",
         )?;
         let out_bytes_other = IntCounter::new(
             "net_out_bytes_other",
-            "volume in bytes of outgoing messages with other payload.",
+            "volume in bytes of outgoing messages with other payload",
         )?;
 
         let read_futures_in_flight = prometheus::Gauge::new(
