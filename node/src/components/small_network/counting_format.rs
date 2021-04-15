@@ -27,7 +27,7 @@ impl<'a> Display for TraceId<'a> {
     }
 }
 
-/// A metric-updating serialiazer/deserializer wrapper for network messages.
+/// A metric-updating serializer/deserializer wrapper for network messages.
 ///
 /// Classifies each message given and updates the `NetworkingMetrics` accordingly. Also emits a
 /// TRACE-level message to the `net_out` and `net_in` target with a per-message unique hash when
