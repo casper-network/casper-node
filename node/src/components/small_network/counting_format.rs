@@ -23,7 +23,7 @@ struct TraceId<'a>(&'a [u8]);
 
 impl<'a> Display for TraceId<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:x}", hash::hash(self.0))
+        f.write_str(&format!("{:x}", hash::hash(self.0))[..16])
     }
 }
 
@@ -94,5 +94,19 @@ where
             "received");
 
         F::deserialize(projection, src)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TraceId;
+
+    #[test]
+    fn trace_id_has_16_character() {
+        let data = Vec::new();
+
+        let output = format!("{}", TraceId(&data));
+
+        assert_eq!(output.len(), 16);
     }
 }
