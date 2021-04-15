@@ -68,7 +68,7 @@ fn purge_vertices() {
     assert_targeted_message(
         &unwrap_single(outcomes),
         &peer0,
-        HighwayMessage::RequestDependency(Dependency::Unit(c0))
+        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
     );
 
     // At 0x23, c0 gets enqueued and added.
