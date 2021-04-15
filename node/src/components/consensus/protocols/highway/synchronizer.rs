@@ -339,20 +339,24 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 Some(pv) => pv,
             };
             if let Some(dep) = highway.missing_dependency(pv.pvv()) {
-                if self.dep_already_downloaded(&dep) {
+                if self.vertices_no_deps.contains_dependency(&dep) {
                     // `dep` is already downloaded and waiting in the synchronizer queue to be
                     // added, we don't have to request it again. Add the `pv`
-                    // back to the queue so that it can be retried later when,
-                    // `dep` is added to the protocol state.
+                    // back to the queue so that it can be retried later. `dep` does not wait for
+                    // any of the dependencies currently so it should be retried soon.
                     self.add_missing_dependency(dep.clone(), pv);
                     continue;
                 }
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
+                // Find the first dependency that `pv` needs that we haven't synchronized yet
+                // and request it from the sender of `pv`. Since it relies on it, it should have
+                // it as well.
+                let transitive_dependency = self.find_transitive_dependency(dep.clone());
                 let sender = pv.sender().clone();
-                self.add_missing_dependency(dep.clone(), pv);
-                let ser_msg = HighwayMessage::RequestDependency(dep).serialize();
+                let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
+                self.add_missing_dependency(dep.clone(), pv);
                 continue;
             }
             // We found the next vertex to add.
@@ -364,12 +368,31 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         }
     }
 
-    fn dep_already_downloaded(&self, dep: &Dependency<C>) -> bool {
-        self.vertices_no_deps.contains_dependency(&dep)
-            || self
+    // Finds the highest missing dependency (i.e. one that we are waiting to be downloaded) and
+    // returns it, if any.
+    fn find_transitive_dependency(&self, mut missing_dependency: Dependency<C>) -> Dependency<C> {
+        // If `missing_dependency` is already downloaded and waiting for its dependency to be
+        // resolved, we will follow that dependency until we find "the bottom" of the
+        // chain – when there are no more known dependency requests scheduled,
+        // and we request the last one in the chain.
+        loop {
+            let maybe_next_missing = self
                 .vertices_awaiting_deps
-                .values()
-                .any(|pv| pv.contains_dependency(dep))
+                .iter()
+                .find(|(_, pv)| pv.contains_dependency(&missing_dependency))
+                .map(|(next_dep, _)| next_dep);
+            match maybe_next_missing {
+                None => {
+                    // If we hit the end of a dependency chain, request downloading the last one
+                    // missing.
+                    break;
+                }
+                Some(next_missing) => {
+                    missing_dependency = next_missing.clone();
+                }
+            }
+        }
+        missing_dependency
     }
 
     /// Adds a vertex with a known missing dependency to the queue.

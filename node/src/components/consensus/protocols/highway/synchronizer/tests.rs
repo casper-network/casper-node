@@ -67,7 +67,10 @@ fn purge_vertices() {
     assert!(maybe_pv.is_none());
     assert!(matches!(
         *outcomes,
-        [ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0))]
+        [
+            ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0)),
+            ProtocolOutcome::CreatedTargetedMessage(_, NodeId(0))
+        ]
     ));
 
     // At 0x23, c0 gets enqueued and added.
@@ -186,6 +189,16 @@ fn do_not_download_synchronized_dependencies() {
         *sync.schedule_add_vertex(peer0, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    assert!(pv.is_none());
+    // `b0` depends on `c1`, that is already in the synchronizer's state, but it also depends on
+    // `c0` transitively that is not yet known. We should request it, even if we had already
+    // done that for `c1`.
+    assert_targeted_message(
+        &unwrap_single(outcomes),
+        &peer0,
+        HighwayMessage::RequestDependency(Dependency::Unit(c0)),
+    );
     // "Download" the last dependency.
     let _ = sync.schedule_add_vertex(peer0, pvv(c0), now);
     // Now, the whole chain can be added to the protocol state.
