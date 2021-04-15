@@ -205,11 +205,6 @@ impl Transform {
                     let found = "Withdraw".to_string();
                     Err(TypeMismatch::new(expected, found).into())
                 }
-                StoredValue::EraValidators(_) => {
-                    let expected = "Contract or Account".to_string();
-                    let found = "EraValidators".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
-                }
             },
             Transform::Failure(error) => Err(error),
             Transform::Delete => Ok(None),
@@ -353,9 +348,6 @@ impl From<&Transform> for casper_types::Transform {
             }
             Transform::Write(StoredValue::Withdraw(unbonding_purses)) => {
                 casper_types::Transform::WriteWithdraw(unbonding_purses.clone())
-            }
-            Transform::Write(StoredValue::EraValidators(recipients)) => {
-                casper_types::Transform::WriteEraValidators(recipients.clone())
             }
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),

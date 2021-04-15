@@ -260,11 +260,6 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
-            Key::EraValidators(_) => {
-                self.named_keys.remove(name);
-                // Users cannot remove era validators info from global state
-                Ok(())
-            }
         }
     }
 
@@ -601,7 +596,6 @@ where
             StoredValue::EraInfo(_) => Ok(()),
             StoredValue::Bid(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
-            StoredValue::EraValidators(_) => Ok(()),
         }
     }
 
@@ -691,7 +685,6 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
-            Key::EraValidators(_) => true,
         }
     }
 
@@ -706,7 +699,6 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::EraValidators(_) => false,
         }
     }
 
@@ -721,7 +713,6 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::EraValidators(_) => false,
         }
     }
 
