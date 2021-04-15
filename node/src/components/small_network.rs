@@ -1,8 +1,8 @@
 //! Fully connected overlay network
 //!
-//! The *small network* is an overlay network where each node participating is attempting to main a
-//! connection to every other node identified on the same network. The component does not guarantee
-//! message delivery, so in between reconnections, messages may be lost.
+//! The *small network* is an overlay network where each node participating is attempting to
+//! maintain a connection to every other node identified on the same network. The component does not
+//! guarantee message delivery, so in between reconnections, messages may be lost.
 //!
 //! # Node IDs
 //!
