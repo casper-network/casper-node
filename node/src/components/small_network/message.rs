@@ -6,7 +6,7 @@ use std::{
 use casper_types::ProtocolVersion;
 use serde::{Deserialize, Serialize};
 
-use super::{Payload, PayloadKind};
+use super::{MessageKind, Payload};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -31,9 +31,9 @@ pub enum Message<P> {
 impl<P: Payload> Message<P> {
     /// Classifies a message based on its payload.
     #[inline]
-    pub(super) fn classify(&self) -> PayloadKind {
+    pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } => PayloadKind::Other, // TODO Add another type.
+            Message::Handshake { .. } => MessageKind::Protocol,
             Message::Payload(payload) => payload.classify(),
         }
     }

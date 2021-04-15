@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         consensus, gossiper,
-        small_network::{GossipedAddress, Payload, PayloadKind},
+        small_network::{GossipedAddress, MessageKind, Payload},
     },
     types::{Deploy, FinalitySignature, Item, Tag},
 };
@@ -48,23 +48,23 @@ pub enum Message {
 
 impl Payload for Message {
     #[inline]
-    fn classify(&self) -> PayloadKind {
+    fn classify(&self) -> MessageKind {
         match self {
-            Message::Consensus(_) => PayloadKind::Consensus,
-            Message::DeployGossiper(_) => PayloadKind::DeployGossip,
-            Message::AddressGossiper(_) => PayloadKind::AddressGossip,
+            Message::Consensus(_) => MessageKind::Consensus,
+            Message::DeployGossiper(_) => MessageKind::DeployGossip,
+            Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
                 match tag {
-                    Tag::Deploy => PayloadKind::DeployTransfer,
-                    Tag::Block => PayloadKind::BlockTransfer,
+                    Tag::Deploy => MessageKind::DeployTransfer,
+                    Tag::Block => MessageKind::BlockTransfer,
                     // This is a weird message, which we should not encounter here?
-                    Tag::GossipedAddress => PayloadKind::Other,
-                    Tag::BlockByHeight => PayloadKind::BlockTransfer,
-                    Tag::BlockHeaderByHash => PayloadKind::BlockTransfer,
-                    Tag::BlockHeaderAndFinalitySignaturesByHeight => PayloadKind::BlockTransfer,
+                    Tag::GossipedAddress => MessageKind::Other,
+                    Tag::BlockByHeight => MessageKind::BlockTransfer,
+                    Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
+                    Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
                 }
             }
-            Message::FinalitySignature(_) => PayloadKind::BlockTransfer,
+            Message::FinalitySignature(_) => MessageKind::BlockTransfer,
         }
     }
 }

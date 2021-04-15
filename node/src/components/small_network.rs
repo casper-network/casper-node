@@ -108,12 +108,14 @@ static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
 /// networking component itself.
 pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
     /// Classifies the payload based on its contents.
-    fn classify(&self) -> PayloadKind;
+    fn classify(&self) -> MessageKind;
 }
 
-/// A classification system for network payloads.
+/// A classification system for networking messages.
 #[derive(Copy, Clone, Debug)]
-pub enum PayloadKind {
+pub enum MessageKind {
+    /// Non-payload messages, like handshakes.
+    Protocol,
     /// Messages directly related to consensus.
     Consensus,
     /// Deploys being gossiped.

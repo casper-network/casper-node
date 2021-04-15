@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, Payload,
-    PayloadKind, SmallNetwork,
+    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, MessageKind,
+    Payload, SmallNetwork,
 };
 use crate::{
     components::{
@@ -118,9 +118,9 @@ impl Display for Message {
 
 impl Payload for Message {
     #[inline]
-    fn classify(&self) -> PayloadKind {
+    fn classify(&self) -> MessageKind {
         match self {
-            Message::AddressGossiper(_) => PayloadKind::AddressGossip,
+            Message::AddressGossiper(_) => MessageKind::AddressGossip,
         }
     }
 }

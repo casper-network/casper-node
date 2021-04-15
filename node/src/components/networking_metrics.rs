@@ -1,6 +1,6 @@
 use prometheus::{IntCounter, IntGauge, Registry};
 
-use super::small_network::PayloadKind;
+use super::small_network::MessageKind;
 use crate::unregister_metric;
 
 /// Network-type agnostic networking metrics.
@@ -17,6 +17,8 @@ pub(super) struct NetworkingMetrics {
     /// Number of connected peers.
     pub(super) peers: IntGauge,
 
+    /// Count of outgoing messages that are protocol overhead.
+    pub(super) out_count_protocol: IntCounter,
     /// Count of outgoing messages with consensus payload.
     pub(super) out_count_consensus: IntCounter,
     /// Count of outgoing messages with deploy gossiper payload.
@@ -30,6 +32,8 @@ pub(super) struct NetworkingMetrics {
     /// Count of outgoing messages with other payload.
     pub(super) out_count_other: IntCounter,
 
+    /// Volume in bytes of outgoing messages that are protocol overhead.
+    pub(super) out_bytes_protocol: IntCounter,
     /// Volume in bytes of outgoing messages with consensus payload.
     pub(super) out_bytes_consensus: IntCounter,
     /// Volume in bytes of outgoing messages with deploy gossiper payload.
@@ -74,6 +78,10 @@ impl NetworkingMetrics {
         )?;
         let peers = IntGauge::new("peers", "Number of connected peers.")?;
 
+        let out_count_protocol = IntCounter::new(
+            "net_out_count_protocol",
+            "count of outgoing messages that are protocol overhead.",
+        )?;
         let out_count_consensus = IntCounter::new(
             "net_out_count_consensus",
             "count of outgoing messages with consensus payload.",
@@ -99,6 +107,10 @@ impl NetworkingMetrics {
             "count of outgoing messages with other payload.",
         )?;
 
+        let out_bytes_protocol = IntCounter::new(
+            "net_out_bytes_protocol",
+            "volume in bytes of outgoing messages that are protocol overhead.",
+        )?;
         let out_bytes_consensus = IntCounter::new(
             "net_out_bytes_consensus",
             "volume in bytes of outgoing messages with consensus payload.",
@@ -147,6 +159,7 @@ impl NetworkingMetrics {
         registry.register(Box::new(queued_messages.clone()))?;
         registry.register(Box::new(peers.clone()))?;
 
+        registry.register(Box::new(out_count_protocol.clone()))?;
         registry.register(Box::new(out_count_consensus.clone()))?;
         registry.register(Box::new(out_count_deploy_gossip.clone()))?;
         registry.register(Box::new(out_count_address_gossip.clone()))?;
@@ -154,6 +167,7 @@ impl NetworkingMetrics {
         registry.register(Box::new(out_count_block_transfer.clone()))?;
         registry.register(Box::new(out_count_other.clone()))?;
 
+        registry.register(Box::new(out_bytes_protocol.clone()))?;
         registry.register(Box::new(out_bytes_consensus.clone()))?;
         registry.register(Box::new(out_bytes_deploy_gossip.clone()))?;
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
@@ -172,12 +186,14 @@ impl NetworkingMetrics {
             open_connections,
             queued_messages,
             peers,
+            out_count_protocol,
             out_count_consensus,
             out_count_deploy_gossip,
             out_count_address_gossip,
             out_count_deploy_transfer,
             out_count_block_transfer,
             out_count_other,
+            out_bytes_protocol,
             out_bytes_consensus,
             out_bytes_deploy_gossip,
             out_bytes_address_gossip,
@@ -193,29 +209,33 @@ impl NetworkingMetrics {
     }
 
     /// Records an outgoing payload.
-    pub(crate) fn record_payload_out(&self, kind: PayloadKind, size: u64) {
+    pub(crate) fn record_payload_out(&self, kind: MessageKind, size: u64) {
         match kind {
-            PayloadKind::Consensus => {
+            MessageKind::Protocol => {
+                self.out_bytes_protocol.inc_by(size);
+                self.out_count_protocol.inc();
+            }
+            MessageKind::Consensus => {
                 self.out_bytes_consensus.inc_by(size);
                 self.out_count_consensus.inc();
             }
-            PayloadKind::DeployGossip => {
+            MessageKind::DeployGossip => {
                 self.out_bytes_deploy_gossip.inc_by(size);
                 self.out_count_deploy_gossip.inc();
             }
-            PayloadKind::AddressGossip => {
+            MessageKind::AddressGossip => {
                 self.out_bytes_address_gossip.inc_by(size);
                 self.out_count_address_gossip.inc();
             }
-            PayloadKind::DeployTransfer => {
+            MessageKind::DeployTransfer => {
                 self.out_bytes_deploy_transfer.inc_by(size);
                 self.out_count_deploy_transfer.inc();
             }
-            PayloadKind::BlockTransfer => {
+            MessageKind::BlockTransfer => {
                 self.out_bytes_block_transfer.inc_by(size);
                 self.out_count_block_transfer.inc();
             }
-            PayloadKind::Other => {
+            MessageKind::Other => {
                 self.out_bytes_other.inc_by(size);
                 self.out_count_other.inc();
             }
@@ -231,12 +251,14 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.queued_messages);
         unregister_metric!(self.registry, self.peers);
 
+        unregister_metric!(self.registry, self.out_count_protocol);
         unregister_metric!(self.registry, self.out_count_consensus);
         unregister_metric!(self.registry, self.out_count_deploy_gossip);
         unregister_metric!(self.registry, self.out_count_address_gossip);
         unregister_metric!(self.registry, self.out_count_deploy_transfer);
         unregister_metric!(self.registry, self.out_count_block_transfer);
         unregister_metric!(self.registry, self.out_count_other);
+        unregister_metric!(self.registry, self.out_bytes_protocol);
         unregister_metric!(self.registry, self.out_bytes_consensus);
         unregister_metric!(self.registry, self.out_bytes_deploy_gossip);
         unregister_metric!(self.registry, self.out_bytes_address_gossip);
