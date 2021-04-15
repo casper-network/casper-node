@@ -735,6 +735,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage(
         self,
         block_hash: BlockHash,
@@ -813,6 +814,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlockHeaderAtHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the header of the block containing the given deploy.
+    pub(crate) async fn get_block_header_for_deploy_from_storage(
+        self,
+        deploy_hash: DeployHash,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderForDeploy {
+                deploy_hash,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
