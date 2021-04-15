@@ -23,7 +23,7 @@ struct TraceId<'a>(&'a [u8]);
 
 impl<'a> Display for TraceId<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hash::hash(self.0))
+        write!(f, "{:x}", hash::hash(self.0))
     }
 }
 
