@@ -330,6 +330,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         highway: &Highway<C>,
     ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
         let mut outcomes = Vec::new();
+        let mut requested_dependencies: HashSet<(I, Dependency<C>)> = Default::default();
         // Get the next vertex to be added; skip the ones that are already in the protocol state,
         // and the ones that are still missing dependencies.
         loop {
@@ -357,18 +358,18 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
                 let sender = pv.sender().clone();
-                let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
-                if !outcomes.iter().any(|o| match o {
-                    // If we've already requested the same dependency from the same peer, ignore.
-                    ProtocolOutcome::CreatedTargetedMessage(msg, peer) => {
-                        msg == &ser_msg && peer == &sender
-                    }
-                    _ => false,
-                }) {
-                    let outcome = ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender);
-                    outcomes.push(outcome);
-                }
+                // Make `pv` depend on the direct dependency `dep` and not `transitive_dependency`
+                // since there's a higher chance of adding `pv` to the protocol
+                // state after `dep` is added, rather than `transitive_dependency`.
                 self.add_missing_dependency(dep.clone(), pv);
+                if requested_dependencies.contains(&(sender.clone(), transitive_dependency.clone()))
+                {
+                    // If we've already requested the same dependency from the same peer, ignore.
+                    continue;
+                }
+                requested_dependencies.insert((sender.clone(), transitive_dependency.clone()));
+                let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
+                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
             }
             // We found the next vertex to add.

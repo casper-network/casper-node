@@ -9,6 +9,8 @@ use crate::components::consensus::{
     protocols::highway::tests::NodeId,
 };
 
+use std::collections::BTreeSet;
+
 #[test]
 fn purge_vertices() {
     let params = test_params(0);
@@ -200,7 +202,7 @@ fn do_not_download_synchronized_dependencies() {
     // "Download" the last dependency.
     let _ = sync.schedule_add_vertex(peer0, pvv(c0), now);
     // Now, the whole chain can be added to the protocol state.
-    let units: std::collections::BTreeSet<Dependency<TestContext>> = vec![c0, c1, b0, c2]
+    let mut units: BTreeSet<Dependency<TestContext>> = vec![c0, c1, b0, c2]
         .into_iter()
         .map(Dependency::Unit)
         .collect();
@@ -214,7 +216,7 @@ fn do_not_download_synchronized_dependencies() {
             outcomes
         );
         let pv_dep = pv.vertex().id();
-        assert!(units.contains(&pv_dep), "unexpected dependency");
+        assert!(units.remove(&pv_dep), "unexpected dependency");
         match pv_dep {
             Dependency::Unit(hash) => {
                 let vv = highway
