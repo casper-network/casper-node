@@ -236,7 +236,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut effects = Effects::new();
-        println!("event: {:?}", event);
         match event {
             Event::Request(BlockValidationRequest {
                 block,
