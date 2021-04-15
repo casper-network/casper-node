@@ -152,7 +152,6 @@ impl<'a, C: Context> Tallies<'a, C> {
             // If any block received more than 50%, a decision can be made: Either that block is
             // the fork choice, or we can pick its highest scoring child from `prev_tally`.
             if h_tally.max_w() > total_weight / 2 {
-                #[allow(clippy::integer_arithmetic)] // height < max_height, so height < u64::MAX
                 return Some(
                     match prev_tally.filter_descendants(height, h_tally.max_bhash(), state) {
                         Some(filtered) => (height + 1, filtered.max_bhash()),

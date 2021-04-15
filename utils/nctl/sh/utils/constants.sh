@@ -21,19 +21,14 @@ export NCTL_BASE_PORT_SSE=60000
 # Base network server port number.
 export NCTL_BASE_PORT_NETWORK=34452
 
-# Set of client side auction contracts.
-export NCTL_CONTRACTS_CLIENT_AUCTION=(
-    "activate_bid.wasm"
+# Set of chain system contracts.
+export NCTL_CONTRACTS_CLIENT=(
     "add_bid.wasm"
     "delegate.wasm"
-    "undelegate.wasm"
-    "withdraw_bid.wasm"
-)
-
-# Set of client side transfer contracts.
-export NCTL_CONTRACTS_CLIENT_TRANSFERS=(
     "transfer_to_account_u512.wasm"
     "transfer_to_account_u512_stored.wasm"
+    "undelegate.wasm"
+    "withdraw_bid.wasm"
 )
 
 # Default amount used when delegating.

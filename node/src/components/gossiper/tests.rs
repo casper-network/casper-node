@@ -9,13 +9,12 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
+use semver::Version;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 use tracing::debug;
-
-use casper_types::ProtocolVersion;
 
 use super::*;
 use crate::{
@@ -25,13 +24,12 @@ use crate::{
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
-    crypto::hash::Digest,
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            NetworkAnnouncement, RpcServerAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
+        requests::ContractRuntimeRequest,
         Responder,
     },
     protocol::Message as NodeMessage,
@@ -91,31 +89,13 @@ impl From<StorageRequest> for Event {
 
 impl From<ContractRuntimeRequest> for Event {
     fn from(request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(contract_runtime::Event::Request(Box::new(request)))
+        Event::ContractRuntime(contract_runtime::Event::Request(request))
     }
 }
 
 impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
     fn from(request: NetworkRequest<NodeId, Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
-    }
-}
-
-impl From<ConsensusRequest> for Event {
-    fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(_request: LinearChainRequest<NodeId>) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl From<ContractRuntimeAnnouncement> for Event {
-    fn from(_request: ContractRuntimeAnnouncement) -> Self {
-        unimplemented!("not implemented for gossiper tests")
     }
 }
 
@@ -139,7 +119,7 @@ impl Display for Event {
                 write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
             Event::ContractRuntime(event) => {
-                write!(formatter, "contract-runtime event: {:?}", event)
+                write!(formatter, "contract-runtime event: {}", event)
             }
         }
     }
@@ -182,19 +162,11 @@ impl reactor::Reactor for Reactor {
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage =
-            Storage::new(&storage_withdir, None, ProtocolVersion::from_parts(1, 0, 0)).unwrap();
+        let storage = Storage::new(&storage_withdir, None, Version::new(1, 0, 0)).unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
-        let contract_runtime = ContractRuntime::new(
-            Digest::random(rng),
-            None,
-            ProtocolVersion::from_parts(1, 0, 0),
-            storage_withdir,
-            &contract_runtime_config,
-            &registry,
-        )
-        .unwrap();
+        let contract_runtime =
+            ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),
@@ -482,7 +454,7 @@ async fn should_get_from_alternate_source() {
     debug!("removed node {}", &node_ids[0]);
 
     // Run node 2 until it receives and responds to the gossip request from node 0.
-    let node_id_0 = node_ids[0];
+    let node_id_0 = node_ids[0].clone();
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
@@ -562,7 +534,7 @@ async fn should_timeout_gossip_response() {
         .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
         .await;
     // Give node 0 time to set the timeouts before advancing the clock.
-    time::sleep(PAUSE_DURATION).await;
+    time::delay_for(PAUSE_DURATION).await;
 
     // Replace all nodes except node 0 with new nodes.
     for node_id in node_ids.drain(1..) {

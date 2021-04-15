@@ -14,8 +14,6 @@ use crate::{
 
 #[derive(Clone, Error, Debug)]
 pub enum Error {
-    #[error("Root not found: {0}")]
-    RootNotFound(Blake2bHash),
     #[error("Invalid hash length: expected {expected}, actual {actual}")]
     InvalidHashLength { expected: usize, actual: usize },
     #[error("Invalid account hash length: expected {expected}, actual {actual}")]
@@ -94,5 +92,18 @@ impl DataSize for Error {
     #[inline]
     fn estimate_heap_size(&self) -> usize {
         12 // TODO: replace with some actual estimation depending on the variant
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct RootNotFound(Blake2bHash);
+
+impl RootNotFound {
+    pub fn new(hash: Blake2bHash) -> Self {
+        RootNotFound(hash)
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.0.as_ref().to_vec()
     }
 }

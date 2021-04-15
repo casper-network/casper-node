@@ -5,7 +5,7 @@ use casper_execution_engine::{
     },
     shared::newtypes::Blake2bHash,
 };
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 #[derive(Debug)]
 pub struct StepRequestBuilder {
@@ -15,7 +15,7 @@ pub struct StepRequestBuilder {
     reward_items: Vec<RewardItem>,
     evict_items: Vec<EvictItem>,
     run_auction: bool,
-    next_era_id: EraId,
+    next_era_id: u64,
     era_end_timestamp_millis: u64,
 }
 
@@ -54,7 +54,7 @@ impl StepRequestBuilder {
         self
     }
 
-    pub fn with_next_era_id(mut self, next_era_id: EraId) -> Self {
+    pub fn with_next_era_id(mut self, next_era_id: u64) -> Self {
         self.next_era_id = next_era_id;
         self
     }
@@ -86,9 +86,9 @@ impl Default for StepRequestBuilder {
             slash_items: Default::default(),
             reward_items: Default::default(),
             evict_items: Default::default(),
-            run_auction: true, //<-- run_auction by default
             next_era_id: Default::default(),
             era_end_timestamp_millis: Default::default(),
+            run_auction: true, //<-- run_auction by default
         }
     }
 }

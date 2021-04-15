@@ -26,54 +26,20 @@ abbreviate_modules = false
 # Configuration options for consensus
 # ===================================
 [consensus]
+
 # Path (absolute, or relative to this config.toml) to validator's secret key file used to sign
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
-
-# ===========================================
-# Configuration options for Highway consensus
-# ===========================================
-[consensus.highway]
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "/var/lib/casper/casper-node"
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
-pending_vertex_timeout = '1min'
-
-request_latest_state_timeout = '30sec'
-
-# If the current era's protocol state has not progressed for this long, shut down.
-standstill_timeout = '5min'
-
-# Log inactive or faulty validators periodically, with this interval.
-log_participation_interval = '1min'
+pending_vertex_timeout = '30min'
 
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
-
-[consensus.highway.round_success_meter]
-# The number of most recent rounds we will be keeping track of.
-num_rounds_to_consider = 40
-
-# The number of successful rounds that triggers us to slow down: With this many or fewer
-# successes per `num_rounds_to_consider`, we increase our round exponent.
-num_rounds_slowdown = 10
-
-# The number of successful rounds that triggers us to speed up: With this many or more successes
-# per `num_rounds_to_consider`, we decrease our round exponent.
-num_rounds_speedup = 32
-
-# We will try to accelerate (decrease our round exponent) every `acceleration_parameter` rounds if
-# we have few enough failures.
-acceleration_parameter = 40
-
-# The FTT, as a percentage (i.e. `acceleration_ftt = [1, 100]` means 1% of the validators' total weight), which
-# we will use for looking for a summit in order to determine a proposal's finality.
-# The required quorum in a summit we will look for to check if a round was successful is
-# determined by this FTT.
-acceleration_ftt = [1, 100]
 
 
 # ====================================
@@ -121,7 +87,6 @@ initial_gossip_delay = '5s'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
-
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -290,14 +255,3 @@ verify_accounts = true
 #
 # The size should be a multiple of the OS page size.
 #max_global_state_size = 805306368000
-
-
-# ====================================================================
-# Configuration options for selecting deploys to propose in new blocks
-# ====================================================================
-[block_proposer]
-
-# Deploys are only proposed in a new block if the have been received at least this long ago.
-# A longer delay makes it more likely that many proposed deploys are already known by the
-# other nodes, and don't have to be requested from the proposer afterwards.
-#deploy_delay = '1min'

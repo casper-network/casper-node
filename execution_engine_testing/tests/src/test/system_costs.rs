@@ -10,7 +10,7 @@ use casper_engine_test_support::{
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisValidator, GenesisAccount},
+    core::engine_state::{genesis::GenesisValidator, upgrade::ActivationPoint, GenesisAccount},
     shared::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -44,14 +44,14 @@ use casper_types::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]));
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
@@ -64,7 +64,7 @@ const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
 const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
 const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
-const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
+const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
@@ -110,7 +110,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
@@ -146,7 +146,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .into(),
         auction::METHOD_WITHDRAW_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
         },
     )
@@ -231,7 +231,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
@@ -269,7 +269,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .into(),
         auction::METHOD_WITHDRAW_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
         },
     )
@@ -297,7 +297,7 @@ fn delegate_and_undelegate_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            VALIDATOR_1.clone(),
+            *VALIDATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -340,8 +340,8 @@ fn delegate_and_undelegate_have_expected_costs() {
             .into(),
         auction::METHOD_DELEGATE,
         runtime_args! {
-            auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
@@ -377,8 +377,8 @@ fn delegate_and_undelegate_have_expected_costs() {
             .into(),
         auction::METHOD_UNDELEGATE,
         runtime_args! {
-            auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
@@ -424,7 +424,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            VALIDATOR_1.clone(),
+            *VALIDATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -479,8 +479,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .into(),
         auction::METHOD_DELEGATE,
         runtime_args! {
-            auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
@@ -515,8 +515,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .into(),
         auction::METHOD_UNDELEGATE,
         runtime_args! {
-            auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
@@ -545,7 +545,7 @@ fn mint_transfer_has_expected_costs() {
 
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            VALIDATOR_1.clone(),
+            *VALIDATOR_1,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -873,7 +873,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },

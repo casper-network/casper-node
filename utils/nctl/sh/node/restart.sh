@@ -33,8 +33,8 @@ if [ "$CLEAN" = true ]; then
     log "node-$NODE_ID: clearing logs"
     rm "$(get_path_to_node_logs "$NODE_ID")"/*.log > /dev/null 2>&1
     log "node-$NODE_ID: clearing storage"
-    rm "$(get_path_to_node_storage "$NODE_ID")"/*.lmdb* > /dev/null 2>&1
-    rm "$(get_path_to_node_storage "$NODE_ID")"-consensus/*.dat > /dev/null 2>&1
+    rm $(get_path_to_node_storage "$NODE_ID")/*.lmdb* > /dev/null 2>&1
+    rm $(get_path_to_node_storage "$NODE_ID")-consensus/*.dat > /dev/null 2>&1
 fi
 
 # Start.

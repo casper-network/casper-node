@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, FinalizedBlock},
+    types::{DeployHash, DeployHeader, ProtoBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 
@@ -93,8 +93,11 @@ pub enum Event {
     },
     /// The block proposer has been asked to prune stale deploys
     Prune,
-    /// A block has been finalized. We should never propose its deploys again.
-    FinalizedBlock(Box<FinalizedBlock>),
+    /// A proto block has been finalized. We should never propose its deploys again.
+    FinalizedProtoBlock {
+        block: ProtoBlock,
+        height: BlockHeight,
+    },
 }
 
 impl Display for Event {
@@ -111,8 +114,12 @@ impl Display for Event {
             ),
             Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
             Event::Prune => write!(f, "block-proposer prune"),
-            Event::FinalizedBlock(block) => {
-                write!(f, "block-proposer finalized block {}", block)
+            Event::FinalizedProtoBlock { block, height } => {
+                write!(
+                    f,
+                    "deploy-buffer finalized proto block {} at height {}",
+                    block, height
+                )
             }
         }
     }

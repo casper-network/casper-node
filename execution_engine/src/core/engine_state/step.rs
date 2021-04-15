@@ -4,7 +4,8 @@ use core::fmt;
 use uint::static_assertions::_core::fmt::Formatter;
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, EraId, Key, ProtocolVersion, PublicKey, U512,
+    bytesrepr, bytesrepr::ToBytes, system::auction::EraId, CLValueError, Key, ProtocolVersion,
+    PublicKey, U512,
 };
 
 use crate::{
@@ -98,7 +99,7 @@ impl StepRequest {
     pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
         let mut ret = BTreeMap::new();
         for reward_item in &self.reward_items {
-            ret.insert(reward_item.validator_id.clone(), reward_item.value);
+            ret.insert(reward_item.validator_id, reward_item.value);
         }
         Ok(ret)
     }

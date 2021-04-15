@@ -12,11 +12,10 @@ use schemars::{
     schema::Schema,
     JsonSchema, Map, MapEntry,
 };
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
-
-use casper_types::ProtocolVersion;
 
 use super::{
     account::PutDeploy,
@@ -28,8 +27,8 @@ use super::{
 };
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
 
-pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 1, 0);
+pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<Version> =
+    Lazy::new(|| Version::new(1, 0, 1));
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -90,7 +89,7 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema
 });
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
 });
@@ -378,7 +377,7 @@ struct Components {
 pub struct ListRpcsResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    api_version: ProtocolVersion,
+    api_version: Version,
     name: String,
     /// The list of supported RPCs.
     #[schemars(skip)]
@@ -405,7 +404,7 @@ impl RpcWithoutParamsExt for ListRpcs {
     fn handle_request<REv: ReactorEventT>(
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        _api_version: ProtocolVersion,
+        _api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
@@ -421,7 +420,7 @@ mod tests {
     fn check_docs_example_version() {
         let chainspec = Chainspec::from_resources("production");
         assert_eq!(
-            DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
+            *DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
             "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \
             'resources/production/chainspec.toml'"
         );

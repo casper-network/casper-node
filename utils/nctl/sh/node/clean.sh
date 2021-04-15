@@ -42,8 +42,8 @@ function do_clean()
     rm "$(get_path_to_node_logs "$NODE_ID")"/*.log > /dev/null 2>&1
 
     # Remove state.
-    rm "$(get_path_to_node_storage "$NODE_ID")"/*.lmdb* > /dev/null 2>&1
-    rm "$(get_path_to_node_storage "$NODE_ID")"-consensus/*.dat > /dev/null 2>&1
+    rm $(get_path_to_node_storage "$NODE_ID")/*.lmdb* > /dev/null 2>&1
+    rm $(get_path_to_node_storage "$NODE_ID")-consensus/*.dat > /dev/null 2>&1
 
     log "cleaned node-$NODE_ID"
 }

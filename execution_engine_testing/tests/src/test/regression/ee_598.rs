@@ -25,11 +25,8 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 
 const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
 
-static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static ACCOUNT_1_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([4; SecretKey::ED25519_LENGTH]).into());
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 
@@ -41,9 +38,7 @@ static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 #[ignore]
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
-    let public_key: PublicKey = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into();
+    let public_key: PublicKey = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::account(
@@ -78,7 +73,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
                 "ee_598_regression.wasm",
                 runtime_args! {
                     ARG_AMOUNT => *ACCOUNT_1_BOND,
-                    ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
+                    ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
                 },
             )
             .with_deploy_hash([2u8; 32])

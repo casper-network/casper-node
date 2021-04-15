@@ -43,10 +43,10 @@ function main()
         USER_ACCOUNT_HASH=$(get_account_hash "$USER_ACCOUNT_KEY")
 
         # Set faucet <-> user allowance state query key.
-        ALLOWANCE_KEY="_allowances_"$CONTRACT_OWNER_ACCOUNT_HASH$USER_ACCOUNT_HASH
+        ALLOWANCE_KEY="_allowances_$CONTRACT_OWNER_ACCOUNT_HASH"_"$USER_ACCOUNT_HASH"
 
         # Set faucet <-> user allowance (hits node api).
-        ALLOWANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" "$ALLOWANCE_KEY")
+        ALLOWANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" $ALLOWANCE_KEY)
 
         log "... ... user $USER_ID = $ALLOWANCE"
     done

@@ -12,11 +12,12 @@ use http::Response;
 use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{Key, ProtocolVersion, Transfer};
+use casper_types::{Key, Transfer};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -36,7 +37,7 @@ static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     block: Some(JsonBlock::doc_example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
@@ -45,7 +46,7 @@ static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     });
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
         block_hash: Some(Block::doc_example().id()),
         transfers: Some(vec![Transfer::default()]),
     });
@@ -55,14 +56,14 @@ static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     });
 static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
     Lazy::new(|| GetStateRootHashResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
         state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
     era_summary: Some(ERA_SUMMARY.clone()),
 });
 
@@ -96,7 +97,7 @@ impl DocExample for GetBlockParams {
 pub struct GetBlockResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: Version,
     /// The block, if found.
     pub block: Option<JsonBlock>,
 }
@@ -121,7 +122,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
-        api_version: ProtocolVersion,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
@@ -172,7 +173,7 @@ impl DocExample for GetBlockTransfersParams {
 pub struct GetBlockTransfersResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: Version,
     /// The block hash, if found.
     pub block_hash: Option<BlockHash>,
     /// The block's transfers, if found.
@@ -182,7 +183,7 @@ pub struct GetBlockTransfersResult {
 impl GetBlockTransfersResult {
     /// Create an instance of GetBlockTransfersResult.
     pub fn new(
-        api_version: ProtocolVersion,
+        api_version: Version,
         block_hash: Option<BlockHash>,
         transfers: Option<Vec<Transfer>>,
     ) -> Self {
@@ -214,7 +215,7 @@ impl RpcWithOptionalParamsExt for GetBlockTransfers {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
-        api_version: ProtocolVersion,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
@@ -269,7 +270,7 @@ impl DocExample for GetStateRootHashParams {
 pub struct GetStateRootHashResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: Version,
     /// Hex-encoded hash of the state root.
     pub state_root_hash: Option<Digest>,
 }
@@ -294,7 +295,7 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
-        api_version: ProtocolVersion,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
@@ -335,7 +336,7 @@ impl DocExample for GetEraInfoParams {
 pub struct GetEraInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: Version,
     /// The era summary.
     pub era_summary: Option<EraSummary>,
 }
@@ -360,7 +361,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
         maybe_params: Option<Self::OptionalRequestParams>,
-        api_version: ProtocolVersion,
+        api_version: Version,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // TODO: decide if/how to handle era id
@@ -381,7 +382,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
             };
 
             let era_id = match block.header().era_end() {
-                Some(_) => block.header().era_id(),
+                Some(_) => block.header().era_id().0,
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {
                         api_version,

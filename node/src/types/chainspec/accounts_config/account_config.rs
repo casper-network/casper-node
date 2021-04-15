@@ -17,7 +17,7 @@ use crate::testing::TestRng;
 
 use super::ValidatorConfig;
 
-#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
 pub struct AccountConfig {
     pub(super) public_key: PublicKey,
     balance: Motes,
@@ -34,7 +34,7 @@ impl AccountConfig {
     }
 
     pub fn public_key(&self) -> PublicKey {
-        self.public_key.clone()
+        self.public_key
     }
 
     pub fn balance(&self) -> Motes {
@@ -55,8 +55,7 @@ impl AccountConfig {
     #[cfg(test)]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let public_key =
-            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
+        let public_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
         let balance = Motes::new(rng.gen());
         let validator = rng.gen();
 
@@ -71,9 +70,7 @@ impl AccountConfig {
 #[cfg(test)]
 impl Distribution<AccountConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountConfig {
-        let public_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>())
-            .unwrap()
-            .into();
+        let public_key = SecretKey::ed25519(rng.gen()).into();
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());

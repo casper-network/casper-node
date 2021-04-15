@@ -11,16 +11,19 @@ use casper_engine_test_support::{
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
-use casper_execution_engine::shared::{
-    host_function_costs::{HostFunction, HostFunctionCosts},
-    opcode_costs::OpcodeCosts,
-    storage_costs::StorageCosts,
-    stored_value::StoredValue,
-    wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+use casper_execution_engine::{
+    core::engine_state::upgrade::ActivationPoint,
+    shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        stored_value::StoredValue,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+    },
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
+    CLValue, ContractHash, ProtocolVersion, RuntimeArgs, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -33,7 +36,7 @@ use casper_types::{
 
 use num_rational::Ratio;
 
-const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(0);
+const DEFAULT_ACTIVATION_POINT: ActivationPoint = 0;
 const STORAGE_COSTS_NAME: &str = "storage_costs.wasm";
 #[cfg(not(feature = "use-as-wasm"))]
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
@@ -232,7 +235,7 @@ fn should_verify_isolated_auction_storage_is_free() {
             .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => bond_amount,
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },

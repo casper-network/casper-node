@@ -9,14 +9,11 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EraId,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::types::Timestamp;
+use crate::{components::consensus::EraId, types::Timestamp};
 
 const ERA_ID_TAG: u8 = 0;
 const GENESIS_TAG: u8 = 1;
@@ -34,7 +31,7 @@ impl ActivationPoint {
     /// activation point.
     pub(crate) fn should_upgrade(&self, era_being_deactivated: &EraId) -> bool {
         match self {
-            ActivationPoint::EraId(era_id) => era_being_deactivated.successor() >= *era_id,
+            ActivationPoint::EraId(era_id) => era_being_deactivated.0 + 1 >= era_id.0,
             ActivationPoint::Genesis(_) => false,
         }
     }
@@ -43,7 +40,7 @@ impl ActivationPoint {
     pub(crate) fn era_id(&self) -> EraId {
         match self {
             ActivationPoint::EraId(era_id) => *era_id,
-            ActivationPoint::Genesis(_) => EraId::from(0),
+            ActivationPoint::Genesis(_) => EraId(0),
         }
     }
 
@@ -122,7 +119,7 @@ impl ActivationPoint {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         if rng.gen() {
-            ActivationPoint::EraId(EraId::from(rng.gen::<u8>() as u64))
+            ActivationPoint::EraId(EraId(rng.gen::<u8>() as u64))
         } else {
             ActivationPoint::Genesis(Timestamp::random(rng))
         }

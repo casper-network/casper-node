@@ -25,12 +25,14 @@ NODE_ID=${NODE_ID:-"all"}
 # MAIN
 # ----------------------------------------------------------------
 
+# Stop node(s).
 if [ "$NODE_ID" == "all" ]; then
     do_node_stop_all
-    do_node_status_all
 else
     log "node-$NODE_ID: stopping node ... "
     do_node_stop "$NODE_ID"
-    sleep 1.0
-    source "$NCTL"/sh/node/status.sh node="$NODE_ID"
 fi
+
+# Display status.
+sleep 1.0
+source "$NCTL"/sh/node/status.sh node="$NODE_ID"

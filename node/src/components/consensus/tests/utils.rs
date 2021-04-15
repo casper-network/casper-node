@@ -13,11 +13,11 @@ use crate::{
 };
 
 pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]));
 pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY));
 
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]));
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
@@ -27,7 +27,7 @@ where
     I: IntoIterator<Item = (PublicKey, T)>,
     T: Into<U512>,
 {
-    let mut chainspec = Chainspec::from_resources("local");
+    let mut chainspec = Chainspec::from_resources("test/valid/0_9_0");
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {

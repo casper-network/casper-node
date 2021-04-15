@@ -293,6 +293,18 @@ where
 }
 
 impl<C: Context> Endorsements<C> {
+    pub fn new<I: IntoIterator<Item = SignedEndorsement<C>>>(endorsements: I) -> Self {
+        let mut iter = endorsements.into_iter().peekable();
+        let unit = *iter.peek().expect("non-empty iter").unit();
+        let endorsers = iter
+            .map(|e| {
+                assert_eq!(e.unit(), &unit, "endorsements for different units.");
+                (e.validator_idx(), *e.signature())
+            })
+            .collect();
+        Endorsements { unit, endorsers }
+    }
+
     /// Returns hash of the endorsed vode.
     pub fn unit(&self) -> &C::Hash {
         &self.unit
@@ -301,15 +313,6 @@ impl<C: Context> Endorsements<C> {
     /// Returns an iterator over validator indexes that endorsed the `unit`.
     pub fn validator_ids(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.endorsers.iter().map(|(v, _)| *v)
-    }
-}
-
-impl<C: Context> From<SignedEndorsement<C>> for Endorsements<C> {
-    fn from(signed_e: SignedEndorsement<C>) -> Self {
-        Endorsements {
-            unit: *signed_e.unit(),
-            endorsers: vec![(signed_e.validator_idx(), *signed_e.signature())],
-        }
     }
 }
 
@@ -326,7 +329,6 @@ where
 {
     creator: ValidatorIndex,
     timestamp: Timestamp,
-    instance_id: C::InstanceId,
     signature: C::Signature,
 }
 
@@ -335,15 +337,12 @@ impl<C: Context> Ping<C> {
     pub(crate) fn new(
         creator: ValidatorIndex,
         timestamp: Timestamp,
-        instance_id: C::InstanceId,
         sk: &C::ValidatorSecret,
     ) -> Self {
-        let signature = sk.sign(&Self::hash(creator, timestamp, instance_id));
         Ping {
             creator,
             timestamp,
-            instance_id,
-            signature,
+            signature: sk.sign(&Self::hash(creator, timestamp)),
         }
     }
 
@@ -361,28 +360,18 @@ impl<C: Context> Ping<C> {
     pub(crate) fn validate(
         &self,
         validators: &Validators<C::ValidatorId>,
-        our_instance_id: &C::InstanceId,
     ) -> Result<(), VertexError> {
-        let Ping {
-            creator,
-            timestamp,
-            instance_id,
-            signature,
-        } = self;
-        if instance_id != our_instance_id {
-            return Err(PingError::InstanceId.into());
-        }
         let v_id = validators.id(self.creator).ok_or(PingError::Creator)?;
-        let hash = Self::hash(*creator, *timestamp, *instance_id);
-        if !C::verify_signature(&hash, v_id, signature) {
+        let hash = Self::hash(self.creator, self.timestamp);
+        if !C::verify_signature(&hash, v_id, &self.signature) {
             return Err(PingError::Signature.into());
         }
         Ok(())
     }
 
     /// Computes the hash of a ping, i.e. of the creator and timestamp.
-    fn hash(creator: ValidatorIndex, timestamp: Timestamp, instance_id: C::InstanceId) -> C::Hash {
-        let bytes = bincode::serialize(&(creator, timestamp, instance_id)).expect("serialize Ping");
+    fn hash(creator: ValidatorIndex, timestamp: Timestamp) -> C::Hash {
+        let bytes = bincode::serialize(&(creator, timestamp)).expect("serialize Ping");
         <C as Context>::hash(&bytes)
     }
 }

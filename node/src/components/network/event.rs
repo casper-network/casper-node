@@ -20,7 +20,7 @@ use crate::{
 use core::mem;
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<Message>>();
-const_assert!(_NETWORK_EVENT_SIZE < 178);
+const_assert!(_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
 #[repr(u8)]

@@ -17,4 +17,4 @@ std = ["casper-contract/std", "casper-types/std"]
 [dependencies]
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
-rand = { version = "0.8.3", default-features = false }
+rand = { version = "0.7", default-features = false }

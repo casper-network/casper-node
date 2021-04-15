@@ -11,11 +11,8 @@ use casper_types::{
 
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
 
-static VALID_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
-});
+static VALID_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into());
 static VALID_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALID_PUBLIC_KEY));
 const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
@@ -24,11 +21,8 @@ const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::account(
-            VALID_PUBLIC_KEY.clone(),
-            Motes::new(VALID_BALANCE.into()),
-            None,
-        );
+        let account =
+            GenesisAccount::account(*VALID_PUBLIC_KEY, Motes::new(VALID_BALANCE.into()), None);
         tmp.push(account);
         tmp
     };

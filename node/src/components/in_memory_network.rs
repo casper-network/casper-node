@@ -481,7 +481,7 @@ where
         {
             let mut nodes_write = nodes.write().expect("network lock poisoned");
             assert!(!nodes_write.contains_key(&node_id));
-            nodes_write.insert(node_id, sender);
+            nodes_write.insert(node_id.clone(), sender);
         }
 
         tokio::spawn(receiver_task(event_queue, receiver));
@@ -492,7 +492,7 @@ where
     /// Returns this node's ID.
     #[inline]
     pub fn node_id(&self) -> NodeId {
-        self.node_id
+        self.node_id.clone()
     }
 }
 
@@ -513,7 +513,7 @@ where
 
         match nodes.get(&dest) {
             Some(sender) => {
-                if let Err(SendError((_, msg))) = sender.send((self.node_id, payload)) {
+                if let Err(SendError((_, msg))) = sender.send((self.node_id.clone(), payload)) {
                     warn!(%dest, %msg, "could not send message (send error)");
 
                     // We do nothing else, the message is just dropped.
@@ -558,7 +558,7 @@ where
             NetworkRequest::Broadcast { payload, responder } => {
                 if let Ok(guard) = self.nodes.read() {
                     for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
-                        self.send(&guard, *dest, *payload.clone());
+                        self.send(&guard, dest.clone(), *payload.clone());
                     }
                 } else {
                     error!("network lock has been poisoned")
@@ -582,7 +582,7 @@ where
                         .collect();
                     // Not terribly efficient, but will always get us the maximum amount of nodes.
                     for dest in chosen.iter() {
-                        self.send(&guard, *dest, *payload.clone());
+                        self.send(&guard, dest.clone(), *payload.clone());
                     }
                     responder.respond(chosen).ignore()
                 } else {

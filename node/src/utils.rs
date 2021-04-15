@@ -4,8 +4,8 @@
 mod counting_channel;
 pub mod ds;
 mod external;
+mod median;
 pub mod milliseconds;
-pub mod pid_file;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
@@ -35,6 +35,7 @@ pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, 
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
+pub(crate) use median::weighted_median;
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.
@@ -111,7 +112,7 @@ pub enum ListeningError {
         /// The address attempted to listen on.
         address: SocketAddr,
         /// The failure reason.
-        error: Box<dyn std::error::Error + Send + Sync>,
+        error: hyper::Error,
     },
 }
 
@@ -123,10 +124,7 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 
     Server::try_bind(&address).map_err(|error| {
         warn!(%error, %address, "failed to start HTTP server");
-        ListeningError::Listen {
-            address,
-            error: Box::new(error),
-        }
+        ListeningError::Listen { address, error }
     })
 }
 
@@ -256,7 +254,7 @@ impl<T> WithDir<T> {
     }
 
     /// Returns a reference to the inner path.
-    pub fn dir(&self) -> &Path {
+    pub(crate) fn dir(&self) -> &Path {
         self.dir.as_ref()
     }
 
@@ -265,8 +263,7 @@ impl<T> WithDir<T> {
         (self.dir, self.value)
     }
 
-    /// Maps an internal value onto a reference.
-    pub fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
+    pub(crate) fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
         WithDir {
             dir: self.dir.clone(),
             value: f(&self.value),
@@ -274,12 +271,12 @@ impl<T> WithDir<T> {
     }
 
     /// Get a reference to the inner value.
-    pub fn value(&self) -> &T {
+    pub(crate) fn value(&self) -> &T {
         &self.value
     }
 
     /// Adds `self.dir` as a parent if `path` is relative, otherwise returns `path` unchanged.
-    pub fn with_dir(&self, path: PathBuf) -> PathBuf {
+    pub(crate) fn with_dir(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
             self.dir.join(path)
         } else {
@@ -325,9 +322,7 @@ impl<I: Display> Display for Source<I> {
     }
 }
 
-/// Divides `numerator` by `denominator` and rounds to the closest integer (round half down).
-///
-/// `numerator + denominator / 2` must not overflow, and `denominator` must not be zero.
+/// Divides `numerator` by `denominator` and rounds to the closest integer.
 pub(crate) fn div_round<T>(numerator: T, denominator: T) -> T
 where
     T: Add<Output = T> + Div<Output = T> + From<u8> + Copy,

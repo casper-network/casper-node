@@ -163,7 +163,7 @@ impl<I> Era<I> {
     pub(crate) fn add_accusations(&mut self, accusations: &[PublicKey]) {
         for pub_key in accusations {
             if !self.slashed.contains(pub_key) {
-                self.accusations.insert(pub_key.clone());
+                self.accusations.insert(*pub_key);
             }
         }
     }
@@ -176,6 +176,11 @@ impl<I> Era<I> {
     /// Returns the map of validator weights.
     pub(crate) fn validators(&self) -> &BTreeMap<PublicKey, U512> {
         &self.validators
+    }
+
+    /// Returns whether validator identified with `public_key` is bonded in that era.
+    pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
+        self.validators.contains_key(public_key)
     }
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
@@ -243,12 +248,12 @@ where
         };
 
         consensus_heap_size
-            .saturating_add(start_time.estimate_heap_size())
-            .saturating_add(start_height.estimate_heap_size())
-            .saturating_add(candidates.estimate_heap_size())
-            .saturating_add(newly_slashed.estimate_heap_size())
-            .saturating_add(slashed.estimate_heap_size())
-            .saturating_add(accusations.estimate_heap_size())
-            .saturating_add(validators.estimate_heap_size())
+            + start_time.estimate_heap_size()
+            + start_height.estimate_heap_size()
+            + candidates.estimate_heap_size()
+            + newly_slashed.estimate_heap_size()
+            + slashed.estimate_heap_size()
+            + accusations.estimate_heap_size()
+            + validators.estimate_heap_size()
     }
 }

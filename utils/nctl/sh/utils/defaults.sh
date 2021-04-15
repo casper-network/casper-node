@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-
 # Set default type of daemon to run.
 export NCTL_DAEMON_TYPE=${NCTL_DAEMON_TYPE:-supervisord}
 

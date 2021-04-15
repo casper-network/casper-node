@@ -1,10 +1,10 @@
 use std::{
-    convert::TryFrom,
     io::{self, Write},
     path::Path,
 };
 
 use regex::Regex;
+use semver::Version;
 
 use crate::{
     dependent_file::DependentFile,
@@ -15,8 +15,6 @@ use crate::{
     BumpVersion,
 };
 
-use casper_types::SemVer;
-
 const CAPTURE_INDEX: usize = 2;
 
 /// Represents a published CasperLabs crate or AssemblyScript package which may need its version
@@ -25,7 +23,7 @@ pub struct Package {
     /// This package's name as specified in its manifest.
     name: String,
     /// This package's current version as specified in its manifest.
-    current_version: SemVer,
+    current_version: Version,
     /// Files which must be updated if this package's version is changed, including this package's
     /// own manifest file.  The other files will often be from a different package.
     dependent_files: &'static Vec<DependentFile>,
@@ -121,7 +119,7 @@ impl Package {
 
         let name = find_value(T::name_regex());
         let version = find_value(T::version_regex());
-        let current_version = SemVer::try_from(&*version).expect("should parse current version");
+        let current_version = Version::parse(&version).expect("should parse current version");
 
         Package {
             name,
@@ -170,15 +168,15 @@ impl Package {
         );
     }
 
-    fn get_updated_version_from_bump(&self, bump_version: BumpVersion) -> SemVer {
+    fn get_updated_version_from_bump(&self, bump_version: BumpVersion) -> Version {
         match bump_version {
-            BumpVersion::Major => SemVer::new(self.current_version.major + 1, 0, 0),
-            BumpVersion::Minor => SemVer::new(
+            BumpVersion::Major => Version::new(self.current_version.major + 1, 0, 0),
+            BumpVersion::Minor => Version::new(
                 self.current_version.major,
                 self.current_version.minor + 1,
                 0,
             ),
-            BumpVersion::Patch => SemVer::new(
+            BumpVersion::Patch => Version::new(
                 self.current_version.major,
                 self.current_version.minor,
                 self.current_version.patch + 1,
@@ -186,7 +184,7 @@ impl Package {
         }
     }
 
-    fn get_updated_version_from_user(&self) -> Option<SemVer> {
+    fn get_updated_version_from_user(&self) -> Option<Version> {
         loop {
             print!(
                 "Current version of {} is {}.  Enter new version (leave blank for unchanged): ",
@@ -201,7 +199,7 @@ impl Package {
                         return None;
                     }
 
-                    let new_version = match SemVer::try_from(&*input) {
+                    let new_version = match Version::parse(&input) {
                         Ok(version) => version,
                         Err(error) => {
                             println!("\n{} is not a valid version: {}.", input, error);

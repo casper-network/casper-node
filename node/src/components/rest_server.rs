@@ -27,10 +27,9 @@ use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use semver::Version;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, warn};
-
-use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
@@ -80,10 +79,8 @@ impl<REv> ReactorEventT for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
-    #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
     /// The task handle which will only join once the server loop has exited.
-    #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 }
 
@@ -91,7 +88,7 @@ impl RestServer {
     pub(crate) fn new<REv>(
         config: Config,
         effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
+        api_version: Version,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,

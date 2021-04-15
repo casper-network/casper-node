@@ -62,7 +62,7 @@ impl AccountsConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let alpha = AccountConfig::random(rng);
         let accounts = vec![
-            alpha.clone(),
+            alpha,
             AccountConfig::random(rng),
             AccountConfig::random(rng),
             AccountConfig::random(rng),

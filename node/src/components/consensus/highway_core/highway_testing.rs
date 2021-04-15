@@ -1,5 +1,3 @@
-#![allow(clippy::integer_arithmetic)] // In tests, overflows panic anyway.
-
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},

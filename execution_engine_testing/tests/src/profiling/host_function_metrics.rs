@@ -154,7 +154,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
 
     for _ in 0..repetitions {
         let seed: u64 = rng.gen();
-        let random_bytes_length: usize = rng.gen_range(0..10_000);
+        let random_bytes_length: usize = rng.gen_range(0, 10_000);
         let mut random_bytes = vec![0_u8; random_bytes_length];
         rng.fill(random_bytes.as_mut_slice());
 

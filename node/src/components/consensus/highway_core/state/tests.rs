@@ -1,5 +1,4 @@
 #![allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
-#![allow(clippy::integer_arithmetic)] // Overflows in tests would panic anyway.
 
 use std::{
     collections::{hash_map::DefaultHasher, BTreeSet},
@@ -56,7 +55,6 @@ impl ValidatorSecret for TestSecret {
 pub(crate) const ALICE_SEC: TestSecret = TestSecret(0);
 pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
 pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
-pub(crate) const DAN_SEC: TestSecret = TestSecret(3);
 
 impl ConsensusValueT for u32 {
     fn needs_validation(&self) -> bool {
@@ -849,14 +847,10 @@ fn retain_evidence_only() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn test_log2() {
-    assert_eq!(0, log2(0));
     assert_eq!(2, log2(0b100));
     assert_eq!(2, log2(0b101));
     assert_eq!(2, log2(0b111));
     assert_eq!(3, log2(0b1000));
-    assert_eq!(63, log2(u64::MAX));
-    assert_eq!(63, log2(1 << 63));
-    assert_eq!(62, log2((1 << 63) - 1));
 }
 
 #[test]

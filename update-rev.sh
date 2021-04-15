@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ue 
 
-DEST_FILES=("client/Cargo.toml")
+DEST_FILES=("node/Cargo.toml" "client/Cargo.toml")
 
 for f in "${DEST_FILES[@]}"; do
   if [ -f $f ]; then 
