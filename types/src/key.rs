@@ -17,7 +17,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     account::{self, AccountHash, AccountHashBytes, TryFromSliceForAccountHashError},
-    bytesrepr::{self, Error, FromBytes, ToBytes},
+    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
@@ -47,8 +47,7 @@ const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LE
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
-const KEY_ERA_INFO_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + PaddedEraId::SERIALIZED_LENGTH;
+const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -386,43 +385,6 @@ impl From<ContractPackageHash> for Key {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct PaddedEraId(EraId);
-
-impl PaddedEraId {
-    const SERIALIZED_LENGTH: usize = 32;
-
-    const U64_LE_BYTES_LENGTH: usize = 8;
-
-    const ZEROES_LENGTH: usize = Self::SERIALIZED_LENGTH - Self::U64_LE_BYTES_LENGTH;
-
-    const fn into_inner(self) -> EraId {
-        self.0
-    }
-}
-
-impl ToBytes for PaddedEraId {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut buff = Vec::new();
-        buff.extend_from_slice(&[0u8; Self::ZEROES_LENGTH]);
-        buff.extend_from_slice(&self.0.to_le_bytes());
-        Ok(buff)
-    }
-
-    fn serialized_length(&self) -> usize {
-        Self::SERIALIZED_LENGTH
-    }
-}
-
-impl FromBytes for PaddedEraId {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let mut le_bytes = [0u8; Self::U64_LE_BYTES_LENGTH];
-        let (bytes, remainder) = bytesrepr::safe_split_at(bytes, Self::SERIALIZED_LENGTH)?;
-        le_bytes.copy_from_slice(&bytes[Self::ZEROES_LENGTH..]);
-        Ok((PaddedEraId(EraId::from_le_bytes(le_bytes)), remainder))
-    }
-}
-
 impl ToBytes for Key {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
@@ -444,7 +406,7 @@ impl ToBytes for Key {
                 result.append(&mut addr.to_bytes()?);
             }
             Key::EraInfo(era_id) => {
-                result.append(&mut PaddedEraId(*era_id).to_bytes()?);
+                result.append(&mut era_id.to_bytes()?);
             }
             Key::Balance(uref_addr) => {
                 result.append(&mut uref_addr.to_bytes()?);
@@ -501,8 +463,8 @@ impl FromBytes for Key {
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
             tag if tag == KeyTag::EraInfo as u8 => {
-                let (era_id, rem) = PaddedEraId::from_bytes(remainder)?;
-                Ok((Key::EraInfo(era_id.into_inner()), rem))
+                let (era_id, rem) = FromBytes::from_bytes(remainder)?;
+                Ok((Key::EraInfo(era_id), rem))
             }
             tag if tag == KeyTag::Balance as u8 => {
                 let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
@@ -676,12 +638,9 @@ impl<'de> Deserialize<'de> for Key {
 mod tests {
     use std::string::ToString;
 
-    use proptest::proptest;
-
     use super::*;
     use crate::{
         bytesrepr::{Error, FromBytes},
-        gens::era_id_arb,
         AccessRights, URef,
     };
 
@@ -954,12 +913,5 @@ mod tests {
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
-    }
-
-    proptest! {
-        #[test]
-        fn padded_era_id_serialization_roundtrip(era_id in era_id_arb()) {
-            bytesrepr::test_serialization_roundtrip(&PaddedEraId(era_id))
-        }
     }
 }

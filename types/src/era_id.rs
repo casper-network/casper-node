@@ -99,11 +99,6 @@ impl EraId {
         self.0.to_le_bytes()
     }
 
-    /// Creates new [`EraId`] instance from little endian bytes.
-    pub(crate) fn from_le_bytes(bytes: [u8; 8]) -> EraId {
-        EraId::from(u64::from_le_bytes(bytes))
-    }
-
     /// Returns a raw value held by this [`EraId`] instance.
     ///
     /// You should prefer [`From`] trait implementations over this method where possible.
