@@ -206,7 +206,6 @@ fn do_not_download_synchronized_dependencies() {
     assert!(sync.is_empty());
 }
 
-#[cfg(test)]
 fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
     assert_eq!(
         vec.len(),
@@ -217,7 +216,6 @@ fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
     vec.into_iter().next().unwrap()
 }
 
-#[cfg(test)]
 fn assert_targeted_message(
     outcome: &ProtocolOutcome<NodeId, TestContext>,
     peer: &NodeId,
