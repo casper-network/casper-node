@@ -63,10 +63,14 @@ where
         let projection: Pin<&mut F> = this.inner;
 
         let serialized = F::serialize(projection, item)?;
-        this.metrics
-            .record_payload_out(item.classify(), serialized.len() as u64);
+        let msg_size = serialized.len() as u64;
+        let msg_kind = item.classify();
+        this.metrics.record_payload_out(msg_kind, msg_size);
 
-        trace!(target: "net_out", msg_id=display(TraceId(&serialized)), "sending");
+        trace!(target: "net_out",
+            msg_id = %TraceId(&serialized),
+            msg_size,
+            msg_kind = %msg_kind, "sending");
 
         Ok(serialized)
     }
@@ -83,7 +87,11 @@ where
         let this = self.project();
         let projection: Pin<&mut F> = this.inner;
 
-        trace!(target: "net_in", msg_id=display(TraceId(&src)), "received");
+        // We do not include additional meta info here, since we do not want the deserialization
+        // time to be added to our measurements.
+        trace!(target: "net_in",
+            msg_id=%TraceId(&src),
+            "received");
 
         F::deserialize(projection, src)
     }

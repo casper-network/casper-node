@@ -130,6 +130,20 @@ pub enum MessageKind {
     Other,
 }
 
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageKind::Protocol => f.write_str("protocol"),
+            MessageKind::Consensus => f.write_str("consensus"),
+            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::AddressGossip => f.write_str("address_gossip"),
+            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::Other => f.write_str("other"),
+        }
+    }
+}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
