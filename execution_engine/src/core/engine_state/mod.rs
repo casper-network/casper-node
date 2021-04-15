@@ -1173,8 +1173,8 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost =
-            Motes::from_gas(*MAX_PAYMENT, 1u64).ok_or(Error::GasConversionOverflow)?;
+        let max_payment_cost = Motes::from_gas(*MAX_PAYMENT, deploy_item.gas_price)
+            .ok_or(Error::GasConversionOverflow)?;
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance
