@@ -15,6 +15,32 @@ pub(super) struct NetworkingMetrics {
     /// Number of connected peers.
     pub(super) peers: IntGauge,
 
+    /// Count of outgoing messages with consensus payload.
+    pub(super) out_count_consensus: IntCounter,
+    /// Count of outgoing messages with deploy gossiper payload.
+    pub(super) out_count_deploy_gossip: IntCounter,
+    /// Count of outgoing messages with address gossiper payload.
+    pub(super) out_count_address_gossip: IntCounter,
+    /// Count of outgoing messages with deploy request/response payload.
+    pub(super) out_count_deploy_transfer: IntCounter,
+    /// Count of outgoing messages with block request/response payload.
+    pub(super) out_count_block_transfer: IntCounter,
+    /// Count of outgoing messages with other payload.
+    pub(super) out_count_other: IntCounter,
+
+    /// Volume in bytes of outgoing messages with consensus payload.
+    pub(super) out_bytes_consensus: IntCounter,
+    /// Volume in bytes of outgoing messages with deploy gossiper payload.
+    pub(super) out_bytes_deploy_gossip: IntCounter,
+    /// Volume in bytes of outgoing messages with address gossiper payload.
+    pub(super) out_bytes_address_gossip: IntCounter,
+    /// Volume in bytes of outgoing messages with deploy request/response payload.
+    pub(super) out_bytes_deploy_transfer: IntCounter,
+    /// Volume in bytes of outgoing messages with block request/response payload.
+    pub(super) out_bytes_block_transfer: IntCounter,
+    /// Volume in bytes of outgoing messages with other payload.
+    pub(super) out_bytes_other: IntCounter,
+
     // Potentially temporary metrics, not supported by all networking components:
     /// Number of do-nothing futures that have not finished executing for read requests.
     pub(super) read_futures_in_flight: prometheus::Gauge,
@@ -46,6 +72,56 @@ impl NetworkingMetrics {
         )?;
         let peers = IntGauge::new("peers", "Number of connected peers.")?;
 
+        let out_count_consensus = IntCounter::new(
+            "net_out_count_consensus",
+            "count of outgoing messages with consensus payload.",
+        )?;
+        let out_count_deploy_gossip = IntCounter::new(
+            "net_out_count_deploy_gossip",
+            "count of outgoing messages with deploy gossiper payload.",
+        )?;
+        let out_count_address_gossip = IntCounter::new(
+            "net_out_count_address_gossip",
+            "count of outgoing messages with address gossiper payload.",
+        )?;
+        let out_count_deploy_transfer = IntCounter::new(
+            "net_out_count_deploy_transfer",
+            "count of outgoing messages with deploy request/response payload.",
+        )?;
+        let out_count_block_transfer = IntCounter::new(
+            "net_out_count_block_transfer",
+            "count of outgoing messages with block request/response payload.",
+        )?;
+        let out_count_other = IntCounter::new(
+            "net_out_count_other",
+            "count of outgoing messages with other payload.",
+        )?;
+
+        let out_bytes_consensus = IntCounter::new(
+            "net_out_bytes_consensus",
+            "volume in bytes of outgoing messages with consensus payload.",
+        )?;
+        let out_bytes_deploy_gossip = IntCounter::new(
+            "net_out_bytes_deploy_gossip",
+            "volume in bytes of outgoing messages with deploy gossiper payload.",
+        )?;
+        let out_bytes_address_gossip = IntCounter::new(
+            "net_out_bytes_address_gossip",
+            "volume in bytes of outgoing messages with address gossiper payload.",
+        )?;
+        let out_bytes_deploy_transfer = IntCounter::new(
+            "net_out_bytes_deploy_transfer",
+            "volume in bytes of outgoing messages with deploy request/response payload.",
+        )?;
+        let out_bytes_block_transfer = IntCounter::new(
+            "net_out_bytes_block_transfer",
+            "volume in bytes of outgoing messages with block request/response payload.",
+        )?;
+        let out_bytes_other = IntCounter::new(
+            "net_out_bytes_other",
+            "volume in bytes of outgoing messages with other payload.",
+        )?;
+
         let read_futures_in_flight = prometheus::Gauge::new(
             "owm_read_futures_in_flight",
             "number of do-nothing futures in flight created by `Codec::read_response`",
@@ -69,6 +145,20 @@ impl NetworkingMetrics {
         registry.register(Box::new(queued_messages.clone()))?;
         registry.register(Box::new(peers.clone()))?;
 
+        registry.register(Box::new(out_count_consensus.clone()))?;
+        registry.register(Box::new(out_count_deploy_gossip.clone()))?;
+        registry.register(Box::new(out_count_address_gossip.clone()))?;
+        registry.register(Box::new(out_count_deploy_transfer.clone()))?;
+        registry.register(Box::new(out_count_block_transfer.clone()))?;
+        registry.register(Box::new(out_count_other.clone()))?;
+
+        registry.register(Box::new(out_bytes_consensus.clone()))?;
+        registry.register(Box::new(out_bytes_deploy_gossip.clone()))?;
+        registry.register(Box::new(out_bytes_address_gossip.clone()))?;
+        registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
+        registry.register(Box::new(out_bytes_block_transfer.clone()))?;
+        registry.register(Box::new(out_bytes_other.clone()))?;
+
         registry.register(Box::new(read_futures_in_flight.clone()))?;
         registry.register(Box::new(read_futures_total.clone()))?;
         registry.register(Box::new(write_futures_in_flight.clone()))?;
@@ -80,6 +170,18 @@ impl NetworkingMetrics {
             open_connections,
             queued_messages,
             peers,
+            out_count_consensus,
+            out_count_deploy_gossip,
+            out_count_address_gossip,
+            out_count_deploy_transfer,
+            out_count_block_transfer,
+            out_count_other,
+            out_bytes_consensus,
+            out_bytes_deploy_gossip,
+            out_bytes_address_gossip,
+            out_bytes_deploy_transfer,
+            out_bytes_block_transfer,
+            out_bytes_other,
             read_futures_in_flight,
             read_futures_total,
             write_futures_in_flight,
@@ -96,6 +198,20 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.open_connections);
         unregister_metric!(self.registry, self.queued_messages);
         unregister_metric!(self.registry, self.peers);
+
+        unregister_metric!(self.registry, self.out_count_consensus);
+        unregister_metric!(self.registry, self.out_count_deploy_gossip);
+        unregister_metric!(self.registry, self.out_count_address_gossip);
+        unregister_metric!(self.registry, self.out_count_deploy_transfer);
+        unregister_metric!(self.registry, self.out_count_block_transfer);
+        unregister_metric!(self.registry, self.out_count_other);
+        unregister_metric!(self.registry, self.out_bytes_consensus);
+        unregister_metric!(self.registry, self.out_bytes_deploy_gossip);
+        unregister_metric!(self.registry, self.out_bytes_address_gossip);
+        unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
+        unregister_metric!(self.registry, self.out_bytes_block_transfer);
+        unregister_metric!(self.registry, self.out_bytes_other);
+
         unregister_metric!(self.registry, self.read_futures_in_flight);
         unregister_metric!(self.registry, self.read_futures_total);
         unregister_metric!(self.registry, self.write_futures_in_flight);
