@@ -170,9 +170,6 @@ fn do_not_download_synchronized_dependencies() {
         *c1_outcomes,
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
-    // `c1` is now part of the synchronizer's state, we should not try requesting it if other
-    // vertices depend on it.
-    assert!(sync.schedule_add_vertex(peer0, pvv(b0), now).is_empty());
     // `b0` can't be added to the protocol state b/c it's missing its `c1` dependency,
     // but `c1` has already been downloaded so we should not request it again. We will only request
     // `c0` as that's what `c1` depends on.
@@ -183,12 +180,21 @@ fn do_not_download_synchronized_dependencies() {
         &peer0,
         HighwayMessage::RequestDependency(Dependency::Unit(c0)),
     );
+    // `c1` is now part of the synchronizer's state, we should not try requesting it if other
+    // vertices depend on it.
+    assert!(matches!(
+        *sync.schedule_add_vertex(peer0, pvv(b0), now),
+        [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
+    ));
     // "Download" the last dependency.
     let _ = sync.schedule_add_vertex(peer0, pvv(c0), now);
     // Now, the whole chain can be added to the protocol state.
-    for unit in &[c0, c1, b0, c2] {
+    let units: std::collections::BTreeSet<Dependency<TestContext>> = vec![c0, c1, b0, c2]
+        .into_iter()
+        .map(Dependency::Unit)
+        .collect();
+    for _ in 0..units.len() {
         let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
-        assert_eq!(Dependency::Unit(*unit), maybe_pv.unwrap().vertex().id());
         // Verify that we don't request any dependency now.
         assert!(
             !outcomes
@@ -197,11 +203,18 @@ fn do_not_download_synchronized_dependencies() {
             "unexpected dependency request {:?}",
             outcomes
         );
-        let vv = highway
-            .validate_vertex(pvv(*unit))
-            .unwrap_or_else(|_| panic!("{:?} unit is valid", unit));
-        highway.add_valid_vertex(vv, now);
-        let _ = sync.remove_satisfied_deps(&highway);
+        let pv_dep = maybe_pv.unwrap().vertex().id();
+        assert!(units.contains(&pv_dep), "unexpected dependency");
+        match pv_dep {
+            Dependency::Unit(hash) => {
+                let vv = highway
+                    .validate_vertex(pvv(hash))
+                    .unwrap_or_else(|_| panic!("{:?} unit is valid", hash));
+                highway.add_valid_vertex(vv, now);
+                let _ = sync.remove_satisfied_deps(&highway);
+            }
+            _ => panic!("expected unit"),
+        }
     }
     assert!(sync.is_empty());
 }
