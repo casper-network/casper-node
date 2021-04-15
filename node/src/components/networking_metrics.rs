@@ -76,7 +76,7 @@ impl NetworkingMetrics {
             "net_queued_direct_messages",
             "number of messages waiting to be sent out",
         )?;
-        let peers = IntGauge::new("peers", "Number of connected peers")?;
+        let peers = IntGauge::new("peers", "number of connected peers")?;
 
         let out_count_protocol = IntCounter::new(
             "net_out_count_protocol",
