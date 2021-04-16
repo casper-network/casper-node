@@ -50,8 +50,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, DeployHash,
-        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+        ActivationPoint, Block, BlockHash, BlockHeader, DeployHash, FinalitySignature,
+        FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -1242,7 +1242,7 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event<I>
 where
-    REv: From<BlockValidationRequest<BlockPayload, I>> + From<StorageRequest>,
+    REv: From<BlockValidationRequest<I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
@@ -1271,12 +1271,8 @@ where
     }
 
     let sender_for_validate_block: I = sender.clone();
-    let (valid, _) = effect_builder
-        .validate_block_payload(
-            sender_for_validate_block,
-            proposed_block.value().clone(),
-            proposed_block.context().timestamp(),
-        )
+    let valid = effect_builder
+        .validate_block(sender_for_validate_block, proposed_block.clone())
         .await;
 
     Event::ResolveValidity(ResolveValidity {

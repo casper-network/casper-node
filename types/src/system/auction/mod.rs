@@ -80,10 +80,12 @@ pub trait Auction:
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
-        match self.read_era_validators(era_index)? {
-            Some(seigniorage_recipients) => Ok(seigniorage_recipients),
-            None => Err(Error::MissingSeigniorageRecipients),
-        }
+        let mut seigniorage_recipients_snapshot =
+            detail::get_seigniorage_recipients_snapshot(self)?;
+        let seigniorage_recipients = seigniorage_recipients_snapshot
+            .remove(&era_index)
+            .ok_or(Error::MissingSeigniorageRecipients)?;
+        Ok(seigniorage_recipients)
     }
 
     /// For a non-founder validator, this adds, or modifies, an entry in the `bids` collection and
@@ -361,6 +363,7 @@ pub trait Auction:
 
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
+        let snapshot_size = auction_delay as usize + 1;
         let mut era_id: EraId = detail::get_era_id(self)?;
         let mut bids = detail::get_bids(self)?;
 
@@ -423,6 +426,8 @@ pub trait Auction:
 
         // Update seigniorage recipients for current era
         {
+            let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+
             let mut recipients = SeigniorageRecipients::new();
 
             for era_validator in winners.keys() {
@@ -433,7 +438,11 @@ pub trait Auction:
                 recipients.insert(era_validator.clone(), seigniorage_recipient);
             }
 
-            self.write_era_validators(delayed_era, recipients)?;
+            let previous_recipients = snapshot.insert(delayed_era, recipients);
+            assert!(previous_recipients.is_none());
+
+            let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
+            detail::set_seigniorage_recipients_snapshot(self, snapshot)?;
         }
 
         detail::set_era_id(self, era_id)?;
