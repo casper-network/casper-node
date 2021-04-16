@@ -1025,11 +1025,13 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let reactor_event =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-                let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event_consensus = Event::Consensus(consensus::Event::BlockAdded(
+                    Box::new(block.header().clone()),
+                ));
+                let reactor_event_es =
+                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
