@@ -1522,6 +1522,12 @@ where
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
+            handle_payment::METHOD_GET_REFUND_PURSE => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.get_refund_purse)?;
+
+                let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
+                CLValue::from_t(maybe_purse).map_err(Self::reverter)
+            })(),
             handle_payment::METHOD_FINALIZE_PAYMENT => (|| {
                 runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
 
