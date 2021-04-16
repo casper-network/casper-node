@@ -553,9 +553,6 @@ where
                 StoredValue::Withdraw(_) => {
                     return Ok(query.into_not_found_result(&"UnbondingPurses value found."));
                 }
-                StoredValue::EraValidators(_) => {
-                    return Ok(query.into_not_found_result(&"EraValidators value found"));
-                }
             }
         }
     }

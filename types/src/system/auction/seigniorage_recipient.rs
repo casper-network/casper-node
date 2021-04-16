@@ -1,11 +1,4 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{collections::BTreeMap, vec::Vec};
-
-#[cfg(feature = "std")]
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -14,8 +7,7 @@ use crate::{
 };
 
 /// The seigniorage recipient details.
-#[derive(Default, PartialEq, Clone, Debug, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
     stake: U512,
