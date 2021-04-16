@@ -209,7 +209,7 @@ impl Tagged<u8> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(DataSize, Eq, PartialEq)]
+#[derive(Clone, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// System public key.
     System,
@@ -351,19 +351,6 @@ impl Tagged<u8> for PublicKey {
             PublicKey::System => SYSTEM_TAG,
             PublicKey::Ed25519(_) => ED25519_TAG,
             PublicKey::Secp256k1(_) => SECP256K1_TAG,
-        }
-    }
-}
-
-impl Clone for PublicKey {
-    fn clone(&self) -> Self {
-        match self {
-            PublicKey::System => PublicKey::System,
-            PublicKey::Ed25519(public_key) => PublicKey::Ed25519(*public_key),
-            PublicKey::Secp256k1(public_key) => {
-                let raw_bytes: [u8; SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH] = public_key.to_bytes();
-                Self::secp256k1_from_bytes(raw_bytes).unwrap()
-            }
         }
     }
 }
