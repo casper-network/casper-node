@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    system::{handle_payment, mint::ARG_AMOUNT},
+    system::mint::ARG_AMOUNT,
     CLType, RuntimeArgs, URef, U512,
 };
 
@@ -21,6 +21,7 @@ const PACKAGE_HASH_KEY_NAME: &str = "test_payment_package_hash";
 const ACCESS_KEY_NAME: &str = "test_payment_access";
 const ARG_NAME: &str = "amount";
 const CONTRACT_VERSION: &str = "contract_version";
+const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
 #[no_mangle]
 pub extern "C" fn pay() {
@@ -35,7 +36,7 @@ pub extern "C" fn pay() {
     // get payment purse for current execution
     let payment_purse: URef = runtime::call_contract(
         handle_payment_contract_hash,
-        handle_payment::METHOD_GET_PAYMENT_PURSE,
+        GET_PAYMENT_PURSE,
         RuntimeArgs::default(),
     );
 
