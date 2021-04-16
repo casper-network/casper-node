@@ -50,8 +50,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, DeployHash, FinalitySignature,
-        FinalizedBlock, TimeDiff, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock,
+        TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -711,19 +711,19 @@ where
         })
     }
 
-    pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
+    pub(super) fn handle_block_added(
+        &mut self,
+        block_hash: BlockHash,
+        block_header: BlockHeader,
+    ) -> Effects<Event<I>> {
         let our_pk = self.era_supervisor.public_signing_key.clone();
         let our_sk = self.era_supervisor.secret_signing_key.clone();
-        let era_id = block.header().era_id();
-        self.era_supervisor.executed_block(block.header());
+        let era_id = block_header.era_id();
+        self.era_supervisor.executed_block(&block_header);
         let mut effects = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
-            let block_hash = block.hash();
             self.effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    *block_hash,
-                    era_id,
-                    &our_sk,
-                    our_pk,
+                    block_hash, era_id, &our_sk, our_pk,
                 ))
                 .ignore()
         } else {
@@ -733,7 +733,7 @@ where
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
         }
-        if block.header().is_switch_block() && !self.should_upgrade_after(&era_id) {
+        if block_header.is_switch_block() && !self.should_upgrade_after(&era_id) {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
@@ -744,7 +744,7 @@ where
                 self.era_supervisor.protocol_config.last_activation_point,
             )
             .event(move |booking_block_hash| Event::CreateNewEra {
-                switch_block_header: Box::new(block.header().clone()),
+                switch_block_header: Box::new(block_header),
                 booking_block_hash: Ok(booking_block_hash),
             });
             effects.extend(effect);
