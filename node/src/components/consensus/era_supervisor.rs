@@ -187,7 +187,7 @@ where
             info!(?era_ids, "collecting key blocks and booking blocks");
 
             let key_blocks = effect_builder
-                .collect_key_blocks(era_ids.iter().cloned())
+                .collect_key_block_headers(era_ids.iter().cloned())
                 .await
                 .expect("should have all the key blocks in storage");
 
@@ -563,17 +563,17 @@ where
         valid_booking_block_era_id(era_id, auction_delay, last_activation_point)
     {
         match effect_builder
-            .get_switch_block_at_era_id_from_storage(booking_block_era_id)
+            .get_switch_block_header_at_era_id_from_storage(booking_block_era_id)
             .await
         {
-            Some(block) => *block.hash(),
+            Some(block_header) => block_header.hash(),
             None => {
                 error!(
                     ?era_id,
                     ?booking_block_era_id,
-                    "booking block for era must exist"
+                    "booking block header for era must exist"
                 );
-                panic!("booking block not found in storage");
+                panic!("booking block header not found in storage");
             }
         }
     } else {
