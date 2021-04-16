@@ -64,7 +64,7 @@ impl Payload for Message {
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
                 }
             }
-            Message::FinalitySignature(_) => MessageKind::BlockTransfer,
+            Message::FinalitySignature(_) => MessageKind::Consensus,
         }
     }
 }
