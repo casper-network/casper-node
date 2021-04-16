@@ -435,18 +435,6 @@ where
         })
     }
 
-    pub fn delete_gs(&mut self, key: &Key) -> Result<(), Error> {
-        self.validate_writeable(key)?;
-        self.validate_key(key)?;
-        self.delete_gs_direct(key);
-        Ok(())
-    }
-
-    /// DO NOT EXPOSE THIS VIA THE FFI
-    pub fn delete_gs_direct(&mut self, key: &Key) {
-        self.tracking_copy.borrow_mut().delete(key)
-    }
-
     pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
         self.tracking_copy
             .borrow_mut()

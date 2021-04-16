@@ -2492,11 +2492,6 @@ where
             .map_err(Into::into)
     }
 
-    /// Deletes value under `key` in global state.
-    fn delete(&mut self, key: &Key) -> Result<(), Trap> {
-        self.context.delete_gs(key).map_err(Into::into)
-    }
-
     /// Records a transfer.
     fn record_transfer(
         &mut self,
