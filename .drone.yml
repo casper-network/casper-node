@@ -251,26 +251,6 @@ steps:
     event:
       - push
 
-  # we want to publish to the test repo, only when code is pushed to master or release-* branch.
-  # bors should make sure, that it has passed on staging or trying branches
-- name: publish-test-bintray
-  image: casperlabs/node-build-u1804
-  # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
-  commands:
-    - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-    event:
-      - push
-
 - name: publish-repo-test
   image: casperlabs/aptly:latest
   failure: ignore
@@ -405,16 +385,6 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
     - "make deb"
-
-- name: publish-prod-bintray
-  image: casperlabs/node-build-u1804
-  commands:
-  - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
 
 - name: publish-repo-prod
   image: casperlabs/aptly:latest
