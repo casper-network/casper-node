@@ -28,7 +28,7 @@ use super::{
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
 
 pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<Version> =
-    Lazy::new(|| Version::new(1, 0, 2));
+    Lazy::new(|| Version::new(1, 1, 1));
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
