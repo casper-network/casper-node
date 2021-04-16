@@ -641,7 +641,7 @@ checksum = "631ae5198c9be5e753e5cc215e1bd73c2b466a3565173db433f52bb9d3e66dba"
 
 [[package]]
 name = "cargo-casper"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "casper-client"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "casper-contract",
  "casper-execution-engine",
@@ -735,7 +735,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "ansi_term 0.12.1",
  "anyhow",
@@ -875,7 +875,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node-macros"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "base16",
  "base64 0.13.0",
@@ -2582,9 +2582,9 @@ dependencies = [
 
 [[package]]
 name = "idna"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89829a5d69c23d348314a7ac337fe39173b61149a9864deabd260983aed48c21"
+checksum = "418a0a6fab821475f634efe3ccc45c013f742efe03d853e8d3355d5cb850ecf8"
 dependencies = [
  "matches",
  "unicode-bidi",
