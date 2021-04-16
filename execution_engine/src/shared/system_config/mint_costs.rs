@@ -3,7 +3,7 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_MINT_COST: u32 = 10_000;
+pub const DEFAULT_MINT_COST: u32 = 1_700_000;
 pub const DEFAULT_REDUCE_TOTAL_SUPPLY_COST: u32 = 10_000;
 pub const DEFAULT_CREATE_COST: u32 = 10_000;
 pub const DEFAULT_BALANCE_COST: u32 = 10_000;
