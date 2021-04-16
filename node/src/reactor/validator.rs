@@ -1026,7 +1026,6 @@ impl reactor::Reactor for Reactor {
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
                 let reactor_event_consensus = Event::Consensus(consensus::Event::BlockAdded(
-                    *block.hash(),
                     Box::new(block.header().clone()),
                 ));
                 let reactor_event_es =

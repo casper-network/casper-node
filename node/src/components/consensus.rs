@@ -108,7 +108,7 @@ pub enum Event<I> {
     #[from]
     ConsensusRequest(ConsensusRequest),
     /// A new block has been added to the linear chain.
-    BlockAdded(BlockHash, Box<BlockHeader>),
+    BlockAdded(Box<BlockHeader>),
     /// The proto-block has been validated.
     ResolveValidity(ResolveValidity<I>),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -197,10 +197,10 @@ impl<I: Debug> Display for Event<I> {
                 "A request for consensus component hash been receieved: {:?}",
                 request
             ),
-            Event::BlockAdded(block_hash, _) => write!(
+            Event::BlockAdded(block_header) => write!(
                 f,
                 "A block has been added to the linear chain: {}",
-                block_hash,
+                block_header.hash(),
             ),
             Event::ResolveValidity(ResolveValidity {
                 era_id,
@@ -298,9 +298,7 @@ where
             Event::NewBlockPayload(new_block_payload) => {
                 handling_es.handle_new_block_payload(new_block_payload)
             }
-            Event::BlockAdded(block_hash, block_header) => {
-                handling_es.handle_block_added(block_hash, *block_header)
-            }
+            Event::BlockAdded(block_header) => handling_es.handle_block_added(*block_header),
             Event::ResolveValidity(resolve_validity) => {
                 handling_es.resolve_validity(resolve_validity)
             }

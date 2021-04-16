@@ -711,11 +711,7 @@ where
         })
     }
 
-    pub(super) fn handle_block_added(
-        &mut self,
-        block_hash: BlockHash,
-        block_header: BlockHeader,
-    ) -> Effects<Event<I>> {
+    pub(super) fn handle_block_added(&mut self, block_header: BlockHeader) -> Effects<Event<I>> {
         let our_pk = self.era_supervisor.public_signing_key.clone();
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block_header.era_id();
@@ -723,7 +719,10 @@ where
         let mut effects = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             self.effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    block_hash, era_id, &our_sk, our_pk,
+                    block_header.hash(),
+                    era_id,
+                    &our_sk,
+                    our_pk,
                 ))
                 .ignore()
         } else {
