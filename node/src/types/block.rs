@@ -1065,7 +1065,8 @@ impl Block {
         &self.body
     }
 
-    pub(crate) fn take_header(self) -> BlockHeader {
+    /// Returns the header, consuming the block.
+    pub fn take_header(self) -> BlockHeader {
         self.header
     }
 
