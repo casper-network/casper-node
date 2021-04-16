@@ -743,8 +743,8 @@ where
                 self.era_supervisor.protocol_config.auction_delay,
                 self.era_supervisor.protocol_config.last_activation_point,
             )
-            .event(|booking_block_hash| Event::CreateNewEra {
-                block: Box::new(block),
+            .event(move |booking_block_hash| Event::CreateNewEra {
+                switch_block_header: Box::new(block.header().clone()),
                 booking_block_hash: Ok(booking_block_hash),
             });
             effects.extend(effect);
@@ -808,12 +808,12 @@ where
     /// Creates a new era.
     pub(super) fn handle_create_new_era(
         &mut self,
-        switch_block: Block,
+        switch_block_header: BlockHeader,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
         let (era_end, next_era_validators_weights) = match (
-            switch_block.header().era_end(),
-            switch_block.header().next_era_validator_weights(),
+            switch_block_header.era_end(),
+            switch_block_header.next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
                 (era_end, next_era_validator_weights)
@@ -822,17 +822,17 @@ where
                 return fatal!(
                     self.effect_builder,
                     "attempted to create a new era with a non-switch block: {}",
-                    switch_block
+                    switch_block_header
                 )
                 .ignore()
             }
         };
         let newly_slashed = era_end.equivocators.clone();
-        let era_id = switch_block.header().era_id().successor();
+        let era_id = switch_block_header.era_id().successor();
         info!(era = era_id.value(), "era created");
         let seed = EraSupervisor::<I>::era_seed(
             booking_block_hash,
-            switch_block.header().accumulated_seed(),
+            switch_block_header.accumulated_seed(),
         );
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let slashed = self
@@ -850,8 +850,8 @@ where
             newly_slashed,
             slashed,
             seed,
-            switch_block.header().timestamp(),
-            switch_block.height() + 1,
+            switch_block_header.timestamp(),
+            switch_block_header.height() + 1,
         );
         outcomes.extend(
             self.era_supervisor.active_eras[&era_id]

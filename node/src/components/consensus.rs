@@ -120,8 +120,8 @@ pub enum Event<I> {
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block.
     CreateNewEra {
-        /// The header of the switch block
-        block: Box<Block>,
+        /// The header of the switch block, i.e. the last block before the new era.
+        switch_block_header: Box<BlockHeader>,
         /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
         booking_block_hash: Result<BlockHash, EraId>,
     },
@@ -224,11 +224,11 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                block,
+                switch_block_header,
             } => write!(
                 f,
                 "New era should be created; booking block hash: {:?}, switch block: {:?}",
-                booking_block_hash, block
+                booking_block_hash, switch_block_header
             ),
             Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::GotUpgradeActivationPoint(activation_point) => {
@@ -308,7 +308,7 @@ where
                 delay,
             } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
-                block,
+                switch_block_header,
                 booking_block_hash,
             } => {
                 let booking_block_hash = match booking_block_hash {
@@ -317,7 +317,7 @@ where
                         error!(
                             "could not find the booking block in era {}, for era {}",
                             era_id,
-                            block.header().era_id().successor()
+                            switch_block_header.era_id().successor()
                         );
                         return fatal!(
                             handling_es.effect_builder,
@@ -326,7 +326,7 @@ where
                         .ignore();
                     }
                 };
-                handling_es.handle_create_new_era(*block, booking_block_hash)
+                handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
             }
             Event::InitializeEras {
                 key_blocks,
