@@ -98,13 +98,20 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
-    let proto_block = ProtoBlock::new(deploy_hashes, vec![], timestamp, random_bit);
+    let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
     let era_report = Some(EraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
-    FinalizedBlock::new(proto_block, era_report, era_id, height, public_key)
+    FinalizedBlock::new(
+        block_payload,
+        era_report,
+        timestamp,
+        era_id,
+        height,
+        public_key,
+    )
 });
 static BLOCK: Lazy<Block> = Lazy::new(|| {
     let parent_hash = BlockHash::new(Digest::from([7u8; Digest::LENGTH]));
@@ -180,121 +187,67 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
-/// A cryptographic hash identifying a `ProtoBlock`.
-#[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Debug,
-    Default,
-)]
-pub struct ProtoBlockHash(Digest);
-
-impl ProtoBlockHash {
-    /// Constructs a new `ProtoBlockHash`.
-    pub fn new(hash: Digest) -> Self {
-        ProtoBlockHash(hash)
-    }
-
-    /// Returns the wrapped inner hash.
-    pub fn inner(&self) -> &Digest {
-        &self.0
-    }
-}
-
-impl Display for ProtoBlockHash {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "proto-block-hash({})", self.0)
-    }
-}
-
 /// The piece of information that will become the content of a future block (isn't finalized or
 /// executed yet)
 ///
 /// From the view of the consensus protocol this is the "consensus value": The protocol deals with
-/// finalizing an order of `ProtoBlock`s. Only after consensus has been reached, the block's
+/// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
-///
-/// The word "proto" does _not_ refer to "protocol" or "protobuf"! It is just a prefix to highlight
-/// that this comes before a block in the linear, executed, finalized blockchain is produced.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ProtoBlock {
-    hash: ProtoBlockHash,
+pub struct BlockPayload {
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
-    timestamp: Timestamp,
+    accusations: Vec<PublicKey>,
     random_bit: bool,
 }
 
-impl ProtoBlock {
+impl BlockPayload {
     pub(crate) fn new(
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
-        timestamp: Timestamp,
+        accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Self {
-        let hash = ProtoBlockHash::new(hash::hash(
-            &bincode::serialize(&(&deploy_hashes, &transfer_hashes, timestamp, random_bit))
-                .expect("serialize ProtoBlock"),
-        ));
-
-        ProtoBlock {
-            hash,
+        BlockPayload {
             deploy_hashes,
             transfer_hashes,
-            timestamp,
+            accusations,
             random_bit,
         }
     }
 
-    pub(crate) fn hash(&self) -> &ProtoBlockHash {
-        &self.hash
+    /// Returns the set of validators that are reported as faulty in this block.
+    pub(crate) fn accusations(&self) -> &Vec<PublicKey> {
+        &self.accusations
     }
 
-    /// Returns the time when this proto block was proposed.
-    pub(crate) fn timestamp(&self) -> Timestamp {
-        self.timestamp
-    }
-
-    /// The list of deploy hashes included in the block.
+    /// The list of deploy hashes included in the block, excluding transfers.
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
         &self.deploy_hashes
     }
 
-    /// The list of deploy hashes included in the block.
+    /// The list of transfer hashes included in the block.
     pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
         &self.transfer_hashes
     }
 
+    /// Returns an iterator over all deploys and transfers.
     pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes()
             .iter()
             .chain(self.transfer_hashes().iter())
     }
-
-    /// A random bit needed for initializing a future era.
-    pub(crate) fn random_bit(&self) -> bool {
-        self.random_bit
-    }
 }
 
-impl Display for ProtoBlock {
+impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "proto block {}, deploys {}, transfers {}, random bit {}, timestamp {}",
-            self.hash.inner(),
+            "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
             HexList(&self.deploy_hashes),
             HexList(&self.transfer_hashes),
-            self.random_bit(),
-            self.timestamp,
+            self.accusations,
+            self.random_bit,
         )
     }
 }
@@ -367,17 +320,18 @@ pub struct FinalizedBlock {
 
 impl FinalizedBlock {
     pub(crate) fn new(
-        proto_block: ProtoBlock,
+        block_payload: BlockPayload,
         era_report: Option<EraReport>,
+        timestamp: Timestamp,
         era_id: EraId,
         height: u64,
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            deploy_hashes: proto_block.deploy_hashes,
-            transfer_hashes: proto_block.transfer_hashes,
-            timestamp: proto_block.timestamp,
-            random_bit: proto_block.random_bit,
+            deploy_hashes: block_payload.deploy_hashes,
+            transfer_hashes: block_payload.transfer_hashes,
+            timestamp,
+            random_bit: block_payload.random_bit,
             era_report,
             era_id,
             height,
@@ -385,7 +339,7 @@ impl FinalizedBlock {
         }
     }
 
-    /// The timestamp from when the proto block was proposed.
+    /// The timestamp from when the block was proposed.
     pub(crate) fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
@@ -440,7 +394,7 @@ impl FinalizedBlock {
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let proto_block = ProtoBlock::new(deploy_hashes, vec![], timestamp, random_bit);
+        let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
@@ -473,7 +427,14 @@ impl FinalizedBlock {
         let secret_key: SecretKey = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
         let public_key = PublicKey::from(&secret_key);
 
-        FinalizedBlock::new(proto_block, era_report, era_id, height, public_key)
+        FinalizedBlock::new(
+            block_payload,
+            era_report,
+            timestamp,
+            era_id,
+            height,
+            public_key,
+        )
     }
 }
 
@@ -704,7 +665,7 @@ impl BlockHeader {
         }
     }
 
-    /// The timestamp from when the proto block was proposed.
+    /// The timestamp from when the block was proposed.
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
@@ -978,7 +939,7 @@ impl From<bytesrepr::Error> for BlockValidationError {
 }
 
 /// A storage representation of finality signatures with the associated block hash.
-#[derive(Clone, Debug, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize, DataSize, PartialEq)]
+#[derive(Clone, Debug, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Eq, PartialEq)]
 pub struct BlockSignatures {
     /// The block hash for a given block.
     pub(crate) block_hash: BlockHash,
@@ -1104,7 +1065,8 @@ impl Block {
         &self.body
     }
 
-    pub(crate) fn take_header(self) -> BlockHeader {
+    /// Returns the header, consuming the block.
+    pub fn take_header(self) -> BlockHeader {
         self.header
     }
 

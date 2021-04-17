@@ -27,11 +27,11 @@ use casper_types::{
             INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
             METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
             METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
-            METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
+            METHOD_SET_REFUND_PURSE,
         },
         mint::{
             self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
@@ -998,13 +998,6 @@ where
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&validators, auction_delay);
 
-        for (era_id, recipients) in initial_seigniorage_recipients.into_iter() {
-            self.tracking_copy.borrow_mut().write(
-                Key::EraValidators(era_id),
-                StoredValue::EraValidators(recipients),
-            )
-        }
-
         let era_id_uref = self
             .uref_address_generator
             .borrow_mut()
@@ -1032,6 +1025,21 @@ where
         named_keys.insert(
             ERA_END_TIMESTAMP_MILLIS_KEY.into(),
             era_end_timestamp_millis_uref.into(),
+        );
+
+        let initial_seigniorage_recipients_uref = self
+            .uref_address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        self.tracking_copy.borrow_mut().write(
+            initial_seigniorage_recipients_uref.into(),
+            StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
+                |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
+            )?),
+        );
+        named_keys.insert(
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
+            initial_seigniorage_recipients_uref.into(),
         );
 
         for (validator_public_key, bid) in validators.into_iter() {
@@ -1388,15 +1396,6 @@ where
             EntryPointType::Contract,
         );
         entry_points.add_entry_point(set_refund_purse);
-
-        let get_refund_purse = EntryPoint::new(
-            METHOD_GET_REFUND_PURSE,
-            vec![],
-            CLType::Option(Box::new(CLType::URef)),
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-        entry_points.add_entry_point(get_refund_purse);
 
         let finalize_payment = EntryPoint::new(
             METHOD_FINALIZE_PAYMENT,

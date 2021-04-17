@@ -5,7 +5,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{ApiError, RuntimeArgs, URef, U512};
+use casper_types::{system::handle_payment, ApiError, RuntimeArgs, URef, U512};
 
 #[repr(u16)]
 enum Error {
@@ -16,7 +16,6 @@ enum Error {
 }
 
 const ARG_AMOUNT: &str = "amount";
-const ENTRY_POINT_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -28,7 +27,7 @@ pub extern "C" fn call() {
     let payment_amount: U512 = 100.into();
     let payment_purse: URef = runtime::call_contract(
         contract_hash,
-        ENTRY_POINT_GET_PAYMENT_PURSE,
+        handle_payment::METHOD_GET_PAYMENT_PURSE,
         RuntimeArgs::default(),
     );
 

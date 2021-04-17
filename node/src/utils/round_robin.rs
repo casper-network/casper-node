@@ -16,7 +16,7 @@ use std::{
 
 use enum_iterator::IntoEnumIterator;
 use serde::{ser::SerializeMap, Serialize, Serializer};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, MutexGuard, Semaphore};
 
 /// Weighted round-robin scheduler.
 ///
@@ -46,6 +46,9 @@ pub struct WeightedRoundRobin<I, K> {
 /// State that wraps queue and its event count.
 #[derive(Debug)]
 struct QueueState<I> {
+    /// A queue's event counter.
+    ///
+    /// Do not modify this unless you are holding the `queue` lock.
     event_count: AtomicUsize,
     queue: Mutex<VecDeque<I>>,
 }
@@ -56,6 +59,14 @@ impl<I> QueueState<I> {
             event_count: AtomicUsize::new(0),
             queue: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Remove all events from a queue.
+    async fn drain(&self) -> Vec<I> {
+        let mut guard = self.queue.lock().await;
+        let events: Vec<I> = guard.drain(..).collect();
+        self.event_count.fetch_sub(events.len(), Ordering::SeqCst);
+        events
     }
 
     #[inline]
@@ -152,18 +163,7 @@ where
 {
     /// Dump the contents of the queues (`Debug` representation) to a given file.
     pub async fn debug_dump(&self, file: &mut File) -> Result<(), io::Error> {
-        let mut locks = Vec::new();
-        for kind in K::into_enum_iter() {
-            let queue_guard = self
-                .queues
-                .get(&kind)
-                .expect("missing queue while dumping")
-                .queue
-                .lock()
-                .await;
-
-            locks.push((kind, queue_guard));
-        }
+        let locks = self.lock_queues().await;
 
         let mut writer = BufWriter::new(file);
         for (kind, guard) in locks {
@@ -175,6 +175,24 @@ where
             writer.write_all(b"]\n")?;
         }
         writer.flush()
+    }
+
+    /// Lock all queues in a well-defined order to avoid deadlocks conditions.
+    async fn lock_queues(&self) -> Vec<(K, MutexGuard<'_, VecDeque<I>>)> {
+        let mut locks = Vec::new();
+        for kind in K::into_enum_iter() {
+            let queue_guard = self
+                .queues
+                .get(&kind)
+                .expect("missing queue while locking")
+                .queue
+                .lock()
+                .await;
+
+            locks.push((kind, queue_guard));
+        }
+
+        locks
     }
 }
 
@@ -266,6 +284,25 @@ where
             queue_state.dec_count();
             break (item, inner.active_slot.key);
         }
+    }
+
+    /// Drains all events from a specific queue.
+    pub(crate) async fn drain_queue(&self, queue: K) -> Vec<I> {
+        let events = self
+            .queues
+            .get(&queue)
+            .expect("queue to be drained disappeared")
+            .drain()
+            .await;
+
+        // TODO: This is racy if someone is calling `pop` at the same time.
+        self.total
+            .acquire_many(events.len() as u32)
+            .await
+            .expect("could not acquire tickets during drain")
+            .forget();
+
+        events
     }
 
     /// Returns the number of events currently in the queue.

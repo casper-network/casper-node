@@ -1,11 +1,11 @@
 [package]
-name = "transfer-to-account-u512-stored"
+name = "write-delete"
 version = "0.1.0"
-authors = ["Michael Birch <birchmd@casperlabs.io>"]
+authors = ["Henry Till <henrytill@gmail.com>"]
 edition = "2018"
 
 [[bin]]
-name = "transfer_to_account_u512_stored"
+name = "write_delete"
 path = "src/main.rs"
 bench = false
 doctest = false
@@ -16,5 +16,4 @@ std = ["casper-contract/std", "casper-types/std"]
 
 [dependencies]
 casper-contract = { path = "../../../contract" }
-transfer-to-account-u512 = { path = "../transfer-to-account-u512" }
 casper-types = { path = "../../../../types" }

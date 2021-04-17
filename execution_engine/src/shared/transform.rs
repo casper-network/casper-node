@@ -70,6 +70,7 @@ pub enum Transform {
     AddUInt512(U512),
     AddKeys(NamedKeys),
     Failure(Error),
+    Delete,
 }
 
 macro_rules! from_try_from_impl {
@@ -146,23 +147,23 @@ where
 }
 
 impl Transform {
-    pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
+    pub fn apply(self, stored_value: StoredValue) -> Result<Option<StoredValue>, Error> {
         match self {
-            Transform::Identity => Ok(stored_value),
-            Transform::Write(new_value) => Ok(new_value),
-            Transform::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
+            Transform::Identity => Ok(Some(stored_value)),
+            Transform::Write(new_value) => Ok(Some(new_value)),
+            Transform::AddInt32(to_add) => wrapping_addition(stored_value, to_add).map(Some),
+            Transform::AddUInt64(to_add) => wrapping_addition(stored_value, to_add).map(Some),
+            Transform::AddUInt128(to_add) => wrapping_addition(stored_value, to_add).map(Some),
+            Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add).map(Some),
+            Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add).map(Some),
             Transform::AddKeys(mut keys) => match stored_value {
                 StoredValue::Contract(mut contract) => {
                     contract.named_keys_append(&mut keys);
-                    Ok(StoredValue::Contract(contract))
+                    Ok(Some(StoredValue::Contract(contract)))
                 }
                 StoredValue::Account(mut account) => {
                     account.named_keys_append(&mut keys);
-                    Ok(StoredValue::Account(account))
+                    Ok(Some(StoredValue::Account(account)))
                 }
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
@@ -204,13 +205,9 @@ impl Transform {
                     let found = "Withdraw".to_string();
                     Err(TypeMismatch::new(expected, found).into())
                 }
-                StoredValue::EraValidators(_) => {
-                    let expected = "Contract or Account".to_string();
-                    let found = "EraValidators".to_string();
-                    Err(TypeMismatch::new(expected, found).into())
-                }
             },
             Transform::Failure(error) => Err(error),
+            Transform::Delete => Ok(None),
         }
     }
 }
@@ -261,7 +258,8 @@ impl Add for Transform {
                 // second transform changes value being written
                 match b.apply(v) {
                     Err(error) => Transform::Failure(error),
-                    Ok(new_value) => Transform::Write(new_value),
+                    Ok(Some(new_value)) => Transform::Write(new_value),
+                    Ok(None) => Transform::Delete,
                 }
             }
             (Transform::AddInt32(i), b) => match b {
@@ -296,6 +294,7 @@ impl Add for Transform {
                     TypeMismatch::new("AddKeys".to_owned(), format!("{:?}", other)).into(),
                 ),
             },
+            (a @ Transform::Delete, _) => a,
         }
     }
 }
@@ -350,9 +349,6 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::Withdraw(unbonding_purses)) => {
                 casper_types::Transform::WriteWithdraw(unbonding_purses.clone())
             }
-            Transform::Write(StoredValue::EraValidators(recipients)) => {
-                casper_types::Transform::WriteEraValidators(recipients.clone())
-            }
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
             Transform::AddUInt128(value) => casper_types::Transform::AddUInt128(*value),
@@ -368,6 +364,7 @@ impl From<&Transform> for casper_types::Transform {
                     .collect(),
             ),
             Transform::Failure(error) => casper_types::Transform::Failure(error.to_string()),
+            Transform::Delete => casper_types::Transform::Delete,
         }
     }
 }
@@ -470,8 +467,14 @@ mod tests {
         let transform_overflow = Transform::AddInt32(max) + Transform::AddInt32(1);
         let transform_underflow = Transform::AddInt32(min) + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow.expect("Unexpected overflow"), min_value);
-        assert_eq!(apply_underflow.expect("Unexpected underflow"), max_value);
+        assert_eq!(
+            apply_overflow.expect("Unexpected overflow"),
+            Some(min_value)
+        );
+        assert_eq!(
+            apply_underflow.expect("Unexpected underflow"),
+            Some(max_value)
+        );
 
         assert_eq!(transform_overflow, min.into());
         assert_eq!(transform_underflow, max.into());
@@ -504,9 +507,9 @@ mod tests {
         let transform_overflow_uint = max_transform + one_transform;
         let transform_underflow = min_transform + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow, Ok(zero_value.clone()));
-        assert_eq!(apply_overflow_uint, Ok(zero_value));
-        assert_eq!(apply_underflow, Ok(max_value));
+        assert_eq!(apply_overflow, Ok(Some(zero_value.clone())));
+        assert_eq!(apply_overflow_uint, Ok(Some(zero_value)));
+        assert_eq!(apply_underflow, Ok(Some(max_value)));
 
         assert_eq!(transform_overflow, zero.into());
         assert_eq!(transform_overflow_uint, zero.into());
