@@ -7,7 +7,6 @@ use std::{
     array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter, LowerHex, UpperHex},
-    ops::{BitXor, BitXorAssign},
 };
 
 use blake2::{
@@ -77,26 +76,6 @@ impl Digest {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         Digest(rng.gen::<[u8; Digest::LENGTH]>())
-    }
-}
-
-impl BitXor for Digest {
-    type Output = Digest;
-
-    #[inline]
-    fn bitxor(mut self, rhs: Self) -> Self::Output {
-        self ^= rhs;
-        self
-    }
-}
-
-impl BitXorAssign for Digest {
-    #[inline]
-    fn bitxor_assign(&mut self, rhs: Self) {
-        self.0
-            .iter_mut()
-            .zip(rhs.0.into_iter())
-            .for_each(|(lhs, rhs)| lhs.bitxor_assign(rhs));
     }
 }
 
@@ -227,27 +206,6 @@ mod test {
             let input = String::from_iter(iter::repeat(char).take(64));
             assert!(Digest::from_hex(input).is_ok());
         }
-    }
-
-    #[test]
-    fn xor_works() {
-        let abc_hash = hash("abc");
-        let fox_hash = hash("The quick brown fox jumps over the lazy dog");
-        let xord_result =
-            Digest::from_hex("bcac0dd0568f040b5ca1ef1f0e27bb2fe73b6d7ecccd05379d9054cf92fb7bb0")
-                .unwrap();
-
-        assert_eq!(abc_hash ^ fox_hash, xord_result);
-        assert_eq!(fox_hash ^ abc_hash, xord_result);
-
-        let mut assigned_left = abc_hash;
-        assigned_left ^= fox_hash;
-
-        let mut assigned_right = fox_hash;
-        assigned_right ^= abc_hash;
-
-        assert_eq!(assigned_left, xord_result);
-        assert_eq!(assigned_right, xord_result);
     }
 
     #[test]

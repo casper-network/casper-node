@@ -16,7 +16,7 @@ use std::{
     fs,
     io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
-    ops::{Add, Div},
+    ops::{Add, BitXorAssign, Div},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
@@ -371,5 +371,44 @@ where
         Err(err) => {
             panic!(err)
         }
+    }
+}
+
+/// XORs two byte sequences.
+///
+/// # Panics
+///
+/// Panics if `lhs` and `rhs` are not of equal length.
+#[inline]
+pub fn xor(lhs: &mut [u8], rhs: &[u8]) {
+    // Implementing SIMD support is left as an exercise for the reader.
+    assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length");
+    lhs.iter_mut()
+        .zip(rhs.iter())
+        .for_each(|(sb, &cb)| sb.bitxor_assign(cb));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xor;
+
+    #[test]
+    fn xor_works() {
+        let mut lhs = [0x43, 0x53, 0xf2, 0x2f, 0xa9, 0x70, 0xfb, 0xf4];
+        let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11, 0x12, 0x23];
+        let xor_result = [0x47, 0x58, 0xae, 0x8e, 0x46, 0x61, 0xe9, 0xd7];
+
+        xor(&mut lhs, &rhs);
+
+        assert_eq!(lhs, xor_result);
+    }
+
+    #[test]
+    #[should_panic(expected = "equal length")]
+    fn xor_panics_on_uneven_inputs() {
+        let mut lhs = [0x43, 0x53, 0xf2, 0x2f, 0xa9, 0x70, 0xfb, 0xf4];
+        let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11];
+
+        xor(&mut lhs, &rhs);
     }
 }
