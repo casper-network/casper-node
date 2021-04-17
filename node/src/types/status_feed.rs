@@ -157,7 +157,7 @@ pub struct GetStatusResult {
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash used at the start of the current session.
-    pub starting_state_root_hash: String,
+    pub starting_state_root_hash: Digest,
     /// The node ID and network address of each connected peer.
     pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
@@ -179,8 +179,7 @@ impl GetStatusResult {
             chainspec_name: status_feed.chainspec_info.name,
             starting_state_root_hash: status_feed
                 .chainspec_info
-                .starting_state_root_hash
-                .to_string(),
+                .starting_state_root_hash,
             peers: PeersMap::from(status_feed.peers),
             last_added_block_info: status_feed.last_added_block.map(Into::into),
             our_public_signing_key: status_feed.our_public_signing_key,
