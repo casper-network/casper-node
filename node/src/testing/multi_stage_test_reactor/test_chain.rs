@@ -328,17 +328,25 @@ async fn test_joiner() {
         "There should be just one bonded validator in the network"
     );
 
-    // Get the first switch block hash
-    let first_switch_block_hash = get_switch_block_hash(1, &mut chain.network, &mut rng).await;
+    // Get the second switch block hash
+    // As part of the fast sync process, we will need to retrieve the first switch block
+    let switch_block_hash = get_switch_block_hash(2, &mut chain.network, &mut rng).await;
+
+    let era_num = 5;
+    info!("Waiting for Era {} to end", era_num);
+    chain
+        .network
+        .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+        .await;
 
     // Have a node join the network with that hash
-    info!("Joining with trusted hash {}", first_switch_block_hash);
+    info!("Joining with trusted hash {}", switch_block_hash);
     let joiner_node_secret_key = SecretKey::random(&mut rng);
     chain
         .add_node(
             false,
             joiner_node_secret_key,
-            Some(first_switch_block_hash),
+            Some(switch_block_hash),
             &mut rng,
         )
         .await;
@@ -349,7 +357,7 @@ async fn test_joiner() {
         "There should be two validators in the network (one bonded and one read only)"
     );
 
-    let era_num = 3;
+    let era_num = 6;
     info!("Waiting for Era {} to end", era_num);
     chain
         .network

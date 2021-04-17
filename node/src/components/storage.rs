@@ -653,7 +653,8 @@ impl Storage {
                 let finality_signatures =
                     match self.get_finality_signatures(&mut txn, &block_hash)? {
                         Some(signatures) => signatures,
-                        None => BlockSignatures::new(block_hash, block.header().era_id()),
+                        // If we can't retrieve block signatures, respond with None
+                        None => return Ok(responder.respond(None).ignore()),
                     };
                 assert!(finality_signatures.verify().is_ok());
                 responder
@@ -679,7 +680,8 @@ impl Storage {
                 let hash = block.hash();
                 let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.header().era_id()),
+                    // If we can't retrieve block signatures, respond with None
+                    None => return Ok(responder.respond(None).ignore()),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
@@ -704,7 +706,8 @@ impl Storage {
                 let hash = block.hash();
                 let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.header().era_id()),
+                    // If we can't retrieve block signatures, respond with None
+                    None => return Ok(responder.respond(None).ignore()),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
@@ -748,6 +751,16 @@ impl Storage {
             }
             StorageRequest::GetFinalizedDeploys { ttl, responder } => {
                 responder.respond(self.get_finalized_deploys(ttl)?).ignore()
+            }
+            StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
+                responder,
+            } => {
+                let result = self.get_block_header_and_metadata_by_height(
+                    &mut self.env.begin_ro_txn()?,
+                    block_height,
+                )?;
+                responder.respond(result).ignore()
             }
         })
     }

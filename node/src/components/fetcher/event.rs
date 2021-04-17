@@ -3,9 +3,11 @@ use std::fmt::{self, Debug, Display, Formatter};
 use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::error;
 
 use super::Item;
 use crate::{
+    components::fetcher::FetchedOrNotFound,
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
     types::{Deploy, NodeId},
     utils::Source,
@@ -65,6 +67,22 @@ pub enum Event<T: Item> {
     AbsentRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
     TimeoutPeer { id: T::Id, peer: NodeId },
+}
+
+impl<T: Item> Event<T> {
+    pub fn from_get_response_serialized_item(peer: NodeId, serialized_item: &[u8]) -> Option<Self> {
+        match bincode::deserialize::<FetchedOrNotFound<T, T::Id>>(&serialized_item) {
+            Ok(FetchedOrNotFound::Fetched(item)) => Some(Event::GotRemotely {
+                item: Box::new(item),
+                source: Source::Peer(peer),
+            }),
+            Ok(FetchedOrNotFound::NotFound(id)) => Some(Event::AbsentRemotely { id, peer }),
+            Err(error) => {
+                error!("failed to decode {:?} from {}: {:?}", T::TAG, peer, error);
+                None
+            }
+        }
+    }
 }
 
 impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {

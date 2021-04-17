@@ -24,7 +24,10 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    types::{Block, BlockHash, BlockWithMetadata, Deploy, DeployHash, Item, NodeId},
+    types::{
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
+        DeployHash, Item, NodeId,
+    },
     utils::Source,
     NodeRng,
 };
@@ -66,6 +69,10 @@ pub enum FetchedOrNotFound<T, Id> {
     Fetched(T),
     NotFound(Id),
 }
+
+// impl<T: Item> FetchedOrNotFound<T, T::Id> {
+//     pub fn from_get_request_serialized_id
+// }
 
 pub trait ItemFetcher<T: Item + 'static> {
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
@@ -321,6 +328,37 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
     }
 }
 
+impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockHeaderWithMetadata>>>> {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &FetcherMetrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockHeaderWithMetadata>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: u64,
+        peer: NodeId,
+    ) -> Effects<Event<BlockHeaderWithMetadata>> {
+        effect_builder
+            .get_block_header_at_height_with_metadata_from_storage(id)
+            .event(move |result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(result),
+            })
+    }
+}
+
 type GlobalStorageTrie = Trie<Key, StoredValue>;
 
 impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
@@ -350,6 +388,37 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
                 id,
                 peer,
                 maybe_item: Box::new(maybe_trie),
+            })
+    }
+}
+
+impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockHeader>>>> {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &FetcherMetrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<BlockHeader>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: BlockHash,
+        peer: NodeId,
+    ) -> Effects<Event<BlockHeader>> {
+        effect_builder
+            .get_block_header_from_storage(id)
+            .event(move |maybe_block_header| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(maybe_block_header),
             })
     }
 }

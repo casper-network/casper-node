@@ -1216,7 +1216,8 @@ fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
 ///
 /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
 /// receive blocks that refer to `bonded_eras` before that.
-fn bonded_eras(protocol_config: &ProtocolConfig) -> u64 {
+// This is public because it's used in components::linear_chain_sync::operations.
+pub(crate) fn bonded_eras(protocol_config: &ProtocolConfig) -> u64 {
     protocol_config
         .unbonding_delay
         .saturating_sub(protocol_config.auction_delay)

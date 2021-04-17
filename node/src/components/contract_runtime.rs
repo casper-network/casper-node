@@ -36,7 +36,7 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    system::auction::ValidatorWeights, ExecutionResult, ProtocolVersion, PublicKey, U512,
+    system::auction::ValidatorWeights, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
@@ -54,6 +54,7 @@ use crate::{
     utils::WithDir,
     NodeRng, StorageConfig,
 };
+use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
 
 /// Contract runtime component event.
 #[derive(Debug, From)]
@@ -483,13 +484,8 @@ where
                         responder,
                     } => {
                         trace!(?trie_key, "read_trie request");
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
+                        let result = self.read_trie(trie_key);
                         async move {
-                            let correlation_id = CorrelationId::new();
-                            let start = Instant::now();
-                            let result = engine_state.read_trie(correlation_id, trie_key);
-                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
                             let result = match result {
                                 Ok(result) => result,
                                 Err(error) => {
@@ -804,8 +800,7 @@ impl ContractRuntime {
         state: Box<RequestState>,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Effects<Event> {
-        // The state hash of the last execute-commit cycle is used as the block's post state
-        // hash.
+        // The state hash of the last execute-commit cycle is used as the block's post state hash.
         let next_height = state.finalized_block.height() + 1;
         // Update the metric.
         self.metrics
@@ -1082,6 +1077,20 @@ impl ContractRuntime {
     /// either genesis or the highest known block at the time of initializing the component.
     fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
         finalized_block.height() == self.initial_state.child_height
+    }
+
+    /// Read a [Trie<Key, StoredValue>] from the trie store.
+    pub fn read_trie(
+        &mut self,
+        trie_key: Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = self.engine_state.read_trie(correlation_id, trie_key);
+        self.metrics
+            .read_trie
+            .observe(start.elapsed().as_secs_f64());
+        result
     }
 }
 

@@ -66,6 +66,7 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 pub use config::Config;
 pub use error::Error;
 use linear_chain::LinearChainComponent;
@@ -756,7 +757,7 @@ impl reactor::Reactor for Reactor {
                                         "failed to get {} for {}: {}",
                                         block_hash, sender, error
                                     );
-                                    return Effects::new();
+                                    FetchedOrNotFound::NotFound(block_hash)
                                 }
                             };
 
@@ -796,7 +797,7 @@ impl reactor::Reactor for Reactor {
                                             "failed to get {} for {}: {}",
                                             block_height, sender, error
                                         );
-                                        return Effects::new();
+                                        FetchedOrNotFound::NotFound(block_height)
                                     }
                                 };
 
@@ -808,6 +809,48 @@ impl reactor::Reactor for Reactor {
                                 }
                                 Err(error) => {
                                     error!("failed to create get-response: {}", error);
+                                    return Effects::new();
+                                }
+                            };
+                        }
+                        Tag::Trie => {
+                            let trie_key: Blake2bHash = match bincode::deserialize(&serialized_id) {
+                                Ok(trie_key) => trie_key,
+                                Err(error) => {
+                                    error!(
+                                        "failed to decode {:?} from {}: {}",
+                                        serialized_id, sender, error
+                                    );
+                                    return Effects::new();
+                                }
+                            };
+                            let trie = match self.contract_runtime.read_trie(trie_key) {
+                                Ok(Some(trie)) => FetchedOrNotFound::Fetched(trie),
+                                Ok(None) => {
+                                    debug!(
+                                        "failed to get trie with trie_key {} for {}",
+                                        trie_key, sender
+                                    );
+                                    FetchedOrNotFound::NotFound(trie_key)
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "error when trying to get trie with trie_key {} for {}: {}",
+                                        trie_key, sender, error
+                                    );
+                                    FetchedOrNotFound::NotFound(trie_key)
+                                }
+                            };
+                            match Message::new_get_response(&trie) {
+                                Ok(message) => {
+                                    return effect_builder.send_message(sender, message).ignore();
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "failed to create get-response after retrieving \
+                                            trie_key {}: {}",
+                                        trie_key, error
+                                    );
                                     return Effects::new();
                                 }
                             };
@@ -878,6 +921,7 @@ impl reactor::Reactor for Reactor {
                             );
                             return Effects::new();
                         }
+                        Tag::Trie => todo!("Handle GET ReadTrie response"),
                     },
                     Message::FinalitySignature(fs) => {
                         Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, true))

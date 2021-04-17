@@ -43,6 +43,8 @@ pub enum Tag {
     BlockHeaderByHash,
     /// A block header and its finality signatures requested by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight,
+    /// A trie from the global trie merkle tree in the execution engine.
+    Trie,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
@@ -62,7 +64,7 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
 
 impl Item for Trie<Key, StoredValue> {
     type Id = Blake2bHash;
-    const TAG: Tag = Tag::Deploy;
+    const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {

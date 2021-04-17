@@ -5,7 +5,7 @@ mod block;
 pub mod chainspec;
 mod deploy;
 mod exit_code;
-mod item;
+pub(crate) mod item;
 pub mod json_compatibility;
 mod node_config;
 mod node_id;
