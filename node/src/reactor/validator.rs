@@ -921,7 +921,10 @@ impl reactor::Reactor for Reactor {
                             );
                             return Effects::new();
                         }
-                        Tag::Trie => todo!("Handle GET ReadTrie response"),
+                        Tag::Trie => {
+                            error!("cannot handle get response for read-trie from {}", sender);
+                            return Effects::new();
+                        }
                     },
                     Message::FinalitySignature(fs) => {
                         Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, true))
