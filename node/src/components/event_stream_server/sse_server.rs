@@ -19,7 +19,7 @@ use warp::{
 
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
-use crate::types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp};
+use crate::types::{BlockHash, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp};
 
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";
@@ -37,7 +37,7 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<Block>,
+        block: Box<JsonBlock>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
