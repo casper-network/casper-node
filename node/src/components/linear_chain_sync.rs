@@ -825,17 +825,6 @@ where
                     }
                     _ => Effects::new(),
                 }
-                // if self.peers.is_empty() {
-                //     // First peer connected, start downloading.
-                //     let cloned_peer_id = peer_id.clone();
-                //     effects.extend(
-                //         effect_builder
-                //             .immediately()
-                //             .event(move |_| Event::Start(cloned_peer_id)),
-                //     );
-                // }
-                // self.peers.push(peer_id);
-                // effects
             }
             Event::BlockHandled(block) => {
                 let block_height = block.height();
