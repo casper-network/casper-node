@@ -12,7 +12,7 @@ use casper_types::{EraId, Key, PublicKey, U512};
 
 use crate::{
     components::{
-        consensus::era_supervisor,
+        consensus,
         fetcher::{FetchedData, FetcherError},
         linear_chain_sync::error::LinearChainSyncError,
     },
@@ -246,7 +246,7 @@ where
     // The era supervisor needs validator information from previous eras it may potentially slash.
     // The number of previous eras is determined by a *delay* in which consensus participants become
     // bonded validators or unbond.
-    let delay = era_supervisor::bonded_eras(&(&chainspec).into());
+    let delay = consensus::bonded_eras(&(&chainspec).into());
     // The era supervisor may slash up to 3*delay + 1 eras back
     let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
 

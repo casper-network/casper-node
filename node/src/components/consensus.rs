@@ -5,7 +5,7 @@
 mod cl_context;
 mod config;
 mod consensus_protocol;
-pub(crate) mod era_supervisor;
+pub mod era_supervisor;
 #[macro_use]
 mod highway_core;
 mod metrics;
@@ -49,7 +49,7 @@ use crate::{
 pub(crate) use cl_context::ClContext;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::EraSupervisor;
+pub(crate) use era_supervisor::{bonded_eras, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
