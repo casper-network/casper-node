@@ -1,9 +1,8 @@
 //! Fully connected overlay network
 //!
-//! The *small network* is an overlay network where each node participating is connected to every
-//! other node on the network. The *small* portion of the name stems from the fact that this
-//! approach is not scalable, as it requires at least $O(n)$ network connections and broadcast will
-//! result in $O(n^2)$ messages.
+//! The *small network* is an overlay network where each node participating is attempting to
+//! maintain a connection to every other node identified on the same network. The component does not
+//! guarantee message delivery, so in between reconnections, messages may be lost.
 //!
 //! # Node IDs
 //!
@@ -12,28 +11,21 @@
 //! connected to the correct node and sends its own certificate during the TLS handshake,
 //! establishing identity.
 //!
-//! # Messages and payloads
-//!
-//! The network itself is best-effort, during regular operation, no messages should be lost.
-//!
 //! # Connection
 //!
 //! Every node has an ID and a public listening address. The objective of each node is to constantly
 //! maintain an outgoing connection to each other node (and thus have an incoming connection from
 //! these nodes as well).
 //!
-//! Any incoming connection is strictly read from, while any outgoing connection is strictly used
-//! for sending messages.
+//! Any incoming connection is, after a handshake process, strictly read from, while any outgoing
+//! connection is strictly used for sending messages, also after a handshake.
 //!
-//! Nodes gossip their public listening addresses periodically, and on learning of a new address,
-//! a node will try to establish an outgoing connection.
-//!
-//! On losing an incoming or outgoing connection for a given peer, the other connection is closed.
-//! No explicit reconnect is attempted. Instead, if the peer is still online, the normal gossiping
-//! process will cause both peers to connect again.
+//! Nodes gossip their public listening addresses periodically, and will try to establish and
+//! maintain an outgoing connection to any new address learned.
 
 mod chain_info;
 mod config;
+mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
@@ -84,7 +76,10 @@ use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
-use self::error::Result;
+use self::{
+    counting_format::{ConnectionId, CountingFormat, Role},
+    error::Result,
+};
 pub(crate) use self::{
     error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
 };
@@ -109,6 +104,48 @@ pub use error::Error;
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
+
+/// Network message payload.
+///
+/// Payloads are what is transferred across the network outside of control messages from the
+/// networking component itself.
+pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
+    /// Classifies the payload based on its contents.
+    fn classify(&self) -> MessageKind;
+}
+
+/// A classification system for networking messages.
+#[derive(Copy, Clone, Debug)]
+pub enum MessageKind {
+    /// Non-payload messages, like handshakes.
+    Protocol,
+    /// Messages directly related to consensus.
+    Consensus,
+    /// Deploys being gossiped.
+    DeployGossip,
+    /// Addresses begin gossiped.
+    AddressGossip,
+    /// Deploys being transferred directly (via requests).
+    DeployTransfer,
+    /// Blocks for finality signatures being transferred directly (via requests and other means).
+    BlockTransfer,
+    /// Any other kind of payload (or missing classification).
+    Other,
+}
+
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageKind::Protocol => f.write_str("protocol"),
+            MessageKind::Consensus => f.write_str("consensus"),
+            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::AddressGossip => f.write_str("address_gossip"),
+            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::Other => f.write_str("other"),
+        }
+    }
+}
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -181,7 +218,7 @@ where
 
     /// Networking metrics.
     #[data_size(skip)]
-    net_metrics: NetworkingMetrics,
+    net_metrics: Arc<NetworkingMetrics>,
 
     /// Known addresses for this node.
     known_addresses: HashSet<SocketAddr>,
@@ -189,7 +226,7 @@ where
 
 impl<REv, P> SmallNetwork<REv, P>
 where
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Payload + 'static,
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
@@ -255,7 +292,7 @@ where
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
                 is_stopped: Arc::new(AtomicBool::new(true)),
-                net_metrics: NetworkingMetrics::new(&Registry::default())?,
+                net_metrics: Arc::new(NetworkingMetrics::new(&Registry::default())?),
             };
             return Ok((model, Effects::new()));
         }
@@ -323,7 +360,7 @@ where
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             is_stopped: Arc::new(AtomicBool::new(false)),
-            net_metrics,
+            net_metrics: Arc::new(net_metrics),
         };
 
         // Bootstrap process.
@@ -509,8 +546,14 @@ where
 
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) =
-                    framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+                let (mut sink, stream) = framed::<P>(
+                    self.net_metrics.clone(),
+                    ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
+                    transport,
+                    Role::Listener,
+                    self.chain_info.maximum_net_message_size,
+                )
+                .split();
                 let handshake = self.chain_info.create_handshake(self.public_address);
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -591,8 +634,14 @@ where
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) =
-            framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+        let (sink, stream) = framed::<P>(
+            self.net_metrics.clone(),
+            ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
+            transport,
+            Role::Dialer,
+            self.chain_info.maximum_net_message_size,
+        )
+        .split();
         debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -944,7 +993,7 @@ where
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Payload,
 {
     type Event = Event<P>;
     type ConstructionError = Infallible;
@@ -1205,7 +1254,7 @@ async fn handshake_reader<REv, P>(
     peer_id: NodeId,
     peer_address: SocketAddr,
 ) where
-    P: DeserializeOwned + Send + Display,
+    P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
     if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
@@ -1244,7 +1293,7 @@ async fn message_reader<REv, P>(
     peer_id: NodeId,
 ) -> io::Result<()>
 where
-    P: DeserializeOwned + Send + Display,
+    P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
     let read_messages = async move {
@@ -1301,7 +1350,7 @@ async fn message_sender<P>(
     handshake: Message<P>,
 ) -> Result<()>
 where
-    P: Serialize + Send,
+    P: Serialize + Send + Payload,
 {
     sink.send(handshake).await.map_err(Error::MessageNotSent)?;
     while let Some(payload) = queue.recv().await {
@@ -1320,20 +1369,32 @@ type Transport = SslStream<TcpStream>;
 type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
-    SymmetricalBincode<Message<P>>,
+    CountingFormat<SymmetricalBincode<Message<P>>>,
 >;
 
 /// Constructs a new framed transport on a stream.
-fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTransport<P> {
+fn framed<P>(
+    metrics: Arc<NetworkingMetrics>,
+    connection_id: ConnectionId,
+    stream: Transport,
+    role: Role,
+    maximum_net_message_size: u32,
+) -> FramedTransport<P> {
     let length_delimited = Framed::new(
         stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
     );
+
     SymmetricallyFramed::new(
         length_delimited,
-        SymmetricalBincode::<Message<P>>::default(),
+        CountingFormat::new(
+            metrics,
+            connection_id,
+            role,
+            SymmetricalBincode::<Message<P>>::default(),
+        ),
     )
 }
 
