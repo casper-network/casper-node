@@ -1,11 +1,4 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{collections::BTreeMap, vec::Vec};
-
-#[cfg(feature = "std")]
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -14,8 +7,7 @@ use crate::{
 };
 
 /// The seigniorage recipient details.
-#[derive(Default, PartialEq, Clone, Debug, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
     stake: U512,
@@ -42,13 +34,17 @@ impl SeigniorageRecipient {
     }
 
     /// Calculates total stake, including delegators' total stake
-    pub fn total_stake(&self) -> U512 {
-        self.stake + self.delegator_total_stake()
+    pub fn total_stake(&self) -> Option<U512> {
+        Some(self.delegator_total_stake()?.checked_add(self.stake)?)
     }
 
-    /// Caculates total stake for all delegators
-    pub fn delegator_total_stake(&self) -> U512 {
-        self.delegator_stake.values().cloned().sum()
+    /// Calculates total stake for all delegators
+    pub fn delegator_total_stake(&self) -> Option<U512> {
+        let mut total_stake: U512 = U512::zero();
+        for stake in self.delegator_stake.values() {
+            total_stake = total_stake.checked_add(*stake)?;
+        }
+        Some(total_stake)
     }
 }
 
@@ -137,5 +133,51 @@ mod tests {
             ]),
         };
         bytesrepr::test_serialization_roundtrip(&seigniorage_recipient);
+    }
+
+    #[test]
+    fn test_overflow_in_delegation_rate() {
+        let delegator_1_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_2_key = SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_3_key = SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let seigniorage_recipient = SeigniorageRecipient {
+            stake: U512::max_value(),
+            delegation_rate: DelegationRate::max_value(),
+            delegator_stake: BTreeMap::from_iter(vec![
+                (delegator_1_key, U512::max_value()),
+                (delegator_2_key, U512::max_value()),
+                (delegator_3_key, U512::zero()),
+            ]),
+        };
+        assert_eq!(seigniorage_recipient.total_stake(), None)
+    }
+
+    #[test]
+    fn test_overflow_in_delegation_total_stake() {
+        let delegator_1_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_2_key = SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let delegator_3_key = SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH])
+            .unwrap()
+            .into();
+        let seigniorage_recipient = SeigniorageRecipient {
+            stake: U512::max_value(),
+            delegation_rate: DelegationRate::max_value(),
+            delegator_stake: BTreeMap::from_iter(vec![
+                (delegator_1_key, U512::max_value()),
+                (delegator_2_key, U512::max_value()),
+                (delegator_3_key, U512::max_value()),
+            ]),
+        };
+        assert_eq!(seigniorage_recipient.delegator_total_stake(), None)
     }
 }

@@ -29,6 +29,8 @@ use crate::{
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
+use super::engine_state::EngineConfig;
+
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
     Success {
@@ -37,6 +39,9 @@ pub enum TrackingCopyQueryResult {
     },
     ValueNotFound(String),
     CircularReference(String),
+    DepthLimit {
+        depth: u64,
+    },
 }
 
 /// Struct containing state relating to a given query.
@@ -53,6 +58,8 @@ struct Query {
     /// Path components which have been followed, held in the same order in which they were
     /// provided to the `query()` call.
     visited_names: Vec<String>,
+    /// Current depth of the query.
+    depth: u64,
 }
 
 impl Query {
@@ -63,6 +70,7 @@ impl Query {
             unvisited_names: path.iter().cloned().collect(),
             visited_names: Vec::new(),
             visited_keys: HashSet::new(),
+            depth: 0,
         }
     }
 
@@ -71,6 +79,11 @@ impl Query {
         let next_name = self.unvisited_names.pop_front().unwrap();
         self.visited_names.push(next_name);
         self.visited_names.last().unwrap()
+    }
+
+    fn navigate(&mut self, key: Key) {
+        self.current_key = key.normalize();
+        self.depth += 1;
     }
 
     fn into_not_found_result(self, msg_prefix: &str) -> TrackingCopyQueryResult {
@@ -85,6 +98,10 @@ impl Query {
             self.current_path()
         );
         TrackingCopyQueryResult::CircularReference(msg)
+    }
+
+    fn into_depth_limit_result(self) -> TrackingCopyQueryResult {
+        TrackingCopyQueryResult::DepthLimit { depth: self.depth }
     }
 
     fn current_path(&self) -> String {
@@ -108,13 +125,9 @@ pub struct TrackingCopyCache<M> {
     key_tag_reads_cached: LinkedHashMap<KeyTag, BTreeSet<Key>>,
     key_tag_muts_cached: HashMap<KeyTag, BTreeSet<Key>>,
     meter: M,
-    deletes_cached: BTreeSet<Key>,
 }
 
-impl<M> TrackingCopyCache<M>
-where
-    M: Meter<Key, StoredValue>,
-{
+impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`,
     /// above which least-recently-used elements of the cache are invalidated.
     /// Measurements of elements' "size" is done with the usage of `Meter`
@@ -128,7 +141,6 @@ where
             key_tag_reads_cached: LinkedHashMap::new(),
             key_tag_muts_cached: HashMap::new(),
             meter,
-            deletes_cached: BTreeSet::new(),
         }
     }
 
@@ -164,14 +176,8 @@ where
         }
     }
 
-    /// Inserts `key` into `deletes_cached`.
-    pub fn insert_delete(&mut self, key: Key) {
-        self.deletes_cached.insert(key);
-    }
-
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_write(&mut self, key: Key, value: StoredValue) {
-        self.deletes_cached.remove(&key);
         self.muts_cached.insert(key, value);
 
         let key_set = self
@@ -182,16 +188,11 @@ where
         key_set.insert(key);
     }
 
-    /// Checks if a key has been marked as deleted.
-    pub fn is_deleted(&self, key: &Key) -> bool {
-        self.deletes_cached.contains(key)
-    }
-
     /// Gets value from `key` in the cache.
     pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
         if let Some(value) = self.muts_cached.get(&key) {
             return Some(value);
-        }
+        };
 
         self.reads_cached.get_refresh(key).map(|v| &*v)
     }
@@ -202,10 +203,6 @@ where
 
     pub fn get_key_tag_reads_cached(&mut self, key_tag: &KeyTag) -> Option<&BTreeSet<Key>> {
         self.key_tag_reads_cached.get_refresh(key_tag).map(|v| &*v)
-    }
-
-    pub fn get_deletes_cached(&self) -> impl Iterator<Item = &Key> {
-        self.deletes_cached.iter()
     }
 }
 
@@ -237,10 +234,7 @@ impl From<CLValueError> for AddResult {
     }
 }
 
-impl<R> TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue>,
-{
+impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn new(reader: R) -> TrackingCopy<R> {
         TrackingCopy {
             reader,
@@ -278,11 +272,10 @@ where
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, R::Error> {
-        if self.cache.is_deleted(key) {
-            Ok(None)
-        } else if let Some(value) = self.cache.get(key) {
-            Ok(Some(value.to_owned()))
-        } else if let Some(value) = self.reader.read(correlation_id, key)? {
+        if let Some(value) = self.cache.get(key) {
+            return Ok(Some(value.to_owned()));
+        }
+        if let Some(value) = self.reader.read(correlation_id, key)? {
             self.cache.insert_read(*key, value.to_owned());
             Ok(Some(value))
         } else {
@@ -310,9 +303,6 @@ where
         if let Some(keys) = self.cache.get_key_tag_muts_cached(&key_tag) {
             ret.extend(keys)
         }
-        for deleted_key in self.cache.get_deletes_cached() {
-            ret.remove(deleted_key);
-        }
         Ok(ret)
     }
 
@@ -336,13 +326,6 @@ where
         self.cache.insert_write(normalized_key, value.clone());
         self.ops.insert_add(normalized_key, Op::Write);
         self.fns.insert_add(normalized_key, Transform::Write(value));
-    }
-
-    pub fn delete(&mut self, key: &Key) {
-        let normalized_key = key.to_owned().normalize();
-        self.cache.insert_delete(normalized_key);
-        self.ops.insert_add(normalized_key, Op::Delete);
-        self.fns.insert_add(normalized_key, Transform::Delete);
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -409,16 +392,11 @@ where
         };
 
         match transform.clone().apply(current_value) {
-            Ok(Some(new_value)) => {
+            Ok(new_value) => {
                 self.cache.insert_write(normalized_key, new_value);
                 self.ops.insert_add(normalized_key, Op::Add);
                 self.fns.insert_add(normalized_key, transform);
                 Ok(AddResult::Success)
-            }
-            Ok(None) => {
-                // transform should never be a delete, and should therefore never produce a value of
-                // Ok(None).
-                panic!("Should have returned a type mismatch")
             }
             Err(transform::Error::TypeMismatch(type_mismatch)) => {
                 Ok(AddResult::TypeMismatch(type_mismatch))
@@ -441,6 +419,7 @@ where
     pub fn query(
         &self,
         correlation_id: CorrelationId,
+        config: &EngineConfig,
         base_key: Key,
         path: &[String],
     ) -> Result<TrackingCopyQueryResult, R::Error> {
@@ -449,9 +428,14 @@ where
         let mut proofs = Vec::new();
 
         loop {
+            if query.depth >= config.max_query_depth {
+                return Ok(query.into_depth_limit_result());
+            }
+
             if !query.visited_keys.insert(query.current_key) {
                 return Ok(query.into_circular_ref_result());
             }
+
             let stored_value = match self
                 .reader
                 .read_with_proof(correlation_id, &query.current_key)?
@@ -479,7 +463,7 @@ where
                 StoredValue::Account(account) => {
                     let name = query.next_name();
                     if let Some(key) = account.named_keys().get(name) {
-                        query.current_key = key.normalize();
+                        query.navigate(*key);
                     } else {
                         let msg_prefix = format!("Name {} not found in Account", name);
                         return Ok(query.into_not_found_result(&msg_prefix));
@@ -487,7 +471,7 @@ where
                 }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
-                        query.current_key = key.normalize();
+                        query.navigate(key);
                     } else {
                         return Ok(query.into_not_found_result("Failed to parse CLValue as Key"));
                     }
@@ -503,7 +487,7 @@ where
                 StoredValue::Contract(contract) => {
                     let name = query.next_name();
                     if let Some(key) = contract.named_keys().get(name) {
-                        query.current_key = key.normalize();
+                        query.navigate(*key);
                     } else {
                         let msg_prefix = format!("Name {} not found in Contract", name);
                         return Ok(query.into_not_found_result(&msg_prefix));
@@ -529,9 +513,6 @@ where
                 }
                 StoredValue::Withdraw(_) => {
                     return Ok(query.into_not_found_result(&"UnbondingPurses value found."));
-                }
-                StoredValue::EraValidators(_) => {
-                    return Ok(query.into_not_found_result(&"EraValidators value found"));
                 }
             }
         }

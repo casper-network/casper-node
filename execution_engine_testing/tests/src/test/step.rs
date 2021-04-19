@@ -16,7 +16,10 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::{
-        auction::{Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD},
+        auction::{
+            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
         mint::TOTAL_SUPPLY_KEY,
     },
     CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
@@ -96,8 +99,10 @@ fn should_step() {
         .with_next_era_id(EraId::from(1))
         .build();
 
+    let auction_hash = builder.get_auction_contract_hash();
+
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_seigniorage_recipients_snapshot();
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
     let bids_before_slashing: Bids = builder.get_bids();
     assert!(
@@ -128,11 +133,13 @@ fn should_step() {
 
     // seigniorage snapshot should have changed after auction
     let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_seigniorage_recipients_snapshot();
-
-    assert!(before_auction_seigniorage
-        .keys()
-        .ne(after_auction_seigniorage.keys()))
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    assert!(
+        !before_auction_seigniorage
+            .keys()
+            .all(|key| after_auction_seigniorage.contains_key(key)),
+        "run auction should have changed seigniorage keys"
+    );
 }
 
 /// Should be able to step slashing, rewards, and run auction.

@@ -108,7 +108,7 @@ fn main() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let engine_config = EngineConfig::new();
+    let engine_config = EngineConfig::default();
 
     let mut test_builder =
         LmdbWasmTestBuilder::open(&args.data_dir, engine_config, Blake2bHash::new(&root_hash));

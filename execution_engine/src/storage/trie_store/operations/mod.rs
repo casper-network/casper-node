@@ -485,7 +485,8 @@ pub enum DeleteResult {
     RootNotFound,
 }
 
-pub fn delete<K, V, T, S, E>(
+#[allow(unused)]
+fn delete<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,

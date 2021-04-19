@@ -99,7 +99,6 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
-        Key::EraValidators(_) => None,
     }
 }
 
@@ -2496,11 +2495,6 @@ where
         self.context
             .metered_write_gs(key, cl_value)
             .map_err(Into::into)
-    }
-
-    /// Deletes value under `key` in global state.
-    fn delete(&mut self, key: &Key) -> Result<(), Trap> {
-        self.context.delete_gs(key).map_err(Into::into)
     }
 
     /// Records a transfer.

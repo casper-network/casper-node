@@ -101,6 +101,7 @@ use casper_types::{
 
 use crate::{
     components::{
+        block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
@@ -735,6 +736,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
+    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage(
         self,
         block_hash: BlockHash,
@@ -818,6 +820,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests the header of the block containing the given deploy.
+    pub(crate) async fn get_block_header_for_deploy_from_storage(
+        self,
+        deploy_hash: DeployHash,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderForDeploy {
+                deploy_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Requests the block at the given height.
     pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
     where
@@ -857,21 +877,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the switch block at the given era ID.
-    pub(crate) async fn get_switch_block_at_era_id_from_storage(
-        self,
-        era_id: EraId,
-    ) -> Option<Block>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSwitchBlockAtEraId { era_id, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the key block header for the given era ID, ie. the header of the switch block at
     /// the era before (if one exists).
     pub(crate) async fn get_key_block_header_for_era_id_from_storage(
@@ -883,17 +888,6 @@ impl<REv> EffectBuilder<REv> {
     {
         let era_before = era_id.checked_sub(1)?;
         self.get_switch_block_header_at_era_id_from_storage(era_before)
-            .await
-    }
-
-    /// Requests the key block for the given era ID, ie. the switch block at the era before
-    /// (if one exists).
-    pub(crate) async fn get_key_block_for_era_id_from_storage(self, era_id: EraId) -> Option<Block>
-    where
-        REv: From<StorageRequest>,
-    {
-        let era_before = era_id.checked_sub(1)?;
-        self.get_switch_block_at_era_id_from_storage(era_before)
             .await
     }
 
@@ -1164,48 +1158,18 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network. This includes
-    /// the block's timestamp, in order that it be checked against the timestamp of the deploys
-    /// within the block.
-    pub(crate) async fn validate_block<I>(
-        self,
-        sender: I,
-        block: Block,
-        block_timestamp: Timestamp,
-    ) -> (bool, Block)
+    /// Checks whether the deploys included in the block exist on the network and the block is
+    /// valid.
+    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> bool
     where
-        REv: From<BlockValidationRequest<Block, I>>,
+        REv: From<BlockValidationRequest<I>>,
+        T: Into<ValidatingBlock>,
     {
         self.make_request(
             |responder| BlockValidationRequest {
-                block,
+                block: block.into(),
                 sender,
                 responder,
-                block_timestamp,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Checks whether the deploys included in the block payload exist on the network. This
-    /// includes the block's timestamp, in order that it be checked against the timestamp of the
-    /// deploys within the block.
-    pub(crate) async fn validate_block_payload<I>(
-        self,
-        sender: I,
-        block: BlockPayload,
-        block_timestamp: Timestamp,
-    ) -> (bool, BlockPayload)
-    where
-        REv: From<BlockValidationRequest<BlockPayload, I>>,
-    {
-        self.make_request(
-            |responder| BlockValidationRequest {
-                block,
-                sender,
-                responder,
-                block_timestamp,
             },
             QueueKind::Regular,
         )
@@ -1691,7 +1655,7 @@ impl<REv> EffectBuilder<REv> {
     /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
     /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
     /// initialization of era `n`.
-    pub(crate) async fn collect_key_blocks<I: IntoIterator<Item = EraId>>(
+    pub(crate) async fn collect_key_block_headers<I: IntoIterator<Item = EraId>>(
         self,
         era_ids: I,
     ) -> Option<HashMap<EraId, BlockHeader>>
@@ -1705,9 +1669,9 @@ impl<REv> EffectBuilder<REv> {
                 // function failed
                 .filter(|era_id| !era_id.is_genesis())
                 .map(|era_id| {
-                    self.get_key_block_for_era_id_from_storage(era_id)
-                        .map(move |maybe_block| {
-                            maybe_block.map(|block| (era_id, block.take_header()))
+                    self.get_key_block_header_for_era_id_from_storage(era_id)
+                        .map(move |maybe_header| {
+                            maybe_header.map(|block_header| (era_id, block_header))
                         })
                 }),
         )
