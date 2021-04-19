@@ -257,6 +257,9 @@ impl ConnectionId {
     }
 
     /// Creates a new [`TraceID`] based on the message count.
+    ///
+    /// The `flag` should be created using the [`Role::in_flag`] or [`Role::out_flag`] method and
+    /// must be created accordingly (`out_flag` when serializing, `in_flag` when deserializing).
     fn create_trace_id(&self, flag: u8, count: u64) -> TraceId {
         // Copy the basic network ID.
         let mut buffer = self.0;
@@ -295,16 +298,21 @@ pub(super) enum Role {
 }
 
 impl Role {
+    /// Returns a flag suitable for hashing incoming messages.
     #[inline]
     fn in_flag(self) -> u8 {
         !(self.out_flag())
     }
 
+    /// Returns a flag suitable for hashing outgoing messages.
     #[inline]
     fn out_flag(self) -> u8 {
+        // The magic flag uses 50% of the bits, to be XOR'd into the hash later.
+        const MAGIC_FLAG: u8 = 0b10101010;
+
         match self {
-            Role::Dialer => 0xaa,
-            Role::Listener => !0xaa,
+            Role::Dialer => MAGIC_FLAG,
+            Role::Listener => !MAGIC_FLAG,
         }
     }
 }
