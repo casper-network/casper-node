@@ -76,7 +76,10 @@ use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
-use self::{counting_format::CountingFormat, error::Result};
+use self::{
+    counting_format::{ConnectionId, CountingFormat, Role},
+    error::Result,
+};
 pub(crate) use self::{
     error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
 };
@@ -545,7 +548,9 @@ where
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(
                     self.net_metrics.clone(),
+                    ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
                     transport,
+                    Role::Listener,
                     self.chain_info.maximum_net_message_size,
                 )
                 .split();
@@ -631,7 +636,9 @@ where
         // The stream is only used to receive a single handshake message and then dropped.
         let (sink, stream) = framed::<P>(
             self.net_metrics.clone(),
+            ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
             transport,
+            Role::Dialer,
             self.chain_info.maximum_net_message_size,
         )
         .split();
@@ -1368,7 +1375,9 @@ type FramedTransport<P> = SymmetricallyFramed<
 /// Constructs a new framed transport on a stream.
 fn framed<P>(
     metrics: Arc<NetworkingMetrics>,
+    connection_id: ConnectionId,
     stream: Transport,
+    role: Role,
     maximum_net_message_size: u32,
 ) -> FramedTransport<P> {
     let length_delimited = Framed::new(
@@ -1380,7 +1389,12 @@ fn framed<P>(
 
     SymmetricallyFramed::new(
         length_delimited,
-        CountingFormat::new(metrics, SymmetricalBincode::<Message<P>>::default()),
+        CountingFormat::new(
+            metrics,
+            connection_id,
+            role,
+            SymmetricalBincode::<Message<P>>::default(),
+        ),
     )
 }
 
