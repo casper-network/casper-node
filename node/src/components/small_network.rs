@@ -30,6 +30,7 @@ mod error;
 mod event;
 mod gossiped_address;
 mod message;
+mod message_pack_format;
 #[cfg(test)]
 mod tests;
 
@@ -61,7 +62,7 @@ use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
@@ -72,13 +73,14 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
+use tokio_serde::SymmetricallyFramed;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
 use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::Result,
+    message_pack_format::MessagePackFormat,
 };
 pub(crate) use self::{
     error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
@@ -1369,7 +1371,7 @@ type Transport = SslStream<TcpStream>;
 type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
-    CountingFormat<SymmetricalBincode<Message<P>>>,
+    CountingFormat<MessagePackFormat>,
 >;
 
 /// Constructs a new framed transport on a stream.
@@ -1379,7 +1381,11 @@ fn framed<P>(
     stream: Transport,
     role: Role,
     maximum_net_message_size: u32,
-) -> FramedTransport<P> {
+) -> FramedTransport<P>
+where
+    for<'de> P: Serialize + Deserialize<'de>,
+    for<'de> Message<P>: Serialize + Deserialize<'de>,
+{
     let length_delimited = Framed::new(
         stream,
         LengthDelimitedCodec::builder()
@@ -1389,12 +1395,7 @@ fn framed<P>(
 
     SymmetricallyFramed::new(
         length_delimited,
-        CountingFormat::new(
-            metrics,
-            connection_id,
-            role,
-            SymmetricalBincode::<Message<P>>::default(),
-        ),
+        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
 }
 
