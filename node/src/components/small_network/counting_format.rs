@@ -34,7 +34,7 @@ use crate::{
 /// Lazily-evaluated network message ID generator.
 ///
 /// Calculates a hash for the wrapped value when `Display::fmt` is called.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct TraceId([u8; 8]);
 
 impl Display for TraceId {
@@ -154,7 +154,7 @@ where
 ///
 /// The ID is guaranteed to be the same on both ends of the connection, but not guaranteed to be
 /// unique or sufficiently random. Do not use it for any cryptographic/security related purposes.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(super) struct ConnectionId([u8; Digest::LENGTH]);
 
 // Invariant assumed by `ConnectionId`, `Digest` must be <= than `KeyFingerprint`.
@@ -208,6 +208,18 @@ impl TlsRandomData {
 
         Self {
             combined_random: server_random,
+        }
+    }
+
+    /// Creates random `TlsRandomData`.
+    #[cfg(test)]
+    fn random(rng: &mut TestRng) -> Self {
+        let mut buffer = [0u8; 12];
+
+        rng.fill_bytes(&mut buffer);
+
+        Self {
+            combined_random: buffer,
         }
     }
 }
@@ -269,13 +281,6 @@ impl ConnectionId {
     pub(crate) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> Self {
         Self::create(TlsRandomData::collect(ssl), our_id, their_id)
     }
-
-    /// Creates a random `ConnectionId`.
-    #[cfg(test)]
-    fn random(rng: &mut TestRng) -> Self {
-        let rand_digest = Digest::random(rng);
-        Self(rand_digest.to_array())
-    }
 }
 
 /// Message sending direction.
@@ -305,7 +310,9 @@ impl Role {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConnectionId, Role, TraceId};
+    use crate::types::NodeId;
+
+    use super::{ConnectionId, Role, TlsRandomData, TraceId};
 
     #[test]
     fn trace_id_has_16_character() {
@@ -319,27 +326,51 @@ mod tests {
     #[test]
     fn can_create_deterministic_trace_id() {
         let mut rng = crate::new_rng();
-        let conn_id = ConnectionId::random(&mut rng);
 
-        // TODO: Create proper testcase -- do not require an SSL context to create, then go over
-        //       example scenario.
+        // Scenario: Nodes A and B are connecting to each other. Both connections are established.
+        let node_a = NodeId::random(&mut rng);
+        let node_b = NodeId::random(&mut rng);
 
-        // let in_0 = conn_id.create_trace_id(Role::Listener.in_flag(), 0);
-        // let in_1 = conn_id.create_trace_id(Role::Listener.in_flag(), 1);
+        // We get two connections, with different Tls random data, but it will be the same on both
+        // ends of the connection.
+        let a_to_b_random = TlsRandomData::random(&mut rng);
+        let a_to_b = ConnectionId::create(a_to_b_random, node_a, node_b);
+        let a_to_b_alt = ConnectionId::create(a_to_b_random, node_b, node_a);
 
-        // let out_0 = conn_id.create_trace_id(Role::Dialer.out_flag(), 0);
-        // let out_1 = conn_id.create_trace_id(Role::Dialer.out_flag(), 1);
-        // let out_2 = conn_id.create_trace_id(Role::Dialer.out_flag(), 2);
+        // Ensure that either peer ends up with the same connection id.
+        assert_eq!(a_to_b, a_to_b_alt);
 
-        // let in_2 = conn_id.create_trace_id(Role::Listener.in_flag(), 2);
+        let b_to_a_random = TlsRandomData::random(&mut rng);
+        let b_to_a = ConnectionId::create(b_to_a_random, node_b, node_a);
+        let b_to_a_alt = ConnectionId::create(b_to_a_random, node_a, node_b);
+        assert_eq!(b_to_a, b_to_a_alt);
 
-        // // Ensure created IDs are unique.
-        // assert_ne!(in_0.0, in_1.0);
-        // assert_ne!(in_0.0, in_2.0);
-        // assert_ne!(in_1.0, in_2.0);
+        // The connection IDs must be distinct though.
+        assert_ne!(a_to_b, b_to_a);
 
-        // assert_ne!(out_0.0, out_1.0);
-        // assert_ne!(out_0.0, out_2.0);
-        // assert_ne!(out_1.0, out_2.0);
+        // We are only looking at messages sent on the `a_to_b` connection, although from both ends.
+        // In our example example, `node_a` is the dialing node, `node_b` the listener.
+
+        // Trace ID on A, after sending to B.
+        let msg_ab_0_on_a = a_to_b.create_trace_id(Role::Dialer.out_flag(), 0);
+
+        // The same message on B.
+        let msg_ab_0_on_b = a_to_b.create_trace_id(Role::Listener.in_flag(), 0);
+
+        // These trace IDs must match.
+        assert_eq!(msg_ab_0_on_a, msg_ab_0_on_b);
+
+        // The second message must have a distinct trace ID.
+        let msg_ab_1_on_a = a_to_b.create_trace_id(Role::Dialer.out_flag(), 1);
+        let msg_ab_1_on_b = a_to_b.create_trace_id(Role::Listener.in_flag(), 1);
+        assert_eq!(msg_ab_1_on_a, msg_ab_1_on_b);
+        assert_ne!(msg_ab_0_on_a, msg_ab_1_on_a);
+
+        // Sending a message on the **same connection** in a **different direction** also must yield
+        // a different message id.
+        let msg_ba_0_on_b = a_to_b.create_trace_id(Role::Listener.out_flag(), 0);
+        let msg_ba_0_on_a = a_to_b.create_trace_id(Role::Dialer.in_flag(), 0);
+        assert_eq!(msg_ba_0_on_b, msg_ba_0_on_a);
+        assert_ne!(msg_ba_0_on_b, msg_ab_0_on_b);
     }
 }
