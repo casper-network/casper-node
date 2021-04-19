@@ -132,8 +132,6 @@ where
 
         let msg_size = src.len() as u64;
 
-        // We do not include additional meta info here, since we do not want the deserialization
-        // time to be added to our measurements.
         let deserialized = F::deserialize(projection, src)?;
         let msg_kind = deserialized.classify();
 
