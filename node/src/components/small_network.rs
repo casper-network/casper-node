@@ -36,6 +36,7 @@ mod chain_info;
 mod config;
 mod error;
 mod event;
+mod framed_transport;
 mod gossiped_address;
 mod message;
 #[cfg(test)]
@@ -69,7 +70,7 @@ use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
@@ -80,8 +81,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
 use self::error::Result;
@@ -105,6 +104,10 @@ use crate::{
 use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
+use framed_transport::FramedTransport;
+
+/// Transport type alias for base encrypted connections.
+type Transport = SslStream<TcpStream>;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
@@ -189,7 +192,8 @@ where
 
 impl<REv, P> SmallNetwork<REv, P>
 where
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Serialize + Clone + Debug + Display + Send + 'static,
+    for<'a> P: Deserialize<'a>,
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
@@ -510,7 +514,8 @@ where
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) =
-                    framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+                    FramedTransport::new(transport, self.chain_info.maximum_net_message_size)
+                        .split();
                 let handshake = self.chain_info.create_handshake(self.public_address);
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
@@ -592,7 +597,7 @@ where
 
         // The stream is only used to receive a single handshake message and then dropped.
         let (sink, stream) =
-            framed::<P>(transport, self.chain_info.maximum_net_message_size).split();
+            FramedTransport::new(transport, self.chain_info.maximum_net_message_size).split();
         debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -944,7 +949,8 @@ where
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Serialize + Clone + Debug + Display + Send + 'static,
+    for<'a> P: Deserialize<'a>,
 {
     type Event = Event<P>;
     type ConstructionError = Infallible;
@@ -1205,8 +1211,9 @@ async fn handshake_reader<REv, P>(
     peer_id: NodeId,
     peer_address: SocketAddr,
 ) where
-    P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
+    P: Send + Display,
+    for<'a> P: Deserialize<'a>,
 {
     if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
         debug!(%our_id, %msg, %peer_id, "handshake received");
@@ -1244,8 +1251,9 @@ async fn message_reader<REv, P>(
     peer_id: NodeId,
 ) -> io::Result<()>
 where
-    P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
+    P: Send + Display,
+    for<'a> P: Deserialize<'a>,
 {
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
@@ -1311,30 +1319,6 @@ where
     }
 
     Ok(())
-}
-
-/// Transport type alias for base encrypted connections.
-type Transport = SslStream<TcpStream>;
-
-/// A framed transport for `Message`s.
-type FramedTransport<P> = SymmetricallyFramed<
-    Framed<Transport, LengthDelimitedCodec>,
-    Message<P>,
-    SymmetricalBincode<Message<P>>,
->;
-
-/// Constructs a new framed transport on a stream.
-fn framed<P>(stream: Transport, maximum_net_message_size: u32) -> FramedTransport<P> {
-    let length_delimited = Framed::new(
-        stream,
-        LengthDelimitedCodec::builder()
-            .max_frame_length(maximum_net_message_size as usize)
-            .new_codec(),
-    );
-    SymmetricallyFramed::new(
-        length_delimited,
-        SymmetricalBincode::<Message<P>>::default(),
-    )
 }
 
 /// Initiates a TLS connection to a remote address.

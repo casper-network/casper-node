@@ -805,6 +805,7 @@ dependencies = [
  "base64",
  "bincode",
  "blake2",
+ "bytes 1.0.1",
  "casper-execution-engine",
  "casper-node-macros",
  "casper-types",
@@ -818,7 +819,9 @@ dependencies = [
  "fake_instant",
  "fs2",
  "futures",
+ "futures-core",
  "futures-io",
+ "futures-sink",
  "getrandom 0.2.2",
  "hex",
  "hex-buffer-serde",
@@ -846,6 +849,7 @@ dependencies = [
  "openssl",
  "parking_lot",
  "pem",
+ "pin-project 1.0.6",
  "pnet",
  "prometheus",
  "proptest",
@@ -874,7 +878,6 @@ dependencies = [
  "thiserror",
  "tokio 1.4.0",
  "tokio-openssl",
- "tokio-serde",
  "tokio-stream",
  "tokio-util 0.6.5",
  "toml",
@@ -1663,18 +1666,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "educe"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ed56329d95e524ef98177ad672881bdfe7f22f254eb6ae80deb6fdd2ab20c4"
-dependencies = [
- "enum-ordinalize",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "ee-1071-regression"
 version = "0.1.0"
 dependencies = [
@@ -1899,19 +1890,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum-ordinalize"
-version = "3.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d52ff39419d3e16961ecfb9e32f5042bdaacf9a4cc553d2d688057117bae49b"
-dependencies = [
- "num-bigint 0.3.2",
- "num-traits",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2118,9 +2096,9 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15496a72fabf0e62bdc3df11a59a3787429221dd0710ba8ef163d6f7a9112c94"
+checksum = "098cd1c6dda6ca01650f1a37a794245eb73181d0d4d4e955e2f3c37db7af1815"
 
 [[package]]
 name = "futures-executor"
@@ -2169,9 +2147,9 @@ dependencies = [
 
 [[package]]
 name = "futures-sink"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85754d98985841b7d4f5e8e6fbfa4a4ac847916893ec511a2917ccd8525b8bb3"
+checksum = "5c5629433c555de3d82861a7a4e3794a4c40040390907cfbfd7143a92a426c23"
 
 [[package]]
 name = "futures-task"
@@ -3693,17 +3671,6 @@ name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
-dependencies = [
- "autocfg",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-bigint"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d0a3d5e207573f948a9e5376662aa743a2ea13f7c50a554d7af443a73fbfeba"
 dependencies = [
  "autocfg",
  "num-integer",
@@ -5595,21 +5562,6 @@ dependencies = [
  "openssl",
  "pin-project 1.0.6",
  "tokio 1.4.0",
-]
-
-[[package]]
-name = "tokio-serde"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "911a61637386b789af998ee23f50aa30d5fd7edcec8d6d3dedae5e5815205466"
-dependencies = [
- "bincode",
- "bytes 1.0.1",
- "educe",
- "futures-core",
- "futures-sink",
- "pin-project 1.0.6",
- "serde",
 ]
 
 [[package]]
