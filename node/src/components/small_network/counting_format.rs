@@ -161,15 +161,20 @@ const_assert!(KeyFingerprint::LENGTH >= Digest::LENGTH);
 // We also assume it is at least 12 bytes.
 const_assert!(Digest::LENGTH >= 12);
 
-impl ConnectionId {
-    /// Generate a connection ID from a given SSL reference.
-    pub(super) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> ConnectionId {
-        // Ideally we would use the TLS session ID, but it is not available on outgoing connections
-        // at the times we need it.
-        //
-        // Instead, we use the `server_random` and `client_random` nonces, which will be the same on
-        // both ends of the connection.
-        //
+/// Random data derived from TLS connections.
+#[derive(Copy, Clone, Debug)]
+pub(super) struct TlsRandomData {
+    /// Random data extract from the client of the connection.
+    combined_random: [u8; 12],
+}
+
+impl TlsRandomData {
+    /// Collects random data from an existing SSL collection.
+    ///
+    /// Ideally we would use the TLS session ID, but it is not available on outgoing connections at
+    /// the times we need it. Instead, we use the `server_random` and `client_random` nonces, which
+    /// will be the same on both ends of the connection.
+    fn collect(ssl: &SslRef) -> Self {
         // We are using only the first 12 bytes of these 32 byte values here, just in case we missed
         // something in our assessment that hashing these should be safe. Additionally, these values
         // are XOR'd, not concatenated. All this is done to prevent leaking information about these
@@ -183,8 +188,18 @@ impl ConnectionId {
         ssl.server_random(&mut server_random);
         ssl.client_random(&mut client_random);
 
+        Self {
+            combined_random: server_random,
+        }
+    }
+}
+
+impl ConnectionId {
+    /// Creates a new connection ID, based on random values from server and client, as well as
+    /// node IDs.
+    fn create(random_data: TlsRandomData, our_id: NodeId, their_id: NodeId) -> ConnectionId {
         // Hash the resulting random values.
-        let mut id = hash::hash(server_random).to_array();
+        let mut id = hash::hash(random_data.combined_random).to_array();
 
         // We XOR in a hashes of server and client fingerprint, to ensure that in the case of an
         // accidental collision (e.g. when `server_random` and `client_random` turn out to be all
@@ -229,6 +244,12 @@ impl ConnectionId {
             TryFrom::try_from(&full_hash.to_array()[0..8]).expect("buffer size mismatch");
 
         TraceId(truncated)
+    }
+
+    /// Creates a new connection ID from an existing SSL connection.
+    #[inline]
+    pub(crate) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> Self {
+        Self::create(TlsRandomData::collect(ssl), our_id, their_id)
     }
 
     /// Creates a random `ConnectionId`.
