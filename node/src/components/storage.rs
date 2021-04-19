@@ -153,6 +153,16 @@ pub enum Error {
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
     },
+    /// Found a duplicate switch-block-at-era-id index entry.
+    #[error("duplicate entries for blocks for deploy {deploy_hash}: {first} / {second}")]
+    DuplicateDeployIndex {
+        /// Deploy hash at which duplicate was found.
+        deploy_hash: DeployHash,
+        /// First block hash encountered at `deploy_hash`.
+        first: BlockHash,
+        /// Second block hash encountered at `deploy_hash`.
+        second: BlockHash,
+    },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
@@ -197,6 +207,8 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
+    /// A map of deploy hashes to hashes of blocks containing them.
+    deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -277,6 +289,7 @@ impl Storage {
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
+        let mut deploy_hash_index = BTreeMap::new();
         let mut block_txn = env.begin_rw_txn()?;
         let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
@@ -306,6 +319,18 @@ impl Storage {
                 &mut switch_block_era_id_index,
                 &block,
             )?;
+
+            let mut body_txn = env.begin_ro_txn()?;
+            let block_body: BlockBody = body_txn
+                .get_value(block_body_db, block.body_hash())?
+                .expect("non-existent block body referred to by header");
+            // We use the opportunity for a small integrity check.
+            assert_eq!(
+                *block.body_hash(),
+                block_body.hash(),
+                "found corrupt block body in database"
+            );
+            insert_to_deploy_index(&mut deploy_hash_index, block.hash(), &block_body)?;
         }
         info!("block store reindexing complete");
         drop(cursor);
@@ -329,6 +354,7 @@ impl Storage {
             state_store_db,
             block_height_index,
             switch_block_era_id_index,
+            deploy_hash_index,
         })
     }
 
@@ -429,6 +455,11 @@ impl Storage {
                     &mut self.switch_block_era_id_index,
                     block.header(),
                 )?;
+                insert_to_deploy_index(
+                    &mut self.deploy_hash_index,
+                    block.header().hash(),
+                    block.body(),
+                )?;
                 responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
@@ -457,6 +488,17 @@ impl Storage {
             StorageRequest::GetSwitchBlockAtEraId { era_id, responder } => responder
                 .respond(self.get_switch_block_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?)
                 .ignore(),
+            StorageRequest::GetBlockHeaderForDeploy {
+                deploy_hash,
+                responder,
+            } => {
+                responder
+                    .respond(self.get_block_header_by_deploy_hash(
+                        &mut self.env.begin_ro_txn()?,
+                        deploy_hash,
+                    )?)
+                    .ignore()
+            }
             StorageRequest::GetHighestSwitchBlock { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
@@ -783,6 +825,19 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves a single block header by deploy hash by looking it up in the index and returning
+    /// it.
+    fn get_block_header_by_deploy_hash<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<BlockHeader>, LmdbExtError> {
+        self.deploy_hash_index
+            .get(&deploy_hash)
+            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
+            .transpose()
+    }
+
     /// Retrieves the highest block from the storage, if one exists.
     /// May return an LMDB error.
     fn get_highest_block<Tx: Transaction>(
@@ -1046,6 +1101,42 @@ fn insert_to_block_header_indices(
     }
 
     let _ = block_height_index.insert(block_header.height(), block_hash);
+    Ok(())
+}
+
+/// Inserts the relevant entries to the index.
+///
+/// If a duplicate entry is encountered, index is not updated and an error is returned.
+fn insert_to_deploy_index(
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHash>,
+    block_hash: BlockHash,
+    block_body: &BlockBody,
+) -> Result<(), Error> {
+    if let Some(hash) = block_body
+        .deploy_hashes()
+        .iter()
+        .chain(block_body.transfer_hashes().iter())
+        .find(|hash| {
+            deploy_hash_index
+                .get(hash)
+                .map_or(false, |old_block_hash| *old_block_hash != block_hash)
+        })
+    {
+        return Err(Error::DuplicateDeployIndex {
+            deploy_hash: *hash,
+            first: deploy_hash_index[hash],
+            second: block_hash,
+        });
+    }
+
+    for hash in block_body
+        .deploy_hashes()
+        .iter()
+        .chain(block_body.transfer_hashes().iter())
+    {
+        deploy_hash_index.insert(*hash, block_hash);
+    }
+
     Ok(())
 }
 

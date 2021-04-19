@@ -6,7 +6,7 @@ use serde_bytes::ByteBuf;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    system::auction::{Bid, EraInfo, SeigniorageRecipients, UnbondingPurse},
+    system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
@@ -24,7 +24,6 @@ enum Tag {
     EraInfo = 7,
     Bid = 8,
     Withdraw = 9,
-    EraValidators = 10,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -39,7 +38,6 @@ pub enum StoredValue {
     EraInfo(EraInfo),
     Bid(Box<Bid>),
     Withdraw(Vec<UnbondingPurse>),
-    EraValidators(SeigniorageRecipients),
 }
 
 impl StoredValue {
@@ -106,13 +104,6 @@ impl StoredValue {
         }
     }
 
-    pub fn as_era_validators(&self) -> Option<&SeigniorageRecipients> {
-        match self {
-            StoredValue::EraValidators(recipients) => Some(recipients),
-            _ => None,
-        }
-    }
-
     pub fn type_name(&self) -> String {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
@@ -125,7 +116,6 @@ impl StoredValue {
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
             StoredValue::Bid(_) => "Bid".to_string(),
             StoredValue::Withdraw(_) => "Withdraw".to_string(),
-            StoredValue::EraValidators(_) => "EraValidators".to_string(),
         }
     }
 }
@@ -158,12 +148,6 @@ impl From<ContractPackage> for StoredValue {
 impl From<Bid> for StoredValue {
     fn from(bid: Bid) -> StoredValue {
         StoredValue::Bid(Box::new(bid))
-    }
-}
-
-impl From<SeigniorageRecipients> for StoredValue {
-    fn from(recipients: SeigniorageRecipients) -> StoredValue {
-        StoredValue::EraValidators(recipients)
     }
 }
 
@@ -293,7 +277,6 @@ impl ToBytes for StoredValue {
             StoredValue::Withdraw(unbonding_purses) => {
                 (Tag::Withdraw, unbonding_purses.to_bytes()?)
             }
-            StoredValue::EraValidators(recipients) => (Tag::EraValidators, recipients.to_bytes()?),
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -315,7 +298,6 @@ impl ToBytes for StoredValue {
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
                 StoredValue::Bid(bid) => bid.serialized_length(),
                 StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
-                StoredValue::EraValidators(recipients) => recipients.serialized_length(),
             }
     }
 }
@@ -353,8 +335,6 @@ impl FromBytes for StoredValue {
                     (StoredValue::Withdraw(unbonding_purses), remainder)
                 })
             }
-            tag if tag == Tag::EraValidators as u8 => SeigniorageRecipients::from_bytes(remainder)
-                .map(|(recipients, remainder)| (StoredValue::EraValidators(recipients), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

@@ -9,9 +9,8 @@ use casper_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{ApiError, Phase, RuntimeArgs, URef, U512};
+use casper_types::{system::handle_payment, ApiError, Phase, RuntimeArgs, URef, U512};
 
-const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 const NEW_UREF_RESULT_UREF_NAME: &str = "new_uref_result";
 const ARG_AMOUNT: &str = "amount";
 
@@ -28,7 +27,7 @@ pub extern "C" fn call() {
 
         let payment_purse: URef = runtime::call_contract(
             system::get_handle_payment(),
-            GET_PAYMENT_PURSE,
+            handle_payment::METHOD_GET_PAYMENT_PURSE,
             RuntimeArgs::default(),
         );
 

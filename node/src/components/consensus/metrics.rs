@@ -12,7 +12,7 @@ pub(super) struct ConsensusMetrics {
     finalization_time: Gauge,
     /// Amount of finalized blocks.
     finalized_block_count: IntGauge,
-    /// Timestamp of the most recently accepted proto block.
+    /// Timestamp of the most recently accepted block payload.
     time_of_last_proposed_block: IntGauge,
     /// Timestamp of the most recently finalized block.
     time_of_last_finalized_block: IntGauge,
@@ -31,8 +31,8 @@ impl ConsensusMetrics {
         let finalized_block_count =
             IntGauge::new("amount_of_blocks", "the number of blocks finalized so far")?;
         let time_of_last_proposed_block = IntGauge::new(
-            "time_of_last_proto_block",
-            "timestamp of the most recently accepted proto block",
+            "time_of_last_block_payload",
+            "timestamp of the most recently accepted block payload",
         )?;
         let time_of_last_finalized_block = IntGauge::new(
             "time_of_last_finalized_block",
@@ -56,8 +56,8 @@ impl ConsensusMetrics {
 
     /// Updates the metrics based on a newly finalized block.
     pub(super) fn finalized_block(&mut self, finalized_block: &FinalizedBlock) {
-        let time_since_proto_block = finalized_block.timestamp().elapsed().millis() as f64;
-        self.finalization_time.set(time_since_proto_block);
+        let time_since_block_payload = finalized_block.timestamp().elapsed().millis() as f64;
+        self.finalization_time.set(time_since_block_payload);
         self.time_of_last_finalized_block
             .set(finalized_block.timestamp().millis() as i64);
         self.finalized_block_count

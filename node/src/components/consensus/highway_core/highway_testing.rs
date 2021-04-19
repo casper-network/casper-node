@@ -45,24 +45,8 @@ use crate::{
 type ConsensusValue = Vec<u8>;
 
 impl ConsensusValueT for ConsensusValue {
-    type Hash = u64;
-
     fn needs_validation(&self) -> bool {
         !self.is_empty()
-    }
-
-    fn hash(&self) -> Self::Hash {
-        let mut hasher = DefaultHasher::new();
-        std::hash::Hash::hash(&self, &mut hasher);
-        hasher.finish()
-    }
-
-    fn timestamp(&self) -> Timestamp {
-        0.into() // Not relevant for highway_core tests.
-    }
-
-    fn parent(&self) -> Option<&Self::Hash> {
-        None // Not relevant for highway_core tests.
     }
 }
 
@@ -78,7 +62,7 @@ pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
 enum HighwayMessage {
     Timer(Timestamp),
     NewVertex(Box<Vertex<TestContext>>),
-    RequestBlock(BlockContext),
+    RequestBlock(BlockContext<TestContext>),
     WeAreFaulty(Box<Fault<TestContext>>),
 }
 
@@ -126,9 +110,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
             // validators so for them it's just `Vertex` that needs to be validated.
             Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
-            Effect::RequestNewBlock { block_context, .. } => {
-                HighwayMessage::RequestBlock(block_context)
-            }
+            Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
             Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
         }
     }
@@ -497,7 +479,7 @@ where
         for FinalizedBlock {
             value,
             timestamp: _,
-            height,
+            relative_height,
             terminal_block_data,
             equivocators: _,
             proposer: _,
@@ -511,7 +493,7 @@ where
                     ""
                 },
                 value,
-                height
+                relative_height,
             );
             if let Some(t) = terminal_block_data {
                 warn!(?t.rewards, "rewards and inactive validators are not verified yet");

@@ -15,7 +15,7 @@ pub trait ReactorEventT<I: Debug + Eq>:
     From<StorageRequest>
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockWithMetadata>>
-    + From<BlockValidationRequest<Block, I>>
+    + From<BlockValidationRequest<I>>
     + From<ContractRuntimeRequest>
     + From<StateStoreRequest>
     + From<ControlAnnouncement>
@@ -28,7 +28,7 @@ where
     REv: From<StorageRequest>
         + From<FetcherRequest<I, Block>>
         + From<FetcherRequest<I, BlockWithMetadata>>
-        + From<BlockValidationRequest<Block, I>>
+        + From<BlockValidationRequest<I>>
         + From<ContractRuntimeRequest>
         + From<StateStoreRequest>
         + From<ControlAnnouncement>

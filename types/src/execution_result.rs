@@ -31,7 +31,7 @@ use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo, SeigniorageRecipients, UnbondingPurse},
+    system::auction::{Bid, EraInfo, UnbondingPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
@@ -44,6 +44,7 @@ const OP_READ_TAG: u8 = 0;
 const OP_WRITE_TAG: u8 = 1;
 const OP_ADD_TAG: u8 = 2;
 const OP_NOOP_TAG: u8 = 3;
+const OP_DELETE_TAG: u8 = 4;
 
 /// Constants to track Transform serialization.
 const TRANSFORM_IDENTITY_TAG: u8 = 0;
@@ -57,14 +58,14 @@ const TRANSFORM_WRITE_TRANSFER_TAG: u8 = 7;
 const TRANSFORM_WRITE_ERA_INFO_TAG: u8 = 8;
 const TRANSFORM_WRITE_BID_TAG: u8 = 9;
 const TRANSFORM_WRITE_WITHDRAW_TAG: u8 = 10;
-const TRANSFORM_WRITE_ERA_VALIDATORS_TAG: u8 = 11;
-const TRANSFORM_ADD_INT32_TAG: u8 = 12;
-const TRANSFORM_ADD_UINT64_TAG: u8 = 13;
-const TRANSFORM_ADD_UINT128_TAG: u8 = 14;
-const TRANSFORM_ADD_UINT256_TAG: u8 = 15;
-const TRANSFORM_ADD_UINT512_TAG: u8 = 16;
-const TRANSFORM_ADD_KEYS_TAG: u8 = 17;
-const TRANSFORM_FAILURE_TAG: u8 = 18;
+const TRANSFORM_ADD_INT32_TAG: u8 = 11;
+const TRANSFORM_ADD_UINT64_TAG: u8 = 12;
+const TRANSFORM_ADD_UINT128_TAG: u8 = 13;
+const TRANSFORM_ADD_UINT256_TAG: u8 = 14;
+const TRANSFORM_ADD_UINT512_TAG: u8 = 15;
+const TRANSFORM_ADD_KEYS_TAG: u8 = 16;
+const TRANSFORM_FAILURE_TAG: u8 = 17;
+const TRANSFORM_DELETE_TAG: u8 = 18;
 
 #[cfg(feature = "std")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
@@ -366,6 +367,8 @@ pub enum OpKind {
     Add,
     /// An operation which has no effect.
     NoOp,
+    /// A delete operation.
+    Delete,
 }
 
 impl ToBytes for OpKind {
@@ -375,6 +378,7 @@ impl ToBytes for OpKind {
             OpKind::Write => OP_WRITE_TAG.to_bytes(),
             OpKind::Add => OP_ADD_TAG.to_bytes(),
             OpKind::NoOp => OP_NOOP_TAG.to_bytes(),
+            OpKind::Delete => OP_DELETE_TAG.to_bytes(),
         }
     }
 
@@ -391,6 +395,7 @@ impl FromBytes for OpKind {
             OP_WRITE_TAG => Ok((OpKind::Write, remainder)),
             OP_ADD_TAG => Ok((OpKind::Add, remainder)),
             OP_NOOP_TAG => Ok((OpKind::NoOp, remainder)),
+            OP_DELETE_TAG => Ok((OpKind::Delete, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -456,8 +461,6 @@ pub enum Transform {
     WriteBid(Box<Bid>),
     /// Writes the given Withdraw to global state.
     WriteWithdraw(Vec<UnbondingPurse>),
-    /// Writes the given EraValidators to global state.
-    WriteEraValidators(SeigniorageRecipients),
     /// Adds the given `i32`.
     AddInt32(i32),
     /// Adds the given `u64`.
@@ -472,6 +475,8 @@ pub enum Transform {
     AddKeys(Vec<NamedKey>),
     /// A failed transformation, containing an error message.
     Failure(String),
+    /// Deletes a value from global state.
+    Delete,
 }
 
 impl ToBytes for Transform {
@@ -512,10 +517,6 @@ impl ToBytes for Transform {
                 buffer.insert(0, TRANSFORM_WRITE_WITHDRAW_TAG);
                 buffer.extend(unbonding_purses.to_bytes()?);
             }
-            Transform::WriteEraValidators(recipients) => {
-                buffer.insert(0, TRANSFORM_WRITE_ERA_VALIDATORS_TAG);
-                buffer.extend(recipients.to_bytes()?);
-            }
             Transform::AddInt32(value) => {
                 buffer.insert(0, TRANSFORM_ADD_INT32_TAG);
                 buffer.extend(value.to_bytes()?);
@@ -544,6 +545,7 @@ impl ToBytes for Transform {
                 buffer.insert(0, TRANSFORM_FAILURE_TAG);
                 buffer.extend(value.to_bytes()?);
             }
+            Transform::Delete => buffer.insert(0, TRANSFORM_DELETE_TAG),
         }
         Ok(buffer)
     }
@@ -562,7 +564,13 @@ impl ToBytes for Transform {
             Transform::AddUInt512(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddKeys(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::Failure(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            _ => U8_SERIALIZED_LENGTH,
+            Transform::WriteBid(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteWithdraw(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::Identity
+            | Transform::WriteContractWasm
+            | Transform::WriteContract
+            | Transform::WriteContractPackage
+            | Transform::Delete => U8_SERIALIZED_LENGTH,
         }
     }
 }
@@ -625,6 +633,7 @@ impl FromBytes for Transform {
                 let (value, remainder) = String::from_bytes(remainder)?;
                 Ok((Transform::Failure(value), remainder))
             }
+            TRANSFORM_DELETE_TAG => Ok((Transform::Delete, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -633,7 +642,7 @@ impl FromBytes for Transform {
 impl Distribution<Transform> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
         // TODO - include WriteDeployInfo and WriteTransfer as options
-        match rng.gen_range(0..13) {
+        match rng.gen_range(0..14) {
             0 => Transform::Identity,
             1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
             2 => Transform::WriteAccount(AccountHash::new(rng.gen())),
@@ -656,6 +665,7 @@ impl Distribution<Transform> for Standard {
                 Transform::AddKeys(named_keys)
             }
             12 => Transform::Failure(rng.gen::<u64>().to_string()),
+            13 => Transform::Failure(rng.gen::<u64>().to_string()),
             _ => unreachable!(),
         }
     }
