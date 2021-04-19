@@ -16,6 +16,7 @@ use bytes::{Bytes, BytesMut};
 use hex_fmt::HexFmt;
 use openssl::ssl::SslRef;
 use pin_project::pin_project;
+#[cfg(test)]
 use rand::RngCore;
 use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
