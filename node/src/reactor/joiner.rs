@@ -63,8 +63,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, NodeId, Tag,
-        Timestamp,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
+        Tag, Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -969,9 +969,7 @@ impl reactor::Reactor for Reactor {
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
         if self.linear_chain_sync.stopped_for_upgrade() {
-            Some(ReactorExit::ProcessShouldExit(
-                crate::types::ExitCode::Success,
-            ))
+            Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
         } else if self.linear_chain_sync.is_synced() {
             Some(ReactorExit::ProcessShouldContinue)
         } else {
