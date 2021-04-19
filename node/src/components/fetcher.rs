@@ -70,10 +70,6 @@ pub enum FetchedOrNotFound<T, Id> {
     NotFound(Id),
 }
 
-// impl<T: Item> FetchedOrNotFound<T, T::Id> {
-//     pub fn from_get_request_serialized_id
-// }
-
 pub trait ItemFetcher<T: Item + 'static> {
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
