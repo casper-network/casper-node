@@ -50,6 +50,8 @@ pub(crate) enum PingError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
+    #[error("The ping is for a different consensus protocol instance.")]
+    InstanceId,
 }
 
 /// A vertex that has passed initial validation.
@@ -210,6 +212,7 @@ impl<C: Context> Highway<C> {
             &self.state,
             unit_hash_file,
             target_ftt,
+            self.instance_id,
         );
         self.active_validator = Some(av);
         effects
@@ -399,7 +402,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
@@ -508,7 +511,7 @@ impl<C: Context> Highway<C> {
                     result.extend(self.add_valid_vertex(vv.clone(), timestamp))
                 }
                 Effect::WeAreFaulty(_) => self.deactivate_validator(),
-                Effect::ScheduleTimer(_) | Effect::RequestNewBlock { .. } => (),
+                Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
         }
         result.extend(effects);
@@ -553,7 +556,7 @@ impl<C: Context> Highway<C> {
                 }
                 Ok(())
             }
-            Vertex::Ping(ping) => ping.validate(&self.validators),
+            Vertex::Ping(ping) => ping.validate(&self.validators, &self.instance_id),
         }
     }
 
@@ -675,7 +678,8 @@ pub(crate) mod tests {
             highway_core::{
                 evidence::{Evidence, EvidenceError},
                 highway::{
-                    Dependency, Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit,
+                    vertex::Ping, Dependency, Highway, SignedWireUnit, UnitError, Vertex,
+                    VertexError, WireUnit,
                 },
                 highway_testing::TEST_INSTANCE_ID,
                 state::{tests::*, Panorama, State},
@@ -903,5 +907,29 @@ pub(crate) mod tests {
             Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
             validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)
         );
+    }
+
+    #[test]
+    fn invalid_ping_ndrs1077_regression() {
+        let now: Timestamp = 500.into();
+
+        let state: State<TestContext> = State::new_test(WEIGHTS, 0);
+        let highway = Highway {
+            instance_id: TEST_INSTANCE_ID,
+            validators: test_validators(),
+            state,
+            active_validator: None,
+        };
+
+        // Ping by validator that is not bonded, with an index that is outside of boundaries of the
+        // state.
+        let ping: Vertex<TestContext> =
+            Vertex::Ping(Ping::new(DAN, now, TEST_INSTANCE_ID, &DAN_SEC));
+        assert!(
+            DAN.0 >= WEIGHTS.len() as u32,
+            "should use validator that is not bonded"
+        );
+        // Verify that sending a Ping from a non-existing validator does not panic.
+        assert_eq!(highway.has_vertex(&ping), false);
     }
 }

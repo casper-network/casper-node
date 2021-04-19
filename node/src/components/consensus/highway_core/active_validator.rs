@@ -2,6 +2,7 @@ use std::{
     fmt::{self, Debug},
     fs::{self, File},
     io::{self, Read, Write},
+    iter,
     path::{Path, PathBuf},
 };
 
@@ -34,10 +35,7 @@ pub(crate) enum Effect<C: Context> {
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
-    RequestNewBlock {
-        block_context: BlockContext,
-        fork_choice: Option<C::Hash>,
-    },
+    RequestNewBlock(BlockContext<C>),
     /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
@@ -71,8 +69,8 @@ where
     next_round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
-    /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
-    next_proposal: Option<(Timestamp, Panorama<C>)>,
+    /// Panorama and context for a block we are about to propose when we get a consensus value.
+    next_proposal: Option<(BlockContext<C>, Panorama<C>)>,
     /// The path to the file storing the hash of our latest known unit (if any).
     unit_file: Option<PathBuf>,
     /// The last known unit created by us.
@@ -97,6 +95,7 @@ impl<C: Context> Debug for ActiveValidator<C> {
 
 impl<C: Context> ActiveValidator<C> {
     /// Creates a new `ActiveValidator` and the timer effect for the first call.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
@@ -105,6 +104,7 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         unit_file: Option<PathBuf>,
         target_ftt: Weight,
+        instance_id: C::InstanceId,
     ) -> (Self, Vec<Effect<C>>) {
         let own_last_unit = unit_file
             .as_ref()
@@ -128,7 +128,7 @@ impl<C: Context> ActiveValidator<C> {
             paused: false,
         };
         let mut effects = av.schedule_timer(start_time, state);
-        effects.push(av.send_ping(current_time));
+        effects.push(av.send_ping(current_time, instance_id));
         (av, effects)
     }
 
@@ -228,14 +228,14 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping if necessary, to show that we're online.
         if !state.has_ping(self.vidx, timestamp) {
             warn!(%timestamp, "too many validators offline, sending ping");
-            effects.push(self.send_ping(timestamp));
+            effects.push(self.send_ping(timestamp, instance_id));
         }
         effects
     }
 
     /// Creates a Ping vertex.
-    pub(crate) fn send_ping(&self, timestamp: Timestamp) -> Effect<C> {
-        let ping = Ping::new(self.vidx, timestamp, &self.secret);
+    pub(crate) fn send_ping(&self, timestamp: Timestamp, instance_id: C::InstanceId) -> Effect<C> {
+        let ping = Ping::new(self.vidx, timestamp, instance_id, &self.secret);
         Effect::NewVertex(ValidVertex(Vertex::Ping(ping)))
     }
 
@@ -316,44 +316,42 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         timestamp: Timestamp,
     ) -> Option<Effect<C>> {
-        if let Some((prop_time, _)) = self.next_proposal.take() {
-            warn!(
-                ?timestamp,
-                "no proposal received for {}; requesting new one", prop_time
-            );
+        if let Some((prop_context, _)) = self.next_proposal.take() {
+            warn!(?prop_context, "no proposal received; requesting new one");
         }
         let panorama = self.panorama_at(state, timestamp);
         let maybe_parent_hash = state.fork_choice(&panorama);
+        // If the parent is a terminal block, just create a unit without a new block.
         if maybe_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             return self
                 .new_unit(panorama, timestamp, None, state, instance_id)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
-        let maybe_parent = maybe_parent_hash.map(|bh| state.block(bh));
-        let height = maybe_parent.map_or(0, |block| block.height);
-        self.next_proposal = Some((timestamp, panorama));
-        let block_context = BlockContext::new(timestamp, height);
-        Some(Effect::RequestNewBlock {
-            block_context,
-            fork_choice: maybe_parent_hash.cloned(),
-        })
+        // Otherwise we need to request a new consensus value to propose.
+        let ancestor_values = match maybe_parent_hash {
+            None => vec![],
+            Some(parent_hash) => iter::once(parent_hash)
+                .chain(state.ancestor_hashes(parent_hash))
+                .map(|bhash| state.block(bhash).value.clone())
+                .collect(),
+        };
+        let block_context = BlockContext::new(timestamp, ancestor_values);
+        self.next_proposal = Some((block_context.clone(), panorama));
+        Some(Effect::RequestNewBlock(block_context))
     }
 
     /// Proposes a new block with the given consensus value.
     pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
         state: &State<C>,
         instance_id: C::InstanceId,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
-        let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
-            if prop_time != timestamp {
-                warn!(
-                    ?timestamp,
-                    "unexpected proposal; expected timestamp {}", prop_time
-                );
+        let panorama = if let Some((expected_context, panorama)) = self.next_proposal.take() {
+            if expected_context != block_context {
+                warn!(?expected_context, ?block_context, "unexpected proposal");
                 return vec![];
             }
             panorama
@@ -434,11 +432,8 @@ impl<C: Context> ActiveValidator<C> {
             info!(?self.own_last_unit, "not voting - last own unit unknown");
             return None;
         }
-        if let Some((prop_time, _)) = self.next_proposal.take() {
-            warn!(
-                ?timestamp,
-                "canceling proposal for {} due to unit", prop_time
-            );
+        if let Some((prop_context, _)) = self.next_proposal.take() {
+            warn!(?prop_context, "canceling proposal due to unit");
         }
         for hash in panorama.iter_correct_hashes() {
             if timestamp < state.unit(hash).timestamp {
@@ -722,13 +717,21 @@ mod tests {
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
                     let (av, effects) = ActiveValidator::new(
-                        vidx, secret, start_time, start_time, &state, None, target_ftt,
+                        vidx,
+                        secret,
+                        start_time,
+                        start_time,
+                        &state,
+                        None,
+                        target_ftt,
+                        TEST_INSTANCE_ID,
                     );
 
                     let timestamp = match &*effects {
-                        [Effect::ScheduleTimer(timer), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))] => {
-                            *timer
-                        }
+                        [
+                            Effect::ScheduleTimer(timer),
+                            Effect::NewVertex(ValidVertex(Vertex::Ping(_)))
+                        ] => { *timer }
                         other => panic!("expected timer and ping effects, got={:?}", other),
                     };
 
@@ -736,7 +739,7 @@ mod tests {
                         assert_eq!(
                             timestamp, earliest_round_start,
                             "Invalid initial timer scheduled for {:?}.",
-                            vidx
+                            vidx,
                         )
                     } else {
                         let witness_offset =
@@ -745,7 +748,7 @@ mod tests {
                         assert_eq!(
                             timestamp, witness_timestamp,
                             "Invalid initial timer scheduled for {:?}.",
-                            vidx
+                            vidx,
                         )
                     }
                     timers.insert((timestamp, vidx));
@@ -785,7 +788,7 @@ mod tests {
             &mut self,
             vidx: ValidatorIndex,
             cv: <TestContext as Context>::ConsensusValue,
-            block_context: BlockContext,
+            block_context: BlockContext<TestContext>,
         ) -> (Vec<Effect<TestContext>>, SignedWireUnit<TestContext>) {
             let validator = &mut self.active_validators[vidx];
             let proposal_timestamp = block_context.timestamp();
@@ -902,10 +905,11 @@ mod tests {
         // 416, and the first witness tick 426.
         // Alice wants to propose a block, and also make her witness unit at 426.
         let bctx = match &*test.handle_timer(ALICE, 416.into()) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
-                block_context: bctx,
-                ..
-            }] if *timestamp == 426.into() => *bctx,
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
+                if *timestamp == 426.into() =>
+            {
+                bctx.clone()
+            }
             effects => panic!("unexpected effects {:?}", effects),
         };
         assert_eq!(
@@ -957,6 +961,7 @@ mod tests {
             &state,
             None,
             Weight(2),
+            TEST_INSTANCE_ID,
         );
 
         match &*init_effects {
@@ -1005,6 +1010,7 @@ mod tests {
             &state,
             unit_file,
             Weight(2),
+            TEST_INSTANCE_ID,
         );
 
         let mut next_proposal_timer = match &*alice_init_effects {
@@ -1026,10 +1032,7 @@ mod tests {
         // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a
         // new block.
         let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id) {
-            [Eff::ScheduleTimer(_), Eff::RequestNewBlock {
-                block_context: bctx,
-                ..
-            }] => *bctx,
+            [Eff::ScheduleTimer(_), Eff::RequestNewBlock(bctx)] => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
 
@@ -1060,10 +1063,9 @@ mod tests {
     ) -> Timestamp {
         let (witness_timestamp, bctx) =
             match &*validator.handle_timer(proposal_timer, &state, instance_id) {
-                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock {
-                    block_context: bctx,
-                    ..
-                }] => (*witness_timestamp, *bctx),
+                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock(bctx)] => {
+                    (*witness_timestamp, bctx.clone())
+                }
                 effects => panic!("unexpected effects {:?}", effects),
             };
 

@@ -70,12 +70,15 @@ pub enum Error {
     /// Source and target purse [`crate::URef`]s are equal.
     #[cfg_attr(feature = "std", error("Invalid target purse"))]
     EqualSourceAndTarget = 17,
+    /// An arithmetic overflow has occured.
+    #[cfg_attr(feature = "std", error("Arithmetic overflow has occurred"))]
+    ArithmeticOverflow = 18,
 
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]
     #[cfg_attr(feature = "std", error("GasLimit"))]
-    GasLimit = 18,
+    GasLimit = 19,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -141,6 +144,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::Serialize as u8 => Ok(Error::Serialize),
             d if d == Error::EqualSourceAndTarget as u8 => Ok(Error::EqualSourceAndTarget),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
+            d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -204,7 +208,7 @@ mod tests {
             match Error::try_from(i) {
                 Ok(error) if i < MAX_ERROR_VALUE => assert_eq!(error as u8, i),
                 Ok(error) => panic!(
-                    "value of variant {} ({}) exceeds MAX_ERROR_VALUE ({})",
+                    "value of variant {:?} ({}) exceeds MAX_ERROR_VALUE ({})",
                     error, i, MAX_ERROR_VALUE
                 ),
                 Err(TryFromU8ForError(())) if i >= MAX_ERROR_VALUE => (),

@@ -1,5 +1,4 @@
 use futures::{future, Future, FutureExt};
-use semver::Version;
 use tokio::{
     select,
     sync::{broadcast, mpsc, oneshot},
@@ -7,6 +6,8 @@ use tokio::{
 };
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
+
+use casper_types::ProtocolVersion;
 
 use super::{
     sse_server::{BroadcastChannelMessage, NewSubscriberInfo, ServerSentEvent},
@@ -26,7 +27,7 @@ use super::{
 ///   with the requested number of historical events.
 pub(super) async fn run(
     config: Config,
-    api_version: Version,
+    api_version: ProtocolVersion,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
     mut data_receiver: mpsc::UnboundedReceiver<SseData>,
@@ -38,7 +39,7 @@ pub(super) async fn run(
     // Initialize the index and buffer for the SSEs.
     let mut event_index = 0_u32;
     let mut buffer = WheelBuf::new(vec![
-        ServerSentEvent::initial_event(api_version.clone());
+        ServerSentEvent::initial_event(api_version);
         config.event_stream_buffer_length as usize
     ]);
 
@@ -53,7 +54,7 @@ pub(super) async fn run(
                         // errors - the client may have disconnected already.
                         let _ = subscriber
                             .initial_events_sender
-                            .send(ServerSentEvent::initial_event(api_version.clone()));
+                            .send(ServerSentEvent::initial_event(api_version));
                         // If the client supplied a "start_from" index, provide the buffered events.
                         // If they requested more than is buffered, just provide the whole buffer.
                         if let Some(start_index) = subscriber.start_from {

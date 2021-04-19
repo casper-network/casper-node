@@ -39,7 +39,7 @@ impl Status {
             return Some(Status::Inactive);
         }
         if state.last_seen(idx) + state.params().max_round_length() < now {
-            let seconds = (now - state.last_seen(idx)).millis() / 1000;
+            let seconds = now.saturating_diff(state.last_seen(idx)).millis() / 1000;
             return Some(Status::LastSeenSecondsAgo(seconds));
         }
         None

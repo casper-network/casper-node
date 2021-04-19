@@ -33,7 +33,6 @@ export NCTL_CONTRACTS_CLIENT_AUCTION=(
 # Set of client side transfer contracts.
 export NCTL_CONTRACTS_CLIENT_TRANSFERS=(
     "transfer_to_account_u512.wasm"
-    "transfer_to_account_u512_stored.wasm"
 )
 
 # Default amount used when delegating.

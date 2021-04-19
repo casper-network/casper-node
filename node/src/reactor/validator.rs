@@ -47,9 +47,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -61,13 +62,13 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, BlockHash, Deploy, ExitCode, NodeId, ProtoBlock, Tag},
+    types::{Block, BlockHash, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
 };
 pub use config::Config;
 pub use error::Error;
-use linear_chain::LinearChain;
+use linear_chain::LinearChainComponent;
 use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
@@ -118,7 +119,7 @@ pub enum Event {
     ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
     /// Block validator event.
     #[from]
-    ProtoBlockValidator(#[serde(skip_serializing)] block_validator::Event<ProtoBlock, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
     /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
@@ -138,9 +139,7 @@ pub enum Event {
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
     /// Block validator request.
     #[from]
-    ProtoBlockValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
-    ),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
     /// Metrics request.
     #[from]
     MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
@@ -169,7 +168,7 @@ pub enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     /// ContractRuntime announcement.
     #[from]
     ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
@@ -185,6 +184,9 @@ pub enum Event {
     /// Chainspec loader announcement.
     #[from]
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
+    /// Blocklist announcement.
+    #[from]
+    BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
 }
 
 impl ReactorEvent for Event {
@@ -263,7 +265,7 @@ impl Display for Event {
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::ContractRuntime(event) => write!(f, "contract runtime: {:?}", event),
             Event::LinearChain(event) => write!(f, "linear-chain event {}", event),
-            Event::ProtoBlockValidator(event) => write!(f, "block validator: {}", event),
+            Event::BlockValidator(event) => write!(f, "block validator: {}", event),
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
@@ -271,7 +273,9 @@ impl Display for Event {
             Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
-            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
+            Event::BlockValidatorRequest(req) => {
+                write!(f, "block validator request: {}", req)
+            }
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
@@ -292,6 +296,9 @@ impl Display for Event {
             Event::LinearChainAnnouncement(ann) => write!(f, "linear chain announcement: {}", ann),
             Event::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
+            }
+            Event::BlocklistAnnouncement(ann) => {
+                write!(f, "blocklist announcement: {}", ann)
             }
         }
     }
@@ -343,8 +350,8 @@ pub struct Reactor {
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
     block_proposer: BlockProposer,
-    proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
-    linear_chain: LinearChain<NodeId>,
+    block_validator: BlockValidator<NodeId>,
+    linear_chain: LinearChainComponent<NodeId>,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -408,13 +415,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             true,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             true,
         )?;
 
@@ -422,15 +428,12 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let rpc_server = RpcServer::new(
-            config.rpc_server.clone(),
-            effect_builder,
-            protocol_version.clone(),
-        )?;
+        let rpc_server =
+            RpcServer::new(config.rpc_server.clone(), effect_builder, *protocol_version)?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
-            protocol_version.clone(),
+            *protocol_version,
         )?;
 
         let deploy_acceptor =
@@ -450,6 +453,7 @@ impl reactor::Reactor for Reactor {
                 .map(|block| block.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
+            config.block_proposer,
         )?;
 
         let initial_era = latest_block.as_ref().map_or_else(
@@ -481,18 +485,12 @@ impl reactor::Reactor for Reactor {
         );
         contract_runtime.set_parent_map_from_block(latest_block);
 
-        let proto_block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
-        let linear_chain = linear_chain::LinearChain::new(
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
+        let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
-            protocol_version.clone(),
-            chainspec_loader.initial_state_root_hash(),
+            *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id(),
         )?;
 
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
@@ -522,7 +520,7 @@ impl reactor::Reactor for Reactor {
                 deploy_fetcher,
                 deploy_gossiper,
                 block_proposer,
-                proto_block_validator,
+                block_validator,
                 linear_chain,
                 memory_metrics,
                 event_queue_metrics,
@@ -600,9 +598,9 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::ProtoBlockValidator(event) => reactor::wrap_effects(
-                Event::ProtoBlockValidator,
-                self.proto_block_validator
+            Event::BlockValidator(event) => reactor::wrap_effects(
+                Event::BlockValidator,
+                self.block_validator
                     .handle_event(effect_builder, rng, event),
             ),
             Event::LinearChain(event) => reactor::wrap_effects(
@@ -633,10 +631,10 @@ impl reactor::Reactor for Reactor {
             Event::BlockProposerRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::BlockProposer(req.into()))
             }
-            Event::ProtoBlockValidatorRequest(req) => self.dispatch_event(
+            Event::BlockValidatorRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::ProtoBlockValidator(block_validator::Event::from(req)),
+                Event::BlockValidator(block_validator::Event::from(req)),
             ),
             Event::MetricsRequest(req) => reactor::wrap_effects(
                 Event::MetricsRequest,
@@ -951,43 +949,31 @@ impl reactor::Reactor for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
-            Event::ConsensusAnnouncement(consensus_announcement) => {
-                match consensus_announcement {
-                    ConsensusAnnouncement::Finalized(block) => {
-                        let reactor_event =
-                            Event::BlockProposer(block_proposer::Event::FinalizedProtoBlock {
-                                block: block.proto_block().clone(),
-                                height: block.height(),
-                            });
-                        self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                    ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(
-                            fs, false,
-                        )),
-                    ),
-                    ConsensusAnnouncement::Fault {
-                        era_id,
-                        public_key,
-                        timestamp,
-                    } => {
-                        let reactor_event =
-                            Event::EventStreamServer(event_stream_server::Event::Fault {
-                                era_id,
-                                public_key: *public_key,
-                                timestamp,
-                            });
-                        self.dispatch_event(effect_builder, rng, reactor_event)
-                    }
-                    ConsensusAnnouncement::DisconnectFromPeer(peer) => {
-                        // TODO: handle the announcement and actually disconnect
-                        warn!(%peer, "peer deemed problematic, would disconnect");
-                        Effects::new()
-                    }
+            Event::ConsensusAnnouncement(consensus_announcement) => match consensus_announcement {
+                ConsensusAnnouncement::Finalized(block) => {
+                    let reactor_event =
+                        Event::BlockProposer(block_proposer::Event::FinalizedBlock(block));
+                    self.dispatch_event(effect_builder, rng, reactor_event)
                 }
-            }
+                ConsensusAnnouncement::CreatedFinalitySignature(fs) => self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    Event::LinearChain(linear_chain::Event::FinalitySignatureReceived(fs, false)),
+                ),
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => {
+                    let reactor_event =
+                        Event::EventStreamServer(event_stream_server::Event::Fault {
+                            era_id,
+                            public_key: *public_key,
+                            timestamp,
+                        });
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+            },
             Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::LinearChainBlock(
                 linear_chain_block,
             )) => {
@@ -1039,11 +1025,13 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let reactor_event =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-                let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let reactor_event_consensus = Event::Consensus(consensus::Event::BlockAdded(
+                    Box::new(block.header().clone()),
+                ));
+                let reactor_event_es =
+                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
@@ -1064,6 +1052,9 @@ impl reactor::Reactor for Reactor {
                 ));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
+            }
+            Event::BlocklistAnnouncement(ann) => {
+                self.dispatch_event(effect_builder, rng, Event::SmallNetwork(ann.into()))
             }
         }
     }

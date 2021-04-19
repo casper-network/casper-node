@@ -9,12 +9,13 @@ use derive_more::From;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
-use semver::Version;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 use tracing::debug;
+
+use casper_types::ProtocolVersion;
 
 use super::*;
 use crate::{
@@ -181,13 +182,14 @@ impl reactor::Reactor for Reactor {
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(&storage_withdir, None, Version::new(1, 0, 0)).unwrap();
+        let storage =
+            Storage::new(&storage_withdir, None, ProtocolVersion::from_parts(1, 0, 0)).unwrap();
 
         let contract_runtime_config = contract_runtime::Config::default();
         let contract_runtime = ContractRuntime::new(
             Digest::random(rng),
             None,
-            Version::new(1, 0, 0),
+            ProtocolVersion::from_parts(1, 0, 0),
             storage_withdir,
             &contract_runtime_config,
             &registry,
