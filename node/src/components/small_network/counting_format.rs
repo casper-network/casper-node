@@ -16,9 +16,10 @@ use bytes::{Bytes, BytesMut};
 use hex_fmt::HexFmt;
 use openssl::ssl::SslRef;
 use pin_project::pin_project;
+use rand::RngCore;
 use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
-use tracing::{error, trace};
+use tracing::{error, trace, warn};
 
 use super::{tls::KeyFingerprint, Message, Payload};
 #[cfg(test)]
@@ -168,6 +169,11 @@ pub(super) struct TlsRandomData {
     combined_random: [u8; 12],
 }
 
+/// Zero-randomness.
+///
+/// Used to check random data.
+const ZERO_RANDOMNESS: [u8; 12] = [0; 12];
+
 impl TlsRandomData {
     /// Collects random data from an existing SSL collection.
     ///
@@ -186,7 +192,19 @@ impl TlsRandomData {
         let mut client_random = [0; 12];
 
         ssl.server_random(&mut server_random);
+
+        if server_random == ZERO_RANDOMNESS {
+            warn!("TLS server random is all zeros");
+        }
+
         ssl.client_random(&mut client_random);
+
+        if server_random == ZERO_RANDOMNESS {
+            warn!("TLS client random is all zeros");
+        }
+
+        // Combine using XOR.
+        utils::xor(&mut server_random, &client_random);
 
         Self {
             combined_random: server_random,
