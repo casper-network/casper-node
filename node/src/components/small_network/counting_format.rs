@@ -145,7 +145,7 @@ where
         trace!(target: "net_in",
             msg_id = %trace_id,
             msg_size,
-            msg_kind = %msg_kind, "sending");
+            msg_kind = %msg_kind, "received");
 
         Ok(deserialized)
     }
