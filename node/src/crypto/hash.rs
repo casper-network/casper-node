@@ -27,6 +27,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use super::Error;
 #[cfg(test)]
 use crate::testing::TestRng;
+use std::collections::BTreeMap;
 
 /// The hash digest; a wrapped `u8` array.
 #[derive(
@@ -170,6 +171,86 @@ impl From<Blake2bHash> for Digest {
         let bytes = blake2bhash.value();
         Digest::from(bytes)
     }
+}
+
+/// Hashes a pair of [Digest]s.
+pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
+    let mut to_hash = [0; Digest::LENGTH * 2];
+    to_hash[..Digest::LENGTH].copy_from_slice(&(hash1.to_array())[..]);
+    to_hash[Digest::LENGTH..].copy_from_slice(&(hash2.to_array())[..]);
+    hash(&to_hash)
+}
+
+/// Hash a [Vec<Digest>] into a single [Digest] by constructing a [Merkle tree][1].
+/// Reduces pairs of elements in the [Vec<Digest>] by repeatedly calling [hash_pair].
+/// This hash procedure is suited to hashing [BTree]s.
+///
+/// The pattern of hashing is as follows.  It is akin to [graph reduction][2]:
+///
+/// ```text
+/// a b c d e f
+/// |/  |/  |/
+/// g   h   i
+/// | /   /
+/// |/   /
+/// j   k
+/// | /
+/// |/
+/// l
+/// ```
+///
+/// Returns the empty [Digest] when the input is empty.
+///
+/// [1]: https://en.wikipedia.org/wiki/Merkle_tree
+/// [2]: https://en.wikipedia.org/wiki/Graph_reduction
+pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
+    if vec.is_empty() {
+        return hash(&[]);
+    };
+    let mut vec = vec;
+    let mut k = vec.len();
+    while k != 1 {
+        let j = k / 2 + k % 2;
+        for i in 0..j {
+            if (2 * i + 1) > k {
+                vec[i] = vec[2 * i];
+            } else {
+                vec[i] = hash_pair(&vec[2 * i], &vec[2 * i + 1]);
+            }
+        }
+        k = j;
+    }
+    vec[0]
+}
+
+/// Hash a [BTreeMap]
+pub fn hash_btree_map<K, V>(btree_map: &BTreeMap<K, V>) -> Result<Digest, bytesrepr::Error>
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    let mut kv_hashes: Vec<Digest> = Vec::with_capacity(btree_map.len());
+    for (key, value) in btree_map.iter() {
+        kv_hashes.push(hash_pair(&hash(key.to_bytes()?), &hash(value.to_bytes()?)))
+    }
+    Ok(hash_vec_merkle_tree(kv_hashes))
+}
+
+/// Hash a `&[Digest]` using a using a [right fold][1].
+///
+/// This pattern of hashing is as follows:
+///
+/// ```text
+/// hash_pair(a, &hash_pair(b, &hash_pair(c, &hash(&[]))))
+/// ```
+/// Unlike Merkle trees, this is suited to hashing heterogeneous lists we may wish
+/// to extend in the future (ie, hashes of data structures that may undergo revision).
+///
+/// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
+pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
+    slice
+        .iter()
+        .rfold(hash(&[]), |prev, next| hash_pair(next, &prev))
 }
 
 #[cfg(test)]

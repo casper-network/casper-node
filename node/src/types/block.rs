@@ -608,6 +608,18 @@ impl EraEnd {
         }
     }
 
+    pub fn hash(&self) -> Digest {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let EraEnd {
+            next_era_validator_weights,
+            era_report,
+        } = self;
+        let hashed_next_era_validator_weights = hash::hash_btree_map(next_era_validator_weights)
+            .expect("Could not hash next era validator weights");
+        let hashed_era_report: Digest = era_report.hash();
+        hash::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
+    }
+
     pub fn era_report(&self) -> &EraReport {
         &self.era_report
     }
@@ -747,20 +759,59 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(&self)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(hash::hash(&serialized_header))
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let BlockHeader {
+            parent_hash,
+            era_id,
+            body_hash,
+            state_root_hash,
+            era_end,
+            height,
+            timestamp,
+            protocol_version,
+            random_bit,
+            accumulated_seed,
+        } = self;
+
+        let hashed_era_end = match era_end {
+            None => hash::hash(&[]),
+            Some(era_end) => era_end.hash(),
+        };
+
+        let hashed_era_id = hash::hash(era_id.to_bytes().expect("Could not serialize era_id"));
+        let hashed_height = hash::hash(height.to_bytes().expect("Could not serialize height"));
+        let hashed_timestamp =
+            hash::hash(timestamp.to_bytes().expect("Could not serialize timestamp"));
+        let hashed_protocol_version = hash::hash(
+            protocol_version
+                .to_bytes()
+                .expect("Could not serialize protocol version"),
+        );
+        let hashed_random_bit = hash::hash(
+            random_bit
+                .to_bytes()
+                .expect("Could not serialize protocol version"),
+        );
+
+        hash::hash_slice_rfold(&[
+            parent_hash.0,
+            hashed_era_id,
+            *body_hash,
+            *state_root_hash,
+            hashed_era_end,
+            hashed_height,
+            hashed_timestamp,
+            hashed_protocol_version,
+            hashed_random_bit,
+            *accumulated_seed,
+        ])
+        .into()
     }
 
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.era_id().is_genesis() && self.height() == 0
-    }
-
-    // Serialize the block header.
-    fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.to_bytes()
     }
 }
 
@@ -892,39 +943,34 @@ impl BlockBody {
     }
 
     /// Computes the body hash by hashing a Merkle tree of the form:
+    ///
+    /// ```text
     ///                   body_hash
     ///                   /      \__________________
     /// hash(deploy_hashes)      /                  \_____________
     ///                   hash(transfer_hashes)     /             \
-    ///                                         hash(proposer)   hash("")
+    ///                                         hash(proposer)   hash(&[])
+    /// ```
     pub(crate) fn hash(&self) -> Digest {
-        let serialized_deploys = self
-            .deploy_hashes
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize deploy hashes: {}", error));
-        let serialized_transfers = self
-            .transfer_hashes
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize transfer hashes: {}", error));
-        let serialized_proposer = self
-            .proposer
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize proposer: {}", error));
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let BlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        } = self;
 
-        let hashed_deploys = hash::hash(&serialized_deploys).to_array();
-        let hashed_transfers = hash::hash(&serialized_transfers).to_array();
-        let hashed_proposer = hash::hash(&serialized_proposer).to_array();
-        let hashed_empty = hash::hash(&[]).to_array();
+        let hashed_deploy_hashes =
+            hash::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Into::into).collect());
+        let hashed_transfer_hashes =
+            hash::hash_vec_merkle_tree(transfer_hashes.iter().cloned().map(Into::into).collect());
+        let hashed_proposer =
+            hash::hash(&proposer.to_bytes().expect("Could not serialize proposer"));
 
-        [hashed_deploys, hashed_transfers, hashed_proposer][..]
-            .iter()
-            .rfold(hashed_empty, |prev, next| {
-                let mut to_hash = [0; Digest::LENGTH * 2];
-                to_hash[..Digest::LENGTH].copy_from_slice(&next[..]);
-                to_hash[Digest::LENGTH..].copy_from_slice(&prev[..]);
-                hash::hash(&to_hash).to_array()
-            })
-            .into()
+        hash::hash_slice_rfold(&[
+            hashed_deploy_hashes,
+            hashed_transfer_hashes,
+            hashed_proposer,
+        ])
     }
 }
 
