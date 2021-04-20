@@ -92,9 +92,6 @@ impl LinearChain {
     // were waiting for that block.
     fn new_block(&mut self, block: &Block) -> Vec<Signature> {
         let signatures = self.collect_pending_finality_signatures(block.hash());
-        if signatures.is_empty() {
-            return vec![];
-        }
         let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
         for sig in signatures.iter() {
             block_signatures.insert_proof(sig.public_key(), sig.signature());
@@ -267,6 +264,8 @@ impl LinearChain {
         match self.get_signatures(&block_hash) {
             // Not found in the cache, look in the storage.
             None => vec![Outcome::LoadSignatures(fs)],
+            // We know about the block but we haven't seen any signatures for it yet.
+            Some(signatures) if signatures.proofs.is_empty() => vec![Outcome::LoadSignatures(fs)],
             Some(signatures) => self.handle_cached_signatures(Some(Box::new(signatures)), fs),
         }
     }
