@@ -230,9 +230,8 @@ impl BlockProposerReady {
         match event {
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
-                    debug!(
-                        request_next_finalized = %request.next_finalized,
-                        self_next_finalized = %self.sets.next_finalized,
+                    info!(
+                        %request.next_finalized, %self.sets.next_finalized,
                         "received request before finalization announcement"
                     );
                     self.request_queue
@@ -277,7 +276,7 @@ impl BlockProposerReady {
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {
-                    debug!(
+                    info!(
                         %height,
                         next_finalized = %self.sets.next_finalized,
                         "received finalized blocks out of order; queueing"
