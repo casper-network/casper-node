@@ -95,7 +95,6 @@ fn create_test_proposer(deploy_delay: TimeDiff) -> BlockProposerReady {
     BlockProposerReady {
         sets: Default::default(),
         deploy_config: Default::default(),
-        state_key: b"block-proposer-test".to_vec(),
         request_queue: Default::default(),
         unhandled_finalized: Default::default(),
         local_config: Config { deploy_delay },

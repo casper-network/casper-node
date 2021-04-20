@@ -37,7 +37,7 @@ use crate::{
     },
     NodeRng,
 };
-pub(crate) use deploy_sets::BlockProposerDeploySets;
+use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
 
@@ -80,8 +80,6 @@ enum BlockProposerState {
     Initializing {
         /// Events cached pending transition to `Ready` state when they can be handled.
         pending: Vec<Event>,
-        /// The key under which this component's state is cached in storage.
-        state_key: Vec<u8>,
         /// The deploy config from the current chainspec.
         deploy_config: DeployConfig,
         /// The configuration, containing local settings for deploy selection
@@ -104,8 +102,6 @@ impl BlockProposer {
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
     {
         debug!(%next_finalized_block, "creating block proposer");
-        // load the state from storage or use a fresh instance if loading fails.
-        let state_key = deploy_sets::create_storage_key(chainspec);
         let effects = effect_builder
             .get_finalized_deploys(chainspec.deploy_config.max_ttl)
             .event(move |finalized_deploys| Event::Loaded {
@@ -116,7 +112,6 @@ impl BlockProposer {
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
                 pending: Vec::new(),
-                state_key,
                 deploy_config: chainspec.deploy_config,
                 local_config,
             },
@@ -149,7 +144,6 @@ where
             (
                 BlockProposerState::Initializing {
                     ref mut pending,
-                    state_key,
                     deploy_config,
                     local_config,
                 },
@@ -165,7 +159,6 @@ where
                     ),
                     unhandled_finalized: Default::default(),
                     deploy_config: *deploy_config,
-                    state_key: state_key.clone(),
                     request_queue: Default::default(),
                     local_config: local_config.clone(),
                 };
@@ -219,8 +212,6 @@ struct BlockProposerReady {
     unhandled_finalized: HashSet<DeployHash>,
     /// We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
-    /// Key for storing the block proposer state.
-    state_key: Vec<u8>,
     /// The queue of requests awaiting being handled.
     request_queue: RequestQueue,
     /// The block proposer configuration, containing local settings for selecting deploys.
