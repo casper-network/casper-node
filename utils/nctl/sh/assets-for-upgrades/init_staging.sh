@@ -55,33 +55,33 @@ function _set_assets()
         # Set commit.
         git checkout "$SCENARIO_COMMIT_HASH" > /dev/null 2>&1
 
-        # # Compile binaries.
-        # if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        #     cargo build --package casper-node
-        #     cargo build --package casper-client
-        # else
-        #     cargo build --release --package casper-node
-        #     cargo build --release --package casper-client
-        # fi
-        # make build-contract-rs/add-bid
-        # make build-contract-rs/delegate
-        # make build-contract-rs/transfer-to-account-u512
-        # make build-contract-rs/transfer-to-account-u512-stored
-        # make build-contract-rs/undelegate
-        # make build-contract-rs/withdraw-bid
+        # Compile binaries.
+        if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+            cargo build --package casper-node
+            cargo build --package casper-client
+        else
+            cargo build --release --package casper-node
+            cargo build --release --package casper-client
+        fi
+        make build-contract-rs/add-bid
+        make build-contract-rs/delegate
+        make build-contract-rs/transfer-to-account-u512
+        make build-contract-rs/transfer-to-account-u512-stored
+        make build-contract-rs/undelegate
+        make build-contract-rs/withdraw-bid
 
-        # # Copy binaries -> staging.
-        # if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        #     cp "./target/debug/casper-node" "$PATH_TO_SCENARIO_VERSION/bin"
-        #     cp "./target/debug/casper-client" "$PATH_TO_SCENARIO_VERSION/bin-client"
-        # else
-        #     cp "./target/release/casper-node" "$PATH_TO_SCENARIO_VERSION/bin"
-        #     cp "./target/release/casper-client" "$PATH_TO_SCENARIO_VERSION/bin-client"
-        # fi
-        # for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
-        # do
-        #     cp "./target/wasm32-unknown-unknown/release/$CONTRACT" "$PATH_TO_SCENARIO_VERSION/bin-client"
-        # done 
+        # Copy binaries -> staging.
+        if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+            cp "./target/debug/casper-node" "$PATH_TO_SCENARIO_VERSION/bin"
+            cp "./target/debug/casper-client" "$PATH_TO_SCENARIO_VERSION/bin-client"
+        else
+            cp "./target/release/casper-node" "$PATH_TO_SCENARIO_VERSION/bin"
+            cp "./target/release/casper-client" "$PATH_TO_SCENARIO_VERSION/bin-client"
+        fi
+        for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
+        do
+            cp "./target/wasm32-unknown-unknown/release/$CONTRACT" "$PATH_TO_SCENARIO_VERSION/bin-client"
+        done 
 
         # Copy chainspec -> staging.
         cp "./resources/local/chainspec.toml.in" "$PATH_TO_SCENARIO_VERSION/chainspec"
