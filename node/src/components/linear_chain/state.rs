@@ -637,4 +637,48 @@ mod tests {
         let outcomes = lc.handle_finality_signature(Box::new(invalid_sig), false);
         assert!(outcomes.is_empty())
     }
+
+    #[test]
+    fn new_block_then_own_sig() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let auction_delay = 1;
+        let unbonding_delay = 2;
+        let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        // Set the latest known block so that we can trigger the following checks.
+        let block = Block::random_with_specifics(&mut rng, EraId::new(3), 10, false);
+        let block_hash = *block.hash();
+        let block_era = block.header().era_id();
+        let put_block_outcomes = lc.handle_new_block(Box::new(block.clone()), HashMap::new());
+        let expected_outcomes = {
+            let mut tmp = vec![];
+            tmp.push(Outcome::StoreBlock(Box::new(block)));
+            tmp.push(Outcome::StoreExecutionResults(block_hash, HashMap::new()));
+            tmp
+        };
+        // Verify that all outcomes are expected.
+        assert_equal(expected_outcomes, put_block_outcomes);
+        let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
+        let outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
+        assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
+        let cached_sigs_outcomes = lc.handle_cached_signatures(None, Box::new(valid_sig.clone()));
+        assert!(matches!(
+            &*cached_sigs_outcomes,
+            [Outcome::VerifyIfBonded { .. }]
+        ));
+        let outcomes = lc.handle_is_bonded(None, Box::new(valid_sig.clone()), true);
+        assert!(!outcomes.is_empty(), "{:?} should not be empty", outcomes);
+        let expected_outcomes = {
+            let mut tmp = vec![];
+            let mut block_signatures = BlockSignatures::new(block_hash, block_era);
+            block_signatures.insert_proof(valid_sig.public_key.clone(), valid_sig.signature);
+            tmp.push(Outcome::StoreBlockSignatures(block_signatures));
+            tmp.push(Outcome::Gossip(Box::new(valid_sig.clone())));
+            tmp.push(Outcome::AnnounceSignature(Box::new(valid_sig)));
+            tmp
+        };
+        // Verify that all outcomes are expected.
+        assert_equal(expected_outcomes, outcomes);
+    }
 }
