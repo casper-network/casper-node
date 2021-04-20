@@ -1,0 +1,7 @@
+# Map: version <-> commit hash.
+export NCTL_UPGRADE_STAGING_TARGETS=(
+    "1_0_0:YOUR_COMMIT_HASH_1"
+    "1_0_1:YOUR_COMMIT_HASH_2"
+    "1_1_0:YOUR_COMMIT_HASH_3"
+    "2_0_0:YOUR_COMMIT_HASH_4"
+)
