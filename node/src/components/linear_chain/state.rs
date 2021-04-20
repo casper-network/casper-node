@@ -98,6 +98,9 @@ impl LinearChain {
         }
         // Cache the signatures as we expect more finality signatures for the new block to
         // arrive soon.
+        // If `signatures` was empty, it will serve as a flag that the `block` is already
+        // finalized/known and any incoming signatures should be accepted (given they're
+        // from a bonded validator and valid).
         self.cache_signatures(block_signatures);
         signatures
     }
