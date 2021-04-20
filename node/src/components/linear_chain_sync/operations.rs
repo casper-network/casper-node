@@ -90,8 +90,6 @@ where
     }
 }
 
-// fn verify_finality_signatures
-
 /// Fetch a block header from the network by height.
 async fn fetch_block_header_by_height<REv, I>(
     effect_builder: EffectBuilder<REv>,
