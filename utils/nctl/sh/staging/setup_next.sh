@@ -1,0 +1,1 @@
+echo "TODO: copy across staged assets for next protocol upgrade"
