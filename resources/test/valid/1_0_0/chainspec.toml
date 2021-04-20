@@ -2,6 +2,7 @@
 version = '1.0.0'
 hard_reset = false
 activation_point = 1
+last_emergency_restart = 99
 
 [network]
 name = 'test-chain'
@@ -134,6 +135,7 @@ read_base_round_reward = 10_000
 [system_costs.handle_payment_costs]
 get_payment_purse = 10_000
 set_refund_purse = 10_000
+get_refund_purse = 10_000
 finalize_payment = 10_000
 
 [system_costs.standard_payment_costs]

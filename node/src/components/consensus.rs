@@ -42,11 +42,11 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, Timestamp},
     NodeRng,
 };
 
-use cl_context::ClContext;
+pub(crate) use cl_context::ClContext;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::EraSupervisor;
@@ -108,7 +108,7 @@ pub enum Event<I> {
     #[from]
     ConsensusRequest(ConsensusRequest),
     /// A new block has been added to the linear chain.
-    BlockAdded(Box<Block>),
+    BlockAdded(Box<BlockHeader>),
     /// The proto-block has been validated.
     ResolveValidity(ResolveValidity<I>),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -120,8 +120,8 @@ pub enum Event<I> {
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block.
     CreateNewEra {
-        /// The header of the switch block
-        block: Box<Block>,
+        /// The header of the switch block, i.e. the last block before the new era.
+        switch_block_header: Box<BlockHeader>,
         /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
         booking_block_hash: Result<BlockHash, EraId>,
     },
@@ -197,10 +197,10 @@ impl<I: Debug> Display for Event<I> {
                 "A request for consensus component hash been receieved: {:?}",
                 request
             ),
-            Event::BlockAdded(block) => write!(
+            Event::BlockAdded(block_header) => write!(
                 f,
                 "A block has been added to the linear chain: {}",
-                block.hash()
+                block_header.hash(),
             ),
             Event::ResolveValidity(ResolveValidity {
                 era_id,
@@ -224,11 +224,11 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::CreateNewEra {
                 booking_block_hash,
-                block,
+                switch_block_header,
             } => write!(
                 f,
                 "New era should be created; booking block hash: {:?}, switch block: {:?}",
-                booking_block_hash, block
+                booking_block_hash, switch_block_header
             ),
             Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::GotUpgradeActivationPoint(activation_point) => {
@@ -247,7 +247,7 @@ pub trait ReactorEventT<I>:
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
-    + From<BlockValidationRequest<BlockPayload, I>>
+    + From<BlockValidationRequest<I>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
@@ -263,7 +263,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
-        + From<BlockValidationRequest<BlockPayload, I>>
+        + From<BlockValidationRequest<I>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
@@ -298,7 +298,7 @@ where
             Event::NewBlockPayload(new_block_payload) => {
                 handling_es.handle_new_block_payload(new_block_payload)
             }
-            Event::BlockAdded(block) => handling_es.handle_block_added(*block),
+            Event::BlockAdded(block_header) => handling_es.handle_block_added(*block_header),
             Event::ResolveValidity(resolve_validity) => {
                 handling_es.resolve_validity(resolve_validity)
             }
@@ -308,7 +308,7 @@ where
                 delay,
             } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
-                block,
+                switch_block_header,
                 booking_block_hash,
             } => {
                 let booking_block_hash = match booking_block_hash {
@@ -317,7 +317,7 @@ where
                         error!(
                             "could not find the booking block in era {}, for era {}",
                             era_id,
-                            block.header().era_id().successor()
+                            switch_block_header.era_id().successor()
                         );
                         return fatal!(
                             handling_es.effect_builder,
@@ -326,7 +326,7 @@ where
                         .ignore();
                     }
                 };
-                handling_es.handle_create_new_era(*block, booking_block_hash)
+                handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
             }
             Event::InitializeEras {
                 key_blocks,

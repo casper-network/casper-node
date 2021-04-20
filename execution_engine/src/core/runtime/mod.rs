@@ -99,7 +99,6 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
-        Key::EraValidators(_) => None,
     }
 }
 
@@ -1522,6 +1521,12 @@ where
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
+            handle_payment::METHOD_GET_REFUND_PURSE => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.get_refund_purse)?;
+
+                let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
+                CLValue::from_t(maybe_purse).map_err(Self::reverter)
+            })(),
             handle_payment::METHOD_FINALIZE_PAYMENT => (|| {
                 runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
 
@@ -2490,11 +2495,6 @@ where
         self.context
             .metered_write_gs(key, cl_value)
             .map_err(Into::into)
-    }
-
-    /// Deletes value under `key` in global state.
-    fn delete(&mut self, key: &Key) -> Result<(), Trap> {
-        self.context.delete_gs(key).map_err(Into::into)
     }
 
     /// Records a transfer.

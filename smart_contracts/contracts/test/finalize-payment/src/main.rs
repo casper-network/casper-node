@@ -5,10 +5,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{
-    account::AccountHash, runtime_args, system::handle_payment, ContractHash, RuntimeArgs, URef,
-    U512,
-};
+use casper_types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs, URef, U512};
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_AMOUNT_SPENT: &str = "amount_spent";
@@ -19,7 +16,7 @@ pub const ARG_ACCOUNT_KEY: &str = "account";
 fn set_refund_purse(contract_hash: ContractHash, purse: URef) {
     runtime::call_contract(
         contract_hash,
-        handle_payment::METHOD_SET_REFUND_PURSE,
+        "set_refund_purse",
         runtime_args! {
             ARG_PURSE => purse,
         },
@@ -27,11 +24,7 @@ fn set_refund_purse(contract_hash: ContractHash, purse: URef) {
 }
 
 fn get_payment_purse(contract_hash: ContractHash) -> URef {
-    runtime::call_contract(
-        contract_hash,
-        handle_payment::METHOD_GET_PAYMENT_PURSE,
-        runtime_args! {},
-    )
+    runtime::call_contract(contract_hash, "get_payment_purse", runtime_args! {})
 }
 
 fn submit_payment(contract_hash: ContractHash, amount: U512) {
@@ -43,7 +36,7 @@ fn submit_payment(contract_hash: ContractHash, amount: U512) {
 fn finalize_payment(contract_hash: ContractHash, amount_spent: U512, account: AccountHash) {
     runtime::call_contract(
         contract_hash,
-        handle_payment::METHOD_FINALIZE_PAYMENT,
+        "finalize_payment",
         runtime_args! {
             ARG_AMOUNT => amount_spent,
             ARG_ACCOUNT_KEY => account,

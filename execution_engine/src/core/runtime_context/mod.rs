@@ -260,11 +260,6 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
-            Key::EraValidators(_) => {
-                self.named_keys.remove(name);
-                // Users cannot remove era validators info from global state
-                Ok(())
-            }
         }
     }
 
@@ -435,18 +430,6 @@ where
         })
     }
 
-    pub fn delete_gs(&mut self, key: &Key) -> Result<(), Error> {
-        self.validate_writeable(key)?;
-        self.validate_key(key)?;
-        self.delete_gs_direct(key);
-        Ok(())
-    }
-
-    /// DO NOT EXPOSE THIS VIA THE FFI
-    pub fn delete_gs_direct(&mut self, key: &Key) {
-        self.tracking_copy.borrow_mut().delete(key)
-    }
-
     pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
         self.tracking_copy
             .borrow_mut()
@@ -601,7 +584,6 @@ where
             StoredValue::EraInfo(_) => Ok(()),
             StoredValue::Bid(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
-            StoredValue::EraValidators(_) => Ok(()),
         }
     }
 
@@ -691,7 +673,6 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
-            Key::EraValidators(_) => true,
         }
     }
 
@@ -706,7 +687,6 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::EraValidators(_) => false,
         }
     }
 
@@ -721,7 +701,6 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::EraValidators(_) => false,
         }
     }
 

@@ -50,8 +50,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, Block, BlockHash, BlockHeader, BlockPayload, DeployHash,
-        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock,
+        TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -187,7 +187,7 @@ where
             info!(?era_ids, "collecting key blocks and booking blocks");
 
             let key_blocks = effect_builder
-                .collect_key_blocks(era_ids.iter().cloned())
+                .collect_key_block_headers(era_ids.iter().cloned())
                 .await
                 .expect("should have all the key blocks in storage");
 
@@ -563,17 +563,17 @@ where
         valid_booking_block_era_id(era_id, auction_delay, last_activation_point)
     {
         match effect_builder
-            .get_switch_block_at_era_id_from_storage(booking_block_era_id)
+            .get_switch_block_header_at_era_id_from_storage(booking_block_era_id)
             .await
         {
-            Some(block) => *block.hash(),
+            Some(block_header) => block_header.hash(),
             None => {
                 error!(
                     ?era_id,
                     ?booking_block_era_id,
-                    "booking block for era must exist"
+                    "booking block header for era must exist"
                 );
-                panic!("booking block not found in storage");
+                panic!("booking block header not found in storage");
             }
         }
     } else {
@@ -711,16 +711,15 @@ where
         })
     }
 
-    pub(super) fn handle_block_added(&mut self, block: Block) -> Effects<Event<I>> {
+    pub(super) fn handle_block_added(&mut self, block_header: BlockHeader) -> Effects<Event<I>> {
         let our_pk = self.era_supervisor.public_signing_key.clone();
         let our_sk = self.era_supervisor.secret_signing_key.clone();
-        let era_id = block.header().era_id();
-        self.era_supervisor.executed_block(block.header());
+        let era_id = block_header.era_id();
+        self.era_supervisor.executed_block(&block_header);
         let mut effects = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
-            let block_hash = block.hash();
             self.effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    *block_hash,
+                    block_header.hash(),
                     era_id,
                     &our_sk,
                     our_pk,
@@ -733,7 +732,7 @@ where
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
         }
-        if block.header().is_switch_block() && !self.should_upgrade_after(&era_id) {
+        if block_header.is_switch_block() && !self.should_upgrade_after(&era_id) {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
@@ -743,8 +742,8 @@ where
                 self.era_supervisor.protocol_config.auction_delay,
                 self.era_supervisor.protocol_config.last_activation_point,
             )
-            .event(|booking_block_hash| Event::CreateNewEra {
-                block: Box::new(block),
+            .event(move |booking_block_hash| Event::CreateNewEra {
+                switch_block_header: Box::new(block_header),
                 booking_block_hash: Ok(booking_block_hash),
             });
             effects.extend(effect);
@@ -808,12 +807,12 @@ where
     /// Creates a new era.
     pub(super) fn handle_create_new_era(
         &mut self,
-        switch_block: Block,
+        switch_block_header: BlockHeader,
         booking_block_hash: BlockHash,
     ) -> Effects<Event<I>> {
         let (era_end, next_era_validators_weights) = match (
-            switch_block.header().era_end(),
-            switch_block.header().next_era_validator_weights(),
+            switch_block_header.era_end(),
+            switch_block_header.next_era_validator_weights(),
         ) {
             (Some(era_end), Some(next_era_validator_weights)) => {
                 (era_end, next_era_validator_weights)
@@ -822,17 +821,17 @@ where
                 return fatal!(
                     self.effect_builder,
                     "attempted to create a new era with a non-switch block: {}",
-                    switch_block
+                    switch_block_header
                 )
                 .ignore()
             }
         };
         let newly_slashed = era_end.equivocators.clone();
-        let era_id = switch_block.header().era_id().successor();
+        let era_id = switch_block_header.era_id().successor();
         info!(era = era_id.value(), "era created");
         let seed = EraSupervisor::<I>::era_seed(
             booking_block_hash,
-            switch_block.header().accumulated_seed(),
+            switch_block_header.accumulated_seed(),
         );
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let slashed = self
@@ -850,8 +849,8 @@ where
             newly_slashed,
             slashed,
             seed,
-            switch_block.header().timestamp(),
-            switch_block.height() + 1,
+            switch_block_header.timestamp(),
+            switch_block_header.height() + 1,
         );
         outcomes.extend(
             self.era_supervisor.active_eras[&era_id]
@@ -1242,7 +1241,7 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event<I>
 where
-    REv: From<BlockValidationRequest<BlockPayload, I>> + From<StorageRequest>,
+    REv: From<BlockValidationRequest<I>> + From<StorageRequest>,
     I: Clone + Send + 'static,
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
@@ -1271,12 +1270,8 @@ where
     }
 
     let sender_for_validate_block: I = sender.clone();
-    let (valid, _) = effect_builder
-        .validate_block_payload(
-            sender_for_validate_block,
-            proposed_block.value().clone(),
-            proposed_block.context().timestamp(),
-        )
+    let valid = effect_builder
+        .validate_block(sender_for_validate_block, proposed_block.clone())
         .await;
 
     Event::ResolveValidity(ResolveValidity {
