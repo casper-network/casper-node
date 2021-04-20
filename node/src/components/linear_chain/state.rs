@@ -650,12 +650,10 @@ mod tests {
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
         let put_block_outcomes = lc.handle_new_block(Box::new(block.clone()), HashMap::new());
-        let expected_outcomes = {
-            let mut tmp = vec![];
-            tmp.push(Outcome::StoreBlock(Box::new(block)));
-            tmp.push(Outcome::StoreExecutionResults(block_hash, HashMap::new()));
-            tmp
-        };
+        let expected_outcomes = vec![
+            Outcome::StoreBlock(Box::new(block)),
+            Outcome::StoreExecutionResults(block_hash, HashMap::new()),
+        ];
         // Verify that all outcomes are expected.
         assert_equal(expected_outcomes, put_block_outcomes);
         let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
@@ -669,13 +667,13 @@ mod tests {
         let outcomes = lc.handle_is_bonded(None, Box::new(valid_sig.clone()), true);
         assert!(!outcomes.is_empty(), "{:?} should not be empty", outcomes);
         let expected_outcomes = {
-            let mut tmp = vec![];
             let mut block_signatures = BlockSignatures::new(block_hash, block_era);
             block_signatures.insert_proof(valid_sig.public_key.clone(), valid_sig.signature);
-            tmp.push(Outcome::StoreBlockSignatures(block_signatures));
-            tmp.push(Outcome::Gossip(Box::new(valid_sig.clone())));
-            tmp.push(Outcome::AnnounceSignature(Box::new(valid_sig)));
-            tmp
+            vec![
+                Outcome::StoreBlockSignatures(block_signatures),
+                Outcome::Gossip(Box::new(valid_sig.clone())),
+                Outcome::AnnounceSignature(Box::new(valid_sig)),
+            ]
         };
         // Verify that all outcomes are expected.
         assert_equal(expected_outcomes, outcomes);
