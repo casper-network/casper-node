@@ -25,7 +25,7 @@ use crate::{
 
 const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
-/// Get the currently connected peers from the networking component and shuffle them
+/// Gets the currently connected peers from the networking component and shuffles them.
 async fn get_and_shuffle_network_peers<REv, I>(effect_builder: EffectBuilder<REv>) -> Vec<I>
 where
     REv: From<NetworkInfoRequest<I>>,
