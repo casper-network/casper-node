@@ -390,7 +390,7 @@ impl<C: Context> Highway<C> {
         // set by other nodes.
 
         self.map_active_validator(
-            |av, state| av.handle_timer(timestamp, state, instance_id),
+            |av, state, validators| av.handle_timer(timestamp, state, instance_id, validators),
             timestamp,
         )
         .unwrap_or_else(|| {
@@ -424,7 +424,7 @@ impl<C: Context> Highway<C> {
 
         let timestamp = block_context.timestamp();
         self.map_active_validator(
-            |av, state| av.propose(value, block_context, state, instance_id),
+            |av, state, _| av.propose(value, block_context, state, instance_id),
             timestamp,
         )
         .unwrap_or_else(|| {
@@ -465,7 +465,7 @@ impl<C: Context> Highway<C> {
     fn on_new_unit(&mut self, uhash: &C::Hash, timestamp: Timestamp) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
-            |av, state| av.on_new_unit(uhash, timestamp, state, instance_id),
+            |av, state, _| av.on_new_unit(uhash, timestamp, state, instance_id),
             timestamp,
         )
         .unwrap_or_default()
@@ -501,9 +501,17 @@ impl<C: Context> Highway<C> {
     /// detected, it gets deactivated.
     fn map_active_validator<F>(&mut self, f: F, timestamp: Timestamp) -> Option<Vec<Effect<C>>>
     where
-        F: FnOnce(&mut ActiveValidator<C>, &State<C>) -> Vec<Effect<C>>,
+        F: FnOnce(
+            &mut ActiveValidator<C>,
+            &State<C>,
+            &Validators<C::ValidatorId>,
+        ) -> Vec<Effect<C>>,
     {
-        let effects = f(self.active_validator.as_mut()?, &self.state);
+        let effects = f(
+            self.active_validator.as_mut()?,
+            &self.state,
+            &self.validators,
+        );
         let mut result = vec![];
         for effect in &effects {
             match effect {
@@ -609,7 +617,7 @@ impl<C: Context> Highway<C> {
     /// protocol state
     fn add_own_last_unit(&mut self, now: Timestamp) -> Vec<Effect<C>> {
         self.map_active_validator(
-            |av, state| {
+            |av, state, _| {
                 if av.is_own_last_unit_panorama_sync(state) {
                     if let Some(own_last_unit) = av.take_own_last_unit() {
                         vec![Effect::NewVertex(ValidVertex(Vertex::Unit(own_last_unit)))]

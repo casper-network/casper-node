@@ -10,8 +10,9 @@ pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'stat
 impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
 
 /// A validator identifier.
-pub trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash + Send + DataSize {}
-impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize {}
+pub trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display {}
+impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display
+{}
 
 /// The consensus value type, e.g. a list of transactions.
 pub trait ConsensusValueT:

@@ -13,8 +13,8 @@ use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
     highway::{Ping, ValidVertex, Vertex, WireUnit},
-    state::{self, Panorama, State, Unit, Weight},
-    validators::ValidatorIndex,
+    state::{self, Observation, Panorama, State, Unit, Weight},
+    validators::{ValidatorIndex, Validators},
 };
 
 use crate::{
@@ -189,6 +189,7 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
+        validators: &Validators<C::ValidatorId>,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
             warn!("Creator knows it's faulty. Won't create a message.");
@@ -212,12 +213,7 @@ impl<C: Context> ActiveValidator<C> {
                 if let Some(witness_unit) =
                     self.new_unit(panorama, timestamp, None, state, instance_id)
                 {
-                    if self
-                        .latest_unit(state)
-                        .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
-                    {
-                        info!(round_id = %r_id, "sending witness in round with no proposal");
-                    }
+                    self.log_if_missing_proposal(&witness_unit, state, validators);
                     effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
                     return effects;
                 }
@@ -615,6 +611,40 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn next_round_length(&self) -> TimeDiff {
         state::round_len(self.next_round_exp)
     }
+
+    /// Logs a message if the witness unit is in a round without a proposal.
+    fn log_if_missing_proposal(
+        &self,
+        witness_swunit: &SignedWireUnit<C>,
+        state: &State<C>,
+        validators: &Validators<C::ValidatorId>,
+    ) {
+        let wunit = witness_swunit.wire_unit();
+        let r_id = wunit.round_id();
+        if let Some(prev_unit) = wunit.previous().map(|hash| state.unit(hash)) {
+            if prev_unit.round_id() == r_id {
+                // This is our second unit in this round, so we must have sent a confirmation,
+                // which means there was a proposal.
+                return;
+            }
+        }
+        let leader_index = state.leader(r_id);
+        let leader_id = validators.id(leader_index).expect("missing validator");
+        match wunit.panorama[leader_index] {
+            Observation::Faulty => trace!(
+                ?leader_index, %leader_id, round_id = %r_id,
+                "sending witness in round without proposal; the leader is faulty and cannot propose"
+            ),
+            Observation::Correct(hash) if state.unit(&hash).round_id() == r_id => error!(
+                ?leader_index, %leader_id, round_id = %r_id,
+                "sending witness in round with proposal, but failed to send confirmation",
+            ),
+            Observation::None | Observation::Correct(_) => info!(
+                ?leader_index, %leader_id, round_id = %r_id,
+                "sending witness in round without proposal; the leader missed their turn",
+            ),
+        }
+    }
 }
 
 pub(crate) fn read_last_unit<C, P>(path: P) -> io::Result<SignedWireUnit<C>>
@@ -695,6 +725,7 @@ mod tests {
         fd: FinalityDetector<TestContext>,
         active_validators: ValidatorMap<ActiveValidator<TestContext>>,
         timers: BTreeSet<(Timestamp, ValidatorIndex)>,
+        validators: Validators<<TestContext as Context>::ValidatorId>,
     }
 
     impl TestState {
@@ -705,6 +736,11 @@ mod tests {
             fd: FinalityDetector<TestContext>,
             validators: Vec<ValidatorIndex>,
         ) -> Self {
+            let validators: Validators<_> = validators
+                .into_iter()
+                .map(|vidx| vidx.0)
+                .zip(state.weights().iter().copied())
+                .collect();
             let mut timers = BTreeSet::new();
             let current_round_id = state::round_id(start_time, state.params().init_round_exp());
             let earliest_round_start = if start_time == current_round_id {
@@ -714,8 +750,8 @@ mod tests {
             };
             let target_ftt = state.total_weight() / 3;
             let active_validators = validators
-                .into_iter()
-                .map(|vidx| {
+                .enumerate_ids()
+                .map(|(vidx, _)| {
                     let secret = TestSecret(vidx.0);
                     let (av, effects) = ActiveValidator::new(
                         vidx,
@@ -763,6 +799,7 @@ mod tests {
                 fd,
                 active_validators,
                 timers,
+                validators,
             }
         }
 
@@ -777,7 +814,8 @@ mod tests {
             // Remove the timer from the queue if it has been scheduled.
             let _ = self.timers.remove(&(timestamp, vidx));
             let validator = &mut self.active_validators[vidx];
-            let effects = validator.handle_timer(timestamp, &self.state, self.instance_id);
+            let effects =
+                validator.handle_timer(timestamp, &self.state, self.instance_id, &self.validators);
             self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);
             effects
@@ -977,6 +1015,8 @@ mod tests {
     #[test]
     fn waits_until_synchronized() -> Result<(), AddUnitError<TestContext>> {
         let instance_id = TEST_INSTANCE_ID;
+        let validators: Validators<<TestContext as Context>::ValidatorId> =
+            iter::once((ALICE.0, Weight(3))).collect();
         let mut state = State::new_test(&[Weight(3)], 0);
         let a0 = {
             let a0 = add_unit!(state, ALICE, 0xB0; N)?;
@@ -1025,14 +1065,20 @@ mod tests {
 
         // Alice has to synchronize up until `a2` (including) before she starts proposing.
         for unit in vec![a0, a1, a2.clone()] {
-            next_proposal_timer =
-                assert_no_proposal(&mut alice, &state, instance_id, next_proposal_timer);
+            next_proposal_timer = assert_no_proposal(
+                &mut alice,
+                &state,
+                instance_id,
+                next_proposal_timer,
+                &validators,
+            );
             state.add_unit(unit)?;
         }
 
         // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a
         // new block.
-        let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id) {
+        let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id, &validators)
+        {
             [Eff::ScheduleTimer(_), Eff::RequestNewBlock(bctx)] => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
@@ -1054,16 +1100,17 @@ mod tests {
     }
 
     // Triggers new proposal by `validator` and verifies that it's empty – no block was proposed.
-    // Captuers the next witness timer and calls the `validator` with that to return the timer for
+    // Captures the next witness timer and calls the `validator` with that to return the timer for
     // the next proposal.
     fn assert_no_proposal(
         validator: &mut ActiveValidator<TestContext>,
         state: &State<TestContext>,
         instance_id: u64,
         proposal_timer: Timestamp,
+        validators: &Validators<<TestContext as Context>::ValidatorId>,
     ) -> Timestamp {
         let (witness_timestamp, bctx) =
-            match &*validator.handle_timer(proposal_timer, &state, instance_id) {
+            match &*validator.handle_timer(proposal_timer, &state, instance_id, validators) {
                 [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock(bctx)] => {
                     (*witness_timestamp, bctx.clone())
                 }
@@ -1077,7 +1124,7 @@ mod tests {
             effects
         );
 
-        unwrap_single(&validator.handle_timer(witness_timestamp, &state, instance_id))
+        unwrap_single(&validator.handle_timer(witness_timestamp, &state, instance_id, validators))
             .unwrap_timer()
     }
 }
