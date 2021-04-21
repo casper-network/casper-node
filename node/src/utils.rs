@@ -428,7 +428,7 @@ pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Dur
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::{Arc}, time::Duration};
+    use std::{sync::Arc, time::Duration};
 
     use super::{wait_for_arc_drop, xor};
 
@@ -470,13 +470,13 @@ mod tests {
 
         // Phase 1: waiting for the arc should fail, because there still is the background
         // reference.
-        assert!(! wait_for_arc_drop(arc, attempts, retry_delay).await);
+        assert!(!wait_for_arc_drop(arc, attempts, retry_delay).await);
 
         // We "restore" the arc from the background arc.
         let arc = arc_in_background.clone();
 
         // Add another "foreground" weak reference.
-        let weak =  Arc::downgrade(&arc);
+        let weak = Arc::downgrade(&arc);
 
         // Phase 2: Our background tasks drops its reference, now we should succeed.
         drop(arc_in_background);

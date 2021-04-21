@@ -104,6 +104,7 @@ pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
+
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
@@ -992,29 +993,7 @@ where
             }
 
             // Ensure there are no ongoing metrics updates.
-
-            let net_metrics = self.net_metrics;
-            let weak_metrics = Arc::downgrade(&net_metrics);
-            drop(net_metrics);
-
-            let mut attempt = 0;
-            loop {
-                let strong_count = weak_metrics.strong_count();
-
-                if strong_count == 0 {
-                    // The metrics have been dropped cleanly.
-                    break;
-                } else {
-                    // Metrics have not been dropped cleanly, wait for others to catch up.
-                    if attempt < MAX_METRICS_DROP_ATTEMPTS {
-                        attempt += 1;
-                        tokio::time::sleep(DROP_RETRY_DELAY).await;
-                        continue;
-                    }
-
-                    error!(max_attempst=MAX_METRICS_DROP_ATTEMPTS, "failed to clean up networking metrics");
-                }
-            }
+            utils::wait_for_arc_drop(self.net_metrics, MAX_METRICS_DROP_ATTEMPTS, DROP_RETRY_DELAY).await;
         }
         .boxed()
     }
