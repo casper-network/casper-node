@@ -173,6 +173,9 @@ impl From<Blake2bHash> for Digest {
     }
 }
 
+/// The sentinel value used for empty entries in Merkle proofs.
+pub const SENTINEL: Digest = Digest([0; 32]);
+
 /// Hashes a pair of [Digest]s.
 pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
     let mut to_hash = [0; Digest::LENGTH * 2];
@@ -205,7 +208,7 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
 /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
 pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
     if vec.is_empty() {
-        return hash(&[]);
+        return SENTINEL;
     };
     let mut vec = vec;
     let mut k = vec.len();
@@ -241,7 +244,7 @@ where
 /// This pattern of hashing is as follows:
 ///
 /// ```text
-/// hash_pair(a, &hash_pair(b, &hash_pair(c, &hash(&[]))))
+/// hash_pair(a, &hash_pair(b, &hash_pair(c, &SENTINEL)))
 /// ```
 /// Unlike Merkle trees, this is suited to hashing heterogeneous lists we may wish
 /// to extend in the future (ie, hashes of data structures that may undergo revision).
@@ -250,7 +253,7 @@ where
 pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
     slice
         .iter()
-        .rfold(hash(&[]), |prev, next| hash_pair(next, &prev))
+        .rfold(SENTINEL, |prev, next| hash_pair(next, &prev))
 }
 
 #[cfg(test)]

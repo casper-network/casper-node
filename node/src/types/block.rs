@@ -790,7 +790,7 @@ impl BlockHeader {
         } = self;
 
         let hashed_era_end = match era_end {
-            None => hash::hash(&[]),
+            None => hash::SENTINEL,
             Some(era_end) => era_end.hash(),
         };
 
@@ -978,7 +978,7 @@ impl BlockBody {
     ///                   /      \__________________
     /// hash(deploy_hashes)      /                  \_____________
     ///                   hash(transfer_hashes)     /             \
-    ///                                         hash(proposer)   hash(&[])
+    ///                                         hash(proposer)   SENTINEL
     /// ```
     pub(crate) fn hash_v2(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
