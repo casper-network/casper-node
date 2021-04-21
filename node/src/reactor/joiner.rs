@@ -652,7 +652,7 @@ impl reactor::Reactor for Reactor {
                     ) {
                         Some(fetcher_event) => {
                             self.dispatch_event(effect_builder, rng, Event::BlockByHeightFetcher(fetcher_event))
-                        } ,
+                        }
                         None => Effects::new()
                     }
                 }
