@@ -262,7 +262,7 @@ where
                     *most_recent_block_header.parent_hash(),
                 )
                 .await?;
-                if previous_block_header.era_id() == last_emergency_restart_era_id
+                if previous_block_header.era_id() == last_emergency_restart_era_id.saturating_sub(1)
                     && previous_block_header.is_switch_block()
                 {
                     break;
