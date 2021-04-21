@@ -43,7 +43,7 @@ pub enum Tag {
     BlockHeaderByHash,
     /// A block header and its finality signatures requested by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight,
-    /// A trie from the global trie merkle tree in the execution engine.
+    /// A trie from the global Merkle tree in the execution engine.
     Trie,
 }
 
