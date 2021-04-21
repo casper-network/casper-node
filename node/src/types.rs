@@ -5,7 +5,7 @@ mod block;
 pub mod chainspec;
 mod deploy;
 mod exit_code;
-pub(crate) mod item;
+mod item;
 pub mod json_compatibility;
 mod node_config;
 mod node_id;
@@ -29,7 +29,7 @@ pub use deploy::{
     Error as DeployError,
 };
 pub use exit_code::ExitCode;
-pub use item::{Item, Tag};
+pub(crate) use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
