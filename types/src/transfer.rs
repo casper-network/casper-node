@@ -27,7 +27,7 @@ use crate::{
 pub const DEPLOY_HASH_LENGTH: usize = 32;
 /// The length of a transfer address.
 pub const TRANSFER_ADDR_LENGTH: usize = 32;
-const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
+pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 
 /// A newtype wrapping a [`[u8; DEPLOY_HASH_LENGTH]`] which is the raw bytes of the deploy hash.
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
