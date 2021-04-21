@@ -428,7 +428,9 @@ pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Dur
 
 #[cfg(test)]
 mod tests {
-    use super::xor;
+    use std::{sync::{Arc}, time::Duration};
+
+    use super::{wait_for_arc_drop, xor};
 
     #[test]
     fn xor_works() {
@@ -448,5 +450,40 @@ mod tests {
         let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11];
 
         xor(&mut lhs, &rhs);
+    }
+
+    #[tokio::test]
+    async fn arc_drop_waits_for_drop() {
+        let retry_delay = Duration::from_millis(25);
+        let attempts = 15;
+
+        let arc = Arc::new(());
+
+        let arc_in_background = arc.clone();
+        let _weak_in_background = Arc::downgrade(&arc);
+
+        // At this point, the Arc has the following refernces:
+        //
+        // * main test task (`arc`, strong)
+        // * background strong reference (`arc_in_background`)
+        // * background weak reference (`weak_in_background`)
+
+        // Phase 1: waiting for the arc should fail, because there still is the background
+        // reference.
+        assert!(! wait_for_arc_drop(arc, attempts, retry_delay).await);
+
+        // We "restore" the arc from the background arc.
+        let arc = arc_in_background.clone();
+
+        // Add another "foreground" weak reference.
+        let weak =  Arc::downgrade(&arc);
+
+        // Phase 2: Our background tasks drops its reference, now we should succeed.
+        drop(arc_in_background);
+        assert!(wait_for_arc_drop(arc, attempts, retry_delay).await);
+
+        // Immedetialy after, we should not be able to obtain a strong reference anymore.
+        // This test fails only if we have a race condition, so false positive tests are possible.
+        assert!(weak.upgrade().is_none());
     }
 }
