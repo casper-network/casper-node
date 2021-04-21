@@ -274,7 +274,7 @@ pub enum StorageRequest {
     GetBlockHeaderAndMetadataByHeight {
         /// Height of block to get header of.
         block_height: u64,
-        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeaderWithMetadata>>,
     },
