@@ -9,7 +9,7 @@ use std::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     pin::Pin,
-    sync::Arc,
+    sync::Weak,
 };
 
 use bytes::{Bytes, BytesMut};
@@ -64,14 +64,14 @@ pub(super) struct CountingFormat<F> {
     /// Our role in the connection.
     role: Role,
     /// Metrics to update.
-    metrics: Arc<NetworkingMetrics>,
+    metrics: Weak<NetworkingMetrics>,
 }
 
 impl<F> CountingFormat<F> {
     /// Creates a new counting formatter.
     #[inline]
     pub(super) fn new(
-        metrics: Arc<NetworkingMetrics>,
+        metrics: Weak<NetworkingMetrics>,
         connection_id: ConnectionId,
         role: Role,
         inner: F,
@@ -102,7 +102,7 @@ where
         let serialized = F::serialize(projection, item)?;
         let msg_size = serialized.len() as u64;
         let msg_kind = item.classify();
-        this.metrics.record_payload_out(msg_kind, msg_size);
+        NetworkingMetrics::record_payload_out(this.metrics, msg_kind, msg_size);
 
         let trace_id = this
             .connection_id
