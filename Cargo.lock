@@ -948,6 +948,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-validation"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base16",
+ "casper-types",
+ "hex",
+ "rustc-test",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cast"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2280,6 +2294,15 @@ version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
+]
+
+[[package]]
+name = "getopts"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14dbbfd5c71d70241ecf9e6f13737f7b5ce823821063188d7e46c41d371eebd5"
+dependencies = [
+ "unicode-width",
 ]
 
 [[package]]
@@ -4807,6 +4830,20 @@ name = "rustc-serialize"
 version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
+
+[[package]]
+name = "rustc-test"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc7967b0ae83af208c8caf2781cbf96f01dac0157cd89f7f05324d6d4e59bb"
+dependencies = [
+ "getopts",
+ "libc",
+ "rustc-serialize",
+ "rustc_version 0.2.3",
+ "term",
+ "time",
+]
 
 [[package]]
 name = "rustc_version"
