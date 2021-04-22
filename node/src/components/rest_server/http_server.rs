@@ -25,8 +25,9 @@ pub(super) async fn run<REv: ReactorEventT>(
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
     let rest_metrics = filters::create_metrics_filter(effect_builder);
+    let rest_open_rpc = filters::create_rpc_filter(effect_builder);
 
-    let service = warp::service(rest_status.or(rest_metrics));
+    let service = warp::service(rest_status.or(rest_metrics).or(rest_open_rpc));
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =
