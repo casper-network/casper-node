@@ -63,7 +63,7 @@ const_assert!(_STATE_REQUEST_SIZE < 89);
 pub enum MetricsRequest {
     /// Render current node metrics as prometheus-formatted string.
     RenderNodeMetricsText {
-        /// Resopnder returning the rendered metrics or `None`, if an internal error occurred.
+        /// Responder returning the rendered metrics or `None`, if an internal error occurred.
         responder: Responder<Option<String>>,
     },
 }

@@ -1053,7 +1053,7 @@ mod tests {
     }
 
     // Triggers new proposal by `validator` and verifies that it's empty – no block was proposed.
-    // Captuers the next witness timer and calls the `validator` with that to return the timer for
+    // Captures the next witness timer and calls the `validator` with that to return the timer for
     // the next proposal.
     fn assert_no_proposal(
         validator: &mut ActiveValidator<TestContext>,

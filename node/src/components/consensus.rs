@@ -194,7 +194,7 @@ impl<I: Debug> Display for Event<I> {
             ),
             Event::ConsensusRequest(request) => write!(
                 f,
-                "A request for consensus component hash been receieved: {:?}",
+                "A request for consensus component hash been received: {:?}",
                 request
             ),
             Event::BlockAdded(block_header) => write!(

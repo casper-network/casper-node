@@ -92,9 +92,9 @@ pub enum Error {
     /// Cryptographic error.
     #[error("Cryptographic error: {context}: {error}")]
     CryptoError {
-        /// Contextual text, such as callsite.
+        /// Contextual text, such as call site.
         context: &'static str,
-        /// Underlying Cryptoerror.
+        /// Underlying crypto error.
         error: CryptoError,
     },
 
@@ -109,7 +109,7 @@ pub enum Error {
     /// Conflicting arguments.
     #[error("Conflicting arguments passed '{context}' {args:?}")]
     ConflictingArguments {
-        /// Contextual text, such as callsite.
+        /// Contextual text, such as call site.
         context: &'static str,
         /// Arguments passed, with their values.
         args: Vec<String>,
@@ -119,7 +119,7 @@ pub enum Error {
     #[error("Invalid response: {0}")]
     InvalidResponse(#[from] ValidateResponseError),
 
-    /// Must call FFI's setup function prior to making ffi calls.
+    /// Must call FFI's setup function prior to making FFI calls.
     #[cfg(feature = "ffi")]
     #[error("Failed to call casper_setup_client()")]
     FFISetupNotCalled,

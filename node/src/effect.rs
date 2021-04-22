@@ -132,7 +132,7 @@ use requests::{
 use self::announcements::BlocklistAnnouncement;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
-static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
+static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -416,8 +416,8 @@ impl<REv> EffectBuilder<REv> {
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
-                let _ = UNOBTAINIUM.acquire().await;
-                panic!("should never obtain unobtainium semaphore");
+                let _ = UNOBTAINABLE.acquire().await;
+                panic!("should never obtain unobtainable semaphore");
             }
         }
     }
