@@ -33,17 +33,14 @@ STAGE_SOURCE="${STAGE_SOURCE:-"local"}"
 #######################################
 # Builds binaries.
 # Arguments:
-#   Stage protocol hash.
+#   Stage source code folder.
 #######################################
 function _set_binaries()
 {
-    local STAGE_SOURCE=${1}
-    
-    # Set commit.
-    if [ "$STAGE_SOURCE" != "local" ]; then
-        git checkout "$STAGE_SOURCE" > /dev/null 2>&1
-    fi
+    local PATH_TO_SOURCE=${1}
 
+    pushd $PATH_TO_SOURCE || exit
+    
     # Set node binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         cargo build --package casper-node
@@ -65,6 +62,8 @@ function _set_binaries()
     make build-contract-rs/undelegate
     make build-contract-rs/withdraw-bid
     make build-contract-rs/activate-bid
+
+    popd
 }
 
 #######################################
@@ -74,39 +73,40 @@ function _set_binaries()
 #######################################
 function _set_fileset()
 {
-    local PATH_TO_STAGE=${1}
+    local PATH_TO_SOURCE=${1}
+    local PATH_TO_STAGE=${2}
 
     # Stage binaries.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        cp "./target/debug/casper-client" \
+        cp "$PATH_TO_SOURCE/target/debug/casper-client" \
            "$PATH_TO_STAGE/bin"
-        cp "./target/debug/casper-node" \
+        cp "$PATH_TO_SOURCE/target/debug/casper-node" \
            "$PATH_TO_STAGE/bin"
     else
-        cp "./target/release/casper-client" \
+        cp "$PATH_TO_SOURCE/target/release/casper-client" \
            "$PATH_TO_STAGE/bin"
-        cp "./target/release/casper-node" \
+        cp "$PATH_TO_SOURCE/target/release/casper-node" \
            "$PATH_TO_STAGE/bin"
     fi
 
     # Stage wasm.
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
     do
-        cp "./target/wasm32-unknown-unknown/release/$CONTRACT" \
+        cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
            "$PATH_TO_STAGE/bin/wasm"
     done  
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
-        cp "./target/wasm32-unknown-unknown/release/$CONTRACT" \
+        cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
            "$PATH_TO_STAGE/bin/wasm"
     done  
 
     # Stage chainspec.
-    cp "./resources/local/chainspec.toml.in" \
+    cp "$PATH_TO_SOURCE/resources/local/chainspec.toml.in" \
        "$PATH_TO_STAGE/resources/chainspec.toml"
 
     # Stage node config.
-    cp "./resources/local/config.toml" \
+    cp "$PATH_TO_SOURCE/resources/local/config.toml" \
        "$PATH_TO_STAGE/resources" 
 }
 
@@ -135,20 +135,17 @@ function _set_assets()
     else
         PATH_TO_SOURCE="$(get_path_to_temp_node)"
     fi
-    pushd "$PATH_TO_SOURCE" || exit
 
     # Set specific commit by hash.
     if [ "$STAGE_SOURCE" != "local" ]; then
+        pushd "$PATH_TO_SOURCE" || exit
         git checkout "$STAGE_SOURCE" > /dev/null 2>&1
+        popd || exit
     fi
 
-    # Build binaries.
-    _set_binaries
-
-    # Stage assets.
-    _set_fileset "$PATH_TO_STAGE/$STAGE_PROTOCOL_VERSION"
-
-    popd || exit
+    # Set binaries + other files.
+    _set_binaries "$PATH_TO_SOURCE"
+    _set_fileset "$PATH_TO_SOURCE" "$PATH_TO_STAGE/$STAGE_PROTOCOL_VERSION"
 }
 
 #######################################
