@@ -295,8 +295,6 @@ where
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
-        self.current_era = era_id;
-        self.metrics.current_era.set(era_id.value() as i64);
         let instance_id = instance_id(&self.protocol_config, era_id);
 
         info!(
@@ -312,13 +310,24 @@ where
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = &self.public_signing_key;
-        let should_activate = if !validators.contains_key(&our_id) {
+        let should_activate = if self.current_era > era_id {
+            trace!(
+                era = era_id.value(),
+                current_era = self.current_era.value(),
+                "not voting; initializing past era"
+            );
+            false
+        } else if !validators.contains_key(&our_id) {
             info!(era = era_id.value(), %our_id, "not voting; not a validator");
             false
         } else {
             info!(era = era_id.value(), %our_id, "start voting");
             true
         };
+        if era_id > self.current_era {
+            self.current_era = era_id;
+            self.metrics.current_era.set(era_id.value() as i64);
+        }
 
         let prev_era = era_id
             .checked_sub(1)
