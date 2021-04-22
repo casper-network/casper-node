@@ -215,7 +215,7 @@ pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
     while k != 1 {
         let j = k / 2 + k % 2;
         for i in 0..j {
-            if (2 * i + 1) > k {
+            if (2 * i + 1) >= k {
                 vec[i] = vec[2 * i];
             } else {
                 vec[i] = hash_pair(&vec[2 * i], &vec[2 * i + 1]);
@@ -239,7 +239,7 @@ where
     Ok(hash_vec_merkle_tree(kv_hashes))
 }
 
-/// Hash a `&[Digest]` using a using a [right fold][1].
+/// Hashes a `&[Digest]` using a [right fold][1].
 ///
 /// This pattern of hashing is as follows:
 ///
@@ -254,6 +254,16 @@ pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
     slice
         .iter()
         .rfold(SENTINEL, |prev, next| hash_pair(next, &prev))
+}
+
+/// Hashes a `&[Digest]` using a [right fold][1]. Uses `proof` as a Merkle proof for the missing
+/// tail of the slice.
+///
+/// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
+pub fn hash_slice_with_proof(slice: &[Digest], proof: Digest) -> Digest {
+    slice
+        .iter()
+        .rfold(proof, |prev, next| hash_pair(next, &prev))
 }
 
 #[cfg(test)]
@@ -331,9 +341,9 @@ mod test {
     #[test]
     fn should_print_digest_upper_hex() {
         let hash = Digest([10u8; 32]);
-        let hash_lower_hex = format!("{:X}", hash);
+        let hash_upper_hex = format!("{:X}", hash);
         assert_eq!(
-            hash_lower_hex,
+            hash_upper_hex,
             "0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A"
         )
     }
@@ -353,5 +363,82 @@ mod test {
         let mut rng = crate::new_rng();
         let hash = Digest::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&hash);
+    }
+
+    #[test]
+    fn test_hash_pair() {
+        let hash1 = Digest([1u8; 32]);
+        let hash2 = Digest([2u8; 32]);
+
+        let hash = hash_pair(&hash1, &hash2);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "30b600fb1f0cc0b3f0fc28cdcb7389405a6659be81c7d5c5905725aa3a5119ce"
+        );
+    }
+
+    #[test]
+    fn test_hash_rfold() {
+        let hashes = vec![
+            Digest([1u8; 32]),
+            Digest([2u8; 32]),
+            Digest([3u8; 32]),
+            Digest([4u8; 32]),
+            Digest([5u8; 32]),
+        ];
+
+        let hash = hash_slice_rfold(&hashes[..]);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "aa0f8025b8548930b3a3b6b1912686eedd45c6655daeb1f5f9603a96740b0355"
+        );
+
+        let proof = hash_slice_rfold(&hashes[2..]);
+        let hash_proof = hash_slice_with_proof(&hashes[..2], proof);
+
+        assert_eq!(hash, hash_proof);
+    }
+
+    #[test]
+    fn test_hash_merkle_odd() {
+        let hashes = vec![
+            Digest([1u8; 32]),
+            Digest([2u8; 32]),
+            Digest([3u8; 32]),
+            Digest([4u8; 32]),
+            Digest([5u8; 32]),
+        ];
+
+        let hash = hash_vec_merkle_tree(hashes);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "c18aaf359f7b4643991f68fbfa8c503eb460da497399cdff7d8a2b1bc4399589"
+        );
+    }
+
+    #[test]
+    fn test_hash_merkle_even() {
+        let hashes = vec![
+            Digest([1u8; 32]),
+            Digest([2u8; 32]),
+            Digest([3u8; 32]),
+            Digest([4u8; 32]),
+            Digest([5u8; 32]),
+            Digest([6u8; 32]),
+        ];
+
+        let hash = hash_vec_merkle_tree(hashes);
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "0470ecc8abdcd6ecd3a4c574431b80bb8751c7a43337d5966dadf07899f8804b"
+        );
     }
 }
