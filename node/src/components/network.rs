@@ -447,7 +447,14 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
                     trace!("{}: {:?}", our_id(&swarm), swarm_event);
-                    handle_swarm_event(&mut swarm, event_queue, swarm_event, &known_addresses_mut, is_bootstrap_node).await;
+                    handle_swarm_event(
+                        &mut swarm,
+                        event_queue,
+                        swarm_event,
+                        &known_addresses_mut,
+                        is_bootstrap_node
+                    )
+                    .await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see
