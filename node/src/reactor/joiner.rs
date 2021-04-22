@@ -68,8 +68,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
-        ProtoBlock, Tag, Timestamp,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId, Tag,
+        Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -135,7 +135,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -168,17 +168,11 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
 
     /// Block proposer request.
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
-
-    /// Proto block validator request.
-    #[from]
-    ProtoBlockValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
-    ),
 
     /// Request for state storage.
     #[from]
@@ -303,7 +297,6 @@ impl Display for Event {
             Event::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
-            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
@@ -340,9 +333,9 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     linear_chain_fetcher: Fetcher<Block>,
     linear_chain_sync: LinearChainSync<NodeId>,
-    block_validator: BlockValidator<Block, NodeId>,
+    block_validator: BlockValidator<NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
-    linear_chain: linear_chain::LinearChain<NodeId>,
+    linear_chain: linear_chain::LinearChainComponent<NodeId>,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -403,13 +396,12 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.chainspec(),
             false,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             registry,
             small_network_identity,
-            network_name,
+            chainspec_loader.chainspec().as_ref(),
             false,
         )?;
 
@@ -491,16 +483,11 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_block_header(),
         );
 
-        let linear_chain = linear_chain::LinearChain::new(
+        let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
             *protocol_version,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id(),
         )?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
@@ -796,12 +783,6 @@ impl reactor::Reactor for Reactor {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
                 error!("ignoring block proposer request {}", request);
-                Effects::new()
-            }
-            Event::ProtoBlockValidatorRequest(request) => {
-                // During joining phase, consensus component should not be requesting
-                // validation of the proto block.
-                error!("ignoring proto block validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(

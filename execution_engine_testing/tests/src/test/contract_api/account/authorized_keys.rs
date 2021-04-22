@@ -192,7 +192,7 @@ fn should_raise_deploy_authorization_failure() {
         .exec(exec_request_3)
         .expect_success()
         .commit()
-        // This should execute successfuly - change deploy and key management
+        // This should execute successfully - change deploy and key management
         // thresholds.
         .exec(exec_request_4)
         .expect_success()

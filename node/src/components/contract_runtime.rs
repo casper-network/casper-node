@@ -143,12 +143,11 @@ pub struct ContractRuntime {
 
     protocol_version: ProtocolVersion,
 
-    /// A mapping from proto block to executed block's ID and post-state hash, to allow
+    /// A mapping from block height to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
     /// The key is a tuple of block's height (it's a linear chain so it's monotonically
-    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
-    /// created from that proto block.
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
@@ -677,7 +676,7 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::new(contract_runtime_config.max_query_depth());
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
@@ -759,8 +758,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
-            .proto_block()
-            .deploys_iter()
+            .deploys_and_transfers_iter()
             .copied()
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
@@ -859,17 +857,17 @@ impl ContractRuntime {
         let reward_items = era_end
             .rewards
             .iter()
-            .map(|(&vid, &value)| RewardItem::new(vid, value))
+            .map(|(vid, &value)| RewardItem::new(vid.clone(), value))
             .collect();
         let slash_items = era_end
             .equivocators
             .iter()
-            .map(|&vid| SlashItem::new(vid))
+            .map(|vid| SlashItem::new(vid.clone()))
             .collect();
         let evict_items = era_end
             .inactive_validators
             .iter()
-            .map(|&vid| EvictItem::new(vid))
+            .map(|vid| EvictItem::new(vid.clone()))
             .collect();
         let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
         let request = StepRequest {
@@ -907,7 +905,7 @@ impl ContractRuntime {
                     block_time,
                     vec![deploy_item],
                     protocol_version,
-                    proposer,
+                    proposer.clone(),
                 );
 
                 // TODO: this is currently working coincidentally because we are passing only one

@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "0.9.3" # when updating, also update 'html_root_url' in lib.rs
+version = "1.0.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
@@ -19,9 +19,10 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 blake2 = { version = "0.9.0", default-features = false }
-casper-execution-engine = { version = "0.9.3", path = "../execution_engine" }
-casper-node-macros = { version = "0.9.3", path = "../node_macros" }
-casper-types = { version = "0.9.3", path = "../types", features = ["std", "gens"] }
+bytes = "1.0.1"
+casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
+casper-node-macros = { version = "1.0.0", path = "../node_macros" }
+casper-types = { version = "1.0.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.9", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
@@ -58,12 +59,14 @@ once_cell = "1"
 openssl = "0.10.32"
 parking_lot = "0.11.0"
 pem = "0.8.1"
+pin-project = "1.0.6"
 prometheus = "0.12.0"
 proptest = { version = "1.0.0", optional = true }
 quanta = "0.7.2"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
+rmp-serde = "0.14.4"
 schemars = { version = "0.8.0", features = ["preserve_order"] }
 sd-notify = "0.3.0"
 serde = { version = "1", features = ["derive"] }
@@ -106,6 +109,7 @@ multihash = "0.13.2"
 pnet = "0.27.2"
 rand_core = "0.6.2"
 rand_pcg = "0.3.0"
+reqwest = "0.10.8"
 tokio = { version = "1", features = ["test-util"] }
 
 [features]

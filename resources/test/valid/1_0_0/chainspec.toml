@@ -2,9 +2,11 @@
 version = '1.0.0'
 hard_reset = false
 activation_point = 1
+last_emergency_restart = 99
 
 [network]
 name = 'test-chain'
+maximum_net_message_size = 23_068_672
 
 [core]
 era_duration = '3minutes'

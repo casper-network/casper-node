@@ -54,9 +54,8 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION,
+            Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -74,7 +73,7 @@ use crate::internal::{
 /// This default value should give 50MiB initial map size by default.
 const DEFAULT_LMDB_PAGES: usize = 128_000;
 
-/// LDMB max readers
+/// LMDB max readers
 ///
 /// The default value is chosen to be the same as the node itself.
 const DEFAULT_MAX_READERS: u32 = 512;
@@ -121,7 +120,7 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::initialize_logging();
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::default();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
@@ -730,6 +729,15 @@ where
             .expect("should get purse balance")
     }
 
+    pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash: Blake2bHash =
+            self.post_state_hash.expect("should have post_state_hash");
+        self.engine_state
+            .get_balance(correlation_id, state_root_hash, public_key)
+            .expect("should get purse balance using public key")
+    }
+
     pub fn get_proposer_purse_balance(&self) -> U512 {
         let proposer_account = self
             .get_account(*DEFAULT_PROPOSER_ADDR)
@@ -889,36 +897,6 @@ where
             ) = (key, read_result)
             {
                 ret.insert(account_hash, unbonding_purses);
-            }
-        }
-
-        ret
-    }
-
-    pub fn get_seigniorage_recipients_snapshot(&mut self) -> SeigniorageRecipientsSnapshot {
-        let correlation_id = CorrelationId::new();
-        let state_root_hash = self.get_post_state_hash();
-
-        let tracking_copy = self
-            .engine_state
-            .tracking_copy(state_root_hash)
-            .unwrap()
-            .unwrap();
-
-        let reader = tracking_copy.reader();
-
-        let era_ids = reader
-            .keys_with_prefix(correlation_id, &[KeyTag::EraValidators as u8])
-            .unwrap_or_default();
-
-        let mut ret = BTreeMap::new();
-
-        for era_id in era_ids.into_iter() {
-            let read_result = reader.read(correlation_id, &era_id);
-            if let (Key::EraValidators(era_id), Ok(Some(StoredValue::EraValidators(recipients)))) =
-                (era_id, read_result)
-            {
-                ret.insert(era_id, recipients);
             }
         }
 

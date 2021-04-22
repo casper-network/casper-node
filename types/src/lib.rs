@@ -10,7 +10,7 @@
     not(feature = "no-unstable-features"),
     feature(min_specialization, try_reserve)
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/0.9.3")]
+#![doc(html_root_url = "https://docs.rs/casper-types/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -78,7 +78,10 @@ pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use tagged::Tagged;
-pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH};
+pub use transfer::{
+    DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
+    TRANSFER_ADDR_LENGTH,
+};
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
 

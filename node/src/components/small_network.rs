@@ -1,9 +1,8 @@
 //! Fully connected overlay network
 //!
-//! The *small network* is an overlay network where each node participating is connected to every
-//! other node on the network. The *small* portion of the name stems from the fact that this
-//! approach is not scalable, as it requires at least $O(n)$ network connections and broadcast will
-//! result in $O(n^2)$ messages.
+//! The *small network* is an overlay network where each node participating is attempting to
+//! maintain a connection to every other node identified on the same network. The component does not
+//! guarantee message delivery, so in between reconnections, messages may be lost.
 //!
 //! # Node IDs
 //!
@@ -12,31 +11,26 @@
 //! connected to the correct node and sends its own certificate during the TLS handshake,
 //! establishing identity.
 //!
-//! # Messages and payloads
-//!
-//! The network itself is best-effort, during regular operation, no messages should be lost.
-//!
 //! # Connection
 //!
 //! Every node has an ID and a public listening address. The objective of each node is to constantly
 //! maintain an outgoing connection to each other node (and thus have an incoming connection from
 //! these nodes as well).
 //!
-//! Any incoming connection is strictly read from, while any outgoing connection is strictly used
-//! for sending messages.
+//! Any incoming connection is, after a handshake process, strictly read from, while any outgoing
+//! connection is strictly used for sending messages, also after a handshake.
 //!
-//! Nodes gossip their public listening addresses periodically, and on learning of a new address,
-//! a node will try to establish an outgoing connection.
-//!
-//! On losing an incoming or outgoing connection for a given peer, the other connection is closed.
-//! No explicit reconnect is attempted. Instead, if the peer is still online, the normal gossiping
-//! process will cause both peers to connect again.
+//! Nodes gossip their public listening addresses periodically, and will try to establish and
+//! maintain an outgoing connection to any new address learned.
 
+mod chain_info;
 mod config;
+mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
 mod message;
+mod message_pack_format;
 #[cfg(test)]
 mod tests;
 
@@ -51,7 +45,7 @@ use std::{
     result,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Weak,
     },
     time::{Duration, Instant},
 };
@@ -68,7 +62,7 @@ use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
@@ -79,12 +73,18 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
+use tokio_serde::SymmetricallyFramed;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
-use self::error::Result;
-pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
+use self::{
+    counting_format::{ConnectionId, CountingFormat, Role},
+    error::Result,
+    message_pack_format::MessagePackFormat,
+};
+pub(crate) use self::{
+    error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
+};
 use crate::{
     components::{
         network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
@@ -99,12 +99,59 @@ use crate::{
     types::{NodeId, TimeDiff, Timestamp},
     utils, NodeRng,
 };
+use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
+
+const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
+
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
+
+/// Network message payload.
+///
+/// Payloads are what is transferred across the network outside of control messages from the
+/// networking component itself.
+pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
+    /// Classifies the payload based on its contents.
+    fn classify(&self) -> MessageKind;
+}
+
+/// A classification system for networking messages.
+#[derive(Copy, Clone, Debug)]
+pub enum MessageKind {
+    /// Non-payload messages, like handshakes.
+    Protocol,
+    /// Messages directly related to consensus.
+    Consensus,
+    /// Deploys being gossiped.
+    DeployGossip,
+    /// Addresses begin gossiped.
+    AddressGossip,
+    /// Deploys being transferred directly (via requests).
+    DeployTransfer,
+    /// Blocks for finality signatures being transferred directly (via requests and other means).
+    BlockTransfer,
+    /// Any other kind of payload (or missing classification).
+    Other,
+}
+
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageKind::Protocol => f.write_str("protocol"),
+            MessageKind::Consensus => f.write_str("consensus"),
+            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::AddressGossip => f.write_str("address_gossip"),
+            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::Other => f.write_str("other"),
+        }
+    }
+}
 
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
@@ -156,9 +203,10 @@ where
 
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashMap<SocketAddr, Instant>,
-    /// Name of the network we participate in. We only remain connected to peers with the same
-    /// network name as us.
-    network_name: String,
+
+    /// Information retained from the chainspec required for operating the networking component.
+    chain_info: Arc<ChainInfo>,
+
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -176,7 +224,7 @@ where
 
     /// Networking metrics.
     #[data_size(skip)]
-    net_metrics: NetworkingMetrics,
+    net_metrics: Arc<NetworkingMetrics>,
 
     /// Known addresses for this node.
     known_addresses: HashSet<SocketAddr>,
@@ -184,7 +232,7 @@ where
 
 impl<REv, P> SmallNetwork<REv, P>
 where
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Payload + 'static,
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
@@ -192,12 +240,12 @@ where
     /// If `notify` is set to `false`, no systemd notifications will be sent, regardless of
     /// configuration.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn new(
+    pub(crate) fn new<C: Into<ChainInfo>>(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
-        network_name: String,
+        chain_info_source: C,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
@@ -208,8 +256,8 @@ where
                         warn!(%address, resolved=%known_address, "ignoring duplicated known address");
                     };
                 }
-                Err(err) => {
-                    warn!(%address, %err, "failed to resolve known address");
+                Err(ref err) => {
+                    warn!(%address, err=display_error(err), "failed to resolve known address");
                 }
             }
         }
@@ -227,6 +275,8 @@ where
         let secret_key = small_network_identity.secret_key;
         let certificate = small_network_identity.tls_certificate;
 
+        let chain_info = Arc::new(chain_info_source.into());
+
         // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
         // server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
@@ -243,12 +293,12 @@ where
                 outgoing: HashMap::new(),
                 pending: HashMap::new(),
                 blocklist: HashMap::new(),
-                network_name,
+                chain_info,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
                 server_join_handle: None,
                 is_stopped: Arc::new(AtomicBool::new(true)),
-                net_metrics: NetworkingMetrics::new(&Registry::default())?,
+                net_metrics: Arc::new(NetworkingMetrics::new(&Registry::default())?),
             };
             return Ok((model, Effects::new()));
         }
@@ -311,12 +361,12 @@ where
             outgoing: HashMap::new(),
             pending: HashMap::new(),
             blocklist: HashMap::new(),
-            network_name,
+            chain_info,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             is_stopped: Arc::new(AtomicBool::new(false)),
-            net_metrics,
+            net_metrics: Arc::new(net_metrics),
         };
 
         // Bootstrap process.
@@ -489,12 +539,12 @@ where
                 }
 
                 // If the peer has already disconnected, allow the connection to drop.
-                if let Err(error) = transport.get_ref().peer_addr() {
+                if let Err(ref err) = transport.get_ref().peer_addr() {
                     debug!(
                         our_id=%self.our_id,
                         %peer_address,
                         local_address=?transport.get_ref().local_addr(),
-                        %error,
+                        err=display_error(err),
                         "incoming connection dropped",
                     );
                     return Effects::new();
@@ -502,11 +552,15 @@ where
 
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) = framed::<P>(transport).split();
-                let handshake = Message::Handshake {
-                    network_name: self.network_name.clone(),
-                    public_address: self.public_address,
-                };
+                let (mut sink, stream) = framed::<P>(
+                    Arc::downgrade(&self.net_metrics),
+                    ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
+                    transport,
+                    Role::Listener,
+                    self.chain_info.maximum_net_message_size,
+                )
+                .split();
+                let handshake = self.chain_info.create_handshake(self.public_address);
                 let mut effects = async move {
                     let _ = sink.send(handshake).await;
                 }
@@ -543,8 +597,8 @@ where
 
                 effects
             }
-            Err(err) => {
-                warn!(our_id=%self.our_id, %peer_address, %err, "TLS handshake failed");
+            Err(ref err) => {
+                warn!(our_id=%self.our_id, %peer_address, err=display_error(err), "TLS handshake failed");
                 Effects::new()
             }
         }
@@ -560,10 +614,10 @@ where
         // This connection is send-only, we only use the sink.
         let peer_address = match transport.get_ref().peer_addr() {
             Ok(peer_addr) => peer_addr,
-            Err(err) => {
+            Err(ref err) => {
                 // The peer address disappeared, likely because the connection was closed while
                 // we are setting up.
-                warn!(%peer_id, %err, "peer connection terminated while setting up outgoing connection, dropping");
+                warn!(%peer_id, err=display_error(err), "peer connection terminated while setting up outgoing connection, dropping");
 
                 // We still need to clean up any trace of the connection.
                 return self.remove(effect_builder, &peer_id, false);
@@ -582,11 +636,18 @@ where
                 local_address=?transport.get_ref().local_addr(),
                 "connected outgoing to ourself - closing connection",
             );
-            return Effects::new();
+            return self.reconnect_if_not_connected_to_any_known_addresses(effect_builder);
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) = framed::<P>(transport).split();
+        let (sink, stream) = framed::<P>(
+            Arc::downgrade(&self.net_metrics),
+            ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
+            transport,
+            Role::Dialer,
+            self.chain_info.maximum_net_message_size,
+        )
+        .split();
         debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -604,10 +665,8 @@ where
 
         let mut effects = self.check_connection_complete(effect_builder, peer_id);
 
-        let handshake = Message::Handshake {
-            network_name: self.network_name.clone(),
-            public_address: self.public_address,
-        };
+        let handshake = self.chain_info.create_handshake(self.public_address);
+
         effects.extend(
             message_sender(
                 receiver,
@@ -638,29 +697,39 @@ where
     ) -> Effects<Event<P>> {
         let _ = self.pending.remove(&peer_address);
 
-        let mut effects = Effects::new();
-
         if let Some(peer_id) = peer_id {
             if let Some(ref err) = error {
-                warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "outgoing connection failed");
+                warn!(
+                    our_id=%self.our_id,
+                    %peer_id,
+                    %peer_address,
+                    err=display_error(err),
+                    "outgoing connection failed"
+                );
             } else {
                 warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
             }
-            effects.extend(self.remove(effect_builder, &peer_id, false));
-        } else {
-            // If we are not calling remove, call the reconnection check explicitly.
-            effects.extend(self.reconnect_if_not_connected_to_any_known_addresses(effect_builder));
+            return self.remove(effect_builder, &peer_id, false);
         }
 
         // If we don't have the node ID passed in here, it was never added as an
         // outgoing connection, hence no need to call `self.remove()`.
         if let Some(ref err) = error {
-            warn!(our_id=%self.our_id, %peer_address, %err, "outgoing connection failed");
+            warn!(
+                our_id=%self.our_id,
+                %peer_address,
+                err=display_error(err),
+                "outgoing connection to known address failed"
+            );
         } else {
-            warn!(our_id=%self.our_id, %peer_address, "outgoing connection closed");
+            warn!(
+                our_id=%self.our_id,
+                %peer_address,
+                "outgoing connection to known address closed"
+            );
         }
-
-        effects
+        // Since we are not calling `self.remove()`, call the reconnection check explicitly.
+        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
     }
 
     fn remove(
@@ -753,13 +822,16 @@ where
             Message::Handshake {
                 network_name,
                 public_address,
+                protocol_version,
             } => {
-                if network_name != self.network_name {
+                if network_name != self.chain_info.network_name {
                     info!(
                         our_id=%self.our_id,
                         %peer_id,
-                        our_network=?self.network_name,
+                        our_network=?self.chain_info.network_name,
                         their_network=?network_name,
+                        our_protocol_version=%self.chain_info.protocol_version,
+                        their_protocol_version=%protocol_version,
                         "dropping connection due to network name mismatch"
                     );
                     let remove = self.remove(effect_builder, &peer_id, false);
@@ -784,8 +856,9 @@ where
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
+        let now = Timestamp::now();
         self.blocklist
-            .retain(|_, ts| *ts > Timestamp::now() - *BLOCKLIST_RETAIN_DURATION);
+            .retain(|_, ts| *ts > now - *BLOCKLIST_RETAIN_DURATION);
         if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self
@@ -911,11 +984,16 @@ where
             if let Some(join_handle) = self.server_join_handle.take() {
                 match join_handle.await {
                     Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
-                    Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
+                    Err(ref err) => {
+                        error!(%self.our_id, err=display_error(err), "could not join server task cleanly")
+                    }
                 }
             } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
+
+            // Ensure there are no ongoing metrics updates.
+            utils::wait_for_arc_drop(self.net_metrics, MAX_METRICS_DROP_ATTEMPTS, DROP_RETRY_DELAY).await;
         }
         .boxed()
     }
@@ -924,7 +1002,7 @@ where
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
-    P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
+    P: Payload,
 {
     type Event = Event<P>;
     type ConstructionError = Infallible;
@@ -976,8 +1054,8 @@ where
                     Ok(()) => {
                         info!(our_id=%self.our_id, %peer_id, %peer_address, "connection closed",)
                     }
-                    Err(err) => {
-                        warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "connection dropped")
+                    Err(ref err) => {
+                        warn!(our_id=%self.our_id, %peer_id, %peer_address, err=display_error(err), "connection dropped")
                     }
                 }
                 self.remove(effect_builder, &peer_id, false)
@@ -1082,8 +1160,8 @@ async fn server_task<P, REv>(
                 //
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(err) => {
-                    warn!(%our_id, %err, "dropping incoming connection during accept")
+                Err(ref err) => {
+                    warn!(%our_id, err=display_error(err), "dropping incoming connection during accept")
                 }
             }
         }
@@ -1185,7 +1263,7 @@ async fn handshake_reader<REv, P>(
     peer_id: NodeId,
     peer_address: SocketAddr,
 ) where
-    P: DeserializeOwned + Send + Display,
+    P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
     if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
@@ -1224,7 +1302,7 @@ async fn message_reader<REv, P>(
     peer_id: NodeId,
 ) -> io::Result<()>
 where
-    P: DeserializeOwned + Send + Display,
+    P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
     let read_messages = async move {
@@ -1244,7 +1322,7 @@ where
                         .await;
                 }
                 Err(err) => {
-                    warn!(%our_id, %err, %peer_id, "receiving message failed, closing connection");
+                    warn!(%our_id, err=display_error(&err), %peer_id, "receiving message failed, closing connection");
                     return Err(err);
                 }
             }
@@ -1281,7 +1359,7 @@ async fn message_sender<P>(
     handshake: Message<P>,
 ) -> Result<()>
 where
-    P: Serialize + Send,
+    P: Serialize + Send + Payload,
 {
     sink.send(handshake).await.map_err(Error::MessageNotSent)?;
     while let Some(payload) = queue.recv().await {
@@ -1300,15 +1378,31 @@ type Transport = SslStream<TcpStream>;
 type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
-    SymmetricalBincode<Message<P>>,
+    CountingFormat<MessagePackFormat>,
 >;
 
 /// Constructs a new framed transport on a stream.
-fn framed<P>(stream: Transport) -> FramedTransport<P> {
-    let length_delimited = Framed::new(stream, LengthDelimitedCodec::new());
+fn framed<P>(
+    metrics: Weak<NetworkingMetrics>,
+    connection_id: ConnectionId,
+    stream: Transport,
+    role: Role,
+    maximum_net_message_size: u32,
+) -> FramedTransport<P>
+where
+    for<'de> P: Serialize + Deserialize<'de>,
+    for<'de> Message<P>: Serialize + Deserialize<'de>,
+{
+    let length_delimited = Framed::new(
+        stream,
+        LengthDelimitedCodec::builder()
+            .max_frame_length(maximum_net_message_size as usize)
+            .new_codec(),
+    );
+
     SymmetricallyFramed::new(
         length_delimited,
-        SymmetricalBincode::<Message<P>>::default(),
+        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
 }
 

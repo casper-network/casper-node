@@ -24,7 +24,10 @@ use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    ProtocolVersion,
+};
 
 #[cfg(test)]
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
@@ -93,6 +96,11 @@ impl Chainspec {
     /// Returns true if this chainspec has an activation_point specifying era ID 0.
     pub(crate) fn is_genesis(&self) -> bool {
         self.protocol_config.activation_point.is_genesis()
+    }
+
+    /// Returns the protocol version of the chainspec.
+    pub(crate) fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_config.version
     }
 }
 
@@ -321,6 +329,7 @@ mod tests {
                     Motes::new(U512::from((index as u64 + 1) * 10))
                 );
             }
+            assert!(spec.protocol_config.last_emergency_restart.is_none());
         } else {
             assert_eq!(
                 spec.protocol_config.version,
@@ -335,6 +344,10 @@ mod tests {
             for value in spec.protocol_config.global_state_update.unwrap().0.values() {
                 assert!(StoredValue::from_bytes(value).is_ok());
             }
+            assert_eq!(
+                spec.protocol_config.last_emergency_restart,
+                Some(EraId::new(99))
+            );
         }
 
         assert_eq!(spec.network_config.name, "test-chain");

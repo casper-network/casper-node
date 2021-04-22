@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use datasize::DataSize;
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::{
     components::consensus::{
@@ -220,15 +220,7 @@ impl<C: Context> Highway<C> {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
-        if let Some(av) = self.active_validator.take() {
-            match av.cleanup() {
-                Ok(_) => {}
-                Err(err) => warn!(
-                    ?err,
-                    "error occurred when cleaning up active validator state"
-                ),
-            }
-        }
+        self.active_validator = None;
     }
 
     /// Switches the active validator to a new round exponent.
@@ -382,7 +374,7 @@ impl<C: Context> Highway<C> {
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
         // This is because proposal units, i.e. new blocks, are
-        // supposed to thave the exact timestamp that matches the
+        // supposed to have the exact timestamp that matches the
         // beginning of the round (which we use as the "round ID").
         //
         // But at least any discrepancy here can only come from event
@@ -402,7 +394,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
@@ -511,7 +503,7 @@ impl<C: Context> Highway<C> {
                     result.extend(self.add_valid_vertex(vv.clone(), timestamp))
                 }
                 Effect::WeAreFaulty(_) => self.deactivate_validator(),
-                Effect::ScheduleTimer(_) | Effect::RequestNewBlock { .. } => (),
+                Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
         }
         result.extend(effects);

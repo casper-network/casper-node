@@ -413,7 +413,12 @@ where
         let tracking_copy = tracking_copy.borrow();
 
         Ok(tracking_copy
-            .query(correlation_id, query_request.key(), query_request.path())
+            .query(
+                correlation_id,
+                &self.config,
+                query_request.key(),
+                query_request.path(),
+            )
             .map_err(|err| Error::Exec(err.into()))?
             .into())
     }
@@ -437,7 +442,7 @@ where
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
-                    exec_request.proposer,
+                    exec_request.proposer.clone(),
                 ),
                 _ => self.deploy(
                     correlation_id,
@@ -446,7 +451,7 @@ where
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
-                    exec_request.proposer,
+                    exec_request.proposer.clone(),
                 ),
             };
             match result {
@@ -1801,7 +1806,7 @@ where
             if let Some(StoredValue::Bid(bid)) =
                 tracking_copy.get(correlation_id, key).map_err(Into::into)?
             {
-                bids.insert(*bid.validator_public_key(), *bid);
+                bids.insert(bid.validator_public_key().clone(), *bid);
             };
         }
 
@@ -1980,7 +1985,7 @@ where
                         step_request
                             .evict_items
                             .iter()
-                            .map(|item| item.validator_id)
+                            .map(|item| item.validator_id.clone())
                             .collect::<Vec<PublicKey>>(),
                     )?;
                     Ok(())
@@ -2066,5 +2071,52 @@ where
             post_state_hash,
             next_era_validators,
         })
+    }
+
+    pub fn get_balance(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+        public_key: PublicKey,
+    ) -> Result<BalanceResult, Error> {
+        // Look up the account, get the main purse, and then do the existing balance check
+        let tracking_copy = match self.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return Ok(BalanceResult::RootNotFound),
+            Err(error) => return Err(error),
+        };
+
+        let account_addr = public_key.to_account_hash();
+
+        let account = match tracking_copy
+            .borrow_mut()
+            .get_account(correlation_id, account_addr)
+        {
+            Ok(account) => account,
+            Err(error) => return Err(error.into()),
+        };
+
+        let main_purse_balance_key = {
+            let main_purse = account.main_purse();
+            match tracking_copy
+                .borrow()
+                .get_purse_balance_key(correlation_id, main_purse.into())
+            {
+                Ok(balance_key) => balance_key,
+                Err(error) => return Err(error.into()),
+            }
+        };
+
+        let (account_balance, proof) = match tracking_copy
+            .borrow()
+            .get_purse_balance_with_proof(correlation_id, main_purse_balance_key)
+        {
+            Ok((balance, proof)) => (balance, proof),
+            Err(error) => return Err(error.into()),
+        };
+
+        let proof = Box::new(proof);
+        let motes = account_balance.value();
+        Ok(BalanceResult::Success { motes, proof })
     }
 }
