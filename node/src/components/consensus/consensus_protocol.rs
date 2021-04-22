@@ -254,6 +254,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
 
-    // TODO: Make this lees Highway-specific.
+    // TODO: Make this less Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }

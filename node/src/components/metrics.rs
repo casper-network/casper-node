@@ -21,7 +21,7 @@
 //! 3. Updating metrics is done inside the `handle_event` function by simply calling methods on the
 //!    fields of `self.metrics` (`: XYZMetrics`). **Important**: Metrics should never be read to
 //!    prevent any actual logic depending on them. If a counter is being increment as a metric and
-//!    also required for busines logic, a second counter should be kept in the component's state.
+//!    also required for business logic, a second counter should be kept in the component's state.
 
 use std::convert::Infallible;
 

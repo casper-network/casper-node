@@ -147,7 +147,7 @@ fn should_track_total_token_supply_in_mint() {
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-    let genesis_tiemstamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
     let ee_config = ExecConfig::new(
         accounts.clone(),
         wasm_config,
@@ -157,7 +157,7 @@ fn should_track_total_token_supply_in_mint() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
-        genesis_tiemstamp,
+        genesis_timestamp,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);

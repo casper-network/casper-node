@@ -80,7 +80,7 @@ pub extern "C" fn uncallable_contract() {}
 
 #[no_mangle]
 pub extern "C" fn call_restricted_entry_points() {
-    // We're aggresively removing exports that aren't exposed through contract header so test
+    // We're aggressively removing exports that aren't exposed through contract header so test
     // ensures that those exports are still inside WASM.
     uncallable_session();
     uncallable_contract();

@@ -280,7 +280,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 }
                 Target::Panic => {
                     announcement_dispatches.push(quote!(
-                        panic!("announcement received that was expressively declard as panic: {:?}",
+                        panic!("announcement received that was expressively declared as panic: {:?}",
                                announcement);
                     ));
                 }
