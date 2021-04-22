@@ -230,7 +230,7 @@ where
                 break
             }
             // Otherwise keep trying to fetch until we get a block with our version
-            _ => {
+            None => {
                 tokio::time::sleep(TIMEOUT_DURATION).await;
             }
         }
