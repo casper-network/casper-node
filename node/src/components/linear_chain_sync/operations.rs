@@ -273,6 +273,8 @@ where
         _ => {}
     }
 
+    // Use the state root to synchronize the trie
+
     let mut outstanding_trie_keys = vec![Blake2bHash::from(
         *most_recent_block_header.state_root_hash(),
     )];

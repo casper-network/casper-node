@@ -805,6 +805,7 @@ dependencies = [
  "base64",
  "bincode",
  "blake2",
+ "bytes 1.0.1",
  "casper-execution-engine",
  "casper-node-macros",
  "casper-types",
@@ -846,6 +847,7 @@ dependencies = [
  "openssl",
  "parking_lot",
  "pem",
+ "pin-project 1.0.6",
  "pnet",
  "prometheus",
  "proptest",
@@ -5418,14 +5420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "system-hashes"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6464,22 +6458,6 @@ dependencies = [
 
 [[package]]
 name = "withdraw-bid"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "write-delete"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "write-delete-inline"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

@@ -386,6 +386,7 @@ pub struct Reactor {
     pub(super) block_header_and_finality_signatures_by_height_fetcher:
         Fetcher<BlockHeaderWithMetadata>,
     // Handles request for fetching tries from the network.
+    #[data_size(skip)]
     pub(super) trie_fetcher: Fetcher<Trie<Key, StoredValue>>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,

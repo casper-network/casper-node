@@ -2058,7 +2058,6 @@ where
                 }
             };
 
-            debug!("Fetched era validators {:?}", era_validators);
             let era_id = &step_request.next_era_id;
             match era_validators.remove(era_id) {
                 Some(validator_weights) => validator_weights,

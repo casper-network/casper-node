@@ -9,7 +9,7 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher::FetchedData},
+    components::{consensus::BlockContext, fetcher::FetcherError},
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
@@ -18,7 +18,6 @@ use crate::{
 };
 
 use super::*;
-use crate::components::fetcher::FetcherError;
 
 type NodeId = &'static str;
 

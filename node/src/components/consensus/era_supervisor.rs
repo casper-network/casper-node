@@ -1009,6 +1009,10 @@ where
                 equivocators,
                 proposer,
             }) => {
+                if era_id != self.era_supervisor.current_era {
+                    debug!(era = era_id.value(), "finalized block in old era");
+                    return Effects::new();
+                }
                 let era = self.era_supervisor.active_eras.get_mut(&era_id).unwrap();
                 era.add_accusations(&equivocators);
                 era.add_accusations(value.accusations());
@@ -1042,7 +1046,10 @@ where
                     .effect_builder
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
-                self.era_supervisor.next_block_height = finalized_block.height() + 1;
+                self.era_supervisor.next_block_height = self
+                    .era_supervisor
+                    .next_block_height
+                    .max(finalized_block.height() + 1);
                 if finalized_block.era_report().is_some() {
                     // This was the era's last block. Schedule deactivating this era.
                     let delay = Timestamp::now().saturating_diff(timestamp).into();
