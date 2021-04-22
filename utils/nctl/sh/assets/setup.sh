@@ -108,8 +108,9 @@ function _main()
     local COUNT_USERS="$COUNT_NODES"
     local PATH_TO_NET
 
-    # Tear down previous.
     PATH_TO_NET=$(get_path_to_net)
+
+    # Tear down previous.
     if [ -d "$PATH_TO_NET" ]; then
         source "$NCTL/sh/assets/teardown.sh" net="$NET_ID"
     fi
@@ -118,10 +119,8 @@ function _main()
     log "asset setup begins ... please wait"
 
     # Setup new.
-    # ... directories
     setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
 
-    # ... binaries
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         setup_asset_binaries "$(get_count_of_nodes)" \
                              "$NCTL_CASPER_HOME/target/debug/casper-client" \
@@ -136,23 +135,18 @@ function _main()
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     fi    
 
-    # ... keys
     setup_asset_keys "$COUNT_NODES" "$COUNT_USERS"
 
-    # ... daemon
     setup_asset_daemon
     
-    # ... chainspec.toml
     setup_asset_chainspec "$COUNT_NODES" "$GENESIS_DELAY" "$PATH_TO_CHAINSPEC"
 
-    # ... accounts.toml
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
     else
         setup_asset_accounts_from_template "$COUNT_NODES" "$COUNT_USERS" "$PATH_TO_ACCOUNTS"
     fi
 
-    # ... nodes
     setup_asset_node_configs "$COUNT_NODES" "$NCTL_CASPER_HOME/resources/local/config.toml"
 
     log "asset setup complete"

@@ -172,10 +172,10 @@ function setup_asset_binaries()
     for IDX in $(seq 1 "$COUNT_NODES")
     do
         PATH_TO_BIN="$(get_path_to_node_bin "$IDX")"
-        cp "$PATH_TO_NODE" \
-           "$PATH_TO_BIN/1_0_0"
         cp "$PATH_TO_NODE_LAUNCHER" \
            "$PATH_TO_BIN"
+        cp "$PATH_TO_NODE" \
+           "$PATH_TO_BIN/1_0_0"
     done
 
     # Set client binaries.

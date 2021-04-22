@@ -6,6 +6,7 @@ source "$NCTL/sh/utils/main.sh"
 # ENTRY POINT
 # ----------------------------------------------------------------
 
+unset ACTIVATION_POINT
 unset NET_ID
 unset STAGE_ID
 
@@ -14,6 +15,7 @@ do
     KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
+        era) ACTIVATION_POINT=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         stage) STAGE_ID=${VALUE} ;;
         *)
@@ -21,6 +23,7 @@ do
 done
 
 export NET_ID=${NET_ID:-1}
+ACTIVATION_POINT="${ACTIVATION_POINT:-$(($(get_chain_era) + 1))}"
 STAGE_ID="${STAGE_ID:-1}"
 
 # ----------------------------------------------------------------
@@ -82,13 +85,13 @@ function _set_chainspec()
 
     local COUNT_NODES=${1}
     local PATH_TO_STAGE=${2}
+    local ACTIVATION_POINT=${3}
     local PROTOCOL_VERSION
     local ACTIVATION_POINT
     local PATH_TO_CHAINSPEC
     local SCRIPT
 
     PROTOCOL_VERSION=$(basename "$PATH_TO_STAGE")
-    ACTIVATION_POINT=$(get_activation_point)
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
 
     # Set file.
@@ -199,22 +202,27 @@ function _set_node_config_workaround_1()
 {
     local NODE_ID=${1}
     local PATH_TO_CONFIG_FILE=${2}
+    local HAS_HIGHWAY
+    local SCRIPT
 
-    local SCRIPT=(
-        "import toml;"
-        "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
-        "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
-        "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
-    )
-    python3 -c "${SCRIPT[*]}" > /dev/null 2>&1
+    HAS_HIGHWAY=$(grep -R "consensus.highway" "$PATH_TO_CONFIG_FILE")
+    if [ "$HAS_HIGHWAY" != "" ]; then
+        SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
+            "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
+            "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
+        )
+    else
+        SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
+            "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
+            "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
+        )
+    fi
 
-    local SCRIPT=(
-        "import toml;"
-        "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
-        "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
-        "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
-    )
-    python3 -c "${SCRIPT[*]}" > /dev/null 2>&1
+    python3 -c "${SCRIPT[*]}"
 }
 
 #######################################
@@ -222,18 +230,21 @@ function _set_node_config_workaround_1()
 # Arguments:
 #   Path to folder containing staged files.
 #######################################
-function _get_next_protocol_version()
+function _get_protocol_version_of_next_upgrade()
 {
     local PATH_TO_STAGE=${1}
     local IFS='_'
     local PROTOCOL_VERSION
     local PATH_TO_N1_BIN
+    local SEMVAR_CURRENT
+    local SEMVAR_NEXT
     
     PATH_TO_N1_BIN="$(get_path_to_net)/nodes/node-1/bin"
 
+
     # Set semvar of current version.
     pushd "$PATH_TO_N1_BIN" || exit
-    read -ra SEMVAR <<< "$(ls -td -- * | head -n 1)"
+    read -ra SEMVAR_CURRENT <<< "$(ls -td -- * | head -n 1)"
     popd || exit
 
     # Iterate staged bin directories and return first whose semvar > current.
@@ -241,10 +252,10 @@ function _get_next_protocol_version()
         if [ -d "$FHANDLE" ]; then
             PROTOCOL_VERSION=$(basename "$FHANDLE")
             if [ ! -d "$PATH_TO_N1_BIN/$PROTOCOL_VERSION" ]; then
-                read -ra SEMVAR_1 <<< "$PROTOCOL_VERSION"
-                if [ "${SEMVAR_1[0]}" -gt "${SEMVAR[0]}" ] || \
-                   [ "${SEMVAR_1[1]}" -gt "${SEMVAR[1]}" ] || \
-                   [ "${SEMVAR_1[2]}" -gt "${SEMVAR[2]}" ]; then
+                read -ra SEMVAR_NEXT <<< "$PROTOCOL_VERSION"
+                if [ "${SEMVAR_NEXT[0]}" -gt "${SEMVAR_CURRENT[0]}" ] || \
+                   [ "${SEMVAR_NEXT[1]}" -gt "${SEMVAR_CURRENT[1]}" ] || \
+                   [ "${SEMVAR_NEXT[2]}" -gt "${SEMVAR_CURRENT[2]}" ]; then
                     echo "$PROTOCOL_VERSION"
                     break
                 fi
@@ -264,23 +275,25 @@ function _get_next_protocol_version()
 function _main()
 {
     local STAGE_ID=${1}
-    local PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
+    local ACTIVATION_POINT=${2}
+    local PATH_TO_STAGE
     local PROTOCOL_VERSION
     local COUNT_NODES
 
+    PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     COUNT_NODES=$(get_count_of_nodes)
-    PROTOCOL_VERSION="$(_get_next_protocol_version "$PATH_TO_STAGE")"
+    PROTOCOL_VERSION=$(_get_protocol_version_of_next_upgrade "$PATH_TO_STAGE")
 
     if [ "$PROTOCOL_VERSION" == "" ]; then
         log "ATTENTION :: no more staged upgrades to rollout !!!"
     else
-        log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION : STARTS"
+        log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT : STARTS"
         _set_directories "$COUNT_NODES" "$PROTOCOL_VERSION"
         _set_binaries "$COUNT_NODES" "$PATH_TO_STAGE/$PROTOCOL_VERSION"
-        _set_chainspec "$COUNT_NODES" "$PATH_TO_STAGE/$PROTOCOL_VERSION"
+        _set_chainspec "$COUNT_NODES" "$PATH_TO_STAGE/$PROTOCOL_VERSION" "$ACTIVATION_POINT"
         _set_node_configs "$COUNT_NODES" "$PATH_TO_STAGE/$PROTOCOL_VERSION"
-        log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION : COMPLETE"
+        log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT : COMPLETE"
     fi
 }
 
-_main "$STAGE_ID"
+_main "$STAGE_ID" "$ACTIVATION_POINT"

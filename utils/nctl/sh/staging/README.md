@@ -6,6 +6,8 @@ In order to run a localised staged scenarios:
 nctl-stage-init-settings stage=N
 ```
 
+NOTE: stage identifer N is assumed to be an unsigned integer.
+
 2.  Build staged assets.
 
 ```

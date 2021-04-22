@@ -63,12 +63,13 @@ function _main()
     PATH_TO_NET=$(get_path_to_net)
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID/1_0_0"
 
+    # Tear down previous.
     if [ -d "$PATH_TO_NET" ]; then
-        source "$NCTL/sh/node/stop.sh"
-        rm -rf "$PATH_TO_NET"
+        source "$NCTL/sh/assets/teardown.sh" net="$NET_ID"
     fi
     mkdir -p "$PATH_TO_NET"
 
+    # Setup new.
     setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
 
     setup_asset_binaries "$COUNT_NODES" \
