@@ -131,14 +131,6 @@ impl Sub<TimeDiff> for Timestamp {
     }
 }
 
-impl Div<TimeDiff> for Timestamp {
-    type Output = u64;
-
-    fn div(self, rhs: TimeDiff) -> u64 {
-        self.0 / rhs.0
-    }
-}
-
 impl Rem<TimeDiff> for Timestamp {
     type Output = TimeDiff;
 

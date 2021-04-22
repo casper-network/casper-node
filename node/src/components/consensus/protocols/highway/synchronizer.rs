@@ -76,7 +76,7 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
         Some(PendingVertex::new(sender, pvv, timestamp))
     }
 
-    /// Returns whether depedency exists in the pending vertices collection.
+    /// Returns whether dependency exists in the pending vertices collection.
     fn contains_dependency(&self, d: &Dependency<C>) -> bool {
         self.0.keys().any(|pvv| &pvv.inner().id() == d)
     }
@@ -204,7 +204,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
     }
 
-    // Returns number of elements in the `verties_to_be_added_later` queue.
+    // Returns number of elements in the `vertices_to_be_added_later` queue.
     // Every pending vertex is counted once, even if it has multiple senders.
     fn vertices_to_be_added_later_len(&self) -> u64 {
         self.vertices_to_be_added_later

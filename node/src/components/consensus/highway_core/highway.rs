@@ -374,7 +374,7 @@ impl<C: Context> Highway<C> {
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
         // This is because proposal units, i.e. new blocks, are
-        // supposed to thave the exact timestamp that matches the
+        // supposed to have the exact timestamp that matches the
         // beginning of the round (which we use as the "round ID").
         //
         // But at least any discrepancy here can only come from event

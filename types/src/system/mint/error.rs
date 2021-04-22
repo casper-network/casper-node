@@ -70,7 +70,7 @@ pub enum Error {
     /// Source and target purse [`crate::URef`]s are equal.
     #[cfg_attr(feature = "std", error("Invalid target purse"))]
     EqualSourceAndTarget = 17,
-    /// An arithmetic overflow has occured.
+    /// An arithmetic overflow has occurred.
     #[cfg_attr(feature = "std", error("Arithmetic overflow has occurred"))]
     ArithmeticOverflow = 18,
 

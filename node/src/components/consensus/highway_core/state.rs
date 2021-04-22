@@ -901,7 +901,7 @@ impl<C: Context> State<C> {
         self.incomplete_endorsements.clear();
     }
 
-    /// Validates whether a unit with the given panorama and `endorsed` set satsifies the
+    /// Validates whether a unit with the given panorama and `endorsed` set satisfies the
     /// Limited Naïveté Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
@@ -1134,7 +1134,7 @@ fn log2(x: u64) -> u32 {
         .saturating_sub(1)
 }
 
-/// Returns a pseudorandom `u64` betweend `1` and `upper` (inclusive).
+/// Returns a pseudorandom `u64` between `1` and `upper` (inclusive).
 fn leader_prng(upper: u64, seed: u64) -> u64 {
     ChaCha8Rng::seed_from_u64(seed)
         .gen_range(0..upper)

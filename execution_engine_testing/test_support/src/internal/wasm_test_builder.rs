@@ -73,7 +73,7 @@ use crate::internal::{
 /// This default value should give 50MiB initial map size by default.
 const DEFAULT_LMDB_PAGES: usize = 128_000;
 
-/// LDMB max readers
+/// LMDB max readers
 ///
 /// The default value is chosen to be the same as the node itself.
 const DEFAULT_MAX_READERS: u32 = 512;
