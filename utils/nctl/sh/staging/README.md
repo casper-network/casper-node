@@ -3,13 +3,13 @@ In order to run a localised staged scenarios:
 1.  Set staging root folder + settings file.
 
 ```
-nctl-staging-init
+nctl-stage-init-settings stage=N
 ```
 
-2.  Initialise staged assets.
+2.  Build staged assets.
 
 ```
-nctl-staging-stage
+nctl-stage-build-from-settings stage=N
 ```
 
 3.  Review staged assets.
@@ -25,16 +25,12 @@ $NCTL/staging/X_Y_Z/config
 4.  Start network.
 
 ```
-nctl-staging-setup
+nctl-assets-setup-from-stage stage=N
 nctl-start
 ```
 
-NOTE: this will inject activation point ...etc.
-
-5.  Apply upgrade.
+5.  Apply next upgrade.
 
 ```
-nctl-staging-setup-next
+nctl-assets-upgrade-from-stage stage=N
 ```
-
-NOTE: this will inject activation point ...etc.

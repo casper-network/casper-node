@@ -29,7 +29,9 @@ source "$NCTL"/sh/utils/main.sh
 alias nctl-assets-dump='source $NCTL/sh/assets/dump.sh'
 alias nctl-assets-ls='source $NCTL/sh/assets/list.sh'
 alias nctl-assets-setup='source $NCTL/sh/assets/setup.sh'
+alias nctl-assets-setup-from-stage='source $NCTL/sh/assets/setup_from_stage.sh'
 alias nctl-assets-teardown='source $NCTL/sh/assets/teardown.sh'
+alias nctl-assets-upgrade-from-stage='source $NCTL/sh/assets/upgrade_from_stage.sh'
 
 # Binaries.
 alias nctl-compile='source $NCTL/sh/assets/compile.sh'
@@ -38,11 +40,10 @@ alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
 
 # Staging.
-alias nctl-staging-clean='source $NCTL/sh/staging/clean.sh'
-alias nctl-staging-init='source $NCTL/sh/staging/init.sh'
-alias nctl-staging-setup='source $NCTL/sh/staging/setup_first.sh'
-alias nctl-staging-setup-next='source $NCTL/sh/staging/setup_next.sh'
-alias nctl-staging-stage='source $NCTL/sh/staging/stage.sh'
+alias nctl-stage-init-settings='source $NCTL/sh/staging/init_settings.sh'
+alias nctl-stage-build='source $NCTL/sh/staging/build.sh'
+alias nctl-stage-build-from-settings='source $NCTL/sh/staging/build_from_settings.sh'
+alias nctl-stage-teardown='source $NCTL/sh/staging/teardown.sh'
 
 # Node control.
 alias nctl-clean='source $NCTL/sh/node/clean.sh'
