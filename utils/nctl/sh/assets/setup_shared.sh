@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #######################################
 # Gets a node's default POS weight.
 # Arguments:
@@ -36,10 +38,14 @@ function setup_asset_accounts()
     local COUNT_NODES=${1}
     local COUNT_NODES_AT_GENESIS=${2}
     local COUNT_USERS=${3}
-
     local IDX
-    local PATH_TO_NET="$(get_path_to_net)"
+    local PATH_TO_ACCOUNTS
+    local PATH_TO_NET
+
     local PATH_TO_ACCOUNTS="$PATH_TO_NET/chainspec/accounts.toml"
+
+    PATH_TO_NET="$(get_path_to_net)"
+    PATH_TO_ACCOUNTS="$PATH_TO_NET/chainspec/accounts.toml"
 
     # Set accounts.toml.
     touch "$PATH_TO_ACCOUNTS"
@@ -163,7 +169,7 @@ function setup_asset_binaries()
     local IDX
 
     # Set node binaries.
-    for IDX in $(seq 1 $COUNT_NODES)
+    for IDX in $(seq 1 "$COUNT_NODES")
     do
         PATH_TO_BIN="$(get_path_to_node_bin "$IDX")"
         cp "$PATH_TO_NODE" \
@@ -201,11 +207,11 @@ function setup_asset_chainspec()
     local COUNT_NODES=${1}
     local GENESIS_DELAY=${2}
     local PATH_TO_CHAINSPEC_TEMPLATE=${3}
-
-    local PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
+    local PATH_TO_CHAINSPEC
     local SCRIPT
 
     # Set file.
+    PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
     cp "$PATH_TO_CHAINSPEC_TEMPLATE" "$PATH_TO_CHAINSPEC"
 
     # Set contents.
@@ -298,8 +304,11 @@ function setup_asset_keys()
     local COUNT_NODES=${1}
     local COUNT_USERS=${2}
     local IDX
-    local PATH_TO_CLIENT="$(get_path_to_client)"
-    local PATH_TO_NET="$(get_path_to_net)"
+    local PATH_TO_CLIENT
+    local PATH_TO_NET
+
+    PATH_TO_CLIENT="$(get_path_to_client)"
+    PATH_TO_NET="$(get_path_to_net)"
 
     log "... setting cryptographic keys"
 
@@ -328,12 +337,13 @@ function setup_asset_node_configs()
     
     local COUNT_NODES=${1}
     local PATH_TO_TEMPLATE=${2}
-
     local IDX
-    local PATH_TO_NET="$(get_path_to_net)"
+    local PATH_TO_NET
     local PATH_TO_CONFIG
     local PATH_TO_CONFIG_FILE
     local SCRIPT
+
+    PATH_TO_NET="$(get_path_to_net)"
 
     for IDX in $(seq 1 "$COUNT_NODES")
     do
@@ -379,10 +389,10 @@ function setup_asset_node_config_workaround_1()
 {
     local NODE_ID=${1}
     local PATH_TO_CONFIG_FILE=${2}
-
-    local HAS_HIGHWAY=$(grep -R "consensus.highway" $PATH_TO_CONFIG_FILE)
+    local HAS_HIGHWAY
     local SCRIPT
 
+    HAS_HIGHWAY=$(grep -R "consensus.highway" "$PATH_TO_CONFIG_FILE")
     if [ "$HAS_HIGHWAY" != "" ]; then
         SCRIPT=(
             "import toml;"

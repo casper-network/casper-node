@@ -39,7 +39,7 @@ function _set_binaries()
 {
     local PATH_TO_SOURCE=${1}
 
-    pushd $PATH_TO_SOURCE || exit
+    pushd "$PATH_TO_SOURCE" || exit
     
     # Set node binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
@@ -63,7 +63,7 @@ function _set_binaries()
     make build-contract-rs/withdraw-bid
     make build-contract-rs/activate-bid
 
-    popd
+    popd || exit
 }
 
 #######################################
@@ -128,9 +128,7 @@ function _set_assets()
     local PATH_TO_STAGE=${3}
 
     local PATH_TO_SOURCE
-    local PROTOCOL_HASH
     local PROTOCOL_VERSION
-    local STAGE_TARGET
     local IFS=':'
     
     # Set source code folder.
@@ -202,11 +200,12 @@ function _main()
     local STAGE_ID=${1}
     local STAGE_PROTOCOL_VERSION=${2}
     local STAGE_SOURCE=${3}
+    local PATH_TO_STAGE
 
     log "staging -> STARTS"
     log "... id=$STAGE_ID :: version=$STAGE_PROTOCOL_VERSION :: source=$STAGE_SOURCE"
 
-    local PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
+    PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
 
     # Set prerequisites.
     log "... setting pre-requisites"

@@ -42,8 +42,11 @@ function _set_binaries()
 
     local CONTRACT
     local IDX
-    local PATH_TO_BIN_OF_NET="$(get_path_to_net)/bin"
-    local PROTOCOL_VERSION=$(basename $PATH_TO_STAGE)
+    local PATH_TO_BIN_OF_NET
+    local PROTOCOL_VERSION
+
+    PATH_TO_BIN_OF_NET="$(get_path_to_net)/bin"
+    PROTOCOL_VERSION=$(basename "$PATH_TO_STAGE")
 
     # Set node binaries.
     for IDX in $(seq 1 "$COUNT_NODES")
@@ -79,11 +82,14 @@ function _set_chainspec()
 
     local COUNT_NODES=${1}
     local PATH_TO_STAGE=${2}
-    local PROTOCOL_VERSION=$(basename $PATH_TO_STAGE)
-    
-    local ACTIVATION_POINT=$(get_activation_point)
-    local PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
+    local PROTOCOL_VERSION
+    local ACTIVATION_POINT
+    local PATH_TO_CHAINSPEC
     local SCRIPT
+
+    PROTOCOL_VERSION=$(basename "$PATH_TO_STAGE")
+    ACTIVATION_POINT=$(get_activation_point)
+    PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
 
     # Set file.
     cp "$PATH_TO_STAGE/resources/chainspec.toml" "$PATH_TO_CHAINSPEC"
@@ -135,11 +141,13 @@ function _set_node_configs()
     
     local COUNT_NODES=${1}
     local PATH_TO_STAGE=${2}
-
     local IDX
-    local PATH_TO_NET="$(get_path_to_net)"
+    local PATH_TO_NET
     local PATH_TO_CONFIG
-    local PROTOCOL_VERSION=$(basename $PATH_TO_STAGE)
+    local PROTOCOL_VERSION
+
+    PATH_TO_NET="$(get_path_to_net)"
+    PROTOCOL_VERSION=$(basename "$PATH_TO_STAGE")
 
     for IDX in $(seq 1 "$COUNT_NODES")
     do
@@ -219,7 +227,9 @@ function _get_next_protocol_version()
     local PATH_TO_STAGE=${1}
     local IFS='_'
     local PROTOCOL_VERSION
-    local PATH_TO_N1_BIN="$(get_path_to_net)/nodes/node-1/bin"
+    local PATH_TO_N1_BIN
+    
+    PATH_TO_N1_BIN="$(get_path_to_net)/nodes/node-1/bin"
 
     # Set semvar of current version.
     pushd "$PATH_TO_N1_BIN" || exit
@@ -232,9 +242,9 @@ function _get_next_protocol_version()
             PROTOCOL_VERSION=$(basename "$FHANDLE")
             if [ ! -d "$PATH_TO_N1_BIN/$PROTOCOL_VERSION" ]; then
                 read -ra SEMVAR_1 <<< "$PROTOCOL_VERSION"
-                if [ ${SEMVAR_1[0]} -gt ${SEMVAR[0]} ] || \
-                [ ${SEMVAR_1[1]} -gt ${SEMVAR[1]} ] || \
-                [ ${SEMVAR_1[2]} -gt ${SEMVAR[2]} ]; then
+                if [ "${SEMVAR_1[0]}" -gt "${SEMVAR[0]}" ] || \
+                   [ "${SEMVAR_1[1]}" -gt "${SEMVAR[1]}" ] || \
+                   [ "${SEMVAR_1[2]}" -gt "${SEMVAR[2]}" ]; then
                     echo "$PROTOCOL_VERSION"
                     break
                 fi
@@ -256,8 +266,9 @@ function _main()
     local STAGE_ID=${1}
     local PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     local PROTOCOL_VERSION
-    local COUNT_NODES=$(get_count_of_nodes)
+    local COUNT_NODES
 
+    COUNT_NODES=$(get_count_of_nodes)
     PROTOCOL_VERSION="$(_get_next_protocol_version "$PATH_TO_STAGE")"
 
     if [ "$PROTOCOL_VERSION" == "" ]; then

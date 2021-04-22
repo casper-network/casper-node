@@ -61,7 +61,6 @@ function _set_nodes()
     
     local IDX
     local PATH_TO_FILE
-    local PATH_TO_NODE
 
     for IDX in $(seq 1 "$(get_count_of_nodes)")
     do
@@ -102,7 +101,7 @@ function _set_nodes()
 function _main()
 {
     local COUNT_NODES_AT_GENESIS=${1}
-    local COUNT_NODES=$(($COUNT_NODES_AT_GENESIS * 2))
+    local COUNT_NODES=$((COUNT_NODES_AT_GENESIS * 2))
     local GENESIS_DELAY=${2}
     local PATH_TO_CHAINSPEC=${3}
     local PATH_TO_ACCOUNTS=${4}

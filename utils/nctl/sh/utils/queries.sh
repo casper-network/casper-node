@@ -117,7 +117,7 @@ function get_protocol_version_for_chainspec()
 {
     local PROTOCOL_VERSION=${1}
 
-    echo $PROTOCOL_VERSION | tr "_" "."
+    echo "$PROTOCOL_VERSION" | tr "_" "."
 }
 
 #######################################

@@ -32,10 +32,13 @@ STAGE_ID="${STAGE_ID:-1}"
 function _main()
 {
     local STAGE_ID=${1}
+    local PATH_TO_TEMPLATE
+    local PATH_TO_STAGE
+    local PATH_TO_STAGE_SETTINGS
 
-    local PATH_TO_TEMPLATE="$NCTL/sh/staging/settings-template.txt"
-    local PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
-    local PATH_TO_STAGE_SETTINGS="$PATH_TO_STAGE/settings.sh"
+    PATH_TO_TEMPLATE="$NCTL/sh/staging/settings-template.txt"
+    PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")"
+    PATH_TO_STAGE_SETTINGS="$PATH_TO_STAGE/settings.sh"
 
     # Set directory.
     if [ -d "$PATH_TO_STAGE" ]; then

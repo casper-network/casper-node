@@ -27,8 +27,9 @@ STAGE_ID="${STAGE_ID:-1}"
 function _main()
 {
     local STAGE_ID=${1}
+    local PATH_TO_STAGE
 
-    local PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
+    PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
     if [ -d "$PATH_TO_STAGE" ]; then
         rm -rf "$PATH_TO_STAGE"
     fi

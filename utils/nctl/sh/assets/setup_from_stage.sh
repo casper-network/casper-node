@@ -53,12 +53,15 @@ function _main()
 
     local STAGE_ID=${1}
     local COUNT_NODES_AT_GENESIS=${2}
-    local COUNT_NODES=$(($COUNT_NODES_AT_GENESIS * 2))
+    local COUNT_NODES=$((COUNT_NODES_AT_GENESIS * 2))
     local GENESIS_DELAY=${3}
     local PATH_TO_ACCOUNTS=${4}
     local COUNT_USERS="$COUNT_NODES"
-    local PATH_TO_NET=$(get_path_to_net)
-    local PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID/1_0_0"
+    local PATH_TO_NET
+    local PATH_TO_STAGE
+
+    PATH_TO_NET=$(get_path_to_net)
+    PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID/1_0_0"
 
     if [ -d "$PATH_TO_NET" ]; then
         source "$NCTL/sh/node/stop.sh"
