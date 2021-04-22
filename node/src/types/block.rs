@@ -146,6 +146,8 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     JsonBlock::new(block, block_signature)
 });
 
+const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 3, 0);
+
 /// Error returned from constructing or validating a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -759,6 +761,20 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
+        if self.protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            self.hash_v2()
+        } else {
+            self.hash_v1()
+        }
+    }
+
+    fn hash_v1(&self) -> BlockHash {
+        let serialized_header = Self::serialize(&self)
+            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+        BlockHash::new(hash::hash(&serialized_header))
+    }
+
+    fn hash_v2(&self) -> BlockHash {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let BlockHeader {
             parent_hash,
@@ -812,6 +828,11 @@ impl BlockHeader {
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.era_id().is_genesis() && self.height() == 0
+    }
+
+    // Serialize the block header.
+    fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.to_bytes()
     }
 }
 
@@ -942,6 +963,14 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
+    /// Computes the body hash by hashing the serialized bytes.
+    pub(crate) fn hash_v1(&self) -> Digest {
+        let serialized_body = self
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+        hash::hash(&serialized_body)
+    }
+
     /// Computes the body hash by hashing a Merkle tree of the form:
     ///
     /// ```text
@@ -951,7 +980,7 @@ impl BlockBody {
     ///                   hash(transfer_hashes)     /             \
     ///                                         hash(proposer)   hash(&[])
     /// ```
-    pub(crate) fn hash(&self) -> Digest {
+    pub(crate) fn hash_v2(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let BlockBody {
             deploy_hashes,
@@ -1128,7 +1157,12 @@ impl Block {
             finalized_block.proto_block.wasm_deploys().clone(),
             finalized_block.proto_block.transfers().clone(),
         );
-        let body_hash = body.hash();
+
+        let body_hash = if protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            body.hash_v2()
+        } else {
+            body.hash_v1()
+        };
 
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
@@ -1227,7 +1261,11 @@ impl Block {
 
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_body_hash = self.body.hash();
+        let actual_body_hash = if self.header.protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            self.body.hash_v2()
+        } else {
+            self.body.hash_v1()
+        };
         if self.header.body_hash != actual_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 expected_by_block_header: self.header.body_hash,
@@ -1801,7 +1839,11 @@ mod tests {
         let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_hash;
 
-        let actual_body_hash = block.body.hash();
+        let actual_body_hash = if block.header.protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            block.body.hash_v2()
+        } else {
+            block.body.hash_v1()
+        };
 
         // No Eq trait for BlockValidationError, so pattern match
         match block.verify() {

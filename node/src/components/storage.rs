@@ -903,7 +903,7 @@ impl Storage {
                 Some(block_header) => block_header,
                 None => return Ok(None),
             };
-        let found_block_body_hash = block_body.hash();
+        let found_block_body_hash = block_body.hash_v1();
         if found_block_body_hash != *block_header.body_hash() {
             return Err(LmdbExtError::BlockBodyNotStoredUnderItsHash {
                 queried_block_body_hash: *block_header.body_hash(),
@@ -1179,7 +1179,7 @@ fn check_block_body_db(env: &Environment, block_body_db: &Database) -> Result<()
         let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
         assert_eq!(
             raw_key,
-            body.hash().as_ref(),
+            body.hash_v1().as_ref(),
             "found corrupt block body in database"
         );
     }
