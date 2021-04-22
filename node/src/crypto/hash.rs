@@ -441,4 +441,22 @@ mod test {
             "0470ecc8abdcd6ecd3a4c574431b80bb8751c7a43337d5966dadf07899f8804b"
         );
     }
+
+    #[test]
+    fn test_hash_btreemap() {
+        let mut map = BTreeMap::new();
+        let _ = map.insert(Digest([1u8; 32]), Digest([2u8; 32]));
+        let _ = map.insert(Digest([3u8; 32]), Digest([4u8; 32]));
+        let _ = map.insert(Digest([5u8; 32]), Digest([6u8; 32]));
+        let _ = map.insert(Digest([7u8; 32]), Digest([8u8; 32]));
+        let _ = map.insert(Digest([9u8; 32]), Digest([10u8; 32]));
+
+        let hash = hash_btree_map(&map).unwrap();
+        let hash_lower_hex = format!("{:x}", hash);
+
+        assert_eq!(
+            hash_lower_hex,
+            "f3bc94beb2470d5c09f575b439d5f238bdc943233774c7aa59e597cc2579e148"
+        );
+    }
 }
