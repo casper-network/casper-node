@@ -95,6 +95,11 @@ impl Params {
         self.max_round_exp
     }
 
+    /// Returns the minimum round length, corresponding to the minimum round exponent.
+    pub(crate) fn min_round_length(&self) -> TimeDiff {
+        round_len(self.min_round_exp)
+    }
+
     /// Returns the maximum round length, corresponding to the maximum round exponent.
     pub(crate) fn max_round_length(&self) -> TimeDiff {
         round_len(self.max_round_exp)
