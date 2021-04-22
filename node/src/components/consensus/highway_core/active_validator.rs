@@ -160,18 +160,6 @@ impl<C: Context> ActiveValidator<C> {
         self.own_last_unit.take()
     }
 
-    /// Cleans up the validator disk state.
-    /// Deletes all unit files.
-    pub(crate) fn cleanup(&self) -> io::Result<()> {
-        let unit_file = if let Some(file) = self.unit_file.as_ref() {
-            file
-        } else {
-            return Ok(());
-        };
-
-        fs::remove_file(unit_file)
-    }
-
     /// Sets the next round exponent to the new value.
     pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
         self.next_round_exp = new_round_exp;

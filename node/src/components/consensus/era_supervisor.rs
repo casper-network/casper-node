@@ -11,6 +11,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
+    fs, io,
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -347,16 +348,11 @@ where
 
         if should_activate {
             let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
-            let unit_hash_file = self.unit_hashes_folder.join(format!(
-                "unit_hash_{:?}_{}.dat",
-                instance_id,
-                self.public_signing_key.to_hex()
-            ));
             outcomes.extend(consensus.activate_validator(
                 our_id.clone(),
                 secret,
                 now,
-                Some(unit_hash_file),
+                Some(self.unit_hash_file(&instance_id)),
             ))
         }
 
@@ -383,8 +379,16 @@ where
         // units that refer to evidence from any era that was bonded when it was the current one.
         let oldest_evidence_era_id = oldest_bonded_era(&self.protocol_config, oldest_bonded_era_id);
         if let Some(obsolete_era_id) = oldest_evidence_era_id.checked_sub(1) {
-            trace!(era = obsolete_era_id.value(), "removing obsolete era");
-            self.active_eras.remove(&obsolete_era_id);
+            if let Some(era) = self.active_eras.remove(&obsolete_era_id) {
+                trace!(era = obsolete_era_id.value(), "removing obsolete era");
+                match fs::remove_file(self.unit_hash_file(era.consensus.instance_id())) {
+                    Ok(_) => {}
+                    Err(err) => match err.kind() {
+                        io::ErrorKind::NotFound => {}
+                        err => warn!(?err, "could not delete unit hash file"),
+                    },
+                }
+            }
         }
 
         outcomes
@@ -530,6 +534,15 @@ where
     /// receive blocks that refer to `bonded_eras` before that.
     fn bonded_eras(&self) -> u64 {
         bonded_eras(&self.protocol_config)
+    }
+
+    /// Returns the path to the era's unit hash file.
+    fn unit_hash_file(&self, instance_id: &Digest) -> PathBuf {
+        self.unit_hashes_folder.join(format!(
+            "unit_hash_{:?}_{}.dat",
+            instance_id,
+            self.public_signing_key.to_hex()
+        ))
     }
 }
 
