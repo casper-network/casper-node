@@ -30,6 +30,7 @@ mod error;
 mod event;
 mod gossiped_address;
 mod message;
+mod task_manager;
 #[cfg(test)]
 mod tests;
 
