@@ -39,6 +39,7 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
+    types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -140,7 +141,7 @@ where
         match event {
             Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                 block_hash: *block.hash(),
-                block: Box::new(*block),
+                block: Box::new(JsonBlock::new(*block, None)),
             }),
             Event::DeployProcessed {
                 deploy_hash,
