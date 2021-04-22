@@ -20,7 +20,7 @@ use crate::{
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest},
         EffectBuilder,
     },
-    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, Chainspec, Item},
+    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, Chainspec, Item, NodeRng},
 };
 
 const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
@@ -37,7 +37,7 @@ where
         .into_iter()
         .map(|(peer, _)| peer)
         .collect();
-    let mut rng = rand::thread_rng();
+    let mut rng = NodeRng::new();
     vector_of_peers.shuffle(&mut rng);
     vector_of_peers
 }
