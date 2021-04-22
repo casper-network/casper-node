@@ -112,7 +112,7 @@ function _main()
     # Tear down previous.
     PATH_TO_NET=$(get_path_to_net)
     if [ -d "$PATH_TO_NET" ]; then
-        source "$NCTL"/sh/assets/teardown.sh net="$NET_ID"
+        source "$NCTL/sh/assets/teardown.sh" net="$NET_ID"
     fi
     mkdir -p "$PATH_TO_NET"
 
@@ -147,12 +147,6 @@ function _main()
     setup_asset_chainspec "$COUNT_NODES" "$GENESIS_DELAY" "$PATH_TO_CHAINSPEC"
 
     # ... accounts.toml
-    if [ "$PATH_TO_ACCOUNTS" = "" ]; then
-        _set_accounts
-    else
-        _set_accounts_from_template "$PATH_TO_ACCOUNTS"
-    fi
-
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
     else

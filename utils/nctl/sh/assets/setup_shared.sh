@@ -333,6 +333,7 @@ function setup_asset_node_configs()
     local PATH_TO_NET="$(get_path_to_net)"
     local PATH_TO_CONFIG
     local PATH_TO_CONFIG_FILE
+    local SCRIPT
 
     for IDX in $(seq 1 "$COUNT_NODES")
     do
@@ -346,7 +347,7 @@ function setup_asset_node_configs()
         cp "$PATH_TO_TEMPLATE" "$PATH_TO_CONFIG_FILE"
 
         # Set node configuration settings.
-        local SCRIPT=(
+        SCRIPT=(
             "import toml;"
             "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
             "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
@@ -362,8 +363,9 @@ function setup_asset_node_configs()
         python3 -c "${SCRIPT[*]}"
 
         # Do workarounds.
-        # N.B. - these are temporary & come into scope when testing against protocol versions that have conflicting node configuration schemas.
-        # setup_asset_node_config_workaround_1 "$IDX" "$PATH_TO_CONFIG_FILE"
+        # N.B. - these are temporary & come into scope when testing against protocol versions 
+        #        that have conflicting node configuration schemas.
+        setup_asset_node_config_workaround_1 "$IDX" "$PATH_TO_CONFIG_FILE"
     done
 }
 
@@ -378,19 +380,24 @@ function setup_asset_node_config_workaround_1()
     local NODE_ID=${1}
     local PATH_TO_CONFIG_FILE=${2}
 
-    local SCRIPT=(
-        "import toml;"
-        "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
-        "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
-        "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
-    )
-    python3 -c "${SCRIPT[*]}" > /dev/null 2>&1
+    local HAS_HIGHWAY=$(grep -R "consensus.highway" $PATH_TO_CONFIG_FILE)
+    local SCRIPT
 
-    # local SCRIPT=(
-    #     "import toml;"
-    #     "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
-    #     "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
-    #     "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
-    # )
-    # python3 -c "${SCRIPT[*]}" > /dev/null 2>&1
+    if [ "$HAS_HIGHWAY" != "" ]; then
+        SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
+            "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
+            "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
+        )
+    else
+        SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_CONFIG_FILE');"
+            "cfg['consensus']['unit_hashes_folder']='../../storage-consensus';"
+            "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
+        )
+    fi
+
+    python3 -c "${SCRIPT[*]}"
 }
