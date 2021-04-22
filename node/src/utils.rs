@@ -11,6 +11,7 @@ pub(crate) mod rlimit;
 mod round_robin;
 
 use std::{
+    any,
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
     fs,
@@ -19,6 +20,8 @@ use std::{
     ops::{Add, BitXorAssign, Div},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
 };
 #[cfg(test)]
 use std::{env, str::FromStr};
@@ -29,7 +32,7 @@ use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::warn;
+use tracing::{error, warn};
 
 pub(crate) use counting_channel::{counting_unbounded_channel, CountingReceiver, CountingSender};
 #[cfg(test)]
@@ -388,9 +391,46 @@ pub fn xor(lhs: &mut [u8], rhs: &[u8]) {
         .for_each(|(sb, &cb)| sb.bitxor_assign(cb));
 }
 
+/// Wait until all strong references for a particular arc have been dropped.
+///
+/// Downgrades and immediately drops the `Arc`, keeping only a weak reference. The reference will
+/// then be polled `attempts` times, unless it has a strong reference count of 0.
+///
+/// Returns whether or not `arc` has zero strong references left.
+///
+/// # Note
+///
+/// Using this function is usually a potential architectural issue and it should be used very
+/// sparingly. Consider introducing a different access pattern for the value under `Arc`.
+pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Duration) -> bool {
+    // Ensure that if we do hold the last reference, we are now going to 0.
+    let weak = Arc::downgrade(&arc);
+    drop(arc);
+
+    for _ in 0..attempts {
+        let strong_count = weak.strong_count();
+
+        if strong_count == 0 {
+            // Everything has been dropped, we are done.
+            return true;
+        }
+
+        tokio::time::sleep(retry_delay).await;
+    }
+
+    error!(
+        attempts, ?retry_delay, ty=%any::type_name::<T>(),
+        "failed to clean up shared reference"
+    );
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
-    use super::xor;
+    use std::{sync::Arc, time::Duration};
+
+    use super::{wait_for_arc_drop, xor};
 
     #[test]
     fn xor_works() {
@@ -410,5 +450,40 @@ mod tests {
         let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11];
 
         xor(&mut lhs, &rhs);
+    }
+
+    #[tokio::test]
+    async fn arc_drop_waits_for_drop() {
+        let retry_delay = Duration::from_millis(25);
+        let attempts = 15;
+
+        let arc = Arc::new(());
+
+        let arc_in_background = arc.clone();
+        let _weak_in_background = Arc::downgrade(&arc);
+
+        // At this point, the Arc has the following refernces:
+        //
+        // * main test task (`arc`, strong)
+        // * background strong reference (`arc_in_background`)
+        // * background weak reference (`weak_in_background`)
+
+        // Phase 1: waiting for the arc should fail, because there still is the background
+        // reference.
+        assert!(!wait_for_arc_drop(arc, attempts, retry_delay).await);
+
+        // We "restore" the arc from the background arc.
+        let arc = arc_in_background.clone();
+
+        // Add another "foreground" weak reference.
+        let weak = Arc::downgrade(&arc);
+
+        // Phase 2: Our background tasks drops its reference, now we should succeed.
+        drop(arc_in_background);
+        assert!(wait_for_arc_drop(arc, attempts, retry_delay).await);
+
+        // Immedetialy after, we should not be able to obtain a strong reference anymore.
+        // This test fails only if we have a race condition, so false positive tests are possible.
+        assert!(weak.upgrade().is_none());
     }
 }

@@ -82,10 +82,14 @@ function _set_fileset()
            "$PATH_TO_STAGE/bin"
         cp "$PATH_TO_SOURCE/target/debug/casper-node" \
            "$PATH_TO_STAGE/bin"
+        cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
+           "$PATH_TO_STAGE/bin"
     else
         cp "$PATH_TO_SOURCE/target/release/casper-client" \
            "$PATH_TO_STAGE/bin"
         cp "$PATH_TO_SOURCE/target/release/casper-node" \
+           "$PATH_TO_STAGE/bin"
+        cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
            "$PATH_TO_STAGE/bin"
     fi
 
