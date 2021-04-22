@@ -45,7 +45,7 @@ use std::{
     result,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Weak,
     },
     time::{Duration, Instant},
 };
@@ -104,6 +104,10 @@ pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
+
+const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
+
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
@@ -549,7 +553,7 @@ where
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(
-                    self.net_metrics.clone(),
+                    Arc::downgrade(&self.net_metrics),
                     ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
                     transport,
                     Role::Listener,
@@ -637,7 +641,7 @@ where
 
         // The stream is only used to receive a single handshake message and then dropped.
         let (sink, stream) = framed::<P>(
-            self.net_metrics.clone(),
+            Arc::downgrade(&self.net_metrics),
             ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
             transport,
             Role::Dialer,
@@ -987,6 +991,9 @@ where
             } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
+
+            // Ensure there are no ongoing metrics updates.
+            utils::wait_for_arc_drop(self.net_metrics, MAX_METRICS_DROP_ATTEMPTS, DROP_RETRY_DELAY).await;
         }
         .boxed()
     }
@@ -1376,7 +1383,7 @@ type FramedTransport<P> = SymmetricallyFramed<
 
 /// Constructs a new framed transport on a stream.
 fn framed<P>(
-    metrics: Arc<NetworkingMetrics>,
+    metrics: Weak<NetworkingMetrics>,
     connection_id: ConnectionId,
     stream: Transport,
     role: Role,

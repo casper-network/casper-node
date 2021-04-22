@@ -1,4 +1,7 @@
+use std::sync::Weak;
+
 use prometheus::{IntCounter, IntGauge, Registry};
+use tracing::debug;
 
 use super::small_network::MessageKind;
 use crate::unregister_metric;
@@ -209,36 +212,40 @@ impl NetworkingMetrics {
     }
 
     /// Records an outgoing payload.
-    pub(crate) fn record_payload_out(&self, kind: MessageKind, size: u64) {
-        match kind {
-            MessageKind::Protocol => {
-                self.out_bytes_protocol.inc_by(size);
-                self.out_count_protocol.inc();
+    pub(crate) fn record_payload_out(this: &mut Weak<Self>, kind: MessageKind, size: u64) {
+        if let Some(metrics) = this.upgrade() {
+            match kind {
+                MessageKind::Protocol => {
+                    metrics.out_bytes_protocol.inc_by(size);
+                    metrics.out_count_protocol.inc();
+                }
+                MessageKind::Consensus => {
+                    metrics.out_bytes_consensus.inc_by(size);
+                    metrics.out_count_consensus.inc();
+                }
+                MessageKind::DeployGossip => {
+                    metrics.out_bytes_deploy_gossip.inc_by(size);
+                    metrics.out_count_deploy_gossip.inc();
+                }
+                MessageKind::AddressGossip => {
+                    metrics.out_bytes_address_gossip.inc_by(size);
+                    metrics.out_count_address_gossip.inc();
+                }
+                MessageKind::DeployTransfer => {
+                    metrics.out_bytes_deploy_transfer.inc_by(size);
+                    metrics.out_count_deploy_transfer.inc();
+                }
+                MessageKind::BlockTransfer => {
+                    metrics.out_bytes_block_transfer.inc_by(size);
+                    metrics.out_count_block_transfer.inc();
+                }
+                MessageKind::Other => {
+                    metrics.out_bytes_other.inc_by(size);
+                    metrics.out_count_other.inc();
+                }
             }
-            MessageKind::Consensus => {
-                self.out_bytes_consensus.inc_by(size);
-                self.out_count_consensus.inc();
-            }
-            MessageKind::DeployGossip => {
-                self.out_bytes_deploy_gossip.inc_by(size);
-                self.out_count_deploy_gossip.inc();
-            }
-            MessageKind::AddressGossip => {
-                self.out_bytes_address_gossip.inc_by(size);
-                self.out_count_address_gossip.inc();
-            }
-            MessageKind::DeployTransfer => {
-                self.out_bytes_deploy_transfer.inc_by(size);
-                self.out_count_deploy_transfer.inc();
-            }
-            MessageKind::BlockTransfer => {
-                self.out_bytes_block_transfer.inc_by(size);
-                self.out_count_block_transfer.inc();
-            }
-            MessageKind::Other => {
-                self.out_bytes_other.inc_by(size);
-                self.out_count_other.inc();
-            }
+        } else {
+            debug!("not recording metrics, component already shut down");
         }
     }
 }
