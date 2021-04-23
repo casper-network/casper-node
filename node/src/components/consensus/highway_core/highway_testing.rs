@@ -235,8 +235,7 @@ impl HighwayValidator {
                 }
             }
             Some(DesFault::PermanentlyMute) => {
-                // For mute validators we add it to the state but not gossip, if the delivery time
-                // is in the interval in which they are muted.
+                // For mute validators we add it to the state but not gossip.
                 match msg {
                     HighwayMessage::NewVertex(_) => {
                         warn!("Validator is mute – won't gossip vertices in response");
