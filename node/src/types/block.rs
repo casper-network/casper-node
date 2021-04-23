@@ -976,6 +976,29 @@ impl BlockBody {
     ///                                         hash(proposer)   SENTINEL
     /// ```
     fn hash_v2(&self) -> Digest {
+        let mut hashable_parts = self.hashable_parts();
+
+        let (hashed_proposer, _) = hashable_parts
+            .pop()
+            .expect("should contain hashed and serialized proposer");
+        let (hashed_transfer_hashes, _) = hashable_parts
+            .pop()
+            .expect("should contain hashed and serialized transfers");
+        let (hashed_deploy_hashes, _) = hashable_parts
+            .pop()
+            .expect("should contain hashed and serialized deploys");
+        // Make sure we popped everything.
+        assert!(hashable_parts.is_empty());
+
+        hash::hash_slice_rfold(&[
+            hashed_deploy_hashes,
+            hashed_transfer_hashes,
+            hashed_proposer,
+        ])
+    }
+
+    /// Returns a `Vec` of serialized fields along with their hashes.
+    pub(crate) fn hashable_parts(&self) -> Vec<(Digest, Vec<u8>)> {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let BlockBody {
             deploy_hashes,
@@ -990,11 +1013,41 @@ impl BlockBody {
         let hashed_proposer =
             hash::hash(&proposer.to_bytes().expect("Could not serialize proposer"));
 
-        hash::hash_slice_rfold(&[
-            hashed_deploy_hashes,
-            hashed_transfer_hashes,
-            hashed_proposer,
-        ])
+        let serialized_deploy_hashes = deploy_hashes
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize deploy hashes: {}", error));
+        let serialized_transfer_hashes = transfer_hashes
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize transfer hashes: {}", error));
+        let serialized_proposer = proposer
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize proposer: {}", error));
+
+        vec![
+            (hashed_deploy_hashes, serialized_deploy_hashes),
+            (hashed_transfer_hashes, serialized_transfer_hashes),
+            (hashed_proposer, serialized_proposer),
+        ]
+    }
+
+    /// Constructs a `BlockBody` from a `Vec` of serialized fields.
+    pub(crate) fn from_hashable_parts(mut parts: Vec<Vec<u8>>) -> Result<Self, bytesrepr::Error> {
+        let serialized_proposer = parts.pop().expect("should have serialized proposer");
+        let serialized_transfer_hashes =
+            parts.pop().expect("should have serialized transfer hashes");
+        let serialized_deploy_hashes = parts.pop().expect("should have serialized deploy hashes");
+        // Make sure there are no unexpected parts.
+        assert!(parts.is_empty());
+
+        let deploy_hashes = Vec::<DeployHash>::from_bytes(&serialized_deploy_hashes)?.0;
+        let transfer_hashes = Vec::<DeployHash>::from_bytes(&serialized_transfer_hashes)?.0;
+        let proposer = PublicKey::from_bytes(&serialized_proposer)?.0;
+
+        Ok(Self {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        })
     }
 }
 

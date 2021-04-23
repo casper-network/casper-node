@@ -56,6 +56,15 @@ pub enum LmdbExtError {
         queried_block_body_hash: Digest,
         found_block_body_hash: Digest,
     },
+    #[error(
+        "Block body part is missing from storage. \
+        Queried block body hash: {block_body_hash}, \
+        Missing part hash: {part_hash}"
+    )]
+    BlockBodyPartMissing {
+        block_body_hash: Digest,
+        part_hash: Digest,
+    },
 }
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a
