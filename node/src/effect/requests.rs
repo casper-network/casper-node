@@ -697,8 +697,8 @@ pub enum RestRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
-    /// Returns OpenRPC compatible payload.
-    GetOpenRpc {
+    /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
+    GetRpcSchema {
         /// Responder to call with the result
         responder: Responder<OpenRpcSchema>,
     },
@@ -709,7 +709,7 @@ impl<I> Display for RestRequest<I> {
         match self {
             RestRequest::GetStatus { .. } => write!(formatter, "get status"),
             RestRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
-            RestRequest::GetOpenRpc { .. } => write!(formatter, "get openrpc"),
+            RestRequest::GetRpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }

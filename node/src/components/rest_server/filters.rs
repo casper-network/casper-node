@@ -26,7 +26,7 @@ pub const STATUS_API_PATH: &str = "status";
 pub const METRICS_API_PATH: &str = "metrics";
 
 /// The OpenRPC scehma URL path.
-pub const OPEN_RPC_API_PATH: &str = "openrpc";
+pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
 
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
@@ -76,15 +76,15 @@ pub(super) fn create_metrics_filter<REv: ReactorEventT>(
         .boxed()
 }
 
-pub(super) fn create_rpc_filter<REv: ReactorEventT>(
+pub(super) fn create_rpc_schema_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
 ) -> BoxedFilter<(Response<Body>,)> {
     warp::get()
-        .and(warp::path(OPEN_RPC_API_PATH))
+        .and(warp::path(JSON_RPC_SCHEMA_API_PATH))
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| RestRequest::GetOpenRpc { responder },
+                    |responder| RestRequest::GetRpcSchema { responder },
                     QueueKind::Api,
                 )
                 .map(move |open_rpc_schema| {

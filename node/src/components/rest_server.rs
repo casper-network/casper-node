@@ -146,7 +146,7 @@ where
                     text,
                     main_responder: responder,
                 }),
-            Event::RestRequest(RestRequest::GetOpenRpc { responder }) => {
+            Event::RestRequest(RestRequest::GetRpcSchema { responder }) => {
                 let schema = OPEN_RPC_SCHEMA.clone();
                 responder.respond(schema).ignore()
             }
