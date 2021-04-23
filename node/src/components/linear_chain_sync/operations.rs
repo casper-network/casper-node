@@ -247,7 +247,7 @@ where
     // The number of previous eras is determined by a *delay* in which consensus participants become
     // bonded validators or unbond.
     let delay = consensus::bonded_eras(&(&chainspec).into());
-    // The era supervisor may slash up to 3*delay + 1 eras back
+    // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
     let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
 
     match maybe_last_emergency_restart_era_id {
