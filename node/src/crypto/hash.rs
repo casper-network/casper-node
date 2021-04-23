@@ -16,6 +16,7 @@ use blake2::{
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
+use itertools::Itertools;
 #[cfg(test)]
 use rand::Rng;
 use schemars::JsonSchema;
@@ -184,7 +185,7 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
     hash(&to_hash)
 }
 
-/// Hash a [Vec<Digest>] into a single [Digest] by constructing a [Merkle tree][1].
+/// Hashes a [Vec<Digest>] into a single [Digest] by constructing a [Merkle tree][1].
 /// Reduces pairs of elements in the [Vec<Digest>] by repeatedly calling [hash_pair].
 /// This hash procedure is suited to hashing [BTree]s.
 ///
@@ -207,26 +208,12 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
 /// [1]: https://en.wikipedia.org/wiki/Merkle_tree
 /// [2]: https://en.wikipedia.org/wiki/Graph_reduction
 pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
-    if vec.is_empty() {
-        return SENTINEL;
-    };
-    let mut vec = vec;
-    let mut k = vec.len();
-    while k != 1 {
-        let j = k / 2 + k % 2;
-        for i in 0..j {
-            if (2 * i + 1) >= k {
-                vec[i] = vec[2 * i];
-            } else {
-                vec[i] = hash_pair(&vec[2 * i], &vec[2 * i + 1]);
-            }
-        }
-        k = j;
-    }
-    vec[0]
+    vec.into_iter()
+        .tree_fold1(|x, y| hash_pair(&x, &y))
+        .unwrap_or(SENTINEL)
 }
 
-/// Hash a [BTreeMap]
+/// Hashes a [BTreeMap].
 pub fn hash_btree_map<K, V>(btree_map: &BTreeMap<K, V>) -> Result<Digest, bytesrepr::Error>
 where
     K: ToBytes,

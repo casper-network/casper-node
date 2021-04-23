@@ -122,12 +122,12 @@ impl<VID> EraReport<VID> {
         where
             VID: ToBytes,
         {
-            let mut hashes = Vec::with_capacity(slice_of_validators.len());
-            for validator in slice_of_validators {
-                hashes.push(hash::hash(
-                    validator.to_bytes().expect("Could not serialize validator"),
-                ))
-            }
+            let hashes = slice_of_validators
+                .iter()
+                .map(|validator| {
+                    hash::hash(validator.to_bytes().expect("Could not serialize validator"))
+                })
+                .collect();
             hash::hash_vec_merkle_tree(hashes)
         }
 
