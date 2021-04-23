@@ -234,7 +234,21 @@ impl HighwayValidator {
                     }
                 }
             }
-            None | Some(DesFault::TemporarilyMute { .. }) | Some(DesFault::PermanentlyMute) => {
+            Some(DesFault::PermanentlyMute) => {
+                // For mute validators we add it to the state but not gossip, if the delivery time
+                // is in the interval in which they are muted.
+                match msg {
+                    HighwayMessage::NewVertex(_) => {
+                        warn!("Validator is mute – won't gossip vertices in response");
+                        vec![]
+                    }
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::WeAreFaulty(ev) => {
+                        panic!("validator equivocated unexpectedly: {:?}", ev);
+                    }
+                }
+            }
+            None | Some(DesFault::TemporarilyMute { .. }) => {
                 // Honest validator.
                 match &msg {
                     HighwayMessage::NewVertex(_)
