@@ -679,7 +679,7 @@ impl Storage {
                 let hash = block.hash();
                 let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.header().era_id()),
+                    None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
@@ -704,7 +704,7 @@ impl Storage {
                 let hash = block.hash();
                 let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.header().era_id()),
+                    None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
