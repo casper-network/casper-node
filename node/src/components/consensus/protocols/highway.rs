@@ -141,7 +141,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time))
+            .map(|highway_proto| highway_proto.next_era_round_succ_meter(now))
             .unwrap_or_else(|| {
                 RoundSuccessMeter::new(
                     highway_config.minimum_round_exponent,
@@ -407,8 +407,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    fn next_era_round_succ_meter(&self, era_start_timestamp: Timestamp) -> RoundSuccessMeter<C> {
-        self.round_success_meter.next_era(era_start_timestamp)
+    fn next_era_round_succ_meter(&self, now: Timestamp) -> RoundSuccessMeter<C> {
+        self.round_success_meter.next_era(now)
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.

@@ -158,10 +158,10 @@ impl<C: Context> RoundSuccessMeter<C> {
     }
 
     /// Returns an instance of `Self` for the new era: resetting the counters where appropriate.
-    pub fn next_era(&self, era_start_timestamp: Timestamp) -> Self {
+    pub fn next_era(&self, now: Timestamp) -> Self {
         Self {
             rounds: self.rounds.clone(),
-            current_round_id: state::round_id(era_start_timestamp, self.current_round_exp),
+            current_round_id: state::round_id(now, self.current_round_exp),
             proposals: Default::default(),
             min_round_exp: self.min_round_exp,
             max_round_exp: self.max_round_exp,
