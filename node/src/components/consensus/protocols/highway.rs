@@ -147,7 +147,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     highway_config.minimum_round_exponent,
                     highway_config.minimum_round_exponent,
                     highway_config.maximum_round_exponent,
-                    era_start_time,
+                    now,
                     config.into(),
                 )
             });
