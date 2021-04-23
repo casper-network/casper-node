@@ -28,7 +28,9 @@ use tracing::{info, warn};
 use crate::{
     components::{
         block_proposer::DeployType,
+        block_validator::keyed_counter::KeyedCounter,
         consensus::{ClContext, ProposedBlock},
+        fetcher::FetchedData,
         Component,
     },
     effect::{
@@ -38,9 +40,6 @@ use crate::{
     types::{appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash, Timestamp},
     NodeRng,
 };
-use keyed_counter::KeyedCounter;
-
-use crate::components::fetcher::FetchedData;
 
 #[derive(DataSize, Debug, Display, Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum DeployOrTransferHash {

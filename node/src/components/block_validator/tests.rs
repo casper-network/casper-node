@@ -9,7 +9,10 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher::FetcherError},
+    components::{
+        consensus::BlockContext,
+        fetcher::{FetchedData, FetcherError},
+    },
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
