@@ -158,11 +158,12 @@ function setup_asset_binaries()
 {
     log "... setting binaries"
 
-    local COUNT_NODES=${1}
-    local PATH_TO_CLIENT=${2}
-    local PATH_TO_NODE=${3}
-    local PATH_TO_NODE_LAUNCHER=${4}
-    local PATH_TO_WASM=${5}
+    local PROTOCOL_VERSION=${1}
+    local COUNT_NODES=${2}
+    local PATH_TO_CLIENT=${3}
+    local PATH_TO_NODE=${4}
+    local PATH_TO_NODE_LAUNCHER=${5}
+    local PATH_TO_WASM=${6}
 
     local PATH_TO_BIN
     local CONTRACT
@@ -172,10 +173,12 @@ function setup_asset_binaries()
     for IDX in $(seq 1 "$COUNT_NODES")
     do
         PATH_TO_BIN="$(get_path_to_node_bin "$IDX")"
-        cp "$PATH_TO_NODE_LAUNCHER" \
-           "$PATH_TO_BIN"
+        if [ $PROTOCOL_VERSION == "1_0_0" ]; then
+            cp "$PATH_TO_NODE_LAUNCHER" \
+            "$PATH_TO_BIN"
+        fi
         cp "$PATH_TO_NODE" \
-           "$PATH_TO_BIN/1_0_0"
+           "$PATH_TO_BIN/$PROTOCOL_VERSION"
     done
 
     # Set client binaries.
@@ -197,6 +200,7 @@ function setup_asset_binaries()
 # Sets network chainspec.
 # Arguments:
 #   Count of nodes to setup (default=5).
+#   Point (timestamp | era-id) when chainspec is considered live.
 #   Delay in seconds to apply to genesis timestamp.
 #   Path to chainspec template file.
 #######################################
@@ -205,8 +209,9 @@ function setup_asset_chainspec()
     log "... setting chainspec.toml"
 
     local COUNT_NODES=${1}
-    local GENESIS_DELAY=${2}
-    local PATH_TO_CHAINSPEC_TEMPLATE=${3}
+    local PROTOCOL_VERSION=${2}
+    local ACTIVATION_POINT=${3}
+    local PATH_TO_CHAINSPEC_TEMPLATE=${4}
     local PATH_TO_CHAINSPEC
     local SCRIPT
 
@@ -218,8 +223,8 @@ function setup_asset_chainspec()
     SCRIPT=(
         "import toml;"
         "cfg=toml.load('$PATH_TO_CHAINSPEC');"
-        "cfg['protocol']['activation_point']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
-        "cfg['protocol']['version']='1.0.0';"
+        "cfg['protocol']['activation_point']='$ACTIVATION_POINT';"
+        "cfg['protocol']['version']='$PROTOCOL_VERSION';"
         "cfg['network']['name']='$(get_chain_name)';"
         "cfg['core']['validator_slots']=$COUNT_NODES;"
         "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
@@ -336,7 +341,9 @@ function setup_asset_node_configs()
     log "... setting node configs"
     
     local COUNT_NODES=${1}
-    local PATH_TO_TEMPLATE=${2}
+    local PROTOCOL_VERSION=${2}
+    local PATH_TO_TEMPLATE=${3}
+
     local IDX
     local PATH_TO_NET
     local PATH_TO_CONFIG
@@ -348,11 +355,13 @@ function setup_asset_node_configs()
     for IDX in $(seq 1 "$COUNT_NODES")
     do
         # Set paths to node's config.
-        PATH_TO_CONFIG="$(get_path_to_node "$IDX")/config/1_0_0"
+        PATH_TO_CONFIG="$(get_path_to_node "$IDX")/config/$PROTOCOL_VERSION"
         PATH_TO_CONFIG_FILE="$PATH_TO_CONFIG/config.toml"
 
         # Set node configuration.
-        cp "$PATH_TO_NET/chainspec/accounts.toml" "$PATH_TO_CONFIG"
+        if [ "$PROTOCOL_VERSION" == "1_0_0" ]; then
+            cp "$PATH_TO_NET/chainspec/accounts.toml" "$PATH_TO_CONFIG"
+        fi
         cp "$PATH_TO_NET/chainspec/chainspec.toml" "$PATH_TO_CONFIG"
         cp "$PATH_TO_TEMPLATE" "$PATH_TO_CONFIG_FILE"
 

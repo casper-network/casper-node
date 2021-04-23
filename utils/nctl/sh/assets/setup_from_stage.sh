@@ -72,7 +72,8 @@ function _main()
     # Setup new.
     setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
 
-    setup_asset_binaries "$COUNT_NODES" \
+    setup_asset_binaries "1_0_0" \
+                         "$COUNT_NODES" \
                          "$PATH_TO_STAGE/bin/casper-client" \
                          "$PATH_TO_STAGE/bin/casper-node" \
                          "$PATH_TO_STAGE/bin/casper-node-launcher" \
@@ -82,15 +83,24 @@ function _main()
 
     setup_asset_daemon
     
-    setup_asset_chainspec "$COUNT_NODES" "$GENESIS_DELAY" "$PATH_TO_STAGE/resources/chainspec.toml"
+    setup_asset_chainspec "$COUNT_NODES" \
+                          "1.0.0" \
+                          $(get_genesis_timestamp "$GENESIS_DELAY") \
+                          "$PATH_TO_STAGE/resources/chainspec.toml"
 
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
-        setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
+        setup_asset_accounts "$COUNT_NODES" \
+                             "$COUNT_NODES_AT_GENESIS" \
+                             "$COUNT_USERS"
     else
-        setup_asset_accounts_from_template "$COUNT_NODES" "$COUNT_USERS" "$PATH_TO_ACCOUNTS"
+        setup_asset_accounts_from_template "$COUNT_NODES" \
+                                           "$COUNT_USERS" \
+                                           "$PATH_TO_ACCOUNTS"
     fi
 
-    setup_asset_node_configs "$COUNT_NODES" "$PATH_TO_STAGE/resources/config.toml"
+    setup_asset_node_configs "$COUNT_NODES" \
+                             "1_0_0" \
+                             "$PATH_TO_STAGE/resources/config.toml"
 
     log "setup of assets from stage ${1}: COMPLETE"
 }

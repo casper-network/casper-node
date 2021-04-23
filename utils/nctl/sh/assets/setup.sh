@@ -122,13 +122,15 @@ function _main()
     setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        setup_asset_binaries "$(get_count_of_nodes)" \
+        setup_asset_binaries "1_0_0" \
+                             "$(get_count_of_nodes)" \
                              "$NCTL_CASPER_HOME/target/debug/casper-client" \
                              "$NCTL_CASPER_HOME/target/debug/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     else
-        setup_asset_binaries "$(get_count_of_nodes)" \
+        setup_asset_binaries "1_0_0" \
+                             "$(get_count_of_nodes)" \
                              "$NCTL_CASPER_HOME/target/release/casper-client" \
                              "$NCTL_CASPER_HOME/target/release/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
@@ -139,7 +141,10 @@ function _main()
 
     setup_asset_daemon
     
-    setup_asset_chainspec "$COUNT_NODES" "$GENESIS_DELAY" "$PATH_TO_CHAINSPEC"
+    setup_asset_chainspec "$COUNT_NODES" \
+                          "1.0.0" \
+                          $(get_genesis_timestamp "$GENESIS_DELAY") \
+                          "$PATH_TO_CHAINSPEC"
 
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
@@ -147,7 +152,9 @@ function _main()
         setup_asset_accounts_from_template "$COUNT_NODES" "$COUNT_USERS" "$PATH_TO_ACCOUNTS"
     fi
 
-    setup_asset_node_configs "$COUNT_NODES" "$NCTL_CASPER_HOME/resources/local/config.toml"
+    setup_asset_node_configs "$COUNT_NODES" \
+                             "1_0_0" \
+                             "$NCTL_CASPER_HOME/resources/local/config.toml"
 
     log "asset setup complete"
 }

@@ -50,6 +50,7 @@ function _main()
     cp -r "$PATH_TO_TEMPLATE" "$PATH_TO_STAGE_SETTINGS"
 
     # Prompt user to edit settings.
+    vi $PATH_TO_STAGE_SETTINGS
     log "Stage initialised - please edit settings -> $PATH_TO_STAGE_SETTINGS"
 }
 

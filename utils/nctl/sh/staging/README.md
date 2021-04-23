@@ -17,11 +17,10 @@ nctl-stage-build-from-settings stage=${X:-1}
 3.  Review staged assets.
 
 ```
-$NCTL/staging/X_Y_Z
-$NCTL/staging/X_Y_Z/bin
-$NCTL/staging/X_Y_Z/bin-client
-$NCTL/staging/X_Y_Z/chainspec
-$NCTL/staging/X_Y_Z/config
+$NCTL/stages/stage-N/X_Y_Z
+$NCTL/stages/stage-N/X_Y_Z/bin
+$NCTL/stages/stage-N/X_Y_Z/bin/wasm
+$NCTL/stages/stage-N/X_Y_Z/resources
 ```
 
 4.  Start network.
@@ -34,5 +33,5 @@ nctl-start
 5.  Apply next upgrade.
 
 ```
-nctl-assets-upgrade-from-stage stage=${X:-1} era=${Y:-$(($(get_next_era) + 1))}
+nctl-assets-upgrade-from-stage stage=${X:-1} era=${Y:-$(($(get_next_era) + 2))}
 ```
