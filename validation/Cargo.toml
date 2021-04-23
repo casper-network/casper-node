@@ -16,6 +16,7 @@ base16 = "0.2.1"
 clap = "3.0.0-beta.2"
 derive_more = "0.99.13"
 anyhow = "1"
+casper-execution-engine = { version = "1.0.0", path = "../execution_engine" }
 
 [dev-dependencies]
 rustc-test = "0.3.1"

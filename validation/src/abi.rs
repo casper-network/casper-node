@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
+use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
     CLValue, Key, Transform, U512,
 };
+
 use serde::{Deserialize, Serialize};
 
 /// Representation of supported input value.
@@ -20,6 +22,7 @@ pub enum Input {
     CLValue(CLValue),
     Key(Key),
     Transform(Transform),
+    StoredValue(StoredValue),
 }
 
 impl ToBytes for Input {
@@ -35,6 +38,7 @@ impl ToBytes for Input {
             Input::CLValue(value) => value.to_bytes(),
             Input::Key(value) => value.to_bytes(),
             Input::Transform(value) => value.to_bytes(),
+            Input::StoredValue(value) => value.to_bytes(),
         }
     }
 
@@ -50,6 +54,7 @@ impl ToBytes for Input {
             Input::CLValue(value) => value.serialized_length(),
             Input::Key(value) => value.serialized_length(),
             Input::Transform(value) => value.serialized_length(),
+            Input::StoredValue(value) => value.serialized_length(),
         }
     }
 }
