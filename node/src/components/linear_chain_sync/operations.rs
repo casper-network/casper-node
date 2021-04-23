@@ -43,8 +43,9 @@ where
     vector_of_peers
 }
 
-/// Fetch an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
-/// necessary for the item.
+/// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
+/// necessary for the item. Not suited to fetching a block header or block by height, which require
+/// verification with finality signatures.
 async fn fetch_retry_forever<T, REv, I>(
     effect_builder: EffectBuilder<REv>,
     id: T::Id,
@@ -91,7 +92,7 @@ where
     }
 }
 
-/// Fetch a block header from the network by height.
+/// Fetches a block header from the network by height.
 async fn fetch_block_header_by_height<REv, I>(
     effect_builder: EffectBuilder<REv>,
     height: u64,
@@ -130,8 +131,8 @@ where
     Ok(None)
 }
 
-/// Query all of the peers for a trie, put the trie found from the network
-/// in the trie-store, and return any outstanding descendant tries.
+/// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
+/// returns any outstanding descendant tries.
 async fn fetch_trie_and_insert_into_trie_store<REv, I>(
     effect_builder: EffectBuilder<REv>,
     trie_key: Blake2bHash,
@@ -150,7 +151,7 @@ where
     return Ok(outstanding_tries);
 }
 
-/// Run the fast synchronization task.
+/// Runs the fast synchronization task.
 pub(crate) async fn run_fast_sync_task<REv, I>(
     effect_builder: EffectBuilder<REv>,
     trusted_hash: BlockHash,
