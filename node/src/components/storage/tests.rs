@@ -574,8 +574,18 @@ fn different_block_at_height_is_fatal() {
     let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
-    let block_44_a = random_block_at_height(&mut harness.rng, 44);
-    let block_44_b = random_block_at_height(&mut harness.rng, 44);
+    let block_44_a = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        44,
+        false,
+    ));
+    let block_44_b = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        44,
+        false,
+    ));
 
     let was_new = put_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
