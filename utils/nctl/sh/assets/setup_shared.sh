@@ -220,15 +220,28 @@ function setup_asset_chainspec()
     cp "$PATH_TO_CHAINSPEC_TEMPLATE" "$PATH_TO_CHAINSPEC"
 
     # Set contents.
-    SCRIPT=(
-        "import toml;"
-        "cfg=toml.load('$PATH_TO_CHAINSPEC');"
-        "cfg['protocol']['activation_point']='$ACTIVATION_POINT';"
-        "cfg['protocol']['version']='$PROTOCOL_VERSION';"
-        "cfg['network']['name']='$(get_chain_name)';"
-        "cfg['core']['validator_slots']=$COUNT_NODES;"
-        "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
-    )
+    if [ "$PROTOCOL_VERSION" == "1.0.0" ]; then
+        SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_CHAINSPEC');"
+            "cfg['protocol']['activation_point']='$ACTIVATION_POINT';"
+            "cfg['protocol']['version']='$PROTOCOL_VERSION';"
+            "cfg['network']['name']='$(get_chain_name)';"
+            "cfg['core']['validator_slots']=$COUNT_NODES;"
+            "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
+        )
+    else
+        SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_CHAINSPEC');"
+            "cfg['protocol']['activation_point']=$ACTIVATION_POINT;"
+            "cfg['protocol']['version']='$PROTOCOL_VERSION';"
+            "cfg['network']['name']='$(get_chain_name)';"
+            "cfg['core']['validator_slots']=$COUNT_NODES;"
+            "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
+        )
+    fi
+
     python3 -c "${SCRIPT[*]}"
 }
 
