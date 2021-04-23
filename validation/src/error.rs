@@ -1,3 +1,4 @@
+use casper_types::bytesrepr;
 use std::{io, path::PathBuf};
 use thiserror::Error;
 
@@ -13,4 +14,6 @@ pub enum Error {
     UnsupportedFormat(PathBuf),
     #[error("file {0} lacks extension")]
     NoExtension(PathBuf),
+    #[error(transparent)]
+    Bytesrepr(#[from] bytesrepr::Error),
 }

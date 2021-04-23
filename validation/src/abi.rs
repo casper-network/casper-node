@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    CLValue, Key, U512,
+    CLValue, Key, Transform, U512,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Representation of supported input value.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, From)]
 #[serde(tag = "type", content = "value")]
 pub enum Input {
     U8(u8),
@@ -19,6 +19,7 @@ pub enum Input {
     U512(U512),
     CLValue(CLValue),
     Key(Key),
+    Transform(Transform),
 }
 
 impl ToBytes for Input {
@@ -33,6 +34,7 @@ impl ToBytes for Input {
             Input::U512(value) => value.to_bytes(),
             Input::CLValue(value) => value.to_bytes(),
             Input::Key(value) => value.to_bytes(),
+            Input::Transform(value) => value.to_bytes(),
         }
     }
 
@@ -47,19 +49,39 @@ impl ToBytes for Input {
             Input::U512(value) => value.serialized_length(),
             Input::CLValue(value) => value.serialized_length(),
             Input::Key(value) => value.serialized_length(),
+            Input::Transform(value) => value.serialized_length(),
         }
     }
 }
 
 /// Test case defines a list of inputs and an output.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ABITestCase {
     input: Vec<Input>,
-    #[serde(deserialize_with = "hex::deserialize")]
+    #[serde(
+        deserialize_with = "hex::deserialize",
+        serialize_with = "hex::serialize"
+    )]
     output: Vec<u8>,
 }
 
 impl ABITestCase {
+    pub fn from_inputs(inputs: Vec<Input>) -> Result<ABITestCase, bytesrepr::Error> {
+        // This is manually going through each input passed as we can't use `ToBytes for Vec<T>` as
+        // the `output` would be a serialized collection.
+        let mut truth = Vec::new();
+        for input in &inputs {
+            // Input::to_bytes uses static dispatch to call into each raw value impl.
+            let mut generated_truth = input.to_bytes()?;
+            truth.append(&mut generated_truth);
+        }
+
+        Ok(ABITestCase {
+            input: inputs,
+            output: truth,
+        })
+    }
+
     pub fn input(&self) -> &[Input] {
         &self.input
     }
@@ -104,7 +126,7 @@ impl ToBytes for ABITestCase {
 }
 
 /// A fixture consists of multiple test cases.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, From)]
 pub struct ABIFixture(BTreeMap<String, ABITestCase>);
 
 impl ABIFixture {

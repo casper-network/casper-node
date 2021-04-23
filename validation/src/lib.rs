@@ -9,6 +9,9 @@
 //!
 //! * [ABI](abi)
 
+#[macro_use]
+extern crate derive_more;
+
 pub mod abi;
 pub mod error;
 pub mod utils;
@@ -25,7 +28,7 @@ use serde::de::DeserializeOwned;
 use abi::ABIFixture;
 use error::Error;
 
-const ABI_TEST_FIXTURES: &str = "ABI";
+pub const ABI_TEST_FIXTURES: &str = "ABI";
 const JSON_FILE_EXT: &str = "json";
 
 #[derive(Debug)]
