@@ -449,9 +449,24 @@ fn can_retrieve_block_by_height() {
     let mut storage = storage_fixture(&harness);
 
     // Create a random block, load and store it.
-    let block_33 = random_block_at_height(&mut harness.rng, 33);
-    let block_14 = random_block_at_height(&mut harness.rng, 14);
-    let block_99 = random_block_at_height(&mut harness.rng, 99);
+    let block_33 = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        33,
+        true,
+    ));
+    let block_14 = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        14,
+        false,
+    ));
+    let block_99 = Box::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(2),
+        99,
+        true,
+    ));
 
     // Both block at ID and highest block should return `None` initially.
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
