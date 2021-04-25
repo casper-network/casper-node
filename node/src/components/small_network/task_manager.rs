@@ -173,25 +173,27 @@ impl TaskManager {
         // Dropping the sender will cause all receivers to shutdown.
         drop(self.shutdown_sender);
 
-        let mut join_handles: Vec<_> = {
-            let mut guard = self.join_handles.lock().map_err(drop)?;
-            guard.drain().collect()
-        };
-
         // We create a stream of join results that we can collect in parallel.
-        let mut joins: FuturesUnordered<_> = join_handles
-            .into_iter()
-            .map(|(task_id, join_handle)| async move {
-                (
-                    task_id,
-                    match time::timeout(timeout, join_handle).await {
-                        Ok(Ok(())) => ShutdownOutcome::Ok,
-                        Ok(Err(join_err)) => ShutdownOutcome::JoinFailure(join_err),
-                        Err(_) => ShutdownOutcome::TimedOut,
-                    },
-                )
-            })
-            .collect();
+        let mut joins: FuturesUnordered<_> = {
+            let mut guard = self.join_handles.lock().map_err(drop)?;
+            // Note: It is important to drop the lock as soon as possible, as the dropped shutdown
+            // sender above will *likely* not have any effects until the next `.await`. Otherwise
+            // tasks that want to update after exiting will not be able to acquire the lock and time
+            // out waiting to do so.
+            guard
+                .drain()
+                .map(|(task_id, join_handle)| async move {
+                    (
+                        task_id,
+                        match time::timeout(timeout, join_handle).await {
+                            Ok(Ok(())) => ShutdownOutcome::Ok,
+                            Ok(Err(join_err)) => ShutdownOutcome::JoinFailure(join_err),
+                            Err(_) => ShutdownOutcome::TimedOut,
+                        },
+                    )
+                })
+                .collect()
+        };
 
         // Collect all the join handles and output appropriate errors.
         let mut failed = 0;
