@@ -12,7 +12,9 @@
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    // Do NOT set warnings to `forbid`; macros from third-party crates will not be able to suppress
+    // warnings (and thus not compile) in generated code.
+    test(attr(deny(warnings)))
 )]
 #![warn(
     missing_docs,
