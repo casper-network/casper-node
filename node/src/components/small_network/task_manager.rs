@@ -1,23 +1,45 @@
 //! A manager for background tasks.
 //!
 //! Long-running background tasks that need to be shutdown are captured/managed by the task manager,
-//! which allows for waiting for all of them to complete before continuing.
+//! which allows waiting for all of them to complete before continuing.
+//!
+//! Tasks are passed in a [`ShutdownReceiver`] which signals that a task should end. Upon shutdown,
+//! the task manager will wait for a configurable timeout to shut down, before continuing.
+//!
+//! Example task:
 //!
 //! ```
+//! # use std::time::Duration;
+//! #
+//! # use casper_node::components::small_network::task_manager::TaskManager;
+//! #
+//! let rt = tokio::runtime::Runtime::new().expect("failed to initialize runtime");
+//! let _guard = rt.enter();
+//!
 //! let mut task_manager = TaskManager::new();
 //!
-//! task_manager.spawn(|shutdown| {
-//!     for _ in 0..10 {
+//! // Spawn 10 tasks that are sleeping for 5 seconds, but responsive to being shut down.
+//! for n in 0..10 {
+//!     task_manager.spawn(|mut shutdown| async move {
 //!         tokio::select! {
-//!             _ = &mut shutdown => {
-//!                 // Shutdown received, abort.
-//!                 break;
+//!             _ = shutdown.wait_for_shutdown() => {
+//!                 // Shutdown received. Simply exit the future.
+//!                 return;
 //!             }
 //!
-//!             // TODO better example?
+//!             _ = tokio::time::sleep(Duration::from_secs(5)) => {
+//!                 println!("5 seconds have passed in task {}", n);
+//!             }
 //!         }
-//!     }
-//! });
+//!     });
+//! }
+//!
+//! // After we have spawned the tasks, we tell them to shut down and wait for termination.
+//! let tasks_leftover = rt.block_on(
+//!     task_manager.shutdown_and_wait(Duration::from_secs(10))
+//! ).expect("shutdown failed");
+//!
+//! assert_eq!(tasks_leftover, 0);
 //! ```
 
 use std::{
@@ -38,13 +60,13 @@ use tracing::{error, trace, warn};
 ///
 /// Can be asked for a shutdown signal via `wait_for_shutdown`.
 #[derive(Debug, Clone)]
-struct ShutdownReceiver(watch::Receiver<()>);
+pub struct ShutdownReceiver(watch::Receiver<()>);
 
 impl ShutdownReceiver {
     /// Waits for the shutdown signal.
     ///
     /// The returned future is safe to cancel.
-    pub(super) async fn wait_for_shutdown(&mut self) {
+    pub async fn wait_for_shutdown(&mut self) {
         match self.0.changed().await {
             Ok(()) => {
                 // We are using the dropping of the channel as a signal, not the channel itself!
@@ -78,7 +100,7 @@ enum ShutdownOutcome {
 /// Dropping a task manager will instruct all tasks to shutdown, but the `drop` will not await their
 /// termination.
 #[derive(Debug)]
-struct TaskManager {
+pub struct TaskManager {
     /// A counter for joined tasks.
     ///
     /// Incremented to provide unique IDs for tasks.
@@ -93,7 +115,7 @@ struct TaskManager {
 
 impl TaskManager {
     /// Creates a new task manager.
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         let (shutdown_sender, shutdown_watch_receiver) = watch::channel(());
 
         Self {
@@ -111,7 +133,7 @@ impl TaskManager {
     /// spawned tasks.
     ///
     /// If the internal log has been poisoned, outputs a warning, but otherwise keeps on going.
-    pub(super) fn spawn<F, G>(&mut self, gen: F)
+    pub fn spawn<F, G>(&mut self, gen: F)
     where
         F: FnOnce(ShutdownReceiver) -> G,
         G: Future<Output = ()> + Send + 'static,
@@ -147,7 +169,7 @@ impl TaskManager {
     ///
     /// If the lock has been poisoned, `Err(())` is returned, as it is impossible to properly join
     /// the tasks at that point. They will still be asked to shutdown.
-    async fn wait_for_shutdown(self, timeout: Duration) -> Result<usize, ()> {
+    pub async fn shutdown_and_wait(self, timeout: Duration) -> Result<usize, ()> {
         // Dropping the sender will cause all receivers to shutdown.
         drop(self.shutdown_sender);
 
