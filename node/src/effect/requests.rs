@@ -44,7 +44,7 @@ use crate::{
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
-    rpcs::chain::BlockIdentifier,
+    rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
         Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
@@ -63,7 +63,7 @@ const_assert!(_STATE_REQUEST_SIZE < 89);
 pub enum MetricsRequest {
     /// Render current node metrics as prometheus-formatted string.
     RenderNodeMetricsText {
-        /// Resopnder returning the rendered metrics or `None`, if an internal error occurred.
+        /// Responder returning the rendered metrics or `None`, if an internal error occurred.
         responder: Responder<Option<String>>,
     },
 }
@@ -697,6 +697,11 @@ pub enum RestRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
+    /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
+    GetRpcSchema {
+        /// Responder to call with the result
+        responder: Responder<OpenRpcSchema>,
+    },
 }
 
 impl<I> Display for RestRequest<I> {
@@ -704,6 +709,7 @@ impl<I> Display for RestRequest<I> {
         match self {
             RestRequest::GetStatus { .. } => write!(formatter, "get status"),
             RestRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            RestRequest::GetRpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }

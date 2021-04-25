@@ -30,6 +30,7 @@ mod error;
 mod event;
 mod gossiped_address;
 mod message;
+mod message_pack_format;
 pub mod task_manager;
 #[cfg(test)]
 mod tests;
@@ -45,7 +46,7 @@ use std::{
     result,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Weak,
     },
     time::{Duration, Instant},
 };
@@ -62,7 +63,7 @@ use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
 use rand::seq::IteratorRandom;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
@@ -73,13 +74,14 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::{formats::SymmetricalBincode, SymmetricallyFramed};
+use tokio_serde::SymmetricallyFramed;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn};
 
 use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::Result,
+    message_pack_format::MessagePackFormat,
 };
 pub(crate) use self::{
     error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
@@ -103,6 +105,10 @@ pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
+
+const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
+
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
@@ -548,7 +554,7 @@ where
                 info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(
-                    self.net_metrics.clone(),
+                    Arc::downgrade(&self.net_metrics),
                     ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
                     transport,
                     Role::Listener,
@@ -636,7 +642,7 @@ where
 
         // The stream is only used to receive a single handshake message and then dropped.
         let (sink, stream) = framed::<P>(
-            self.net_metrics.clone(),
+            Arc::downgrade(&self.net_metrics),
             ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
             transport,
             Role::Dialer,
@@ -986,6 +992,9 @@ where
             } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
+
+            // Ensure there are no ongoing metrics updates.
+            utils::wait_for_arc_drop(self.net_metrics, MAX_METRICS_DROP_ATTEMPTS, DROP_RETRY_DELAY).await;
         }
         .boxed()
     }
@@ -1374,17 +1383,21 @@ type Transport = SslStream<TcpStream>;
 type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
-    CountingFormat<SymmetricalBincode<Message<P>>>,
+    CountingFormat<MessagePackFormat>,
 >;
 
 /// Constructs a new framed transport on a stream.
 fn framed<P>(
-    metrics: Arc<NetworkingMetrics>,
+    metrics: Weak<NetworkingMetrics>,
     connection_id: ConnectionId,
     stream: Transport,
     role: Role,
     maximum_net_message_size: u32,
-) -> FramedTransport<P> {
+) -> FramedTransport<P>
+where
+    for<'de> P: Serialize + Deserialize<'de>,
+    for<'de> Message<P>: Serialize + Deserialize<'de>,
+{
     let length_delimited = Framed::new(
         stream,
         LengthDelimitedCodec::builder()
@@ -1394,12 +1407,7 @@ fn framed<P>(
 
     SymmetricallyFramed::new(
         length_delimited,
-        CountingFormat::new(
-            metrics,
-            connection_id,
-            role,
-            SymmetricalBincode::<Message<P>>::default(),
-        ),
+        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
 }
 

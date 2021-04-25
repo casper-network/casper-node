@@ -332,7 +332,7 @@ where
                     }
                 }
 
-                // Now we remove all states that have finished and notify the requestors.
+                // Now we remove all states that have finished and notify the requesters.
                 self.validation_states.retain(|key, state| {
                     if invalid.contains(key) {
                         effects.extend(state.respond(false));

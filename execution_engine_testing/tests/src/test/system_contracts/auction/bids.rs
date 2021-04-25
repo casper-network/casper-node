@@ -535,7 +535,7 @@ fn should_calculate_era_validators() {
     // elements are
     let eras: Vec<_> = era_validators.keys().copied().collect();
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
+    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definitely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = {
@@ -1739,7 +1739,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         &U512::from(DELEGATOR_2_STAKE)
     );
 
-    // Process unbonding requests to verify delegators recevied their stakes
+    // Process unbonding requests to verify delegators received their stakes
     let validator_1 = builder
         .get_account(*VALIDATOR_1_ADDR)
         .expect("should have validator 1 account");

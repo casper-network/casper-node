@@ -151,7 +151,7 @@ fn tracking_copy_write() {
     // write does not need to query the DB
     let db_value = counter.get();
     assert_eq!(db_value, 0);
-    // write creates a Transfrom
+    // write creates a Transform
     assert_eq!(tc.fns.len(), 1);
     assert_eq!(tc.fns.get(&k), Some(&Transform::Write(one)));
     // write creates an Op
@@ -182,7 +182,7 @@ fn tracking_copy_add_i32() {
     let add = tc.add(correlation_id, k, three.clone());
     assert_matches!(add, Ok(_));
 
-    // add creates a Transfrom
+    // add creates a Transform
     assert_eq!(tc.fns.len(), 1);
     assert_eq!(tc.fns.get(&k), Some(&Transform::AddInt32(3)));
     // add creates an Op
@@ -237,7 +237,7 @@ fn tracking_copy_add_named_key() {
     // adding correct type works
     let add = tc.add(correlation_id, k, named_key);
     assert_matches!(add, Ok(_));
-    // add creates a Transfrom
+    // add creates a Transform
     assert_eq!(tc.fns.len(), 1);
     assert_eq!(tc.fns.get(&k), Some(&Transform::AddKeys(map.clone())));
     // add creates an Op
@@ -1128,7 +1128,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);
 
-    // query for the beggining of a long chain of urefs
+    // query for the beginning of a long chain of urefs
     // (second path element of arbitrary value required to cause iteration _into_ the nested key)
     let path = vec![root_key_name, String::new()];
     let result = tracking_copy.query(correlation_id, &engine_config, contract_key, &path);

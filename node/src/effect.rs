@@ -132,7 +132,7 @@ use requests::{
 use self::announcements::BlocklistAnnouncement;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
-static UNOBTAINIUM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
+static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
 /// A pinned, boxed future that produces one or more events.
 pub type Effect<Ev> = BoxFuture<'static, Multiple<Ev>>;
@@ -416,8 +416,8 @@ impl<REv> EffectBuilder<REv> {
 
                 // We cannot produce any value to satisfy the request, so we just abandon this task
                 // by waiting on a resource we can never acquire.
-                let _ = UNOBTAINIUM.acquire().await;
-                panic!("should never obtain unobtainium semaphore");
+                let _ = UNOBTAINABLE.acquire().await;
+                panic!("should never obtain unobtainable semaphore");
             }
         }
     }
@@ -1536,23 +1536,23 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the correct era validators set for the given era.
-    /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
-    /// and `activation_era_id` parameters.
+    /// Takes emergency restarts into account based on the information from the chainspec loader.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         let CurrentRunInfo {
-            activation_point,
             protocol_version,
             initial_state_root_hash,
+            last_emergency_restart,
+            ..
         } = self.get_current_run_info().await;
-        let activation_era_id = activation_point.era_id();
-        if era_id < activation_era_id {
-            // we don't support getting the validators from before the last upgrade
+        let cutoff_era_id = last_emergency_restart.unwrap_or_else(|| EraId::new(0));
+        if era_id < cutoff_era_id {
+            // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        if era_id == activation_era_id {
+        if era_id == cutoff_era_id {
             // in the activation era, we read the validators from the global state; we use the
             // global state hash of the first block in the era, if it exists - if we can't get it,
             // we use the initial_state_root_hash passed from the chainspec loader

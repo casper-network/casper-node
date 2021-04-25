@@ -4,14 +4,13 @@ use std::{
 };
 
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
 
 use super::{event::DeployType, BlockHeight, FinalizationQueue};
-use crate::types::{Chainspec, DeployHash, DeployHeader, Timestamp};
+use crate::types::{DeployHash, DeployHeader, Timestamp};
 
 /// Stores the internal state of the BlockProposer.
-#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
-pub struct BlockProposerDeploySets {
+#[derive(Clone, DataSize, Debug)]
+pub(super) struct BlockProposerDeploySets {
     /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
     /// received them.
     pub(super) pending: HashMap<DeployHash, (DeployType, Timestamp)>,
@@ -66,18 +65,6 @@ impl Display for BlockProposerDeploySets {
             self.finalized_deploys.len()
         )
     }
-}
-
-/// Create a state storage key for block proposer deploy sets based on a chainspec.
-///
-/// We namespace based on a chainspec to prevent validators from loading data for a different chain
-/// if they forget to clear their state.
-pub fn create_storage_key(chainspec: &Chainspec) -> Vec<u8> {
-    format!(
-        "block_proposer_deploy_sets:version={},chain_name={}",
-        chainspec.protocol_config.version, chainspec.network_config.name
-    )
-    .into()
 }
 
 impl BlockProposerDeploySets {

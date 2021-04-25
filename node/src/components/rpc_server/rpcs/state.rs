@@ -117,7 +117,7 @@ impl RpcWithParamsExt for GetItem {
         async move {
             // Try to parse a `casper_types::Key` from the params.
             let base_key = match Key::from_formatted_str(&params.key)
-                .map_err(|error| format!("failed to parse key: {:?}", error))
+                .map_err(|error| format!("failed to parse key: {}", error))
             {
                 Ok(key) => key,
                 Err(error_msg) => {

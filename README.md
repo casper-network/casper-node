@@ -7,7 +7,7 @@ The status on development is reported during the Community calls and is found [h
 
 The Casper Testnet is live.
 - Transactions can be sent to: deploy.casperlabs.io via the client or via Clarity.
-- [Clarity Block Exporer](https://clarity.casperlabs.io)
+- [Clarity Block Explorer](https://clarity.casperlabs.io)
 
 ## Specification
 

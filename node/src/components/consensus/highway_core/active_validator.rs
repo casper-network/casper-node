@@ -160,18 +160,6 @@ impl<C: Context> ActiveValidator<C> {
         self.own_last_unit.take()
     }
 
-    /// Cleans up the validator disk state.
-    /// Deletes all unit files.
-    pub(crate) fn cleanup(&self) -> io::Result<()> {
-        let unit_file = if let Some(file) = self.unit_file.as_ref() {
-            file
-        } else {
-            return Ok(());
-        };
-
-        fs::remove_file(unit_file)
-    }
-
     /// Sets the next round exponent to the new value.
     pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
         self.next_round_exp = new_round_exp;
@@ -209,19 +197,17 @@ impl<C: Context> ActiveValidator<C> {
                 return effects;
             } else if timestamp == r_id + self.witness_offset(r_len) {
                 let panorama = self.panorama_at(state, timestamp);
-                if panorama.has_correct() {
-                    if let Some(witness_unit) =
-                        self.new_unit(panorama, timestamp, None, state, instance_id)
+                if let Some(witness_unit) =
+                    self.new_unit(panorama, timestamp, None, state, instance_id)
+                {
+                    if self
+                        .latest_unit(state)
+                        .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
                     {
-                        if self
-                            .latest_unit(state)
-                            .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
-                        {
-                            info!(round_id = %r_id, "sending witness in round with no proposal");
-                        }
-                        effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
-                        return effects;
+                        info!(round_id = %r_id, "sending witness in round with no proposal");
                     }
+                    effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
+                    return effects;
                 }
             }
         }
@@ -428,6 +414,9 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
     ) -> Option<SignedWireUnit<C>> {
+        if value.is_none() && !panorama.has_correct() {
+            return None; // Wait for the first proposal before creating a unit without a value.
+        }
         if !self.can_vote(state) {
             info!(?self.own_last_unit, "not voting - last own unit unknown");
             return None;
@@ -1053,7 +1042,7 @@ mod tests {
     }
 
     // Triggers new proposal by `validator` and verifies that it's empty – no block was proposed.
-    // Captuers the next witness timer and calls the `validator` with that to return the timer for
+    // Captures the next witness timer and calls the `validator` with that to return the timer for
     // the next proposal.
     fn assert_no_proposal(
         validator: &mut ActiveValidator<TestContext>,

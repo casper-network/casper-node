@@ -293,7 +293,7 @@ where
 }
 
 impl<C: Context> Endorsements<C> {
-    /// Returns hash of the endorsed vode.
+    /// Returns hash of the endorsed vote.
     pub fn unit(&self) -> &C::Hash {
         &self.unit
     }
