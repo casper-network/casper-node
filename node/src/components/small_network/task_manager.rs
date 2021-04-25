@@ -53,6 +53,7 @@ use std::{
     time::Duration,
 };
 
+use datasize::DataSize;
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use tokio::{
     sync::watch,
@@ -64,8 +65,8 @@ use tracing::{error, trace, warn};
 /// A shutdown receiver.
 ///
 /// Can be asked for a shutdown signal via `wait_for_shutdown`.
-#[derive(Debug, Clone)]
-pub struct ShutdownReceiver(watch::Receiver<()>);
+#[derive(DataSize, Debug, Clone)]
+pub struct ShutdownReceiver(#[data_size(skip)] watch::Receiver<()>);
 
 impl ShutdownReceiver {
     /// Waits for the shutdown signal.
@@ -104,7 +105,7 @@ enum ShutdownOutcome {
 ///
 /// Dropping a task manager will instruct all tasks to shutdown, but the `drop` will not await their
 /// termination.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub struct TaskManager {
     /// A counter for joined tasks.
     ///
@@ -113,6 +114,7 @@ pub struct TaskManager {
     /// Join handles for all spawned tasks, mapped from task ID to join handle.
     join_handles: Arc<Mutex<HashMap<usize, JoinHandle<()>>>>,
     /// Sender for the signal to shutdown.
+    #[data_size(skip)]
     shutdown_sender: watch::Sender<()>,
     /// Receiver for the signal to shutdown.
     shutdown_receiver: ShutdownReceiver,
