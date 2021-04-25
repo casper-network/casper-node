@@ -173,11 +173,14 @@ impl TaskManager {
         // Dropping the sender will cause all receivers to shutdown.
         drop(self.shutdown_sender);
 
-        let mut join_handles = self.join_handles.lock().map_err(|_| ())?;
+        let mut join_handles: Vec<_> = {
+            let mut guard = self.join_handles.lock().map_err(drop)?;
+            guard.drain().collect()
+        };
 
         // We create a stream of join results that we can collect in parallel.
         let mut joins: FuturesUnordered<_> = join_handles
-            .drain()
+            .into_iter()
             .map(|(task_id, join_handle)| async move {
                 (
                     task_id,
