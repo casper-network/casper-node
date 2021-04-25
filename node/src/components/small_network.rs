@@ -1172,10 +1172,13 @@ async fn server_task<P, REv>(
     }
 }
 
+/// Small network identity generation error.
 #[derive(Debug, Error)]
 pub enum SmallNetworkIdentityError {
+    /// Failed to generate a TLS certificate.
     #[error("could not generate TLS certificate: {0}")]
     CouldNotGenerateTlsCertificate(OpenSslErrorStack),
+    /// Invalid small network identity.
     #[error(transparent)]
     ValidationError(#[from] ValidationError),
 }
@@ -1188,6 +1191,7 @@ pub struct SmallNetworkIdentity {
 }
 
 impl SmallNetworkIdentity {
+    /// Creates a new node identity.
     pub fn new() -> result::Result<Self, SmallNetworkIdentityError> {
         let (not_yet_validated_x509_cert, secret_key) = tls::generate_node_cert()
             .map_err(SmallNetworkIdentityError::CouldNotGenerateTlsCertificate)?;
