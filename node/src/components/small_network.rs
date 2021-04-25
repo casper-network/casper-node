@@ -106,9 +106,6 @@ pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
 
-const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
-const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
-
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
 
@@ -992,9 +989,6 @@ where
             } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
                 warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
-
-            // Ensure there are no ongoing metrics updates.
-            utils::wait_for_arc_drop(self.net_metrics, MAX_METRICS_DROP_ATTEMPTS, DROP_RETRY_DELAY).await;
         }
         .boxed()
     }
