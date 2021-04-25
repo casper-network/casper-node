@@ -207,7 +207,7 @@ impl TaskManager {
                     failed += 1;
                 }
                 ShutdownOutcome::TimedOut => {
-                    error!(task_id, "task joining timed out and handle lost");
+                    error!(task_id, "task joining timed out");
                     failed += 1;
                 }
             }
