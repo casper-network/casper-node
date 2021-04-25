@@ -41,6 +41,11 @@
 //!
 //! assert_eq!(tasks_leftover, 0);
 //! ```
+//!
+//! # `Drop`
+//!
+//! Dropping the `TaskManager` will cause all tasks to be sent a shutdown notice, but the `Drop`
+//! implementation will **not** wait them to finish.
 
 use std::{
     collections::HashMap,
