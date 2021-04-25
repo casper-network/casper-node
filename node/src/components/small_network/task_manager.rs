@@ -113,6 +113,12 @@ pub struct TaskManager {
     shutdown_receiver: ShutdownReceiver,
 }
 
+impl Default for TaskManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskManager {
     /// Creates a new task manager.
     pub fn new() -> Self {
