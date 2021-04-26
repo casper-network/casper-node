@@ -20,7 +20,7 @@ use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use thiserror::Error;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -325,7 +325,7 @@ where
                         upgrade_config,
                         responder,
                     } => {
-                        info!(?upgrade_config, "upgrade");
+                        debug!(?upgrade_config, "upgrade");
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         async move {
@@ -336,7 +336,7 @@ where
                             metrics
                                 .commit_upgrade
                                 .observe(start.elapsed().as_secs_f64());
-                            info!(?result, "upgrade result");
+                            debug!(?result, "upgrade result");
                             responder.respond(result).await
                         }
                         .ignore()

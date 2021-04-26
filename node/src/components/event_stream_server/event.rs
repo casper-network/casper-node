@@ -42,7 +42,7 @@ impl Display for Event {
                 public_key, timestamp, era_id,
             ),
             Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),
-            Event::Step { era_id, .. } => write!(formatter, "step committed for era: {}", era_id),
+            Event::Step { era_id, .. } => write!(formatter, "step committed for {}", era_id),
         }
     }
 }
