@@ -372,6 +372,14 @@ pub enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Store a block header.
+    PutBlockHeader {
+        /// Block header that is to be stored.
+        block_header: Box<BlockHeader>,
+        /// Responder to call with the result, if true then the block header was successfully
+        /// stored.
+        responder: Responder<bool>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -455,6 +463,9 @@ impl Display for StorageRequest {
                     "get block and metadata for block by height: {}",
                     block_height
                 )
+            }
+            StorageRequest::PutBlockHeader { block_header, .. } => {
+                write!(formatter, "put block header: {}", block_header)
             }
         }
     }

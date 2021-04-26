@@ -32,7 +32,7 @@ where
 
     #[error(
         "Current version is {current_version}, but retrieved block header with future version: \
-             {block_header_with_future_version:?}"
+         {block_header_with_future_version:?}"
     )]
     RetrievedBlockHeaderFromFutureVersion {
         current_version: ProtocolVersion,
@@ -47,4 +47,7 @@ where
 
     #[error(transparent)]
     TrieFetcherError(#[from] FetcherError<Trie<Key, StoredValue>, I>),
+
+    #[error("Could not store block header: {block_header}")]
+    CouldNotStoreBlockHeader { block_header: Box<BlockHeader> },
 }

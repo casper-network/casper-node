@@ -17,7 +17,7 @@ use crate::{
         linear_chain_sync::error::LinearChainSyncError,
     },
     effect::{
-        requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest},
+        requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder,
     },
     types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, Chainspec, Item},
@@ -91,6 +91,26 @@ where
     }
 }
 
+async fn fetch_and_store_block_header<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    block_hash: BlockHash,
+) -> Result<Box<BlockHeader>, LinearChainSyncError<I>>
+where
+    REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
+    I: Eq + Debug + Clone + Send + 'static,
+{
+    let block_header =
+        fetch_retry_forever::<BlockHeader, REv, I>(effect_builder, block_hash).await?;
+    if !effect_builder
+        .put_block_header_to_storage(block_header.clone())
+        .await
+    {
+        Err(LinearChainSyncError::CouldNotStoreBlockHeader { block_header })
+    } else {
+        Ok(block_header)
+    }
+}
+
 /// Fetches a block header from the network by height.
 async fn fetch_block_header_by_height<REv, I>(
     effect_builder: EffectBuilder<REv>,
@@ -161,13 +181,12 @@ where
         + From<FetcherRequest<I, BlockHeader>>
         + From<FetcherRequest<I, BlockHeaderWithMetadata>>
         + From<FetcherRequest<I, Trie<Key, StoredValue>>>
-        + From<NetworkInfoRequest<I>>,
+        + From<NetworkInfoRequest<I>>
+        + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {
     // Fetch the trusted header
-    // TODO: save header after successful fetch
-    let trusted_header =
-        fetch_retry_forever::<BlockHeader, REv, I>(effect_builder, trusted_hash).await?;
+    let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
     // Walk back to get validators from the last switch block header
     // First, check that we are at least one era past genesis or the last emergency restart
@@ -188,11 +207,9 @@ where
         {
             break trusted_validator_weights.clone();
         }
-        current_walk_back_header = fetch_retry_forever::<BlockHeader, REv, I>(
-            effect_builder,
-            *current_walk_back_header.parent_hash(),
-        )
-        .await?;
+        current_walk_back_header =
+            fetch_and_store_block_header(effect_builder, *current_walk_back_header.parent_hash())
+                .await?;
     };
 
     // Get the most recent header which has the same version as ours
@@ -258,7 +275,7 @@ where
         {
             // Walk backwards until we have the first block after the emergency upgrade
             loop {
-                let previous_block_header = fetch_retry_forever::<BlockHeader, REv, I>(
+                let previous_block_header = fetch_and_store_block_header(
                     effect_builder,
                     *most_recent_block_header.parent_hash(),
                 )
@@ -274,8 +291,7 @@ where
         _ => {}
     }
 
-    // Use the state root to synchronize the trie
-
+    // Use the state root to synchronize the trie.
     let mut outstanding_trie_keys = vec![Blake2bHash::from(
         *most_recent_block_header.state_root_hash(),
     )];

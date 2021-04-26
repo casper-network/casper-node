@@ -434,22 +434,21 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
-                if !txn.put_value(
-                    self.block_body_db,
-                    block.header().body_hash(),
-                    block.body(),
-                    true,
-                )? {
+                if !txn.put_value(self.block_body_db, &block.body().hash(), block.body(), true)? {
                     error!("Could not insert block body for block: {}", block);
                     txn.abort();
                     return Ok(responder.respond(false).ignore());
                 }
-                if !txn.put_value(self.block_header_db, block.hash(), block.header(), true)? {
+                if !txn.put_value(
+                    self.block_header_db,
+                    &block.header().hash(),
+                    block.header(),
+                    true,
+                )? {
                     error!("Could not insert block header for block: {}", block);
                     txn.abort();
                     return Ok(responder.respond(false).ignore());
                 }
-                txn.commit()?;
                 insert_to_block_header_indices(
                     &mut self.block_height_index,
                     &mut self.switch_block_era_id_index,
@@ -460,6 +459,7 @@ impl Storage {
                     block.header().hash(),
                     block.body(),
                 )?;
+                txn.commit()?;
                 responder.respond(true).ignore()
             }
             StorageRequest::GetBlock {
@@ -758,6 +758,30 @@ impl Storage {
                     block_height,
                 )?;
                 responder.respond(result).ignore()
+            }
+
+            StorageRequest::PutBlockHeader {
+                block_header,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                if !txn.put_value(
+                    self.block_header_db,
+                    &block_header.hash(),
+                    &block_header,
+                    false,
+                )? {
+                    error!("Could not insert block header: {}", block_header);
+                    txn.abort();
+                    return Ok(responder.respond(false).ignore());
+                }
+                insert_to_block_header_indices(
+                    &mut self.block_height_index,
+                    &mut self.switch_block_era_id_index,
+                    &block_header,
+                )?;
+                txn.commit()?;
+                responder.respond(true).ignore()
             }
         })
     }
