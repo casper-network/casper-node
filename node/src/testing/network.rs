@@ -170,7 +170,7 @@ where
         loop {
             if self.crank(node_id, rng).await == 0 {
                 Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                time::delay_for(POLL_INTERVAL).await;
+                time::sleep(POLL_INTERVAL).await;
                 continue;
             }
 
@@ -234,7 +234,7 @@ where
                 } else {
                     no_events = true;
                     Instant::advance_time(quiet_for.as_millis() as u64);
-                    time::delay_for(quiet_for).await;
+                    time::sleep(quiet_for).await;
                 }
             } else {
                 no_events = false;
@@ -274,7 +274,7 @@ where
             if self.crank_all(rng).await == 0 {
                 // No events processed, wait for a bit to avoid 100% cpu usage.
                 Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                time::delay_for(POLL_INTERVAL).await;
+                time::sleep(POLL_INTERVAL).await;
             }
         }
     }

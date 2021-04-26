@@ -1,5 +1,6 @@
 //! Common types used across multiple components.
 
+pub(crate) mod appendable_block;
 mod block;
 pub mod chainspec;
 mod deploy;
@@ -20,9 +21,7 @@ pub use block::{
     json_compatibility::JsonBlock, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
     BlockValidationError, FinalitySignature,
 };
-pub(crate) use block::{
-    BlockByHeight, BlockHeaderWithMetadata, BlockLike, FinalizedBlock, ProtoBlock,
-};
+pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use deploy::{

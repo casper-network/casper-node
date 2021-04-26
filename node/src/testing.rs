@@ -161,8 +161,7 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
         let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
         let event_queue_handle = EventQueueHandle::new(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
-        let runtime = runtime::Builder::new()
-            .threaded_scheduler()
+        let runtime = runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .context("build tokio runtime")?;

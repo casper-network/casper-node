@@ -61,27 +61,33 @@ pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30000; // 30 seconds
 // NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
 // `*FOO` into `FOO` back and forth.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| [42; 32].into());
-pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([199; SecretKey::ED25519_LENGTH]).into());
+pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
 pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
 // Declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([198; SecretKey::ED25519_LENGTH]).into());
+pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH])
+        .unwrap()
+        .into()
+});
 pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
     let genesis_account = GenesisAccount::account(
-        *DEFAULT_ACCOUNT_PUBLIC_KEY,
+        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
         None,
     );
     ret.push(genesis_account);
     let proposer_account = GenesisAccount::account(
-        *DEFAULT_PROPOSER_PUBLIC_KEY,
+        DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
         Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
         None,
     );
@@ -120,3 +126,4 @@ pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
+pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());

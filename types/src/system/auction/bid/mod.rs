@@ -164,7 +164,7 @@ impl Bid {
             .ok_or(Error::UnbondTooLarge)?;
 
         let vesting_schedule = match self.vesting_schedule.as_ref() {
-            Some(vesting_sechdule) => vesting_sechdule,
+            Some(vesting_schedule) => vesting_schedule,
             None => {
                 self.staked_amount = updated_staked_amount;
                 return Ok(updated_staked_amount);
@@ -332,9 +332,9 @@ mod tests {
     #[test]
     fn serialization_roundtrip() {
         let founding_validator = Bid {
-            validator_public_key: PublicKey::from(SecretKey::ed25519(
-                [0u8; SecretKey::ED25519_LENGTH],
-            )),
+            validator_public_key: PublicKey::from(
+                SecretKey::ed25519_from_bytes([0u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
@@ -351,10 +351,10 @@ mod tests {
 
         const TIMESTAMP_MILLIS: u64 = WEEK_MILLIS as u64;
 
-        let validator_pk = SecretKey::ed25519([42; 32]).into();
+        let validator_pk: PublicKey = SecretKey::ed25519_from_bytes([42; 32]).unwrap().into();
 
-        let delegator_1_pk = SecretKey::ed25519([43; 32]).into();
-        let delegator_2_pk = SecretKey::ed25519([44; 32]).into();
+        let delegator_1_pk: PublicKey = SecretKey::ed25519_from_bytes([43; 32]).unwrap().into();
+        let delegator_2_pk: PublicKey = SecretKey::ed25519_from_bytes([44; 32]).unwrap().into();
 
         let validator_release_timestamp = TIMESTAMP_MILLIS;
         let validator_bonding_purse = URef::new([42; 32], AccessRights::ADD);
@@ -370,18 +370,18 @@ mod tests {
         let delegator_2_staked_amount = U512::from(3000);
 
         let delegator_1 = Delegator::locked(
-            delegator_1_pk,
+            delegator_1_pk.clone(),
             delegator_1_staked_amount,
             delegator_1_bonding_purse,
-            validator_pk,
+            validator_pk.clone(),
             delegator_1_release_timestamp,
         );
 
         let delegator_2 = Delegator::locked(
-            delegator_2_pk,
+            delegator_2_pk.clone(),
             delegator_2_staked_amount,
             delegator_2_bonding_purse,
-            validator_pk,
+            validator_pk.clone(),
             delegator_2_release_timestamp,
         );
 
@@ -398,8 +398,8 @@ mod tests {
         {
             let delegators = bid.delegators_mut();
 
-            delegators.insert(delegator_1_pk, delegator_1);
-            delegators.insert(delegator_2_pk, delegator_2);
+            delegators.insert(delegator_1_pk.clone(), delegator_1);
+            delegators.insert(delegator_2_pk.clone(), delegator_2);
         }
 
         assert!(bid.process(delegator_1_release_timestamp));

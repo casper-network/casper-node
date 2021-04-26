@@ -70,6 +70,11 @@ impl EraId {
         EraId::from(self.0 + 1)
     }
 
+    /// Returns the current era plus `x`, or `None` if that would overflow
+    pub fn checked_add(&self, x: u64) -> Option<EraId> {
+        self.0.checked_add(x).map(EraId)
+    }
+
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.
     pub fn checked_sub(&self, x: u64) -> Option<EraId> {
         self.0.checked_sub(x).map(EraId)
@@ -98,11 +103,6 @@ impl EraId {
     /// Returns little endian bytes.
     pub fn to_le_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
-    }
-
-    /// Creates new [`EraId`] instance from little endian bytes.
-    pub(crate) fn from_le_bytes(bytes: [u8; 8]) -> EraId {
-        EraId::from(u64::from_le_bytes(bytes))
     }
 
     /// Returns a raw value held by this [`EraId`] instance.
@@ -189,7 +189,7 @@ impl CLTyped for EraId {
 
 impl Distribution<EraId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EraId {
-        EraId(rng.gen())
+        EraId(rng.gen_range(0..1_000_000))
     }
 }
 

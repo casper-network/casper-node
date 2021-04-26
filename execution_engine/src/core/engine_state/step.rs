@@ -98,7 +98,7 @@ impl StepRequest {
     pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
         let mut ret = BTreeMap::new();
         for reward_item in &self.reward_items {
-            ret.insert(reward_item.validator_id, reward_item.value);
+            ret.insert(reward_item.validator_id.clone(), reward_item.value);
         }
         Ok(ret)
     }

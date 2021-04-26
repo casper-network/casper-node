@@ -12,10 +12,11 @@ use schemars::{
     schema::Schema,
     JsonSchema, Map, MapEntry,
 };
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
+
+use casper_types::ProtocolVersion;
 
 use super::{
     account::PutDeploy,
@@ -27,13 +28,13 @@ use super::{
 };
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
 
-pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<Version> =
-    Lazy::new(|| Version::new(1, 0, 0));
+pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
+    ProtocolVersion::from_parts(1, 0, 0);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
         name: "CasperLabs".to_string(),
         url: "https://casperlabs.io".to_string(),
@@ -89,7 +90,7 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema
 });
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
 });
@@ -102,7 +103,7 @@ pub trait DocExample {
 
 /// The main schema for the casper node's RPC server, compliant with https://spec.open-rpc.org.
 #[derive(Clone, Serialize, Deserialize, Debug)]
-struct OpenRpcSchema {
+pub struct OpenRpcSchema {
     openrpc: String,
     info: OpenRpcInfoField,
     servers: Vec<OpenRpcServerEntry>,
@@ -377,7 +378,7 @@ struct Components {
 pub struct ListRpcsResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    api_version: Version,
+    api_version: ProtocolVersion,
     name: String,
     /// The list of supported RPCs.
     #[schemars(skip)]
@@ -404,7 +405,7 @@ impl RpcWithoutParamsExt for ListRpcs {
     fn handle_request<REv: ReactorEventT>(
         _effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        _api_version: Version,
+        _api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
@@ -420,7 +421,7 @@ mod tests {
     fn check_docs_example_version() {
         let chainspec = Chainspec::from_resources("production");
         assert_eq!(
-            *DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
+            DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
             "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \
             'resources/production/chainspec.toml'"
         );

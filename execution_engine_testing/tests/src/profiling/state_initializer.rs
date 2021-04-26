@@ -64,7 +64,7 @@ fn main() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let engine_config = EngineConfig::new();
+    let engine_config = EngineConfig::default();
     let mut builder = LmdbWasmTestBuilder::new_with_config(&data_dir, engine_config);
 
     let exec_config = ExecConfig::new(

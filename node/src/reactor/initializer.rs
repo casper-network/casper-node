@@ -194,14 +194,13 @@ impl Reactor {
         let storage = Storage::new(
             &storage_config,
             hard_reset_to_start_of_era,
-            chainspec_loader.chainspec().protocol_config.version.clone(),
+            chainspec_loader.chainspec().protocol_config.version,
         )?;
 
-        let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
-            protocol_version.clone(),
+            chainspec_loader.chainspec().protocol_config.version,
             storage_config,
             &config.value().contract_runtime,
             registry,

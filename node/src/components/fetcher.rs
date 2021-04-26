@@ -10,7 +10,11 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_execution_engine::{
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::trie::Trie,
+};
+use casper_types::Key;
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -24,8 +28,6 @@ use crate::{
     NodeRng,
 };
 
-use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
-use casper_types::Key;
 pub use config::Config;
 pub use event::{Event, FetchResult};
 use metrics::FetcherMetrics;
@@ -80,7 +82,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         responders
             .entry(id)
             .or_default()
-            .entry(peer.clone())
+            .entry(peer)
             .or_default()
             .push(responder);
 
@@ -116,7 +118,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     ) -> Effects<Event<T>> {
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
-                let mut effects = effect_builder.send_message(peer.clone(), message).ignore();
+                let mut effects = effect_builder.send_message(peer, message).ignore();
 
                 effects.extend(
                     effect_builder
@@ -341,11 +343,7 @@ where
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();
-                        self.signal(
-                            item.id(),
-                            Some(FetchResult::FromPeer(item, peer.clone())),
-                            peer,
-                        )
+                        self.signal(item.id(), Some(FetchResult::FromPeer(item, peer)), peer)
                     }
                     Source::Client | Source::Ourself => {
                         // TODO - we could possibly also handle this case

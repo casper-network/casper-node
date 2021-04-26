@@ -28,19 +28,34 @@ mod sse_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
-use semver::Version;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    oneshot,
+};
+use tracing::{info, warn};
+
+use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
+    types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
-
 pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;
+
+/// This is used to define the number of events to buffer in the tokio broadcast channel to help
+/// slower clients to try to avoid missing events (See
+/// https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging for further details).  The
+/// resulting broadcast channel size is `ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE` percent
+/// greater than `config.event_stream_buffer_length`.
+///
+/// We always want the broadcast channel size to be greater than the event stream buffer length so
+/// that a new client can retrieve the entire set of buffered events if desired.
+const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
 /// work with.
@@ -57,14 +72,47 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(config: Config, api_version: Version) -> Result<Self, ListeningError> {
+    pub(crate) fn new(
+        config: Config,
+        api_version: ProtocolVersion,
+    ) -> Result<Self, ListeningError> {
+        let required_address = utils::resolve_address(&config.address).map_err(|error| {
+            warn!(
+                %error,
+                address=%config.address,
+                "failed to start event stream server, cannot parse address"
+            );
+            ListeningError::ResolveAddress(error)
+        })?;
+
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-        let builder = utils::start_listening(&config.address)?;
+
+        // Event stream channels and filter.
+        let broadcast_channel_size = config.event_stream_buffer_length / 100
+            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE);
+        let (broadcaster, new_subscriber_info_receiver, sse_filter) =
+            sse_server::create_channels_and_filter(broadcast_channel_size as usize);
+
+        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+
+        let (actual_address, server_with_shutdown) = warp::serve(sse_filter)
+            .try_bind_with_graceful_shutdown(required_address, async {
+                shutdown_receiver.await.ok();
+            })
+            .map_err(|error| ListeningError::Listen {
+                address: required_address,
+                error: Box::new(error),
+            })?;
+        info!(address=%actual_address, "started event stream server");
+
         tokio::spawn(http_server::run(
             config,
             api_version,
-            builder,
+            server_with_shutdown,
+            shutdown_sender,
             sse_data_receiver,
+            broadcaster,
+            new_subscriber_info_receiver,
         ));
 
         Ok(EventStreamServer { sse_data_sender })
@@ -93,7 +141,7 @@ where
         match event {
             Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                 block_hash: *block.hash(),
-                block: Box::new(*block),
+                block: Box::new(JsonBlock::new(*block, None)),
             }),
             Event::DeployProcessed {
                 deploy_hash,
@@ -102,7 +150,7 @@ where
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash: Box::new(deploy_hash),
-                account: *deploy_header.account(),
+                account: Box::new(deploy_header.account().clone()),
                 timestamp: deploy_header.timestamp(),
                 ttl: deploy_header.ttl(),
                 dependencies: deploy_header.dependencies().clone(),

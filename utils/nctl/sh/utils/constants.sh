@@ -23,6 +23,7 @@ export NCTL_BASE_PORT_NETWORK=34452
 
 # Set of client side auction contracts.
 export NCTL_CONTRACTS_CLIENT_AUCTION=(
+    "activate_bid.wasm"
     "add_bid.wasm"
     "delegate.wasm"
     "undelegate.wasm"
@@ -32,11 +33,13 @@ export NCTL_CONTRACTS_CLIENT_AUCTION=(
 # Set of client side transfer contracts.
 export NCTL_CONTRACTS_CLIENT_TRANSFERS=(
     "transfer_to_account_u512.wasm"
-    "transfer_to_account_u512_stored.wasm"
 )
 
 # Default amount used when delegating.
 export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
+
+# Default era offset to apply when activating an upgrade.
+export NCTL_DEFAULT_ERA_ACTIVATION_OFFSET=2
 
 # Default motes to pay for consumed gas.
 export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)

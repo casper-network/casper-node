@@ -10,11 +10,12 @@ function do_node_start()
 {
     local NODE_ID=${1}
     local TRUSTED_HASH=${2}
+
     local PATH_TO_NODE_CONFIG
     local PROCESS_NAME
 
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
-        do_supervisord_start
+        _do_supervisord_start
     fi
 
     if [ -n "$TRUSTED_HASH" ]; then
@@ -35,29 +36,17 @@ function do_node_start()
 #######################################
 function do_node_start_all()
 {
-    log "... starting genesis bootstraps"
-    do_node_start_group "$NCTL_PROCESS_GROUP_1"
-    sleep 1.0
-
-    log "... starting genesis non-bootstraps"
-    do_node_start_group "$NCTL_PROCESS_GROUP_2"
-}
-
-#######################################
-# Spins up a node using supervisord.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function do_node_start_group()
-{
-    local GROUP_ID=${1}
-
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
-        do_supervisord_start
+        _do_supervisord_start
     fi
 
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$GROUP_ID":*  > /dev/null 2>&1
+    log "... starting nodes: genesis bootstraps"
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$NCTL_PROCESS_GROUP_1":*  > /dev/null 2>&1
+    sleep 1.0
+
+    log "... starting nodes: genesis non-bootstraps"
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$NCTL_PROCESS_GROUP_2":*  > /dev/null 2>&1
+    sleep 1.0
 }
 
 #######################################
@@ -70,12 +59,11 @@ function do_node_status()
     local NODE_ID=${1}
     local NODE_PROCESS_NAME
     
-    if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
-        do_supervisord_start
+    if [ -e "$(get_path_net_supervisord_sock)" ]; then
+        NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
+        # True is necessary due to supervisorctl exiting 3
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME" || true
     fi
-
-    NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" status "$NODE_PROCESS_NAME" || true
 }
 
 #######################################
@@ -86,9 +74,8 @@ function do_node_status()
 function do_node_status_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
+        # True is necessary due to supervisorctl exiting 3
         supervisorctl -c "$(get_path_net_supervisord_cfg)" status all || true
-    else
-        log "supervisord is not running - have you started the network ?"
     fi
 }
 
@@ -105,7 +92,7 @@ function do_node_stop()
     
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
         NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME"  > /dev/null 2>&1
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME" > /dev/null 2>&1
     fi
 }
 
@@ -115,7 +102,9 @@ function do_node_stop()
 function do_node_stop_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all  > /dev/null 2>&1
+        log "... stopping supervisord"
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown > /dev/null 2>&1
+        sleep 2.0
     fi
 }
 
@@ -124,24 +113,12 @@ function do_node_stop_all()
 # Arguments:
 #   Network ordinal identifier.
 #######################################
-function do_supervisord_start()
+function _do_supervisord_start()
 {
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
+        log "... starting supervisord"
         supervisord -c "$(get_path_net_supervisord_cfg)"
         sleep 2.0
-    fi
-}
-
-#######################################
-# Kills supervisord (if necessary).
-# Arguments:
-#   Network ordinal identifier.
-#######################################
-function do_supervisord_kill()
-{
-    if [ -e "$(get_path_net_supervisord_sock)" ]; then
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all &>/dev/null
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown &>/dev/null
     fi
 }
 
