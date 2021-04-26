@@ -1060,6 +1060,7 @@ where
                     era.start_height + relative_height,
                     proposer,
                 );
+                info!(?finalized_block, "finalized block");
                 self.era_supervisor
                     .metrics
                     .finalized_block(&finalized_block);
