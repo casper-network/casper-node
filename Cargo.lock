@@ -5581,6 +5581,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-gen"
+version = "0.1.0"
+dependencies = [
+ "base16",
+ "base64",
+ "casper-engine-test-support",
+ "casper-execution-engine",
+ "casper-types",
+ "clap",
+]
+
+[[package]]
 name = "transfer-main-purse-to-new-purse"
 version = "0.1.0"
 dependencies = [

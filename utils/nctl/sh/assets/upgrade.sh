@@ -145,3 +145,84 @@ function _emergency_upgrade_node() {
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
 }
+
+#######################################
+# Generates a global state update for an emergency upgrade
+# Arguments:
+#   Protocol version
+#   Pre-upgrade global state root hash
+#   ID of the node to use as the source of the pre-upgrade global state
+#   Number of the nodes in the network
+#######################################
+function _generate_global_state_update_2() {
+    local PROTOCOL_VERSION=${1}
+    local STATE_HASH=${2}
+    local STATE_SOURCE=${3:-1}
+    local SRC_ACC=${4}
+    local TARGET_ACC=${5}
+    local AMOUNT=${6}
+    local PROPOSER=${7}
+
+    local PATH_TO_NET=$(get_path_to_net)
+
+    if [ -f "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml ]; then
+        # global state update file exists, no need to generate it again
+        return
+    fi
+
+    local STATE_SOURCE_PATH=$(get_path_to_node $STATE_SOURCE)
+
+    # Create parameters to the global state update generator.
+    # First, we supply the path to the directory of the node whose global state we'll use
+    # and the trusted hash.
+    local PARAMS
+    PARAMS="-d ${STATE_SOURCE_PATH}/storage -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT} -p ${PROPOSER}"
+
+    mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
+
+    # Create the global state update file.
+    "$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/transfer-gen $PARAMS \
+        > "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml
+}
+
+#######################################
+# Performs an emergency upgrade on a node in the network
+# Arguments:
+#   Protocol version
+#   Era at which new version should be upgraded
+#   ID of the node to upgrade
+#   Pre-upgrade global state root hash
+#   ID of a node to be used as the source of the pre-upgrade global state
+#   The number of nodes in the network
+#######################################
+function _emergency_upgrade_node_2() {
+    local PROTOCOL_VERSION=${1}
+    local ACTIVATE_ERA=${2}
+    local NODE_ID=${3}
+    local STATE_HASH=${4}
+    local STATE_SOURCE=${5:-1}
+    local SRC_ACC=${6}
+    local TARGET_ACC=${7}
+    local AMOUNT=${8}
+    local PROPOSER=${9}
+
+    _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
+
+    local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
+
+    # Specify hard reset in the chainspec.
+    local SCRIPT=(
+        "import toml;"
+        "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
+        "cfg['protocol']['hard_reset']=True;"
+        "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
+    )
+    python3 -c "${SCRIPT[*]}"
+
+    local PATH_TO_NET=$(get_path_to_net)
+
+    _generate_global_state_update_2 "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$SRC_ACC" "$TARGET_ACC" "$AMOUNT" "$PROPOSER"
+
+    cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
+        "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
+}
