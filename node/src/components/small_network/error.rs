@@ -128,9 +128,6 @@ pub enum Error {
         #[from]
         anyhow::Error,
     ),
-    /// Server has stopped.
-    #[error("failed to create outgoing connection as server has stopped")]
-    ServerStopped,
 
     /// Instantiating metrics failed.
     #[error(transparent)]

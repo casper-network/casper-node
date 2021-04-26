@@ -5,11 +5,12 @@ use std::{
 };
 
 use derive_more::From;
+use futures::stream::SplitStream;
 use serde::Serialize;
 use static_assertions::const_assert;
 use tokio::net::TcpStream;
 
-use super::{Error, GossipedAddress, Message, NodeId, Transport};
+use super::{Error, FramedTransport, GossipedAddress, Message, NodeId, Transport};
 use crate::{
     effect::{
         announcements::BlocklistAnnouncement,
@@ -41,6 +42,13 @@ pub enum Event<P> {
     IncomingMessage {
         peer_id: Box<NodeId>,
         msg: Box<Message<P>>,
+    },
+    /// Incoming connection is ready to start reading messages.
+    IncomingReady {
+        #[serde(skip_serializing)]
+        stream: Box<SplitStream<FramedTransport<P>>>,
+        peer_id: Box<NodeId>,
+        peer_address: SocketAddr,
     },
     /// Incoming connection closed.
     IncomingClosed {
@@ -121,6 +129,13 @@ impl<P: Display> Display for Event<P> {
                 peer_id: node_id,
                 msg,
             } => write!(f, "msg from {}: {}", node_id, msg),
+            Event::IncomingReady {
+                peer_id,
+                peer_address,
+                ..
+            } => {
+                write!(f, "incoming ready ({}): {}", peer_address, peer_id)
+            }
             Event::IncomingClosed { peer_address, .. } => {
                 write!(f, "closed connection from {}", peer_address)
             }

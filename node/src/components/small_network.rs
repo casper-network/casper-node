@@ -40,21 +40,17 @@ use std::{
     convert::Infallible,
     env,
     fmt::{self, Debug, Display, Formatter},
-    io,
     net::{SocketAddr, TcpListener},
     pin::Pin,
     result,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
 use anyhow::Context;
 use datasize::DataSize;
 use futures::{
-    future::{self, BoxFuture, Either},
+    future::BoxFuture,
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
@@ -67,11 +63,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
-    sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
-        watch,
-    },
-    task::JoinHandle,
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
 use tokio_openssl::SslStream;
 use tokio_serde::SymmetricallyFramed;
@@ -82,6 +74,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::Result,
     message_pack_format::MessagePackFormat,
+    task_manager::{ShutdownReceiver, TaskManager},
 };
 pub(crate) use self::{
     error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
@@ -105,6 +98,9 @@ pub use config::Config;
 pub use error::Error;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
+
+/// Timeout for all background tasks during finalization.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
     Lazy::new(|| Duration::from_secs(60 * 10).into());
@@ -205,27 +201,15 @@ where
     /// Information retained from the chainspec required for operating the networking component.
     chain_info: Arc<ChainInfo>,
 
-    /// Channel signaling a shutdown of the small network.
-    // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
-    // they should cease operation.
-    #[data_size(skip)]
-    shutdown_sender: Option<watch::Sender<()>>,
-    /// A clone of the receiver is passed to the message reader for all new incoming connections in
-    /// order that they can be gracefully terminated.
-    #[data_size(skip)]
-    shutdown_receiver: watch::Receiver<()>,
-    /// Flag to indicate the server has stopped running.
-    is_stopped: Arc<AtomicBool>,
-    /// Join handle for the server thread.
-    #[data_size(skip)]
-    server_join_handle: Option<JoinHandle<()>>,
-
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<NetworkingMetrics>,
 
     /// Known addresses for this node.
     known_addresses: HashSet<SocketAddr>,
+
+    /// All running background tasks.
+    task_manager: TaskManager,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -292,11 +276,8 @@ where
                 pending: HashMap::new(),
                 blocklist: HashMap::new(),
                 chain_info,
-                shutdown_sender: None,
-                shutdown_receiver: watch::channel(()).1,
-                server_join_handle: None,
-                is_stopped: Arc::new(AtomicBool::new(true)),
                 net_metrics: Arc::new(NetworkingMetrics::new(&Registry::default())?),
+                task_manager: TaskManager::new(),
             };
             return Ok((model, Effects::new()));
         }
@@ -333,18 +314,16 @@ where
             public_address.set_port(local_address.port());
         }
 
+        let mut task_manager = TaskManager::new();
+
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
         info!(%local_address, %public_address, "{}: starting server background task", our_id);
-        let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let shutdown_receiver = server_shutdown_receiver.clone();
-        let server_join_handle = tokio::spawn(server_task(
-            event_queue,
-            tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-            server_shutdown_receiver,
-            our_id,
-        ));
+
+        let tokio_listener =
+            tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?;
+        task_manager.spawn(|shutdown| server_task(event_queue, tokio_listener, shutdown, our_id));
 
         let mut model = SmallNetwork {
             cfg,
@@ -360,11 +339,8 @@ where
             pending: HashMap::new(),
             blocklist: HashMap::new(),
             chain_info,
-            shutdown_sender: Some(server_shutdown_sender),
-            shutdown_receiver,
-            server_join_handle: Some(server_join_handle),
-            is_stopped: Arc::new(AtomicBool::new(false)),
             net_metrics: Arc::new(net_metrics),
+            task_manager,
         };
 
         // Bootstrap process.
@@ -408,7 +384,6 @@ where
                     address,
                     Arc::clone(&self.certificate),
                     Arc::clone(&self.secret_key),
-                    Arc::clone(&self.is_stopped),
                 )
                 .result(
                     move |(peer_id, transport)| Event::OutgoingEstablished {
@@ -578,19 +553,15 @@ where
                 // If the connection is now complete, announce the new peer before starting reader.
                 effects.extend(self.check_connection_complete(effect_builder, peer_id));
 
+                // Finally, start the message reader.
                 effects.extend(
-                    message_reader(
-                        self.event_queue,
-                        stream,
-                        self.shutdown_receiver.clone(),
-                        self.our_id,
-                        peer_id,
-                    )
-                    .event(move |result| Event::IncomingClosed {
-                        result,
-                        peer_id: Box::new(peer_id),
-                        peer_address: Box::new(peer_address),
-                    }),
+                    effect_builder
+                        .immediately()
+                        .event(move |_| Event::IncomingReady {
+                            stream: Box::new(stream),
+                            peer_id: Box::new(peer_id),
+                            peer_address,
+                        }),
                 );
 
                 effects
@@ -875,7 +846,6 @@ where
                 peer_address,
                 Arc::clone(&self.certificate),
                 Arc::clone(&self.secret_key),
-                Arc::clone(&self.is_stopped),
             )
             .result(
                 move |(peer_id, transport)| Event::OutgoingEstablished {
@@ -969,25 +939,16 @@ where
     REv: Send + 'static,
     P: Send + 'static,
 {
-    fn finalize(mut self) -> BoxFuture<'static, ()> {
+    fn finalize(self) -> BoxFuture<'static, ()> {
         async move {
-            // Close the shutdown socket, causing the server to exit.
-            drop(self.shutdown_sender.take());
-
-            // Set the flag to true, ensuring any ongoing attempts to establish outgoing TLS
-            // connections return errors.
-            self.is_stopped.store(true, Ordering::SeqCst);
-
-            // Wait for the server to exit cleanly.
-            if let Some(join_handle) = self.server_join_handle.take() {
-                match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
-                    Err(ref err) => {
-                        error!(%self.our_id, err=display_error(err), "could not join server task cleanly")
-                    }
+            match self.task_manager.shutdown_and_wait(SHUTDOWN_TIMEOUT).await {
+                Ok(0) => {
+                    debug!("clean shutdown of `SmallNetwork`");
                 }
-            } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-                warn!(our_id=%self.our_id, "server shutdown while already shut down")
+                Ok(num_failed) => warn!(num_failed, "failed to cleanly shutdown small_network"),
+                Err(()) => {
+                    error!("lock poisoned shutting down small network")
+                }
             }
         }
         .boxed()
@@ -1036,6 +997,26 @@ where
                 peer_address,
             } => {
                 self.handle_incoming_tls_handshake_completed(effect_builder, *result, *peer_address)
+            }
+            Event::IncomingReady {
+                stream,
+                peer_id,
+                peer_address,
+            } => {
+                let event_queue = self.event_queue;
+                let our_id = self.our_id;
+
+                self.task_manager.spawn(move |shutdown| {
+                    message_reader(
+                        event_queue,
+                        *stream,
+                        shutdown,
+                        our_id,
+                        *peer_id,
+                        peer_address,
+                    )
+                });
+                Effects::new()
             }
             Event::IncomingMessage { peer_id, msg } => {
                 self.handle_message(effect_builder, *peer_id, *msg)
@@ -1122,56 +1103,45 @@ where
 async fn server_task<P, REv>(
     event_queue: EventQueueHandle<REv>,
     listener: tokio::net::TcpListener,
-    mut shutdown_receiver: watch::Receiver<()>,
+    mut shutdown: ShutdownReceiver,
     our_id: NodeId,
 ) where
     REv: From<Event<P>>,
 {
-    // The server task is a bit tricky, since it has to wait on incoming connections while at the
-    // same time shut down if the networking component is dropped, otherwise the TCP socket will
-    // stay open, preventing reuse.
+    loop {
+        tokio::select! {
+            // `listener.accept` needn't be cancellation safe, as we will cancel it exactly once,
+            // when shutting down.
+            listen_result = listener.accept() => {
+                match listen_result {
+                    Ok((stream, peer_address)) => {
+                        // Move the incoming connection to the event queue for handling.
+                        let event = Event::IncomingNew {
+                            stream,
+                            peer_address: Box::new(peer_address),
+                        };
+                        event_queue
+                            .schedule(event, QueueKind::NetworkIncoming)
+                            .await;
+                    }
 
-    // We first create a future that never terminates, handling incoming connections:
-    let accept_connections = async move {
-        loop {
-            // We handle accept errors here, since they can be caused by a temporary resource
-            // shortage or the remote side closing the connection while it is waiting in
-            // the queue.
-            match listener.accept().await {
-                Ok((stream, peer_address)) => {
-                    // Move the incoming connection to the event queue for handling.
-                    let event = Event::IncomingNew {
-                        stream,
-                        peer_address: Box::new(peer_address),
-                    };
-                    event_queue
-                        .schedule(event, QueueKind::NetworkIncoming)
-                        .await;
-                }
-                // TODO: Handle resource errors gracefully.
-                //       In general, two kinds of errors occur here: Local resource exhaustion,
-                //       which should be handled by waiting a few milliseconds, or remote connection
-                //       errors, which can be dropped immediately.
-                //
-                //       The code in its current state will consume 100% CPU if local resource
-                //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(ref err) => {
-                    warn!(%our_id, err=display_error(err), "dropping incoming connection during accept")
+                    // TODO: Handle resource errors gracefully. In general, two kinds of errors
+                    //       occur here: Local resource exhaustion, which should be handled by
+                    //       waiting a few milliseconds, or remote connection errors, which can be
+                    //       dropped immediately.
+                    //
+                    //       The code in its current state will consume 100% CPU if local resource
+                    //       exhaustion happens, as no distinction is made and no delay introduced.
+                    Err(ref err) => {
+                        warn!(%our_id, err=display_error(err), "dropping incoming connection during accept")
+                    }
                 }
             }
+
+            _ = shutdown.wait_for_shutdown() => {
+                debug!("server task shutting down");
+            }
         }
-    };
-
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
-        Either::Left(_) => info!(
-            %our_id,
-            "shutting down socket, no longer accepting incoming connections"
-        ),
-        Either::Right(_) => unreachable!(),
     }
 }
 
@@ -1296,53 +1266,62 @@ async fn handshake_reader<REv, P>(
 async fn message_reader<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut stream: SplitStream<FramedTransport<P>>,
-    mut shutdown_receiver: watch::Receiver<()>,
+    mut shutdown: ShutdownReceiver,
     our_id: NodeId,
     peer_id: NodeId,
-) -> io::Result<()>
-where
+    peer_address: SocketAddr,
+) where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
-    let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Ok(msg) => {
-                    debug!(%our_id, %msg, %peer_id, "message received");
-                    // We've received a message, push it to the reactor.
-                    event_queue
-                        .schedule(
-                            Event::IncomingMessage {
-                                peer_id: Box::new(peer_id),
-                                msg: Box::new(msg),
-                            },
-                            QueueKind::NetworkIncoming,
-                        )
-                        .await;
-                }
-                Err(err) => {
-                    warn!(%our_id, err=display_error(&err), %peer_id, "receiving message failed, closing connection");
-                    return Err(err);
+    let result = loop {
+        tokio::select! {
+            // We do not worry about cancellation here, since being cancelled only once is followed
+            // by throwing away the connection.
+            next = stream.next() => {
+                if let Some(msg_result) = next {
+                    match msg_result {
+                        Ok(msg) => {
+                            debug!(%our_id, %msg, %peer_id, "message received");
+                            // We've received a message, push it to the reactor.
+                            event_queue
+                                .schedule(
+                                    Event::IncomingMessage {
+                                        peer_id: Box::new(peer_id),
+                                        msg: Box::new(msg),
+                                    },
+                                    QueueKind::NetworkIncoming,
+                                )
+                                .await;
+                        }
+                        Err(err) => {
+                            warn!(%our_id, err=display_error(&err), %peer_id, "receiving message failed, closing connection");
+                            break Err(err);
+                        }
+                    }
+                } else {
+                    debug!(%peer_id, "connection closed");
+                    break Ok(());
                 }
             }
+
+            _ = shutdown.wait_for_shutdown() => {
+                info!( %our_id, %peer_id, "shutting down incoming connection message reader");
+                break Ok(());
+            }
         }
-        Ok(())
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // while loop to terminate.
-    match future::select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
-        Either::Left(_) => info!(
-            %our_id,
-            %peer_id,
-            "shutting down incoming connection message reader"
-        ),
-        Either::Right(_) => (),
-    }
-
-    Ok(())
+    event_queue
+        .schedule(
+            Event::IncomingClosed {
+                result,
+                peer_id: Box::new(peer_id),
+                peer_address: Box::new(peer_address),
+            },
+            QueueKind::NetworkIncoming,
+        )
+        .await;
 }
 
 /// Network message sender.
@@ -1410,7 +1389,6 @@ async fn connect_outgoing(
     peer_address: SocketAddr,
     our_certificate: Arc<TlsCert>,
     secret_key: Arc<PKey<Private>>,
-    server_is_stopped: Arc<AtomicBool>,
 ) -> Result<(NodeId, Transport)> {
     let ssl = tls::create_tls_connector(&our_certificate.as_x509(), &secret_key)
         .context("could not create TLS connector")?
@@ -1435,16 +1413,7 @@ async fn connect_outgoing(
 
     let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
 
-    if server_is_stopped.load(Ordering::SeqCst) {
-        debug!(
-            our_id=%our_certificate.public_key_fingerprint(),
-            %peer_address,
-            "server stopped - aborting outgoing TLS connection"
-        );
-        Err(Error::ServerStopped)
-    } else {
-        Ok((NodeId::from(peer_id), tls_stream))
-    }
+    Ok((NodeId::from(peer_id), tls_stream))
 }
 
 impl<R, P> Debug for SmallNetwork<R, P>
