@@ -23,7 +23,7 @@ use datasize::DataSize;
 use derive_more::{Display, From};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     components::{
@@ -33,14 +33,14 @@ use crate::{
     },
     effect::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash, Timestamp},
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
 
-use super::fetcher::FetchResult;
+use crate::components::fetcher::FetchedData;
 
 #[derive(DataSize, Debug, Display, Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum DeployOrTransferHash {
@@ -430,20 +430,33 @@ where
         + From<StorageRequest>
         + From<FetcherRequest<I, Deploy>>
         + Send,
-    I: Clone + Send + PartialEq + Eq + 'static,
+    I: Clone + Debug + Send + PartialEq + Eq + 'static,
 {
-    let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
-        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => deploy
-            .deploy_type()
-            .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_type| {
-                Event::DeployFound {
-                    dt_hash,
-                    deploy_type: Box::new(deploy_type),
-                }
-            }),
-    };
-
-    effect_builder
-        .fetch_deploy(dt_hash.into(), sender)
-        .map_or_else(validate_deploy, move || Event::DeployMissing(dt_hash))
+    async move {
+        let deploy_hash: DeployHash = dt_hash.into();
+        let item = match effect_builder.fetch::<Deploy, I>(deploy_hash, sender).await {
+            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => item,
+            Err(fetcher_error) => {
+                warn!(
+                    "Could not fetch deploy with deploy hash {}: {}",
+                    deploy_hash, fetcher_error
+                );
+                return Event::DeployMissing(dt_hash);
+            }
+        };
+        match item.deploy_type() {
+            Ok(deploy_type) => Event::DeployFound {
+                dt_hash,
+                deploy_type: Box::new(deploy_type),
+            },
+            Err(error) => {
+                warn!(
+                    "Could not convert deploy with deploy hash {}: {}",
+                    dt_hash, error
+                );
+                Event::CannotConvertDeploy(dt_hash)
+            }
+        }
+    }
+    .event(std::convert::identity)
 }

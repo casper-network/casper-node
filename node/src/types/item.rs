@@ -38,17 +38,19 @@ pub enum Tag {
     /// A gossiped public listening address.
     GossipedAddress,
     /// A block requested by its height in the linear chain.
-    BlockByHeight,
+    BlockAndMetadataByHeight,
     /// A block header requested by its hash.
     BlockHeaderByHash,
     /// A block header and its finality signatures requested by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight,
+    /// A trie from the global Merkle tree in the execution engine.
+    Trie,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
 /// furthermore allows generic network messages to include this type due to the provision of the
 /// type-identifying `TAG`.
-pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {
+pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq {
     /// The type of ID of the item.
     type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
     /// The tag representing the type of the item.
@@ -62,7 +64,7 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
 
 impl Item for Trie<Key, StoredValue> {
     type Id = Blake2bHash;
-    const TAG: Tag = Tag::Deploy;
+    const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
