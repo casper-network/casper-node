@@ -2331,7 +2331,7 @@ name = "global-state-update-gen"
 version = "0.1.0"
 dependencies = [
  "base16",
- "base64 0.13.0",
+ "base64",
  "casper-engine-test-support",
  "casper-execution-engine",
  "casper-types",
@@ -5809,6 +5809,18 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "transfer-gen"
+version = "0.1.0"
+dependencies = [
+ "base16",
+ "base64",
+ "casper-engine-test-support",
+ "casper-execution-engine",
+ "casper-types",
+ "clap",
 ]
 
 [[package]]
