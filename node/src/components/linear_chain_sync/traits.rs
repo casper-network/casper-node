@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{
     effect::{
         announcements::ControlAnnouncement,
@@ -6,12 +8,13 @@ use crate::{
             StorageRequest,
         },
     },
-    types::{Block, BlockByHeight},
+    types::{Block, BlockWithMetadata},
 };
-pub trait ReactorEventT<I>:
+
+pub trait ReactorEventT<I: Debug + Eq>:
     From<StorageRequest>
     + From<FetcherRequest<I, Block>>
-    + From<FetcherRequest<I, BlockByHeight>>
+    + From<FetcherRequest<I, BlockWithMetadata>>
     + From<BlockValidationRequest<I>>
     + From<ContractRuntimeRequest>
     + From<StateStoreRequest>
@@ -20,14 +23,16 @@ pub trait ReactorEventT<I>:
 {
 }
 
-impl<I, REv> ReactorEventT<I> for REv where
+impl<I, REv> ReactorEventT<I> for REv
+where
     REv: From<StorageRequest>
         + From<FetcherRequest<I, Block>>
-        + From<FetcherRequest<I, BlockByHeight>>
+        + From<FetcherRequest<I, BlockWithMetadata>>
         + From<BlockValidationRequest<I>>
         + From<ContractRuntimeRequest>
         + From<StateStoreRequest>
         + From<ControlAnnouncement>
-        + Send
+        + Send,
+    I: Debug + Eq,
 {
 }

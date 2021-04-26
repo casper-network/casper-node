@@ -27,7 +27,7 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::common::{self},
-    types::{Block, BlockHash, BlockSignatures, Item, JsonBlock},
+    types::{Block, BlockHash, BlockWithMetadata, Item, JsonBlock},
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
@@ -126,20 +126,22 @@ impl RpcWithOptionalParamsExt for GetBlock {
         async move {
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let (block, signatures) =
-                match get_block_with_metadata(maybe_block_id, effect_builder).await {
-                    Ok(Some((block, signatures))) => (block, signatures),
-                    Ok(None) => {
-                        let error = warp_json_rpc::Error::custom(
-                            ErrorCode::NoSuchBlock as i64,
-                            "block not known",
-                        );
-                        return Ok(response_builder.error(error)?);
-                    }
-                    Err(error) => return Ok(response_builder.error(error)?),
-                };
+            let BlockWithMetadata {
+                block,
+                finality_signatures,
+            } = match get_block_with_metadata(maybe_block_id, effect_builder).await {
+                Ok(Some(block_with_metadata)) => block_with_metadata,
+                Ok(None) => {
+                    let error = warp_json_rpc::Error::custom(
+                        ErrorCode::NoSuchBlock as i64,
+                        "block not known",
+                    );
+                    return Ok(response_builder.error(error)?);
+                }
+                Err(error) => return Ok(response_builder.error(error)?),
+            };
 
-            let json_block = JsonBlock::new(block, Some(signatures));
+            let json_block = JsonBlock::new(block, Some(finality_signatures));
 
             // Return the result.
             let result = Self::ResponseResult {
@@ -438,7 +440,7 @@ async fn get_block<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Block>, warp_json_rpc::Error> {
     match get_block_with_metadata(maybe_id, effect_builder).await {
-        Ok(Some((block, _))) => Ok(Some(block)),
+        Ok(Some(BlockWithMetadata { block, .. })) => Ok(Some(block)),
         Ok(None) => {
             return Err(warp_json_rpc::Error::custom(
                 ErrorCode::NoSuchBlock as i64,
@@ -452,7 +454,7 @@ async fn get_block<REv: ReactorEventT>(
 async fn get_block_with_metadata<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     effect_builder: EffectBuilder<REv>,
-) -> Result<Option<(Block, BlockSignatures)>, warp_json_rpc::Error> {
+) -> Result<Option<BlockWithMetadata>, warp_json_rpc::Error> {
     // Get the block from storage or the latest from the linear chain.
     let getting_specific_block = maybe_id.is_some();
     let maybe_result = effect_builder
