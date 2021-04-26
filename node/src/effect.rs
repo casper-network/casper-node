@@ -85,6 +85,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
+        execution_effect::ExecutionEffect,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
@@ -130,7 +131,6 @@ use requests::{
 };
 
 use self::announcements::BlocklistAnnouncement;
-use casper_execution_engine::core::engine_state::execution_effect::ExecutionEffect;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));

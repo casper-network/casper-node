@@ -337,7 +337,7 @@ where
                                 .commit_upgrade
                                 .observe(start.elapsed().as_secs_f64());
                             info!(?result, "upgrade result");
-                            responder.respond(result.clone()).await
+                            responder.respond(result).await
                         }
                         .ignore()
                     }
