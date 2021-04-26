@@ -634,24 +634,16 @@ where
 
         let mut effects = self.check_connection_complete(effect_builder, peer_id);
 
-        let handshake = self.chain_info.create_handshake(self.public_address);
-
         effects.extend(
-            message_sender(
-                receiver,
-                sink,
-                self.net_metrics.queued_messages.clone(),
-                handshake,
-            )
-            .event(move |result| Event::OutgoingFailed {
-                peer_id: Box::new(Some(peer_id)),
-                peer_address: Box::new(peer_address),
-                error: Box::new(result.err().map(Into::into)),
-            }),
-        );
-        effects.extend(
-            handshake_reader(self.event_queue, stream, self.our_id, peer_id, peer_address)
-                .ignore::<Event<P>>(),
+            effect_builder
+                .immediately()
+                .event(move |_| Event::OutgoingReady {
+                    receiver: receiver,
+                    sink: Box::new(sink),
+                    stream: Box::new(stream),
+                    peer_id: Box::new(peer_id),
+                    peer_address,
+                }),
         );
 
         effects
@@ -1039,6 +1031,49 @@ where
             Event::OutgoingEstablished { peer_id, transport } => {
                 self.setup_outgoing(effect_builder, *peer_id, transport)
             }
+            Event::OutgoingReady {
+                receiver,
+                sink,
+                stream,
+                peer_id,
+                peer_address,
+            } => {
+                let handshake = self.chain_info.create_handshake(self.public_address);
+
+                // Start the sender task.
+                let event_queue = self.event_queue;
+                let counter = self.net_metrics.queued_messages.clone();
+                let peer_id = *peer_id;
+
+                self.task_manager.spawn(move |shutdown| {
+                    message_sender(
+                        event_queue,
+                        receiver,
+                        *sink,
+                        shutdown,
+                        counter,
+                        handshake,
+                        peer_id,
+                        peer_address,
+                    )
+                });
+
+                // Start the handshake reader task.
+                let our_id = self.our_id;
+
+                self.task_manager.spawn(move |shutdown| {
+                    handshake_reader(
+                        event_queue,
+                        *stream,
+                        shutdown,
+                        our_id,
+                        peer_id,
+                        peer_address,
+                    )
+                });
+
+                Effects::new()
+            }
             Event::OutgoingFailed {
                 peer_id,
                 peer_address,
@@ -1228,6 +1263,7 @@ async fn setup_tls(
 async fn handshake_reader<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut stream: SplitStream<FramedTransport<P>>,
+    mut shutdown: ShutdownReceiver,
     our_id: NodeId,
     peer_id: NodeId,
     peer_address: SocketAddr,
@@ -1235,34 +1271,44 @@ async fn handshake_reader<REv, P>(
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
-    if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
-        debug!(%our_id, %msg, %peer_id, "handshake received");
-        return event_queue
-            .schedule(
-                Event::IncomingMessage {
-                    peer_id: Box::new(peer_id),
-                    msg: Box::new(msg),
-                },
-                QueueKind::NetworkIncoming,
-            )
-            .await;
+    tokio::select! {
+        handshake_read_result = stream.next() => {
+            if let Some(Ok(msg @ Message::Handshake { .. })) = handshake_read_result {
+                debug!(%our_id, %msg, %peer_id, "handshake received");
+                return event_queue
+                    .schedule(
+                        Event::IncomingMessage {
+                            peer_id: Box::new(peer_id),
+                            msg: Box::new(msg),
+                        },
+                        QueueKind::NetworkIncoming,
+                    )
+                    .await;
+            }
+            else {
+                warn!(%our_id, %peer_id, "receiving handshake failed, closing connection");
+                event_queue
+                    .schedule(
+                        Event::OutgoingFailed {
+                            peer_id: Box::new(Some(peer_id)),
+                            peer_address: Box::new(peer_address),
+                            error: Box::new(None),
+                        },
+                        QueueKind::Network,
+                    )
+                    .await;
+            }
+        }
+        _ = shutdown.wait_for_shutdown() => {
+            debug!("shutting down during handshake send");
+        }
     }
-    warn!(%our_id, %peer_id, "receiving handshake failed, closing connection");
-    event_queue
-        .schedule(
-            Event::OutgoingFailed {
-                peer_id: Box::new(Some(peer_id)),
-                peer_address: Box::new(peer_address),
-                error: Box::new(None),
-            },
-            QueueKind::Network,
-        )
-        .await
 }
 
 /// Network message reader.
 ///
-/// Schedules all received messages until the stream is closed or an error occurs.
+/// Schedules all received messages until the stream is closed, a shutdown was requested, or an
+/// error occurs.
 async fn message_reader<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut stream: SplitStream<FramedTransport<P>>,
@@ -1326,27 +1372,75 @@ async fn message_reader<REv, P>(
 
 /// Network message sender.
 ///
-/// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
+/// Reads from a channel and sends all messages, until the stream is closed, a shutdown is requested
+/// or an error occurs.
 ///
 /// Initially sends a handshake including the `chainspec_hash` as a final handshake step.  If the
 /// recipient's `chainspec_hash` doesn't match, the connection will be closed.
-async fn message_sender<P>(
+async fn message_sender<P, REv>(
+    event_queue: EventQueueHandle<REv>,
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
+    mut shutdown: ShutdownReceiver,
     counter: IntGauge,
     handshake: Message<P>,
-) -> Result<()>
-where
+    peer_id: NodeId,
+    peer_address: SocketAddr,
+) where
     P: Serialize + Send + Payload,
+    REv: From<Event<P>>,
 {
-    sink.send(handshake).await.map_err(Error::MessageNotSent)?;
-    while let Some(payload) = queue.recv().await {
-        counter.dec();
-        // We simply error-out if the sink fails, it means that our connection broke.
-        sink.send(payload).await.map_err(Error::MessageNotSent)?;
-    }
+    // Start by sending the handshake.
+    if let Err(err) = sink.send(handshake).await.map_err(Error::MessageNotSent) {
+        event_queue
+            .schedule(
+                Event::OutgoingFailed {
+                    peer_id: Box::new(Some(peer_id)),
+                    peer_address: Box::new(peer_address),
+                    error: Box::new(Some(err)),
+                },
+                QueueKind::Network,
+            )
+            .await;
+        return;
+    };
 
-    Ok(())
+    loop {
+        tokio::select! {
+            // We are only cancelling this once, during shutdown, so we are not worried about
+            // cancellation safety here.
+            queue_recv_result = queue.recv() => {
+                match queue_recv_result {
+                    Some(payload) => {
+                        counter.dec();
+                        // We simply error-out if the sink fails, it means our connection broke.
+                        if let Err(err) = sink.send(payload).await.map_err(Error::MessageNotSent) {
+                            event_queue
+                            .schedule(
+                                Event::OutgoingFailed {
+                                    peer_id: Box::new(Some(peer_id)),
+                                    peer_address: Box::new(peer_address),
+                                    error: Box::new(Some(err)),
+                                },
+                                QueueKind::Network,
+                            )
+                            .await;
+                        return;
+                        }
+                    }
+                    None => {
+                        // The receive channel was closed. We're shutting down unclean?
+                        break;
+                    }
+                }
+            }
+
+            _ = shutdown.wait_for_shutdown() => {
+                debug!(%peer_id, %peer_address, "shutting down sender");
+                break;
+            }
+        }
+    }
 }
 
 /// Transport type alias for base encrypted connections.

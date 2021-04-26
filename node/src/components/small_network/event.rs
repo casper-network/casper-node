@@ -5,10 +5,10 @@ use std::{
 };
 
 use derive_more::From;
-use futures::stream::SplitStream;
+use futures::stream::{SplitSink, SplitStream};
 use serde::Serialize;
 use static_assertions::const_assert;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::mpsc::UnboundedReceiver};
 
 use super::{Error, FramedTransport, GossipedAddress, Message, NodeId, Transport};
 use crate::{
@@ -63,6 +63,17 @@ pub enum Event<P> {
         peer_id: Box<NodeId>,
         #[serde(skip_serializing)]
         transport: Transport,
+    },
+    /// An outgoing connection is ready to have its sender started.
+    OutgoingReady {
+        #[serde(skip_serializing)]
+        receiver: UnboundedReceiver<Message<P>>,
+        #[serde(skip_serializing)]
+        sink: Box<SplitSink<FramedTransport<P>, Message<P>>>,
+        #[serde(skip_serializing)]
+        stream: Box<SplitStream<FramedTransport<P>>>,
+        peer_id: Box<NodeId>,
+        peer_address: SocketAddr,
     },
     /// An outgoing connection failed to connect or was terminated.
     OutgoingFailed {
@@ -142,6 +153,13 @@ impl<P: Display> Display for Event<P> {
             Event::OutgoingEstablished {
                 peer_id: node_id, ..
             } => write!(f, "established outgoing to {}", node_id),
+            Event::OutgoingReady {
+                peer_id,
+                peer_address,
+                ..
+            } => {
+                write!(f, "outgoing ready ({}): {}", peer_address, peer_id)
+            }
             Event::OutgoingFailed {
                 peer_id,
                 peer_address,
