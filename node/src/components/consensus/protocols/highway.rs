@@ -92,6 +92,8 @@ where
     standstill_timeout: TimeDiff,
     /// Log inactive or faulty validators periodically, with this interval.
     log_participation_interval: TimeDiff,
+    /// Whether to log the size of every incoming and outgoing serialized unit.
+    log_unit_sizes: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -204,6 +206,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
             log_participation_interval: config.highway.log_participation_interval,
+            log_unit_sizes: config.highway.log_unit_sizes,
         });
 
         (hw_proto, outcomes)
@@ -244,6 +247,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn process_av_effect(&mut self, effect: AvEffect<C>, now: Timestamp) -> ProtocolOutcomes<I, C> {
         match effect {
             AvEffect::NewVertex(vv) => {
+                self.log_unit_size(vv.inner(), "sending new unit");
                 self.calculate_round_exponent(&vv, now);
                 self.process_new_vertex(vv)
             }
@@ -392,6 +396,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
             return vec![];
         }
+        if self.highway.has_vertex(vv.inner()) {
+            return vec![];
+        }
+        self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
         // Check whether we should change the round exponent.
@@ -430,6 +438,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let instance_id = self.highway.instance_id();
         let participation = participation::Participation::new(&self.highway);
         info!(?participation, %instance_id, "validator participation");
+    }
+
+    /// If the `log_unit_sizes` flag is set and the vertex is a unit, logs its serialized size.
+    fn log_unit_size(&self, vertex: &Vertex<C>, log_msg: &str) {
+        if self.log_unit_sizes {
+            if let Some(hash) = vertex.unit_hash() {
+                let size = HighwayMessage::NewVertex(vertex.clone()).serialize().len();
+                info!(size, %hash, "{}", log_msg);
+            }
+        }
     }
 
     /// Returns whether the switch block has already been finalized.
