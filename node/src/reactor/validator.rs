@@ -1014,10 +1014,10 @@ impl reactor::Reactor for Reactor {
                 debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
                 Effects::new()
             }
-            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepCommitted(
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
                 era_id,
                 execution_effect,
-            )) => {
+            }) => {
                 let reactor_event = Event::EventStreamServer(event_stream_server::Event::Step {
                     era_id,
                     effect: execution_effect,

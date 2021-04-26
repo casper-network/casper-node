@@ -2031,7 +2031,7 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                effects.clone().transforms,
+                effects.transforms.clone(),
             )
             .map_err(Into::into)?;
 

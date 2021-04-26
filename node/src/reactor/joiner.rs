@@ -775,10 +775,10 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(*block))),
             ),
-            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepCommitted(
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
                 era_id,
                 execution_effect,
-            )) => self.dispatch_event(
+            }) => self.dispatch_event(
                 effect_builder,
                 rng,
                 Event::EventStreamServer(event_stream_server::Event::Step {

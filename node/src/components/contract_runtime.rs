@@ -616,7 +616,7 @@ where
                             state.state_root_hash = post_state_hash.into();
                             let era_id = state.finalized_block.era_id();
                             let mut effects = effect_builder
-                                .announce_step_result(era_id, execution_effect)
+                                .announce_step_success(era_id, execution_effect)
                                 .ignore();
                             effects.extend(self.finalize_block_execution(
                                 effect_builder,

@@ -222,8 +222,13 @@ pub enum ContractRuntimeAnnouncement {
     LinearChainBlock(Box<LinearChainBlock>),
     /// A block was requested to be executed, but it had been executed before.
     BlockAlreadyExecuted(Box<Block>),
-    /// A Step result was committed and has altered global state.
-    StepCommitted(EraId, ExecutionEffect),
+    /// A Step succeeded and has altered global state.
+    StepSuccess {
+        /// The era id in which the step was committed to global state.
+        era_id: EraId,
+        /// The operations and transforms committed to global state.
+        execution_effect: ExecutionEffect,
+    },
 }
 
 impl ContractRuntimeAnnouncement {
@@ -242,9 +247,12 @@ impl ContractRuntimeAnnouncement {
         Self::BlockAlreadyExecuted(Box::new(block))
     }
 
-    /// Create a ContractRuntimeAnnouncement::StepCommitted from an execution effect.
-    pub fn step_result_success(era_id: EraId, execution_effect: ExecutionEffect) -> Self {
-        Self::StepCommitted(era_id, execution_effect)
+    /// Create a ContractRuntimeAnnouncement::StepSuccess from an execution effect.
+    pub fn step_success(era_id: EraId, execution_effect: ExecutionEffect) -> Self {
+        Self::StepSuccess {
+            era_id,
+            execution_effect,
+        }
     }
 }
 
@@ -270,12 +278,8 @@ impl Display for ContractRuntimeAnnouncement {
             ContractRuntimeAnnouncement::BlockAlreadyExecuted(block) => {
                 write!(f, "block had been executed before: {}", block.hash())
             }
-            ContractRuntimeAnnouncement::StepCommitted(era_id, ..) => {
-                write!(
-                    f,
-                    "execution effect has been successfully committed in era: {}",
-                    era_id
-                )
+            ContractRuntimeAnnouncement::StepSuccess { era_id, .. } => {
+                write!(f, "step completed for {}", era_id)
             }
         }
     }

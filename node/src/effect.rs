@@ -696,17 +696,17 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce a committed Step result
-    pub(crate) async fn announce_step_result(self, era_id: EraId, execution_effect: ExecutionEffect)
-    where
+    /// Announce a committed Step success.
+    pub(crate) async fn announce_step_success(
+        self,
+        era_id: EraId,
+        execution_effect: ExecutionEffect,
+    ) where
         REv: From<ContractRuntimeAnnouncement>,
     {
         self.0
             .schedule(
-                ContractRuntimeAnnouncement::step_result_success(
-                    era_id,
-                    (&execution_effect).into(),
-                ),
+                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
                 QueueKind::Regular,
             )
             .await
