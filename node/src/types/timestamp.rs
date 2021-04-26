@@ -3,7 +3,7 @@
 
 use std::{
     fmt::{self, Display, Formatter},
-    ops::{Add, AddAssign, Div, Mul, Rem, Sub},
+    ops::{Add, AddAssign, Div, Mul, Rem},
     str::FromStr,
     time::{Duration, SystemTime},
 };
@@ -123,7 +123,8 @@ impl AddAssign<TimeDiff> for Timestamp {
     }
 }
 
-impl Sub<TimeDiff> for Timestamp {
+#[cfg(test)]
+impl std::ops::Sub<TimeDiff> for Timestamp {
     type Output = Timestamp;
 
     fn sub(self, diff: TimeDiff) -> Timestamp {
