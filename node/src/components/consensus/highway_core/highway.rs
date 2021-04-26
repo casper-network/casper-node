@@ -684,7 +684,7 @@ impl<C: Context> Highway<C> {
             state.params().start_timestamp()
         };
         for skipped_r_id in (1..=MAX_SKIPPED_PROPOSAL_LOGS)
-            .map(|i| r_id - state.params().min_round_length() * i)
+            .map(|i| r_id.saturating_sub(state.params().min_round_length() * i))
             .take_while(|skipped_r_id| *skipped_r_id > parent_timestamp)
         {
             let leader_index = state.leader(skipped_r_id);
