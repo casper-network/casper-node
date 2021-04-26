@@ -638,7 +638,7 @@ where
             effect_builder
                 .immediately()
                 .event(move |_| Event::OutgoingReady {
-                    receiver: receiver,
+                    receiver,
                     sink: Box::new(sink),
                     stream: Box::new(stream),
                     peer_id: Box::new(peer_id),
@@ -1377,6 +1377,7 @@ async fn message_reader<REv, P>(
 ///
 /// Initially sends a handshake including the `chainspec_hash` as a final handshake step.  If the
 /// recipient's `chainspec_hash` doesn't match, the connection will be closed.
+#[allow(clippy::clippy::too_many_arguments)]
 async fn message_sender<P, REv>(
     event_queue: EventQueueHandle<REv>,
     mut queue: UnboundedReceiver<Message<P>>,
