@@ -1,4 +1,6 @@
-use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_execution_engine::{
+    core::engine_state::executable_deploy_item::ExecutableDeployItem, shared::gas::Gas,
+};
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     runtime_args,
@@ -356,16 +358,16 @@ fn should_keep_track_of_unhandled_deploys() {
         !proposer.sets.finalized_deploys.contains_key(deploy2.id()),
         "should not yet contain deploy2"
     );
-
-    let past_deploys = HashSet::new();
     assert!(
-        proposer.is_deploy_valid(
-            deploy2.header(),
-            test_time,
-            &proposer.deploy_config,
-            &past_deploys
-        ),
-        "deploy2 should -not- be valid"
+        proposer.contains_finalized(deploy2.id()),
+        "should recognize deploy2 as finalized"
+    );
+
+    assert!(
+        deploy2
+            .header()
+            .is_valid(&proposer.deploy_config, test_time),
+        "deploy2 should be valid"
     );
 
     // Now we add Deploy2

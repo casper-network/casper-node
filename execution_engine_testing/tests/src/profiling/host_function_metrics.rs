@@ -145,7 +145,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
     let account_1_account_hash = profiling::account_1_account_hash();
     let account_2_account_hash = profiling::account_2_account_hash();
 
-    let engine_config = EngineConfig::new();
+    let engine_config = EngineConfig::default();
 
     let mut test_builder =
         LmdbWasmTestBuilder::open(data_dir, engine_config, Blake2bHash::new(&root_hash));
