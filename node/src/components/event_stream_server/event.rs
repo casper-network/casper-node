@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
 
 use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp};
 
@@ -19,6 +19,10 @@ pub enum Event {
         timestamp: Timestamp,
     },
     FinalitySignature(Box<FinalitySignature>),
+    Step {
+        era_id: EraId,
+        effect: ExecutionEffect,
+    },
 }
 
 impl Display for Event {
@@ -38,6 +42,11 @@ impl Display for Event {
                 public_key, timestamp, era_id,
             ),
             Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),
+            Event::Step { era_id, effect } => write!(
+                formatter,
+                "Execution effect: {:?} committed in era: {}",
+                effect, era_id
+            ),
         }
     }
 }

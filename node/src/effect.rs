@@ -130,6 +130,7 @@ use requests::{
 };
 
 use self::announcements::BlocklistAnnouncement;
+use casper_execution_engine::core::engine_state::execution_effect::ExecutionEffect;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -690,6 +691,22 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ContractRuntimeAnnouncement::block_already_executed(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce a committed Step result
+    pub(crate) async fn announce_step_result(self, era_id: EraId, execution_effect: ExecutionEffect)
+    where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ContractRuntimeAnnouncement::step_result_success(
+                    era_id,
+                    (&execution_effect).into(),
+                ),
                 QueueKind::Regular,
             )
             .await
