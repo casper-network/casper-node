@@ -775,6 +775,17 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(*block))),
             ),
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
+                era_id,
+                execution_effect,
+            }) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::EventStreamServer(event_stream_server::Event::Step {
+                    era_id,
+                    effect: execution_effect,
+                }),
+            ),
             Event::LinearChain(event) => reactor::wrap_effects(
                 Event::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),

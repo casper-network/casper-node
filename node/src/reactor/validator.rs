@@ -1014,6 +1014,16 @@ impl reactor::Reactor for Reactor {
                 debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
                 Effects::new()
             }
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
+                era_id,
+                execution_effect,
+            }) => {
+                let reactor_event = Event::EventStreamServer(event_stream_server::Event::Step {
+                    era_id,
+                    effect: execution_effect,
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
             }

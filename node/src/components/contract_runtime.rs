@@ -325,7 +325,7 @@ where
                         upgrade_config,
                         responder,
                     } => {
-                        trace!(?upgrade_config, "upgrade");
+                        debug!(?upgrade_config, "upgrade");
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         async move {
@@ -336,7 +336,7 @@ where
                             metrics
                                 .commit_upgrade
                                 .observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "upgrade result");
+                            debug!(?result, "upgrade result");
                             responder.respond(result).await
                         }
                         .ignore()
@@ -605,20 +605,25 @@ where
                         parent_summary,
                     )
                 }
-
                 ContractRuntimeResult::RunStepResult { mut state, result } => {
                     trace!(?result, "run step result");
                     match result {
                         Ok(StepResult::Success {
                             post_state_hash,
                             next_era_validators,
+                            execution_effect,
                         }) => {
                             state.state_root_hash = post_state_hash.into();
-                            self.finalize_block_execution(
+                            let era_id = state.finalized_block.era_id();
+                            let mut effects = effect_builder
+                                .announce_step_success(era_id, execution_effect)
+                                .ignore();
+                            effects.extend(self.finalize_block_execution(
                                 effect_builder,
                                 state,
                                 Some(next_era_validators),
-                            )
+                            ));
+                            effects
                         }
                         _ => {
                             // When step fails, the auction process is broken and we should panic.
