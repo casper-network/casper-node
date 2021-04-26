@@ -28,15 +28,18 @@ use casper_execution_engine::{
         ExecuteRequest, GetEraValidatorsError, GetEraValidatorsRequest, RewardItem, SlashItem,
         StepRequest, StepResult,
     },
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::{
+        newtypes::{Blake2bHash, CorrelationId},
+        stored_value::StoredValue,
+    },
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+        transaction_source::lmdb::LmdbEnvironment, trie::Trie, trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
-    system::auction::ValidatorWeights, ExecutionResult, ProtocolVersion, PublicKey, U512,
+    system::auction::ValidatorWeights, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
@@ -483,13 +486,8 @@ where
                         responder,
                     } => {
                         trace!(?trie_key, "read_trie request");
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
+                        let result = self.read_trie(trie_key);
                         async move {
-                            let correlation_id = CorrelationId::new();
-                            let start = Instant::now();
-                            let result = engine_state.read_trie(correlation_id, trie_key);
-                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
                             let result = match result {
                                 Ok(result) => result,
                                 Err(error) => {
@@ -523,7 +521,7 @@ where
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
                         debug!(?finalized_block, "execute block");
                         effect_builder
-                            .get_block_at_height_local(finalized_block.height())
+                            .get_block_at_height_from_storage(finalized_block.height())
                             .event(move |maybe_block| {
                                 maybe_block.map(Box::new).map_or_else(
                                     || Event::BlockIsNew(Box::new(finalized_block)),
@@ -804,8 +802,7 @@ impl ContractRuntime {
         state: Box<RequestState>,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Effects<Event> {
-        // The state hash of the last execute-commit cycle is used as the block's post state
-        // hash.
+        // The state hash of the last execute-commit cycle is used as the block's post state hash.
         let next_height = state.finalized_block.height() + 1;
         // Update the metric.
         self.metrics
@@ -964,7 +961,7 @@ impl ContractRuntime {
             // Read it from the storage.
             let height = finalized_block.height();
             effect_builder
-                .get_block_at_height_local(height - 1)
+                .get_block_at_height_from_storage(height - 1)
                 .event(|parent| {
                     Event::Result(Box::new(ContractRuntimeResult::GetParentResult {
                         finalized_block,
@@ -1082,6 +1079,20 @@ impl ContractRuntime {
     /// either genesis or the highest known block at the time of initializing the component.
     fn is_initial_block_child(&self, finalized_block: &FinalizedBlock) -> bool {
         finalized_block.height() == self.initial_state.child_height
+    }
+
+    /// Read a [Trie<Key, StoredValue>] from the trie store.
+    pub fn read_trie(
+        &mut self,
+        trie_key: Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = self.engine_state.read_trie(correlation_id, trie_key);
+        self.metrics
+            .read_trie
+            .observe(start.elapsed().as_secs_f64());
+        result
     }
 }
 

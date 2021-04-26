@@ -77,9 +77,7 @@ use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-use tracing::error;
-#[cfg(not(feature = "fast-sync"))]
-use tracing::warn;
+use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -109,12 +107,11 @@ use crate::{
         small_network::GossipedAddress,
     },
     crypto::hash::Digest,
-    effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, TimeDiff, Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
+        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, TimeDiff, Timestamp,
     },
     utils::Source,
 };
@@ -469,18 +466,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| MetricsRequest::RenderNodeMetricsText { responder },
             QueueKind::Api,
-        )
-        .await
-    }
-
-    /// Retrieves block at `height` from the Linear Chain component.
-    pub(crate) async fn get_block_at_height_local<I>(self, height: u64) -> Option<Block>
-    where
-        REv: From<LinearChainRequest<I>>,
-    {
-        self.make_request(
-            |responder| LinearChainRequest::BlockAtHeightLocal(height, responder),
-            QueueKind::Regular,
         )
         .await
     }
@@ -921,7 +906,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
-    #[allow(unused)]
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
         trie: Box<Trie<Key, StoredValue>>,
@@ -1008,7 +992,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -1022,11 +1006,30 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block and its associated metadata.
+    #[allow(dead_code)]
+    pub(crate) async fn get_block_header_at_height_with_metadata_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndMetadataByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested block by hash with its associated metadata.
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -1043,7 +1046,7 @@ impl<REv> EffectBuilder<REv> {
     /// Get the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -1054,61 +1057,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy using the `DeployFetcher`.
-    pub(crate) async fn fetch_deploy<I>(
-        self,
-        deploy_hash: DeployHash,
-        peer: I,
-    ) -> Option<FetchResult<Deploy, I>>
+    /// Fetch an item from a fetcher.
+    pub(crate) async fn fetch<T, I>(self, id: T::Id, peer: I) -> FetchResult<T, I>
     where
-        REv: From<FetcherRequest<I, Deploy>>,
-        I: Send + 'static,
+        REv: From<FetcherRequest<I, T>>,
+        T: Item + 'static,
+        I: Debug + Eq + Send + 'static,
     {
         self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: deploy_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested block using the `BlockFetcher`
-    pub(crate) async fn fetch_block<I>(
-        self,
-        block_hash: BlockHash,
-        peer: I,
-    ) -> Option<FetchResult<Block, I>>
-    where
-        REv: From<FetcherRequest<I, Block>>,
-        I: Send + 'static,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a linear chain block at `block_height`.
-    pub(crate) async fn fetch_block_by_height<I>(
-        self,
-        block_height: u64,
-        peer: I,
-    ) -> Option<FetchResult<BlockByHeight, I>>
-    where
-        REv: From<FetcherRequest<I, BlockByHeight>>,
-        I: Send + 'static,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_height,
+            |responder| FetcherRequest {
+                id,
                 peer,
                 responder,
             },
@@ -1374,7 +1332,6 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// Returns whether or not storing the state was successful. A component that requires state to
     /// be successfully stored should check the return value and act accordingly.
-    #[cfg(not(feature = "fast-sync"))]
     pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
     where
         REv: From<StateStoreRequest>,
