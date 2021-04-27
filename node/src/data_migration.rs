@@ -1,13 +1,12 @@
 use std::{env, fs, io, path::PathBuf};
 
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use toml::de::Error as TomlDecodeError;
 use tracing::info;
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{PublicKey, SecretKey, Signature};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
     crypto,
@@ -89,7 +88,7 @@ pub enum Error {
 #[derive(Serialize, Deserialize)]
 struct PostMigrationInfo {
     state_hash: Blake2bHash,
-    protocol_version: Version,
+    protocol_version: ProtocolVersion,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -106,7 +105,7 @@ struct SignedPostMigrationInfo {
 // TODO - remove once used.
 #[allow(unused)]
 pub(crate) fn read_post_migration_info(
-    protocol_version: Version,
+    protocol_version: ProtocolVersion,
     public_key: &PublicKey,
 ) -> Result<Option<Blake2bHash>, Error> {
     do_read_post_migration_info(protocol_version, public_key, info_path())
@@ -115,7 +114,7 @@ pub(crate) fn read_post_migration_info(
 // TODO - remove once used.
 #[allow(unused)]
 fn do_read_post_migration_info(
-    protocol_version: Version,
+    protocol_version: ProtocolVersion,
     public_key: &PublicKey,
     path: PathBuf,
 ) -> Result<Option<Blake2bHash>, Error> {
@@ -158,7 +157,7 @@ fn do_read_post_migration_info(
 /// state on restart.
 fn write_post_migration_info(
     state_hash: Blake2bHash,
-    new_protocol_version: Version,
+    new_protocol_version: ProtocolVersion,
     secret_key: &SecretKey,
     path: PathBuf,
 ) -> Result<(), Error> {
@@ -236,16 +235,11 @@ mod tests {
 
         let mut rng = crate::new_rng();
         let state_hash = Blake2bHash::new(&[rng.gen()]);
-        let protocol_version = Version::new(rng.gen(), rng.gen(), rng.gen());
+        let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let secret_key = SecretKey::random(&mut rng);
 
-        write_post_migration_info(
-            state_hash,
-            protocol_version.clone(),
-            &secret_key,
-            info_path.clone(),
-        )
-        .unwrap();
+        write_post_migration_info(state_hash, protocol_version, &secret_key, info_path.clone())
+            .unwrap();
 
         let public_key = PublicKey::from(&secret_key);
         let maybe_hash =
@@ -259,24 +253,18 @@ mod tests {
         let info_path = tempdir.path().join(POST_MIGRATION_STATE_HASH_FILENAME);
 
         // Should return `None` if there is no info file.
-        let protocol_version = Version::new(1, 2, 3);
+        let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
         let mut rng = crate::new_rng();
         let secret_key = SecretKey::random(&mut rng);
         let public_key = PublicKey::from(&secret_key);
         let maybe_hash =
-            do_read_post_migration_info(protocol_version.clone(), &public_key, info_path.clone())
-                .unwrap();
+            do_read_post_migration_info(protocol_version, &public_key, info_path.clone()).unwrap();
         assert!(maybe_hash.is_none());
 
         // Create the info file and check we can read it.
         let state_hash = Blake2bHash::new(&[rng.gen()]);
-        write_post_migration_info(
-            state_hash,
-            protocol_version.clone(),
-            &secret_key,
-            info_path.clone(),
-        )
-        .unwrap();
+        write_post_migration_info(state_hash, protocol_version, &secret_key, info_path.clone())
+            .unwrap();
         assert!(
             do_read_post_migration_info(protocol_version, &public_key, info_path.clone())
                 .unwrap()
@@ -284,7 +272,7 @@ mod tests {
         );
 
         // Should return `None` for a version different to that requested.
-        let different_version = Version::new(1, 2, 4);
+        let different_version = ProtocolVersion::from_parts(1, 2, 4);
         let maybe_hash =
             do_read_post_migration_info(different_version, &public_key, info_path).unwrap();
         assert!(maybe_hash.is_none());
@@ -297,23 +285,20 @@ mod tests {
 
         // Should return `Err` if the file can't be parsed.
         fs::write(&info_path, "bad value".as_bytes()).unwrap();
-        let protocol_version = Version::new(1, 2, 3);
+        let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
         let mut rng = crate::new_rng();
         let secret_key = SecretKey::random(&mut rng);
         let public_key = PublicKey::from(&secret_key);
-        assert!(do_read_post_migration_info(
-            protocol_version.clone(),
-            &public_key,
-            info_path.clone()
-        )
-        .is_err());
+        assert!(
+            do_read_post_migration_info(protocol_version, &public_key, info_path.clone()).is_err()
+        );
 
         // Should return `Err` if the signature is invalid.
         let other_secret_key = SecretKey::random(&mut rng);
         let state_hash = Blake2bHash::new(&[rng.gen()]);
         write_post_migration_info(
             state_hash,
-            protocol_version.clone(),
+            protocol_version,
             &other_secret_key,
             info_path.clone(),
         )

@@ -53,13 +53,10 @@ mod internal {
     use crate::{
         account::AccountHash,
         system::handle_payment::{Error, MintProvider, RuntimeProvider},
-        Key, Phase, URef, U512,
+        Key, Phase, PublicKey, URef, U512,
     };
 
     use super::{PAYMENT_PURSE_KEY, REFUND_PERCENTAGE, REFUND_PURSE_KEY};
-
-    /// Account used to run system functions (in particular `finalize_payment`).
-    const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
 
     /// Returns the purse for accepting payment for transactions.
     pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
@@ -106,7 +103,7 @@ mod internal {
         target: URef,
     ) -> Result<(), Error> {
         let caller = provider.get_caller();
-        if caller != SYSTEM_ACCOUNT {
+        if caller != PublicKey::System.to_account_hash() {
             return Err(Error::SystemFunctionCalledByUserAccount);
         }
 
@@ -121,10 +118,21 @@ mod internal {
         }
 
         // User's part
-        let refund_amount = (total - amount_spent) * REFUND_PERCENTAGE;
+        let refund_amount = {
+            let refund_amount_raw = total
+                .checked_sub(amount_spent)
+                .ok_or(Error::ArithmeticOverflow)?;
+            // Currently refund percentage is zero and we expect no overflows.
+            // However, we put this check should the constant change in the future.
+            refund_amount_raw
+                .checked_mul(REFUND_PERCENTAGE)
+                .ok_or(Error::ArithmeticOverflow)?
+        };
 
         // Validator reward
-        let validator_reward = total - refund_amount;
+        let validator_reward = total
+            .checked_sub(refund_amount)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // Makes sure both parts: for user, and for validator sums to the total amount in the
         // payment's purse.

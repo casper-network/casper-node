@@ -6,6 +6,8 @@ use std::{
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use libp2p::PeerId;
+#[cfg(test)]
+use multihash::Multihash;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
@@ -16,7 +18,7 @@ use crate::testing::TestRng;
 use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
 pub enum NodeId {
     Tls(KeyFingerprint),
     #[data_size(skip)]
@@ -45,17 +47,27 @@ impl NodeId {
     pub(crate) fn random_p2p(rng: &mut TestRng) -> Self {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
-        let multihash = multihash::wrap(multihash::Code::Identity, &bytes);
+        let multihash = Multihash::wrap(multihash::Code::Identity.into(), &bytes).unwrap();
         let peer_id = PeerId::from_multihash(multihash).expect("should construct from multihash");
         NodeId::P2p(peer_id)
+    }
+
+    /// Returns the raw bytes of the underlying hash of the ID, if there is any.
+    #[inline]
+    pub fn hash_bytes(&self) -> Option<&[u8]> {
+        if let NodeId::Tls(sha256) = self {
+            Some(sha256.as_ref())
+        } else {
+            None
+        }
     }
 }
 
 /// Used to serialize and deserialize `NodeID` where the (de)serializer isn't a human-readable type.
 #[derive(Serialize, Deserialize)]
-enum NodeIdAsBytes<'a> {
+enum NodeIdAsBytes {
     Tls(KeyFingerprint),
-    P2p(&'a [u8]),
+    P2p(Vec<u8>),
 }
 
 /// Used to serialize and deserialize `NodeID` where the (de)serializer is a human-readable type.
@@ -79,7 +91,7 @@ impl Serialize for NodeId {
 
         let helper = match self {
             NodeId::Tls(key_fingerprint) => NodeIdAsBytes::Tls(*key_fingerprint),
-            NodeId::P2p(peer_id) => NodeIdAsBytes::P2p(peer_id.as_ref()),
+            NodeId::P2p(peer_id) => NodeIdAsBytes::P2p(peer_id.to_bytes()),
         };
         helper.serialize(serializer)
     }
@@ -110,8 +122,8 @@ impl<'de> Deserialize<'de> for NodeId {
         match helper {
             NodeIdAsBytes::Tls(key_fingerprint) => Ok(NodeId::Tls(key_fingerprint)),
             NodeIdAsBytes::P2p(bytes) => {
-                let peer_id = PeerId::from_bytes(bytes.to_vec())
-                    .map_err(|_| D::Error::custom("invalid PeerId"))?;
+                let peer_id =
+                    PeerId::from_bytes(&bytes).map_err(|_| D::Error::custom("invalid PeerId"))?;
                 Ok(NodeId::P2p(peer_id))
             }
         }

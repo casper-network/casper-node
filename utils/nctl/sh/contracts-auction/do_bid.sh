@@ -16,6 +16,7 @@ function main()
     local BID_AMOUNT=${2}
     local BID_DELEGATION_RATE=${3}
     local QUIET=${4:-"FALSE"}
+
     local CHAIN_NAME
     local GAS_PRICE
     local GAS_PAYMENT

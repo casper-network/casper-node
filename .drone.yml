@@ -29,7 +29,7 @@ steps:
     commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
-      - cargo audit --ignore RUSTSEC-2020-0123 --ignore RUSTSEC-2020-0146
+      - cargo audit
 
 trigger:
   branch:
@@ -38,6 +38,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -72,6 +73,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -119,6 +121,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -161,6 +164,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -178,6 +182,7 @@ steps:
     - master
     - dev
     - "release-*"
+    - "feat-*"
     event:
     - push
 
@@ -208,6 +213,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -221,6 +227,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -248,26 +255,7 @@ steps:
       - master
       - dev
       - "release-*"
-    event:
-      - push
-
-  # we want to publish to the test repo, only when code is pushed to master or release-* branch.
-  # bors should make sure, that it has passed on staging or trying branches
-- name: publish-test-bintray
-  image: casperlabs/node-build-u1804
-  # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
-  commands:
-    - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -299,6 +287,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -313,6 +302,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -341,6 +331,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -382,6 +373,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -406,15 +398,29 @@ steps:
   commands:
     - "make deb"
 
-- name: publish-prod-bintray
-  image: casperlabs/node-build-u1804
-  commands:
-  - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
+- name: publish-repo-prod
+  image: casperlabs/aptly:latest
+  failure: ignore
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: aptly_prod_secret_key
+    AWS_ACCESS_KEY_ID:
+      from_secret: aptly_prod_key_id
+  settings:
+    repo_name:
+      from_secret: aptly_prod_repo
+    region:
+      from_secret: aptly_prod_region
+    gpg_key:
+      from_secret: aptly_prod_gpg_key
+    gpg_pass:
+      from_secret: aptly_prod_gpg_pass
+    distribution_id:
+      from_secret: aptly_prod_dist_id
+    acl: 'public-read'
+    prefix: 'releases'
+    deb_path: './target/debian'
+    deb_name: '*.deb'
 
 - name: build-upgrade-package
   image: casperlabs/node-build-u1804

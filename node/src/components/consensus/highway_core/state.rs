@@ -517,13 +517,14 @@ impl<C: Context> State<C> {
     /// This is to prevent ping spam: If the incoming ping is only slightly newer than a unit or
     /// ping we have already received, we drop it without forwarding it to our peers.
     pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
-        self.pings[creator] + self.params.max_round_length() > timestamp
+        self.pings.has(creator) && self.pings[creator] + self.params.max_round_length() > timestamp
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
     /// lengths old.
     pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
-        self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
+        self.pings.has(vidx)
+            && self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
@@ -900,7 +901,7 @@ impl<C: Context> State<C> {
         self.incomplete_endorsements.clear();
     }
 
-    /// Validates whether a unit with the given panorama and `endorsed` set satsifies the
+    /// Validates whether a unit with the given panorama and `endorsed` set satisfies the
     /// Limited Naïveté Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
@@ -1133,7 +1134,7 @@ fn log2(x: u64) -> u32 {
         .saturating_sub(1)
 }
 
-/// Returns a pseudorandom `u64` betweend `1` and `upper` (inclusive).
+/// Returns a pseudorandom `u64` between `1` and `upper` (inclusive).
 fn leader_prng(upper: u64, seed: u64) -> u64 {
     ChaCha8Rng::seed_from_u64(seed)
         .gen_range(0..upper)

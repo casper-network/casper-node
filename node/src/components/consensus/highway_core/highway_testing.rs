@@ -45,16 +45,8 @@ use crate::{
 type ConsensusValue = Vec<u8>;
 
 impl ConsensusValueT for ConsensusValue {
-    type Hash = u64;
-
     fn needs_validation(&self) -> bool {
         !self.is_empty()
-    }
-
-    fn hash(&self) -> Self::Hash {
-        let mut hasher = DefaultHasher::new();
-        std::hash::Hash::hash(&self, &mut hasher);
-        hasher.finish()
     }
 }
 
@@ -70,7 +62,7 @@ pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
 enum HighwayMessage {
     Timer(Timestamp),
     NewVertex(Box<Vertex<TestContext>>),
-    RequestBlock(BlockContext),
+    RequestBlock(BlockContext<TestContext>),
     WeAreFaulty(Box<Fault<TestContext>>),
 }
 
@@ -118,9 +110,7 @@ impl From<Effect<TestContext>> for HighwayMessage {
             // validators so for them it's just `Vertex` that needs to be validated.
             Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
-            Effect::RequestNewBlock { block_context, .. } => {
-                HighwayMessage::RequestBlock(block_context)
-            }
+            Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
             Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
         }
     }
@@ -177,7 +167,7 @@ enum Distribution {
 }
 
 impl Distribution {
-    /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
+    /// Returns vector of `count` elements of random values between `lower` and `upper`.
     fn gen_range_vec(&self, rng: &mut NodeRng, lower: u64, upper: u64, count: u8) -> Vec<u64> {
         match self {
             Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower..upper)).collect(),
@@ -190,7 +180,7 @@ trait DeliveryStrategy {
         &mut self,
         rng: &mut NodeRng,
         message: &HighwayMessage,
-        distributon: &Distribution,
+        distribution: &Distribution,
         base_delivery_timestamp: Timestamp,
     ) -> DeliverySchedule;
 }
@@ -244,7 +234,20 @@ impl HighwayValidator {
                     }
                 }
             }
-            None | Some(DesFault::TemporarilyMute { .. }) | Some(DesFault::PermanentlyMute) => {
+            Some(DesFault::PermanentlyMute) => {
+                // For mute validators we add it to the state but not gossip.
+                match msg {
+                    HighwayMessage::NewVertex(_) => {
+                        warn!("Validator is mute – won't gossip vertices in response");
+                        vec![]
+                    }
+                    HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
+                    HighwayMessage::WeAreFaulty(ev) => {
+                        panic!("validator equivocated unexpectedly: {:?}", ev);
+                    }
+                }
+            }
+            None | Some(DesFault::TemporarilyMute { .. }) => {
                 // Honest validator.
                 match &msg {
                     HighwayMessage::NewVertex(_)
@@ -442,7 +445,7 @@ where
                         delivery_time,
                     )? {
                         Ok(msgs) => {
-                            trace!("{:?} successfuly added to the state.", v);
+                            trace!("{:?} successfully added to the state.", v);
                             msgs
                         }
                         Err((v, error)) => {
@@ -489,7 +492,7 @@ where
         for FinalizedBlock {
             value,
             timestamp: _,
-            height,
+            relative_height,
             terminal_block_data,
             equivocators: _,
             proposer: _,
@@ -503,7 +506,7 @@ where
                     ""
                 },
                 value,
-                height
+                relative_height,
             );
             if let Some(t) = terminal_block_data {
                 warn!(?t.rewards, "rewards and inactive validators are not verified yet");
@@ -760,7 +763,7 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
         &mut self,
         _rng: &mut NodeRng,
         message: &HighwayMessage,
-        _distributon: &Distribution,
+        _distribution: &Distribution,
         base_delivery_timestamp: Timestamp,
     ) -> DeliverySchedule {
         match message {
@@ -864,7 +867,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 // At least 2 validators total and at least one faulty.
                 let faulty_num = rng.gen_range(1..self.max_faulty_validators + 1);
 
-                // Randomly (but within chosed range) assign weights to faulty nodes.
+                // Randomly (but within chosen range) assign weights to faulty nodes.
                 let faulty_weights = self
                     .weight_distribution
                     .gen_range_vec(rng, lower, upper, faulty_num);

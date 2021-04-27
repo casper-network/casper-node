@@ -293,7 +293,7 @@ where
 }
 
 impl<C: Context> Endorsements<C> {
-    /// Returns hash of the endorsed vode.
+    /// Returns hash of the endorsed vote.
     pub fn unit(&self) -> &C::Hash {
         &self.unit
     }
@@ -326,6 +326,7 @@ where
 {
     creator: ValidatorIndex,
     timestamp: Timestamp,
+    instance_id: C::InstanceId,
     signature: C::Signature,
 }
 
@@ -334,12 +335,15 @@ impl<C: Context> Ping<C> {
     pub(crate) fn new(
         creator: ValidatorIndex,
         timestamp: Timestamp,
+        instance_id: C::InstanceId,
         sk: &C::ValidatorSecret,
     ) -> Self {
+        let signature = sk.sign(&Self::hash(creator, timestamp, instance_id));
         Ping {
             creator,
             timestamp,
-            signature: sk.sign(&Self::hash(creator, timestamp)),
+            instance_id,
+            signature,
         }
     }
 
@@ -357,18 +361,28 @@ impl<C: Context> Ping<C> {
     pub(crate) fn validate(
         &self,
         validators: &Validators<C::ValidatorId>,
+        our_instance_id: &C::InstanceId,
     ) -> Result<(), VertexError> {
+        let Ping {
+            creator,
+            timestamp,
+            instance_id,
+            signature,
+        } = self;
+        if instance_id != our_instance_id {
+            return Err(PingError::InstanceId.into());
+        }
         let v_id = validators.id(self.creator).ok_or(PingError::Creator)?;
-        let hash = Self::hash(self.creator, self.timestamp);
-        if !C::verify_signature(&hash, v_id, &self.signature) {
+        let hash = Self::hash(*creator, *timestamp, *instance_id);
+        if !C::verify_signature(&hash, v_id, signature) {
             return Err(PingError::Signature.into());
         }
         Ok(())
     }
 
     /// Computes the hash of a ping, i.e. of the creator and timestamp.
-    fn hash(creator: ValidatorIndex, timestamp: Timestamp) -> C::Hash {
-        let bytes = bincode::serialize(&(creator, timestamp)).expect("serialize Ping");
+    fn hash(creator: ValidatorIndex, timestamp: Timestamp, instance_id: C::InstanceId) -> C::Hash {
+        let bytes = bincode::serialize(&(creator, timestamp, instance_id)).expect("serialize Ping");
         <C as Context>::hash(&bytes)
     }
 }

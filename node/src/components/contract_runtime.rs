@@ -11,7 +11,6 @@ use std::{
 };
 
 pub use config::Config;
-use semver::Version;
 use smallvec::SmallVec;
 
 pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
@@ -49,8 +48,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, BlockHeader, BlockLike, Chainspec, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock, NodeId,
+        Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
+        NodeId,
     },
     utils::WithDir,
     NodeRng, StorageConfig,
@@ -144,12 +143,11 @@ pub struct ContractRuntime {
 
     protocol_version: ProtocolVersion,
 
-    /// A mapping from proto block to executed block's ID and post-state hash, to allow
+    /// A mapping from block height to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
     /// The key is a tuple of block's height (it's a linear chain so it's monotonically
-    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
-    /// created from that proto block.
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
@@ -327,7 +325,7 @@ where
                         upgrade_config,
                         responder,
                     } => {
-                        trace!(?upgrade_config, "upgrade");
+                        debug!(?upgrade_config, "upgrade");
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         async move {
@@ -338,7 +336,7 @@ where
                             metrics
                                 .commit_upgrade
                                 .observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "upgrade result");
+                            debug!(?result, "upgrade result");
                             responder.respond(result).await
                         }
                         .ignore()
@@ -607,20 +605,25 @@ where
                         parent_summary,
                     )
                 }
-
                 ContractRuntimeResult::RunStepResult { mut state, result } => {
                     trace!(?result, "run step result");
                     match result {
                         Ok(StepResult::Success {
                             post_state_hash,
                             next_era_validators,
+                            execution_effect,
                         }) => {
                             state.state_root_hash = post_state_hash.into();
-                            self.finalize_block_execution(
+                            let era_id = state.finalized_block.era_id();
+                            let mut effects = effect_builder
+                                .announce_step_success(era_id, execution_effect)
+                                .ignore();
+                            effects.extend(self.finalize_block_execution(
                                 effect_builder,
                                 state,
                                 Some(next_era_validators),
-                            )
+                            ));
+                            effects
                         }
                         _ => {
                             // When step fails, the auction process is broken and we should panic.
@@ -652,7 +655,7 @@ impl ContractRuntime {
     pub(crate) fn new(
         initial_state_root_hash: Digest,
         initial_block_header: Option<&BlockHeader>,
-        protocol_version: Version,
+        protocol_version: ProtocolVersion,
         storage_config: WithDir<StorageConfig>,
         contract_runtime_config: &Config,
         registry: &Registry,
@@ -678,18 +681,14 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::new(contract_runtime_config.max_query_depth());
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
         let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
         Ok(ContractRuntime {
             initial_state,
-            protocol_version: ProtocolVersion::from_parts(
-                protocol_version.major as u32,
-                protocol_version.minor as u32,
-                protocol_version.patch as u32,
-            ),
+            protocol_version,
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
             engine_state,
@@ -704,11 +703,7 @@ impl ContractRuntime {
     ) -> Result<GenesisResult, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
-        let protocol_version = ProtocolVersion::from_parts(
-            chainspec.protocol_config.version.major as u32,
-            chainspec.protocol_config.version.minor as u32,
-            chainspec.protocol_config.version.patch as u32,
-        );
+        let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = chainspec.as_ref().into();
         self.engine_state.commit_genesis(
@@ -768,10 +763,8 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
-            .proto_block()
-            .deploys()
-            .iter()
-            .map(|hash| **hash)
+            .deploys_and_transfers_iter()
+            .copied()
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
             let result_event = move |_| {
@@ -869,17 +862,17 @@ impl ContractRuntime {
         let reward_items = era_end
             .rewards
             .iter()
-            .map(|(&vid, &value)| RewardItem::new(vid, value))
+            .map(|(vid, &value)| RewardItem::new(vid.clone(), value))
             .collect();
         let slash_items = era_end
             .equivocators
             .iter()
-            .map(|&vid| SlashItem::new(vid))
+            .map(|vid| SlashItem::new(vid.clone()))
             .collect();
         let evict_items = era_end
             .inactive_validators
             .iter()
-            .map(|&vid| EvictItem::new(vid))
+            .map(|vid| EvictItem::new(vid.clone()))
             .collect();
         let era_end_timestamp_millis = state.finalized_block.timestamp().millis();
         let request = StepRequest {
@@ -917,7 +910,7 @@ impl ContractRuntime {
                     block_time,
                     vec![deploy_item],
                     protocol_version,
-                    proposer,
+                    proposer.clone(),
                 );
 
                 // TODO: this is currently working coincidentally because we are passing only one

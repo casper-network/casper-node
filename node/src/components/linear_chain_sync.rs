@@ -104,11 +104,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let timeout_event = effect_builder
             .set_timeout(five_minutes.into())
             .event(|_| Event::InitializeTimeout);
-        let protocol_version = ProtocolVersion::from_parts(
-            chainspec.protocol_config.version.major as u32,
-            chainspec.protocol_config.version.minor as u32,
-            chainspec.protocol_config.version.patch as u32,
-        );
+        let protocol_version = chainspec.protocol_config.version;
         if let Some(state) = read_init_state(storage, chainspec)? {
             let linear_chain_sync = LinearChainSync::from_state(
                 registry,
@@ -830,11 +826,10 @@ fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    let block_timestamp = block.header().timestamp();
     effect_builder
-        .validate_block(peer.clone(), block, block_timestamp)
-        .event(move |(found, block)| {
-            if found {
+        .validate_block(peer.clone(), block.clone())
+        .event(move |valid| {
+            if valid {
                 Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))
             } else {
                 Event::GetDeploysResult(DeploysResult::NotFound(Box::new(block), peer))

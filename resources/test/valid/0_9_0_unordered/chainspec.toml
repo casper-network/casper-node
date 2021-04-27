@@ -5,6 +5,7 @@ activation_point = '2020-09-18T18:45:00Z'
 
 [network]
 name = 'test-chain'
+maximum_net_message_size = 23_068_672
 
 [core]
 era_duration = '3minutes'
@@ -25,6 +26,7 @@ reduced_reward_multiplier = [1, 5]
 max_payment_cost = '9'
 max_ttl = '10months'
 max_dependencies = 11
+max_deploy_size = 1_048_576
 max_block_size = 12
 block_max_deploy_count = 125
 block_max_transfer_count = 1000

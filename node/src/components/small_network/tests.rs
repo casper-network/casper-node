@@ -17,7 +17,10 @@ use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
-use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
+use super::{
+    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, MessageKind,
+    Payload, SmallNetwork,
+};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
@@ -113,6 +116,15 @@ impl Display for Message {
     }
 }
 
+impl Payload for Message {
+    #[inline]
+    fn classify(&self) -> MessageKind {
+        match self {
+            Message::AddressGossiper(_) => MessageKind::AddressGossip,
+        }
+    }
+}
+
 /// Test reactor.
 ///
 /// Runs a single small network.
@@ -139,7 +151,7 @@ impl Reactor for TestReactor {
             cfg,
             registry,
             small_network_identity,
-            "test_network".to_string(),
+            ChainInfo::create_for_testing(),
             false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();

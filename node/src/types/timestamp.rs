@@ -3,7 +3,7 @@
 
 use std::{
     fmt::{self, Display, Formatter},
-    ops::{Add, AddAssign, Div, Mul, Rem, Sub},
+    ops::{Add, AddAssign, Div, Mul, Rem},
     str::FromStr,
     time::{Duration, SystemTime},
 };
@@ -38,18 +38,18 @@ static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
 pub struct Timestamp(u64);
 
 impl Timestamp {
-    /// Returns the timestamp of the current moment
+    /// Returns the timestamp of the current moment.
     pub fn now() -> Self {
         let millis = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
         Timestamp(millis)
     }
 
-    /// Returns the time that has elapsed since this timestamp
+    /// Returns the time that has elapsed since this timestamp.
     pub fn elapsed(&self) -> TimeDiff {
-        Timestamp::now() - *self
+        TimeDiff(Timestamp::now().0.saturating_sub(self.0))
     }
 
-    /// Returns a zero timestamp
+    /// Returns a zero timestamp.
     pub fn zero() -> Self {
         Timestamp(0)
     }
@@ -109,14 +109,6 @@ impl FromStr for Timestamp {
     }
 }
 
-impl Sub<Timestamp> for Timestamp {
-    type Output = TimeDiff;
-
-    fn sub(self, other: Timestamp) -> TimeDiff {
-        TimeDiff(self.0 - other.0)
-    }
-}
-
 impl Add<TimeDiff> for Timestamp {
     type Output = Timestamp;
 
@@ -131,19 +123,12 @@ impl AddAssign<TimeDiff> for Timestamp {
     }
 }
 
-impl Sub<TimeDiff> for Timestamp {
+#[cfg(test)]
+impl std::ops::Sub<TimeDiff> for Timestamp {
     type Output = Timestamp;
 
     fn sub(self, diff: TimeDiff) -> Timestamp {
         Timestamp(self.0 - diff.0)
-    }
-}
-
-impl Div<TimeDiff> for Timestamp {
-    type Output = u64;
-
-    fn div(self, rhs: TimeDiff) -> u64 {
-        self.0 / rhs.0
     }
 }
 

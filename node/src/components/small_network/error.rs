@@ -1,10 +1,16 @@
-use std::{io, net::SocketAddr, result, time::SystemTimeError};
+use std::{
+    error,
+    fmt::{self, Display, Formatter},
+    io,
+    net::SocketAddr,
+    result,
+    time::SystemTimeError,
+};
 
-use openssl::error::ErrorStack;
+use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
-use tokio::net::TcpStream;
-use tokio_openssl::HandshakeError;
+use tracing::field;
 
 use crate::{tls::ValidationError, utils::ResolveAddressError};
 
@@ -42,6 +48,13 @@ pub enum Error {
     /// Failed to get TCP listener address.
     #[error("failed to get listener addr")]
     ListenerAddr(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// Failed to set listener to non-blocking.
+    #[error("failed to set listener to non-blocking")]
+    ListenerSetNonBlocking(
         #[serde(skip_serializing)]
         #[source]
         io::Error,
@@ -93,7 +106,7 @@ pub enum Error {
     Handshake(
         #[serde(skip_serializing)]
         #[from]
-        HandshakeError<TcpStream>,
+        ssl::Error,
     ),
     /// TLS validation error.
     #[error("TLS validation error: {0}")]
@@ -126,4 +139,84 @@ pub enum Error {
         #[from]
         prometheus::Error,
     ),
+}
+
+/// An error formatter.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
+
+impl<'a, T> Display for ErrFormatter<'a, T>
+where
+    T: error::Error,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut opt_source: Option<&(dyn error::Error)> = Some(self.0);
+
+        while let Some(source) = opt_source {
+            write!(f, "{}", source)?;
+            opt_source = source.source();
+
+            if opt_source.is_some() {
+                f.write_str(": ")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Wraps an error to ensure it gets properly captured by tracing.
+///
+/// # Note
+///
+/// This function should be replaced once/if the tracing issue
+/// https://github.com/tokio-rs/tracing/issues/1308 has been resolved, which adds a special syntax
+/// for this case and the known issue https://github.com/tokio-rs/tracing/issues/1308 has been
+/// fixed, which cuts traces short after the first cause.
+pub(crate) fn display_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
+where
+    T: error::Error + 'a,
+{
+    field::display(ErrFormatter(err))
+}
+
+#[cfg(test)]
+mod tests {
+    use thiserror::Error;
+
+    use super::ErrFormatter;
+
+    #[derive(Debug, Error)]
+    #[error("this is baz")]
+    struct Baz;
+
+    #[derive(Debug, Error)]
+    #[error("this is bar")]
+    struct Bar(#[source] Baz);
+
+    #[derive(Debug, Error)]
+    enum MyError {
+        #[error("this is foo")]
+        Foo {
+            #[source]
+            bar: Bar,
+        },
+    }
+
+    #[test]
+    fn test_formatter_formats_single() {
+        let single = Baz;
+
+        assert_eq!(ErrFormatter(&single).to_string().as_str(), "this is baz");
+    }
+
+    #[test]
+    fn test_formatter_formats_nested() {
+        let nested = MyError::Foo { bar: Bar(Baz) };
+
+        assert_eq!(
+            ErrFormatter(&nested).to_string().as_str(),
+            "this is foo: this is bar: this is baz"
+        );
+    }
 }

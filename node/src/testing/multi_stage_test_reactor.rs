@@ -450,7 +450,7 @@ impl Reactor for MultiStageTestReactor {
                         validator_event_queue_handle,
                         rng,
                     )
-                    .expect("validator intialization failed");
+                    .expect("validator initialization failed");
 
                     *self = MultiStageTestReactor::Validator {
                         validator_reactor: Box::new(validator_reactor),
@@ -508,7 +508,7 @@ impl NetworkedReactor for MultiStageTestReactor {
                 ..
             } => initializer_reactor.node_id(),
             MultiStageTestReactor::Joiner { joiner_reactor, .. } => joiner_reactor.node_id(),
-            MultiStageTestReactor::JoinerFinalizing { node_id, .. } => node_id.clone(),
+            MultiStageTestReactor::JoinerFinalizing { node_id, .. } => *node_id,
             MultiStageTestReactor::Validator {
                 validator_reactor, ..
             } => validator_reactor.node_id(),

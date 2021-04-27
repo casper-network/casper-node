@@ -8,7 +8,7 @@ use casper_types::{
 };
 
 use crate::{
-    core::engine_state::{Error, GetEraValidatorsError},
+    core::engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
     shared::{newtypes::Blake2bHash, TypeMismatch},
 };
 
@@ -98,7 +98,7 @@ impl StepRequest {
     pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
         let mut ret = BTreeMap::new();
         for reward_item in &self.reward_items {
-            ret.insert(reward_item.validator_id, reward_item.value);
+            ret.insert(reward_item.validator_id.clone(), reward_item.value);
         }
         Ok(ret)
     }
@@ -124,6 +124,7 @@ pub enum StepResult {
     Success {
         post_state_hash: Blake2bHash,
         next_era_validators: BTreeMap<PublicKey, U512>,
+        execution_effect: ExecutionEffect,
     },
 }
 

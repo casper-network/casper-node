@@ -91,8 +91,6 @@ use crate::{
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
-pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
@@ -415,7 +413,12 @@ where
         let tracking_copy = tracking_copy.borrow();
 
         Ok(tracking_copy
-            .query(correlation_id, query_request.key(), query_request.path())
+            .query(
+                correlation_id,
+                &self.config,
+                query_request.key(),
+                query_request.path(),
+            )
             .map_err(|err| Error::Exec(err.into()))?
             .into())
     }
@@ -439,7 +442,7 @@ where
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
-                    exec_request.proposer,
+                    exec_request.proposer.clone(),
                 ),
                 _ => self.deploy(
                     correlation_id,
@@ -448,7 +451,7 @@ where
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
-                    exec_request.proposer,
+                    exec_request.proposer.clone(),
                 ),
             };
             match result {
@@ -974,7 +977,7 @@ where
             };
 
             let system_account = Account::new(
-                SYSTEM_ACCOUNT_ADDR,
+                PublicKey::System.to_account_hash(),
                 Default::default(),
                 URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
                 Default::default(),
@@ -1183,7 +1186,7 @@ where
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
         let system_account = Account::new(
-            SYSTEM_ACCOUNT_ADDR,
+            PublicKey::System.to_account_hash(),
             Default::default(),
             URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
             Default::default(),
@@ -1735,9 +1738,9 @@ where
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+            Account::create(PublicKey::System.to_account_hash(), named_keys, purse)
         };
-        let authorization_keys = BTreeSet::from_iter(vec![SYSTEM_ACCOUNT_ADDR]);
+        let authorization_keys = BTreeSet::from_iter(vec![PublicKey::System.to_account_hash()]);
         let blocktime = BlockTime::default();
         let deploy_hash = {
             // seeds address generator w/ protocol version
@@ -1803,7 +1806,7 @@ where
             if let Some(StoredValue::Bid(bid)) =
                 tracking_copy.get(correlation_id, key).map_err(Into::into)?
             {
-                bids.insert(*bid.validator_public_key(), *bid);
+                bids.insert(bid.validator_public_key().clone(), *bid);
             };
         }
 
@@ -1858,14 +1861,16 @@ where
         self.system_contract_cache
             .initialize_with_protocol_data(&protocol_data, &system_module);
 
+        let system_account_addr = PublicKey::System.to_account_hash();
+
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+            Account::create(system_account_addr, named_keys, purse)
         };
         let authorization_keys = {
             let mut ret = BTreeSet::new();
-            ret.insert(SYSTEM_ACCOUNT_ADDR);
+            ret.insert(system_account_addr);
             ret
         };
         let mut named_keys = auction_contract.named_keys().to_owned();
@@ -1980,7 +1985,7 @@ where
                         step_request
                             .evict_items
                             .iter()
-                            .map(|item| item.validator_id)
+                            .map(|item| item.validator_id.clone())
                             .collect::<Vec<PublicKey>>(),
                     )?;
                     Ok(())
@@ -2026,7 +2031,7 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                effects.transforms,
+                effects.transforms.clone(),
             )
             .map_err(Into::into)?;
 
@@ -2065,6 +2070,54 @@ where
         Ok(StepResult::Success {
             post_state_hash,
             next_era_validators,
+            execution_effect: effects,
         })
+    }
+
+    pub fn get_balance(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Blake2bHash,
+        public_key: PublicKey,
+    ) -> Result<BalanceResult, Error> {
+        // Look up the account, get the main purse, and then do the existing balance check
+        let tracking_copy = match self.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return Ok(BalanceResult::RootNotFound),
+            Err(error) => return Err(error),
+        };
+
+        let account_addr = public_key.to_account_hash();
+
+        let account = match tracking_copy
+            .borrow_mut()
+            .get_account(correlation_id, account_addr)
+        {
+            Ok(account) => account,
+            Err(error) => return Err(error.into()),
+        };
+
+        let main_purse_balance_key = {
+            let main_purse = account.main_purse();
+            match tracking_copy
+                .borrow()
+                .get_purse_balance_key(correlation_id, main_purse.into())
+            {
+                Ok(balance_key) => balance_key,
+                Err(error) => return Err(error.into()),
+            }
+        };
+
+        let (account_balance, proof) = match tracking_copy
+            .borrow()
+            .get_purse_balance_with_proof(correlation_id, main_purse_balance_key)
+        {
+            Ok((balance, proof)) => (balance, proof),
+            Err(error) => return Err(error.into()),
+        };
+
+        let proof = Box::new(proof);
+        let motes = account_balance.value();
+        Ok(BalanceResult::Success { motes, proof })
     }
 }

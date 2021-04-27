@@ -7,7 +7,6 @@ use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
         config::Config,
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
@@ -26,7 +25,7 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    types::{ProtoBlock, TimeDiff, Timestamp},
+    types::{BlockPayload, TimeDiff, Timestamp},
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
@@ -74,13 +73,12 @@ where
     let config = Config {
         secret_key_path: Default::default(),
         highway: HighwayConfig {
-            unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
-            round_success_meter: Default::default(),
             request_latest_state_timeout: "10sec".parse().unwrap(),
+            ..HighwayConfig::default()
         },
     };
     // Timestamp of the genesis era start and test start.
@@ -110,7 +108,7 @@ where
 fn test_highway_protocol_handle_message_parse_error() {
     // Build a highway_protocol for instrumentation
     let mut highway_protocol: Box<dyn ConsensusProtocol<NodeId, ClContext>> =
-        new_test_highway_protocol(vec![(*ALICE_PUBLIC_KEY, 100)], vec![]);
+        new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![]);
 
     let now = Timestamp::zero();
     let sender = NodeId(123);
@@ -140,7 +138,7 @@ pub(crate) const N: Observation<ClContext> = Observation::None;
 #[test]
 fn send_a_wire_unit_with_too_small_a_round_exp() {
     let creator: ValidatorIndex = ValidatorIndex(0);
-    let validators = vec![(*ALICE_PUBLIC_KEY, 100)];
+    let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
@@ -192,7 +190,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
 fn send_a_valid_wire_unit() {
     let standstill_timeout: TimeDiff = STANDSTILL_TIMEOUT.parse().unwrap();
     let creator: ValidatorIndex = ValidatorIndex(0);
-    let validators = vec![(*ALICE_PUBLIC_KEY, 100)];
+    let validators = vec![(ALICE_PUBLIC_KEY.clone(), 100)];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N]);
     let seq_number = panorama.next_seq_num(&state, creator);
@@ -201,11 +199,7 @@ fn send_a_valid_wire_unit() {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: Some(CandidateBlock::new(
-            ProtoBlock::new(vec![], vec![], false),
-            now,
-            vec![],
-        )),
+        value: Some(BlockPayload::new(vec![], vec![], vec![], false)),
         seq_number,
         timestamp: now,
         round_exp: 14,
@@ -255,14 +249,17 @@ fn send_a_valid_wire_unit() {
 #[test]
 fn detect_doppelganger() {
     let creator: ValidatorIndex = ALICE;
-    let validators = vec![(*ALICE_PUBLIC_KEY, 100), (*BOB_PUBLIC_KEY, 100)];
+    let validators = vec![
+        (ALICE_PUBLIC_KEY.clone(), 100),
+        (BOB_PUBLIC_KEY.clone(), 100),
+    ];
     let state: State<ClContext> = new_test_state(validators.iter().map(|(_pk, w)| *w), 0);
     let panorama: Panorama<ClContext> = Panorama::from(vec![N, N]);
     let seq_number = panorama.next_seq_num(&state, creator);
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let now = Timestamp::zero();
-    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), now, vec![]);
+    let value = BlockPayload::new(vec![], vec![], vec![], false);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
@@ -279,7 +276,7 @@ fn detect_doppelganger() {
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
-    let _ = highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, now, None);
+    let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert_eq!(highway_protocol.is_active(), true);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();

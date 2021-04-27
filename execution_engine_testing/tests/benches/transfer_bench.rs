@@ -47,7 +47,7 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
     )
     .build();
 
-    let engine_config = EngineConfig::new();
+    let engine_config = EngineConfig::default();
 
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
 
@@ -269,7 +269,7 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
         |b| {
             let target_purse = purses[0];
             b.iter(|| {
-                // Execute multiple deploys with mutliple exec request
+                // Execute multiple deploys with multiple exec request
                 transfer_to_purse_multiple_execs(&mut builder, target_purse, should_commit)
             })
         },
