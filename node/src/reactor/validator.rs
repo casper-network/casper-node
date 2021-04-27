@@ -450,7 +450,7 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             maybe_latest_block_header
                 .as_ref()
-                .map(|block| block.height() + 1)
+                .map(|block_header| block_header.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
             config.block_proposer,
