@@ -498,7 +498,7 @@ where
             }
 
             let slashed = self
-                .iter_past(era_id, self.bonded_eras())
+                .iter_past(era_id, self.banning_period())
                 .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
@@ -534,6 +534,14 @@ where
     /// receive blocks that refer to `bonded_eras` before that.
     fn bonded_eras(&self) -> u64 {
         bonded_eras(&self.protocol_config)
+    }
+
+    /// The number of past eras we have to check for faulty validators that will be banned in the
+    /// next era.
+    // TODO: This should just be `auction_delay`, but we need to guarantee we have enough
+    // eras.
+    fn banning_period(&self) -> u64 {
+        self.bonded_eras().min(self.protocol_config.auction_delay)
     }
 
     /// Returns the path to the era's unit hash file.
@@ -858,7 +866,7 @@ where
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let slashed = self
             .era_supervisor
-            .iter_past_other(era_id, self.era_supervisor.bonded_eras())
+            .iter_past_other(era_id, self.era_supervisor.banning_period())
             .flat_map(|e_id| &self.era_supervisor.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
