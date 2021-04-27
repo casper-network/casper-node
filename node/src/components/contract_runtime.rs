@@ -65,9 +65,9 @@ pub enum Event {
     #[from]
     Request(Box<ContractRuntimeRequest>),
     /// Indicates that block has already been finalized and executed in the past.
-    BlockAlreadyExists(Box<Block>),
+    BlockAlreadyExecuted(Box<Block>),
     /// Indicates that a block is not known yet, and needs to be executed.
-    BlockIsNew(Box<FinalizedBlock>),
+    BlockNotAlreadyExecuted(Box<FinalizedBlock>),
 
     /// Results received by the contract runtime.
     #[from]
@@ -520,14 +520,42 @@ where
                     }
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
                         debug!(?finalized_block, "execute block");
-                        effect_builder
-                            .get_block_at_height_from_storage(finalized_block.height())
-                            .event(move |maybe_block| {
-                                maybe_block.map(Box::new).map_or_else(
-                                    || Event::BlockIsNew(Box::new(finalized_block)),
-                                    Event::BlockAlreadyExists,
-                                )
-                            })
+                        let engine_state = Arc::downgrade(&self.engine_state);
+                        async move {
+                            match (
+                                effect_builder
+                                    .get_block_at_height_from_storage(finalized_block.height())
+                                    .await,
+                                engine_state.upgrade(),
+                            ) {
+                                (Some(block_at_height), Some(engine_state))
+                                    // TODO: This is a band-aid. If a block is not executed, we
+                                    // should fetch old blocks backwards until we find one with a
+                                    // state root that exists and execute forwards.
+                                    if engine_state
+                                        .read_trie(
+                                            Default::default(),
+                                            (*block_at_height.state_root_hash()).into(),
+                                        )
+                                        .map_or_else(
+                                            |_| false,
+                                            |maybe_trie| maybe_trie.is_some(),
+                                        ) =>
+                                {
+                                    Event::BlockAlreadyExecuted(Box::new(block_at_height))
+                                }
+                                // Could not find it in storage or not in state trie
+                                _ => Event::BlockNotAlreadyExecuted(Box::new(finalized_block)),
+                            }
+                        }
+                        .event(std::convert::identity)
+
+                        // .event(move |maybe_block| {
+                        //     maybe_block.map(Box::new).map_or_else(
+                        //         || Event::BlockIsNew(Box::new(finalized_block)),
+                        //         Event::BlockAlreadyExists,
+                        //     )
+                        // })
                     }
                     ContractRuntimeRequest::GetBids {
                         get_bids_request,
@@ -566,12 +594,12 @@ where
                     }
                 }
             }
-            Event::BlockAlreadyExists(block) => effect_builder
+            Event::BlockAlreadyExecuted(block) => effect_builder
                 .announce_block_already_executed(*block)
                 .ignore(),
             // If we haven't executed the block before in the past (for example during
             // joining), do it now.
-            Event::BlockIsNew(finalized_block) => {
+            Event::BlockNotAlreadyExecuted(finalized_block) => {
                 self.get_deploys(effect_builder, *finalized_block)
             }
             Event::Result(contract_runtime_result) => match *contract_runtime_result {
