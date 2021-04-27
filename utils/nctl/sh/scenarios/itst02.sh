@@ -45,6 +45,8 @@ function main() {
     assert_chain_progressed "5" "$STALLED_LFB"
     assert_chain_progressed "4" "$STALLED_LFB"
     assert_chain_progressed "3" "$STALLED_LFB"
+    # 16. Check for Equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Scenario itst02 complete"

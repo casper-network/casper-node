@@ -50,6 +50,8 @@ function main() {
     # 11. Wait until it's synchronized
     #     and verify that its last finalized block matches other nodes'.
     do_await_full_synchronization "$NEW_NODE_ID"
+    # 12. Check for equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Syncing node complete"

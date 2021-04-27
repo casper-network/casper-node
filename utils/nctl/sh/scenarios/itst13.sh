@@ -29,6 +29,9 @@ function main() {
     do_await_era_change '4'
     # 5. Validate eviction occured
     assert_eviction '5'
+    # 6. Check for equivocators
+    assert_no_equivocators_logs
+
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
     log "------------------------------------------------------------"
