@@ -14,9 +14,6 @@ pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
-#[cfg(feature = "fast-sync")]
-pub(crate) mod linear_chain_fast_sync;
-#[cfg(not(feature = "fast-sync"))]
 pub(crate) mod linear_chain_sync;
 pub(crate) mod rest_server;
 pub(crate) mod rpc_server;
