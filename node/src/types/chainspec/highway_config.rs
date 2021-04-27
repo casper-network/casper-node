@@ -8,7 +8,6 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
 use crate::testing::TestRng;
-#[cfg(not(feature = "fast-sync"))]
 use crate::types::TimeDiff;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -56,13 +55,11 @@ impl HighwayConfig {
     }
 
     /// Returns the length of the longest allowed round.
-    #[cfg(not(feature = "fast-sync"))]
     pub fn max_round_length(&self) -> TimeDiff {
         TimeDiff::from(1 << self.maximum_round_exponent)
     }
 
     /// Returns the length of the shortest allowed round.
-    #[cfg(not(feature = "fast-sync"))]
     pub fn min_round_length(&self) -> TimeDiff {
         TimeDiff::from(1 << self.minimum_round_exponent)
     }
