@@ -29,7 +29,7 @@ use super::{
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 0, 0);
+    ProtocolVersion::from_parts(1, 2, 0);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
