@@ -5,11 +5,12 @@ use clap::{crate_version, App, Arg};
 
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
 use casper_execution_engine::shared::stored_value::StoredValue;
-use casper_types::{bytesrepr::ToBytes, Key};
+use casper_types::{bytesrepr::ToBytes, CLValue, Key};
 
 use crate::{
     auction_utils::{
         gen_snapshot, generate_entries_removing_bids, generate_entries_removing_withdraws,
+        read_snapshot,
     },
     utils::{hash_from_str, validators_diff},
 };
@@ -76,7 +77,7 @@ fn main() {
         LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
 
     // Read the old SeigniorageRecipientsSnapshot
-    let old_snapshot = test_builder.get_seigniorage_recipients_snapshot();
+    let (validators_key, old_snapshot) = read_snapshot(&test_builder);
 
     // Create a new snapshot based on the old one and the supplied validators.
     let new_snapshot = gen_snapshot(
@@ -86,12 +87,10 @@ fn main() {
     );
 
     // Print the write to the snapshot key.
-    for (era_id, validators) in &new_snapshot {
-        print_entry(
-            &Key::EraValidators(*era_id),
-            &StoredValue::EraValidators(validators.clone()),
-        );
-    }
+    print_entry(
+        &validators_key,
+        &StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
+    );
 
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 

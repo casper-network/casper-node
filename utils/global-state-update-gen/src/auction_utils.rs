@@ -3,11 +3,42 @@ use std::collections::{BTreeMap, BTreeSet};
 use casper_engine_test_support::internal::LmdbWasmTestBuilder;
 use casper_execution_engine::shared::stored_value::StoredValue;
 use casper_types::{
-    system::auction::{Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot},
-    AsymmetricType, EraId, Key, PublicKey, U512,
+    system::auction::{
+        Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    },
+    AsymmetricType, EraId, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::utils::ValidatorsDiff;
+
+/// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
+pub fn read_snapshot(builder: &LmdbWasmTestBuilder) -> (Key, SeigniorageRecipientsSnapshot) {
+    let protocol_data = builder
+        .get_engine_state()
+        .get_protocol_data(ProtocolVersion::from_parts(1, 0, 0)) // TODO: make it a parameter?
+        .unwrap()
+        .expect("should have protocol data");
+
+    // Find the hash of the auction contract.
+    let auction_contract_hash = protocol_data.auction();
+
+    // Read the key under which the snapshot is stored.
+    let validators_key = builder
+        .get_contract(auction_contract_hash)
+        .expect("auction should exist")
+        .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY];
+
+    // Decode the old snapshot.
+    let stored_value = builder
+        .query(None, validators_key, &[])
+        .expect("should query");
+    let cl_value = stored_value
+        .as_cl_value()
+        .cloned()
+        .expect("should be cl value");
+    (validators_key, cl_value.into_t().expect("should convert"))
+}
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
 /// - The list of validators, in format (validator_public_key,stake), both expressed as strings.
@@ -84,7 +115,13 @@ pub fn generate_entries_removing_bids(
             let account = builder.get_account(account_hash).unwrap();
             (
                 Key::Bid(account_hash),
-                Bid::unlocked(*pkey, account.main_purse(), amount, Default::default()).into(),
+                Bid::unlocked(
+                    pkey.clone(),
+                    account.main_purse(),
+                    amount,
+                    Default::default(),
+                )
+                .into(),
             )
         })
         .chain(to_unbid.into_iter().map(|pkey| {
@@ -92,7 +129,7 @@ pub fn generate_entries_removing_bids(
             let account = builder.get_account(account_hash).unwrap();
             (
                 Key::Bid(account_hash),
-                Bid::empty(*pkey, account.main_purse()).into(),
+                Bid::empty(pkey.clone(), account.main_purse()).into(),
             )
         }))
         .collect()
