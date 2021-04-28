@@ -101,7 +101,7 @@ pub trait DocExample {
     fn doc_example() -> &'static Self;
 }
 
-/// The main schema for the casper node's RPC server, compliant with https://spec.open-rpc.org.
+/// The main schema for the casper node's RPC server, compliant with <https://spec.open-rpc.org.>
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OpenRpcSchema {
     openrpc: String,
