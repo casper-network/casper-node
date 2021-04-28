@@ -215,7 +215,7 @@ function assert_no_equivocators_logs() {
     log_step "Looking for equivocators in logs..."
     for i in {1..10}; do
         # true is because grep exits 1 on no match
-        LOGS=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'Equivocated') || true
+        LOGS=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'validator equivocated') || true
         if [ ! -z "$LOGS" ]; then
             log "$(echo $LOGS)"
             log "Fail: Equivocator(s) found!"
