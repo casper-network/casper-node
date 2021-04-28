@@ -35,8 +35,10 @@ function main() {
     do_start_node "5" "$LFB_HASH"
     # 7. wait auction_delay + 1
     do_await_era_change "4"
-    # 6. Assert that restarted validator is producing blocks.
+    # 8. Assert that restarted validator is producing blocks.
     assert_node_proposed "5" "180"
+    # 9. Check for equivocators
+    assert_no_equivocators_logs
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
     log "------------------------------------------------------------"

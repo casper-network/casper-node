@@ -40,6 +40,8 @@ function main() {
     do_await_n_blocks '30'
     # 8. Walkback and verify transfers were included in blocks
     check_transfer_inclusion '1' '1000'
+    # 9. Check for equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Scenario itst06 complete"

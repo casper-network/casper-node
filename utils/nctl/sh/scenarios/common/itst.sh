@@ -209,6 +209,21 @@ function assert_node_proposed() {
     log "$OUTPUT"
 }
 
+# Checks logs for nodes 1-10 for equivocators
+function assert_no_equivocators_logs() {
+    local LOGS
+    log_step "Looking for equivocators in logs..."
+    for i in $(seq 1 $(get_count_of_nodes)); do
+        # true is because grep exits 1 on no match
+        LOGS=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'validator equivocated') || true
+        if [ ! -z "$LOGS" ]; then
+            log "$(echo $LOGS)"
+            log "Fail: Equivocator(s) found!"
+            exit 1
+        fi
+    done
+}
+
 function do_submit_auction_bids()
 {
     local NODE_ID=${1}
