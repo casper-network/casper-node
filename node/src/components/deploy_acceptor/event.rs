@@ -24,6 +24,7 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         is_new: bool,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of verifying `Account` exists and has meets minimum balance requirements.
     AccountVerificationResult {
