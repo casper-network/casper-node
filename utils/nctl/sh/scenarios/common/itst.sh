@@ -222,6 +222,7 @@ function assert_no_equivocators_logs() {
             exit 1
         fi
     done
+}
 
 function do_submit_auction_bids()
 {
