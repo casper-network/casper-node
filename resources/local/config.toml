@@ -52,6 +52,9 @@ standstill_timeout = '5min'
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
 
+# Log the size of every incoming and outgoing serialized unit.
+log_unit_sizes = false
+
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3

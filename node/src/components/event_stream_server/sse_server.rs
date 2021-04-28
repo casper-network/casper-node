@@ -17,7 +17,7 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey};
 
 use crate::types::{BlockHash, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp};
 
@@ -58,6 +58,11 @@ pub enum SseData {
     },
     /// New finality signature received.
     FinalitySignature(Box<FinalitySignature>),
+    Step {
+        era_id: EraId,
+        #[data_size(skip)]
+        execution_effect: ExecutionEffect,
+    },
 }
 
 /// The components of a single SSE.
@@ -184,7 +189,8 @@ fn stream_to_client(
                         (Some(id), &SseData::BlockAdded { .. })
                         | (Some(id), &SseData::DeployProcessed { .. })
                         | (Some(id), &SseData::FinalitySignature(_))
-                        | (Some(id), &SseData::Fault { .. }) => Ok(WarpServerSentEvent::default()
+                        | (Some(id), &SseData::Fault { .. })
+                        | (Some(id), &SseData::Step { .. }) => Ok(WarpServerSentEvent::default()
                             .json_data(event.data)
                             .unwrap_or_default()
                             .id(id.to_string())),
