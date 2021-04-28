@@ -5,12 +5,61 @@ use thiserror::Error;
 use casper_execution_engine::{
     core::engine_state, shared::stored_value::StoredValue, storage::trie::Trie,
 };
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{EraId, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::fetcher::FetcherError,
-    types::{BlockHeader, BlockHeaderWithMetadata},
+    crypto,
+    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures},
 };
+use num::rational::Ratio;
+use std::collections::BTreeMap;
+
+#[derive(Error, Debug)]
+pub enum FinalitySignatureError {
+    #[error(
+        "Block signatures do not correspond to block header. \
+         block header: {block_header:?} \
+         block hash: {block_hash:?} \
+         block signatures: {block_signatures:?}"
+    )]
+    SignaturesDoNotCorrespondToBlockHeader {
+        block_header: Box<BlockHeader>,
+        block_hash: Box<BlockHash>,
+        block_signatures: Box<BlockSignatures>,
+    },
+
+    #[error(transparent)]
+    CryptoError(#[from] crypto::Error),
+
+    #[error(
+        "Block signatures contain bogus validator. \
+         trusted validator weights: {trusted_validator_weights:?}, \
+         block signatures: {block_signatures:?}, \
+         bogus validator public key: {bogus_validator_public_key:?}"
+    )]
+    BogusValidator {
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
+        block_signatures: Box<BlockSignatures>,
+        bogus_validator_public_key: Box<PublicKey>,
+    },
+
+    #[error(
+        "Insufficient weight for finality. \
+         trusted validator weights: {trusted_validator_weights:?}, \
+         block signatures: {block_signatures:?}, \
+         signature weight: {signature_weight}, \
+         total validator weight: {total_validator_weight}, \
+         finality threshold fraction: {finality_threshold_fraction}"
+    )]
+    InsufficientWeightForFinality {
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
+        block_signatures: Box<BlockSignatures>,
+        signature_weight: Box<U512>,
+        total_validator_weight: Box<U512>,
+        finality_threshold_fraction: Ratio<u64>,
+    },
+}
 
 #[derive(Error, Debug)]
 pub enum LinearChainSyncError<I>
@@ -47,7 +96,4 @@ where
 
     #[error(transparent)]
     TrieFetcherError(#[from] FetcherError<Trie<Key, StoredValue>, I>),
-
-    #[error("Could not store block header: {block_header}")]
-    CouldNotStoreBlockHeader { block_header: Box<BlockHeader> },
 }
