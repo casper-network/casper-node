@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Consensus configuration.
-#[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
+#[derive(DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

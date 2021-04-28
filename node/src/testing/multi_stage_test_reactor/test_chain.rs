@@ -27,7 +27,6 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Clone)]
 struct SecretKeyWithStake {
     secret_key: SecretKey,
     stake: u64,
@@ -248,10 +247,16 @@ async fn run_equivocator_network() {
         stake: 100,
     };
     let alice_sk = SecretKeyWithStake {
-        secret_key: SecretKey::random(&mut rng),
+        secret_key: SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
         stake: 1,
     };
-    let other_secret_keys_with_stakes = vec![alice_sk.clone(), alice_sk];
+
+    let alice_sk_for_equivocation = SecretKeyWithStake {
+        secret_key: SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
+        stake: 1,
+    };
+
+    let other_secret_keys_with_stakes = vec![alice_sk_for_equivocation, alice_sk];
 
     let mut chain = TestChain::new_with_keys(
         first_node_secret_key_with_stake,

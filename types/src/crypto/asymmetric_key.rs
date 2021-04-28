@@ -20,13 +20,9 @@ use ed25519_dalek::{
     SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
 };
 use hex_fmt::HexFmt;
-use k256::{
-    ecdsa::{
-        Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
-        VerifyingKey as Secp256k1PublicKey,
-    },
-    elliptic_curve::zeroize::Zeroize,
-    SecretBytes as Secp256k1SecretBytes,
+use k256::ecdsa::{
+    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
+    VerifyingKey as Secp256k1PublicKey,
 };
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
@@ -168,6 +164,7 @@ impl SecretKey {
     }
 }
 
+/*
 impl Clone for SecretKey {
     fn clone(&self) -> Self {
         match self {
@@ -185,6 +182,7 @@ impl Clone for SecretKey {
         }
     }
 }
+*/
 
 impl Debug for SecretKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {

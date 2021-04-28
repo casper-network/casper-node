@@ -199,7 +199,9 @@ async fn run_equivocator_network() {
 
     let mut rng = crate::new_rng();
 
-    let alice_sk = SecretKey::random(&mut rng);
+    let alice_sk = SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
+    let alice_sk_for_equivocation =
+        SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
     let size: usize = 2;
     let mut keys: Vec<SecretKey> = (1..size).map(|_| SecretKey::random(&mut rng)).collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
@@ -207,7 +209,7 @@ async fn run_equivocator_network() {
         .map(|secret_key| (PublicKey::from(secret_key), U512::from(100)))
         .collect();
     stakes.insert(PublicKey::from(&alice_sk), U512::from(1));
-    keys.push(alice_sk.clone());
+    keys.push(alice_sk_for_equivocation);
     keys.push(alice_sk);
 
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes);
