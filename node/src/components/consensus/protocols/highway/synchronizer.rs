@@ -10,9 +10,9 @@ use tracing::debug;
 
 use crate::{
     components::consensus::{
-        consensus_protocol::ProtocolOutcome,
+        consensus_protocol::{ProposedBlock, ProtocolOutcome},
         highway_core::{
-            highway::{Dependency, Highway, PreValidatedVertex, Vertex},
+            highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
             validators::ValidatorMap,
         },
         traits::{Context, NodeIdT},
@@ -328,6 +328,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn pop_vertex_to_add(
         &mut self,
         highway: &Highway<C>,
+        pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
     ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
         let mut outcomes = Vec::new();
         let mut requested_dependencies: HashSet<(I, Dependency<C>)> = Default::default();
@@ -363,6 +364,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // state after `dep` is added, rather than `transitive_dependency`.
                 self.add_missing_dependency(dep.clone(), pv);
                 if requested_dependencies.contains(&(sender.clone(), transitive_dependency.clone()))
+                    || pending_values
+                        .values()
+                        .flatten()
+                        .any(|(vv, s)| vv.inner().id() == dep && s == &sender)
                 {
                     // If we've already requested the same dependency from the same peer, ignore.
                     continue;
