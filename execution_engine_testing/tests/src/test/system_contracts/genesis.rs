@@ -25,15 +25,13 @@ const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
 const ACCOUNT_2_BALANCE: u64 = 2_000_000_000;
 
 static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
 static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PUBLIC_KEY));
 

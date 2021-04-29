@@ -59,7 +59,6 @@ use crate::{
 };
 
 pub use self::era::Era;
-use crate::utils::External;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -152,7 +151,7 @@ where
         }
         let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
-        let secret_signing_key = Arc::new(config.secret_key_path.load(root)?);
+        let secret_signing_key = config.clone().secret_key_path.load(root)?;
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)
@@ -162,20 +161,13 @@ where
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = maybe_latest_block_header.map_or(0, |hdr| hdr.height() + 1);
 
-        // As we load the secret key from the config only once, we allow the load function to
-        // consume it.
-        let post_load_config = Config {
-            secret_key_path: External::Missing,
-            highway: config.highway,
-        };
-
         let era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
             public_signing_key,
             current_era,
             protocol_config,
-            config: post_load_config,
+            config,
             new_consensus,
             next_block_height: next_height,
             metrics,

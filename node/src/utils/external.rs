@@ -22,6 +22,7 @@ use casper_types::SecretKey;
 
 use super::{read_file, ReadFileError};
 use crate::{crypto, crypto::AsymmetricKeyExt, tls};
+use std::sync::Arc;
 
 /// Path to bundled resources.
 #[cfg(test)]
@@ -185,11 +186,11 @@ impl Loadable for PKey<Private> {
     }
 }
 
-impl Loadable for SecretKey {
+impl Loadable for Arc<SecretKey> {
     type Error = crypto::Error;
 
     fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        AsymmetricKeyExt::from_file(path)
+        Ok(Arc::new(AsymmetricKeyExt::from_file(path)?))
     }
 }
 

@@ -25,7 +25,7 @@ use crate::{
 
 struct TestChain {
     // Keys that validator instances will use, can include duplicates
-    keys: Vec<SecretKey>,
+    keys: Vec<Arc<SecretKey>>,
     storages: Vec<TempDir>,
     chainspec: Arc<Chainspec>,
 }
@@ -37,13 +37,16 @@ impl TestChain {
     ///
     /// Generates secret keys for `size` validators and creates a matching chainspec.
     fn new(rng: &mut TestRng, size: usize) -> Self {
-        let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
+        let keys: Vec<Arc<SecretKey>> = (0..size)
+            .map(|_| Arc::new(SecretKey::random(rng)))
+            .collect();
         let stakes = keys
             .iter()
             .map(|secret_key| {
                 // We use very large stakes so we would catch overflow issues.
                 let stake = U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX);
-                (PublicKey::from(secret_key), stake)
+                let secret_key = secret_key.clone();
+                (PublicKey::from(&*secret_key), stake)
             })
             .collect();
         Self::new_with_keys(rng, keys, stakes)
@@ -54,7 +57,7 @@ impl TestChain {
     /// Takes a vector of bonded keys with specified bond amounts.
     fn new_with_keys(
         rng: &mut TestRng,
-        keys: Vec<SecretKey>,
+        keys: Vec<Arc<SecretKey>>,
         stakes: BTreeMap<PublicKey, U512>,
     ) -> Self {
         // Load the `local` chainspec.
@@ -107,7 +110,7 @@ impl TestChain {
         };
 
         // ...and the secret key for our validator.
-        cfg.consensus.secret_key_path = External::from_value(self.keys[idx].duplicate());
+        cfg.consensus.secret_key_path = External::from_value(self.keys[idx].clone());
 
         // Additionally set up storage in a temporary directory.
         let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
@@ -199,17 +202,17 @@ async fn run_equivocator_network() {
 
     let mut rng = crate::new_rng();
 
-    let alice_sk = SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
-    let alice_sk_for_equivocation =
-        SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
+    let alice_sk = Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap());
     let size: usize = 2;
-    let mut keys: Vec<SecretKey> = (1..size).map(|_| SecretKey::random(&mut rng)).collect();
+    let mut keys: Vec<Arc<SecretKey>> = (1..size)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
+        .collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(secret_key), U512::from(100)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100)))
         .collect();
-    stakes.insert(PublicKey::from(&alice_sk), U512::from(1));
-    keys.push(alice_sk_for_equivocation);
+    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1));
+    keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes);
