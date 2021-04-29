@@ -200,22 +200,19 @@ where
                     block_signatures,
                 } = *item.clone();
 
-                match validate_finality_signatures(
+                if let Err(error) = validate_finality_signatures(
                     &block_header,
                     &trusted_validator_weights,
                     finality_threshold_fraction,
                     &block_signatures,
                 ) {
-                    Ok(()) => {}
-                    Err(error) => {
-                        warn!(
-                            ?error,
-                            ?peer,
-                            "Error validating finality signatures from peer.",
-                        );
-                        // TODO: ban peer
-                        continue;
-                    }
+                    warn!(
+                        ?error,
+                        ?peer,
+                        "Error validating finality signatures from peer.",
+                    );
+                    // TODO: ban peer
+                    continue;
                 }
 
                 // Store the block header
