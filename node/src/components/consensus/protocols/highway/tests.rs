@@ -50,7 +50,7 @@ where
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
-    state::State::new(weights, params, vec![])
+    state::State::new(weights, params, vec![], vec![])
 }
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
@@ -86,6 +86,7 @@ where
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_slashed.into_iter().collect(),
+        &None.into_iter().collect(),
         &(&chainspec).into(),
         &config,
         None,

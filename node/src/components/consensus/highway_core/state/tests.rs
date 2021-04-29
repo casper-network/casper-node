@@ -137,7 +137,7 @@ pub(crate) fn test_params(seed: u64) -> Params {
 impl State<TestContext> {
     /// Returns a new `State` with `TestContext` parameters suitable for tests.
     pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-        State::new(weights, test_params(seed), vec![])
+        State::new(weights, test_params(seed), vec![], vec![])
     }
 
     /// Adds the unit to the protocol state, or returns an error if it is invalid.
@@ -251,7 +251,7 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     // Everyone already knows Alice is faulty, so she is banned.
-    let mut state = State::new(WEIGHTS, params, vec![ALICE]);
+    let mut state = State::new(WEIGHTS, params, vec![ALICE], vec![]);
 
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.maybe_fault(ALICE));
@@ -843,6 +843,29 @@ fn test_log2() {
     assert_eq!(63, log2(u64::MAX));
     assert_eq!(63, log2(1 << 63));
     assert_eq!(62, log2((1 << 63) - 1));
+}
+
+#[test]
+fn test_leader() {
+    let weights = &[Weight(3), Weight(4), Weight(5)];
+
+    // All three validators get slots in the leader sequence.
+    let state = State::<TestContext>::new(weights, test_params(0), vec![], vec![]);
+    assert_eq!(
+        vec![CAROL, CAROL, CAROL, CAROL, CAROL, ALICE, BOB, ALICE, CAROL, ALICE],
+        (0..10u64)
+            .map(|r_id| state.leader(r_id.into()))
+            .collect_vec()
+    );
+
+    // If Carol is excluded, her slots get reassigned, but Alice and Bob keep their old slots.
+    let state = State::<TestContext>::new(weights, test_params(0), vec![], vec![CAROL]);
+    assert_eq!(
+        vec![ALICE, BOB, BOB, BOB, ALICE, ALICE, BOB, ALICE, ALICE, ALICE],
+        (0..10u64)
+            .map(|r_id| state.leader(r_id.into()))
+            .collect_vec()
+    );
 }
 
 #[test]

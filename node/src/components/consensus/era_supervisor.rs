@@ -68,6 +68,7 @@ type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
     BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
+    &HashSet<PublicKey>,                          // inactive validators that can't be leaders
     &ProtocolConfig,                              // the network's chainspec
     &Config,                                      // The consensus part of the node config.
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
@@ -289,6 +290,7 @@ where
         validators: BTreeMap<PublicKey, U512>,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
+        inactive: HashSet<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -338,6 +340,7 @@ where
             instance_id,
             validators.clone(),
             &slashed,
+            &inactive,
             &self.protocol_config,
             &self.config,
             prev_era.map(|era| &*era.consensus),
@@ -509,6 +512,13 @@ where
                 validators,
                 newly_slashed,
                 slashed,
+                key_blocks
+                    .get(&era_id)
+                    .and_then(|bhdr| bhdr.era_end())
+                    .into_iter()
+                    .flat_map(|era_end| &era_end.inactive_validators)
+                    .cloned()
+                    .collect(),
                 seed,
                 era_start_time,
                 start_height,
@@ -877,6 +887,7 @@ where
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
             newly_slashed,
+            era_end.inactive_validators.iter().cloned().collect(),
             slashed,
             seed,
             switch_block_header.timestamp(),

@@ -33,6 +33,7 @@ pub(crate) struct Validator<VID> {
     weight: Weight,
     id: VID,
     banned: bool,
+    can_propose: bool,
 }
 
 impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
@@ -41,6 +42,7 @@ impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
             id,
             weight: weight.into(),
             banned: false,
+            can_propose: true,
         }
     }
 }
@@ -87,10 +89,19 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.validators.iter()
     }
 
-    /// Marks the validator with that ID as banned, if it exists.
+    /// Marks the validator with that ID as banned, if it exists, and excludes it from the leader
+    /// sequence.
     pub(crate) fn ban(&mut self, vid: &VID) {
         if let Some(idx) = self.get_index(vid) {
             self.validators[idx.0 as usize].banned = true;
+            self.validators[idx.0 as usize].can_propose = false;
+        }
+    }
+
+    /// Marks the validator as excluded from the leader sequence.
+    pub(crate) fn set_cannot_propose(&mut self, vid: &VID) {
+        if let Some(idx) = self.get_index(vid) {
+            self.validators[idx.0 as usize].can_propose = false;
         }
     }
 
@@ -99,6 +110,14 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.iter()
             .enumerate()
             .filter(|(_, v)| v.banned)
+            .map(|(idx, _)| ValidatorIndex::from(idx as u32))
+    }
+
+    /// Returns an iterator of all indices of validators that are not allowed to propose values.
+    pub(crate) fn iter_cannot_propose_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.iter()
+            .enumerate()
+            .filter(|(_, v)| !v.can_propose)
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
     }
 
@@ -209,16 +228,22 @@ impl<T> ValidatorMap<T> {
 
     /// Binary searches this sorted `ValidatorMap` for `x`.
     ///
-    /// If the value is found, `Ok` is returned, containing the index, otherwise `Err`, with the
-    /// first index at which the value is greater than `x`.
-    pub fn binary_search(&self, x: &T) -> Result<ValidatorIndex, ValidatorIndex>
+    /// Returns the lowest index of an entry `>= x`, or `None` if `x` is greater than all entries.
+    pub fn binary_search(&self, x: &T) -> Option<ValidatorIndex>
     where
         T: Ord,
     {
-        self.0
-            .binary_search(x)
-            .map(|i| ValidatorIndex(i as u32))
-            .map_err(|i| ValidatorIndex(i as u32))
+        match self.0.binary_search(x) {
+            Ok(i) => Some(ValidatorIndex(
+                (0..i)
+                    .rev()
+                    .take_while(|j| self.0[*j] == *x)
+                    .last()
+                    .unwrap_or(i) as u32,
+            )),
+            Err(i) if i < self.len() => Some(ValidatorIndex(i as u32)),
+            Err(_) => None,
+        }
     }
 }
 
