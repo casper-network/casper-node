@@ -219,7 +219,42 @@ function assert_node_proposed() {
     local NODE_PATH=$(get_path_to_node $NODE_ID)
     local PUBLIC_KEY_HEX=$(get_node_public_key_hex $NODE_ID)
     log_step "Waiting for node-$NODE_ID to produce a block..."
-    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
+    local OUTPUT=$(tail -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
     log "node-$NODE_ID created a block!"
     log "$OUTPUT"
+}
+
+# Checks logs for nodes 1-10 for equivocators
+function assert_no_equivocators_logs() {
+    local LOGS
+    log_step "Looking for equivocators in logs..."
+    for i in $(seq 1 $(get_count_of_nodes)); do
+        # true is because grep exits 1 on no match
+        LOGS=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'validator equivocated') || true
+        if [ ! -z "$LOGS" ]; then
+            log "$(echo $LOGS)"
+            log "Fail: Equivocator(s) found!"
+            exit 1
+        fi
+    done
+}
+
+function do_submit_auction_bids()
+{
+    local NODE_ID=${1}
+    log_step "submitting POS auction bids:"
+    log "----- ----- ----- ----- ----- -----"
+    BID_AMOUNT="1000000000000000000000000000000"
+    BID_DELEGATION_RATE=6
+
+    source "$NCTL"/sh/contracts-auction/do_bid.sh \
+            node="$NODE_ID" \
+            amount="$BID_AMOUNT" \
+            rate="$BID_DELEGATION_RATE" \
+            quiet="TRUE"
+
+    log "node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
+
+    log_step "awaiting 10 seconds for auction bid deploys to finalise"
+    sleep 10.0
 }

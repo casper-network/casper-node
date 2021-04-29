@@ -739,16 +739,19 @@ impl ContractRuntime {
     /// When transitioning from `joiner` to `validator` states we need
     /// to carry over the last finalized block so that the next blocks in the linear chain
     /// have the state to build on.
-    pub(crate) fn set_parent_map_from_block(&mut self, lfb: Option<Block>) {
-        let parent_map = lfb
+    pub(crate) fn set_parent_map_from_block(
+        &mut self,
+        maybe_last_finalized_block_header: Option<BlockHeader>,
+    ) {
+        let parent_map = maybe_last_finalized_block_header
             .into_iter()
-            .map(|block| {
+            .map(|block_header| {
                 (
-                    block.height(),
+                    block_header.height(),
                     ExecutedBlockSummary {
-                        hash: *block.hash(),
-                        state_root_hash: *block.state_root_hash(),
-                        accumulated_seed: block.header().accumulated_seed(),
+                        hash: block_header.hash(),
+                        state_root_hash: *block_header.state_root_hash(),
+                        accumulated_seed: block_header.accumulated_seed(),
                     },
                 )
             })

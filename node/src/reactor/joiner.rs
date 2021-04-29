@@ -18,14 +18,6 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
-#[cfg(not(feature = "fast-sync"))]
-use crate::components::linear_chain_sync::{self, LinearChainSync};
-#[cfg(feature = "fast-sync")]
-use crate::components::{
-    linear_chain_fast_sync as linear_chain_sync,
-    linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
-};
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -39,6 +31,7 @@ use crate::{
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
+        linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
         network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
@@ -905,7 +898,7 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
-        let latest_block = self.linear_chain_sync.latest_block().cloned();
+        let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
         linear_chain_sync::clean_linear_chain_state(
@@ -918,7 +911,7 @@ impl Reactor {
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage: self.storage,
-            latest_block,
+            maybe_latest_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),
