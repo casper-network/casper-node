@@ -195,7 +195,6 @@ where
         {
             Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
             Ok(FetchedData::FromPeer { item, .. }) => {
-                // Compute the total weight of the validators
                 let BlockHeaderWithMetadata {
                     block_header,
                     block_signatures,
