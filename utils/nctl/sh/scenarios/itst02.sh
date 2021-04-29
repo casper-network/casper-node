@@ -83,13 +83,11 @@ function assert_chain_stalled() {
     if [ "$LFB_1_PRE" != "$LFB_1_POST" ] && [ "$LFB_2_PRE" != "$LFB_2_POST" ]; then
        log "Error: Chain progressed."
        exit 1
-    fi
-
-    if [ "$LFB_1_POST" != "$LFB_2_POST" ]; then
-        log "Error: LFB mismatch on nodes"
-	exit 1
     else
         STALLED_LFB=$LFB_1_POST
+        log "node-1 LFB: $LFB_1_PRE = $LFB_1_POST"
+        log "node-2 LFB: $LFB_2_PRE = $LFB_2_POST"
+        log "Stall successfully detected, continuing..."
     fi
 }
 
