@@ -59,3 +59,89 @@ function _upgrade_node() {
     # Clean up.
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
 }
+
+#######################################
+# Generates a global state update for an emergency upgrade
+# Arguments:
+#   Protocol version
+#   Pre-upgrade global state root hash
+#   ID of the node to use as the source of the pre-upgrade global state
+#   Number of the nodes in the network
+#######################################
+function _generate_global_state_update() {
+    local PROTOCOL_VERSION=${1}
+    local STATE_HASH=${2}
+    local STATE_SOURCE=${3:-1}
+    local NODE_COUNT=${4:-5}
+
+    local PATH_TO_NET=$(get_path_to_net)
+
+    if [ -f "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml ]; then
+        # global state update file exists, no need to generate it again
+        return
+    fi
+
+    local STATE_SOURCE_PATH=$(get_path_to_node $STATE_SOURCE)
+
+    # Create parameters to the global state update generator.
+    # First, we supply the path to the directory of the node whose global state we'll use
+    # and the trusted hash.
+    local PARAMS
+    PARAMS="-d ${STATE_SOURCE_PATH}/storage -s ${STATE_HASH}"
+
+    # Add the parameters that define the new validators.
+    # We're using the reserve validators, from NODE_COUNT+1 to NODE_COUNT*2.
+    local PATH_TO_NODE
+    local PUBKEY
+    for NODE_ID in $(seq $((NODE_COUNT + 1)) $((NODE_COUNT * 2))); do
+        PATH_TO_NODE=$(get_path_to_node $NODE_ID)
+        PUBKEY=`cat "$PATH_TO_NODE"/keys/public_key_hex`
+        PARAMS="${PARAMS} -v ${PUBKEY},$(($NODE_ID + 1000000000000000))"
+    done
+
+    mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
+
+    # Create the global state update file.
+    "$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen $PARAMS \
+        > "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml
+}
+
+#######################################
+# Performs an emergency upgrade on a node in the network
+# Arguments:
+#   Protocol version
+#   Era at which new version should be upgraded
+#   ID of the node to upgrade
+#   Pre-upgrade global state root hash
+#   ID of a node to be used as the source of the pre-upgrade global state
+#   The number of nodes in the network
+#######################################
+function _emergency_upgrade_node() {
+    local PROTOCOL_VERSION=${1}
+    local ACTIVATE_ERA=${2}
+    local NODE_ID=${3}
+    local STATE_HASH=${4}
+    local STATE_SOURCE=${5:-1}
+    local NODE_COUNT=${6:-5}
+
+    _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
+
+    local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
+
+    # Specify hard reset in the chainspec.
+    local SCRIPT=(
+        "import toml;"
+        "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
+        "cfg['protocol']['hard_reset']=True;"
+        "cfg['protocol']['last_emergency_restart']=$ACTIVATE_ERA;"
+        "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
+    )
+    python3 -c "${SCRIPT[*]}"
+
+    local PATH_TO_NET=$(get_path_to_net)
+
+    _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$NODE_COUNT"
+
+    cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
+        "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
+}
