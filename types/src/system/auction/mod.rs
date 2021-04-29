@@ -52,9 +52,8 @@ pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
 pub trait Auction:
     StorageProvider + SystemProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {
-    /// Returns era validators for each configured trusted eras.
-    ///
-    /// Publicly accessible, but intended for periodic use by the consensus through an API call.
+    /// Returns active validators and auction winners for a number of future eras determined by the
+    /// configured auction_delay.
     fn get_era_validators(&mut self) -> Result<EraValidators, Error> {
         let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let era_validators = snapshot
