@@ -133,6 +133,7 @@ function _emergency_upgrade_node() {
         "import toml;"
         "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml');"
         "cfg['protocol']['hard_reset']=True;"
+        "cfg['protocol']['last_emergency_restart']=$ACTIVATE_ERA;"
         "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/chainspec.toml', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
