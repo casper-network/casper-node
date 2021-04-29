@@ -65,7 +65,7 @@ fn purge_vertices() {
 
     // No new vertices can be added yet, because all are missing dependencies.
     // The missing dependencies of c1 and c2 are requested.
-    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert!(maybe_pv.is_none());
     assert_targeted_message(
         &unwrap_single(outcomes),
@@ -82,7 +82,7 @@ fn purge_vertices() {
         "unexpected outcomes: {:?}",
         outcomes
     );
-    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert_eq!(Dependency::Unit(c0), maybe_pv.unwrap().vertex().id());
     assert!(outcomes.is_empty());
     let vv_c0 = highway.validate_vertex(pvv(c0)).expect("c0 is valid");
@@ -106,7 +106,7 @@ fn purge_vertices() {
     sync.purge_vertices(0x41.into());
 
     // The main queue should now contain only c1. If we remove it, the synchronizer is empty.
-    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert_eq!(Dependency::Unit(c1), maybe_pv.unwrap().vertex().id());
     assert!(outcomes.is_empty());
     assert!(sync.is_empty());
@@ -160,7 +160,7 @@ fn do_not_download_synchronized_dependencies() {
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
     // `c2` can't be added to the protocol state yet b/c it's missing its `c1` dependency.
-    let (pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert!(pv.is_none());
     assert_targeted_message(
         &unwrap_single(outcomes),
@@ -176,7 +176,7 @@ fn do_not_download_synchronized_dependencies() {
     // `b0` can't be added to the protocol state b/c it's missing its `c1` dependency,
     // but `c1` has already been downloaded so we should not request it again. We will only request
     // `c0` as that's what `c1` depends on.
-    let (pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert!(pv.is_none());
     assert_targeted_message(
         &unwrap_single(outcomes),
@@ -189,7 +189,7 @@ fn do_not_download_synchronized_dependencies() {
         *sync.schedule_add_vertex(peer0, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
-    let (pv, outcomes) = sync.pop_vertex_to_add(&highway);
+    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
     assert!(pv.is_none());
     // `b0` depends on `c1`, that is already in the synchronizer's state, but it also depends on
     // `c0` transitively that is not yet known. We should request it, even if we had already
@@ -206,7 +206,7 @@ fn do_not_download_synchronized_dependencies() {
         .into_iter()
         .map(Dependency::Unit)
         .collect();
-    while let (Some(pv), outcomes) = sync.pop_vertex_to_add(&highway) {
+    while let (Some(pv), outcomes) = sync.pop_vertex_to_add(&highway, &Default::default()) {
         // Verify that we don't request any dependency now.
         assert!(
             !outcomes

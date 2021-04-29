@@ -302,8 +302,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
     fn add_vertex(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
-        let (maybe_pending_vertex, mut outcomes) =
-            self.synchronizer.pop_vertex_to_add(&self.highway);
+        let (maybe_pending_vertex, mut outcomes) = self
+            .synchronizer
+            .pop_vertex_to_add(&self.highway, &self.pending_values);
         let pending_vertex = match maybe_pending_vertex {
             None => return outcomes,
             Some(pending_vertex) => pending_vertex,
