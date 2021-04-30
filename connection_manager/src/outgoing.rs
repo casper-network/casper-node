@@ -161,7 +161,7 @@ pub(crate) trait Dialer {
 pub(crate) struct OutgoingConfig {
     /// The maximum number of attempts before giving up and forgetting an address, if permitted.
     pub(crate) retry_attempts: u8,
-    /// The basic timeslot for exponential backoff when reconnecting.
+    /// The basic time slot for exponential backoff when reconnecting.
     pub(crate) base_timeout: Duration,
 }
 
@@ -233,7 +233,7 @@ where
         let new_state = if let Some(outgoing) = self.outgoing.get(&addr) {
             &outgoing.state
         } else {
-            error!("tryed to update cache based on non-existant outgoing connection");
+            error!("tried to update cache based on non-existent outgoing connection");
             return;
         };
 
@@ -364,7 +364,7 @@ where
                 info!("address blocked");
                 self.change_outgoing_state(addr, OutgoingState::Blocked);
             }
-            // TOOD: Check what happens on close on our end, i.e. can we distinguish in logs between
+            // TODO: Check what happens on close on our end, i.e. can we distinguish in logs between
             // a closed connection on our end vs one that failed?
             Entry::Occupied(occupied) => match occupied.get().state {
                 OutgoingState::Blocked => {
