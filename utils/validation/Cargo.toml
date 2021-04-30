@@ -12,19 +12,14 @@ casper-types = { path = "../../types", default-features = false, features = ["st
 clap = "3.0.0-beta.2"
 derive_more = "0.99.13"
 hex = { version = "0.4.2", features = ["serde"] }
+num-traits = "0.2.10"
 serde = "1"
 serde_json = "1"
 thiserror = "1.0.18"
 
+[dev-dependencies]
+rustc-test = "0.3.1"
+
 [[test]]
 name = "validation_test"
 harness = false
-
-[[bin]]
-name = "casper-validation"
-test = false
-doctest = false
-
-[lib]
-test = false
-doctest = false
