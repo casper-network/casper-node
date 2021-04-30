@@ -213,10 +213,11 @@ where
     /// Creates a logging span for a specific connection.
     #[inline]
     fn mk_span(&self, addr: SocketAddr) -> Span {
-        // Note: The jury is still out on whether we want to create a single span and cache it, or
-        // create a new one each time this is called. The advantage of the former is external tools
-        // have it easier correlating all related information, while the drawback is not being able
-        // to change the parent span link, which might be awkward.
+        // Note: The jury is still out on whether we want to create a single span per connection and
+        // cache it, or create a new one (with the same connection ID) each time this is called. The
+        // advantage of the former is external tools have it easier correlating all related
+        // information, while the drawback is not being able to change the parent span link, which
+        // might be awkward.
 
         if let Some(_outgoing) = self.outgoing.get(&addr) {
             error_span!("outgoing", %addr, state = "TODO")
