@@ -729,8 +729,6 @@ pub(crate) mod gens {
             "\\PC+".prop_map(Transform::Failure),
         ]
     }
-
-    proptest! {}
 }
 
 #[cfg(test)]
@@ -740,8 +738,6 @@ mod tests {
     use crate::bytesrepr;
 
     use super::gens;
-    #[test]
-    fn foo() {}
 
     proptest! {
         #[test]
