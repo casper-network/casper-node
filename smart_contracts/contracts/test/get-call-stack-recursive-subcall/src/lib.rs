@@ -39,8 +39,10 @@ pub enum ContractAddress {
     ContractPackageHash(ContractPackageHash),
 }
 
-impl Tagged<u8> for ContractAddress {
-    fn tag(&self) -> u8 {
+impl Tagged for ContractAddress {
+    type Tag = u8;
+
+    fn tag(&self) -> Self::Tag {
         match self {
             ContractAddress::ContractHash(_) => ContractAddressTag::ContractHash as u8,
             ContractAddress::ContractPackageHash(_) => {

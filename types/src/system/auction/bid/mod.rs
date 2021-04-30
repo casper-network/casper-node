@@ -319,6 +319,39 @@ impl FromBytes for Bid {
     }
 }
 
+#[cfg(any(feature = "gens", test))]
+pub(crate) mod gens {
+    use super::Bid;
+    pub use crate::system::auction::bid::vesting::gens::*;
+    use crate::{
+        crypto::gens::public_key_arb,
+        gens::{u512_arb, uref_arb},
+        system::auction::{gens::delegators_arb, DelegationRate},
+    };
+    use proptest::{option, prelude::*};
+
+    prop_compose! {
+        /// Creates an arbitrary [`Bid`]
+        pub fn bid_arb()(validator_public_key in public_key_arb(),
+                         bonding_purse in uref_arb(),
+                         staked_amount in u512_arb(),
+                         delegation_rate: DelegationRate,
+                         vesting_schedule in option::of(vesting_schedule_arb()),
+                         delegators in delegators_arb(),
+                         inactive: bool) -> Bid {
+            Bid {
+                validator_public_key,
+                bonding_purse,
+                staked_amount,
+                delegation_rate,
+                vesting_schedule,
+                delegators,
+                inactive,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::collections::BTreeMap;

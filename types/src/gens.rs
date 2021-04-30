@@ -21,7 +21,8 @@ use crate::{
     transfer::TransferAddr,
     AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
     ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    NamedArg, NamedKey, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256,
+    U512,
 };
 
 use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
@@ -46,6 +47,10 @@ pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
 
 pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
     btree_map("\\PC*", key_arb(), depth)
+}
+
+pub fn named_key_arb() -> impl Strategy<Value = NamedKey> {
+    ("\\PC*", key_arb()).prop_map(|(key, value)| NamedKey::new(key, value))
 }
 
 pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {
