@@ -367,7 +367,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     || pending_values
                         .values()
                         .flatten()
-                        .any(|(vv, s)| vv.inner().id() == dep && s == &sender)
+                        .any(|(vv, s)| vv.inner().id() == transitive_dependency && s == &sender)
                 {
                     // If we've already requested the same dependency from the same peer, ignore.
                     continue;
