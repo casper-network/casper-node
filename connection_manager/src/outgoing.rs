@@ -1,21 +1,20 @@
 //! Management of outgoing connections.
 //!
 //! This module implements outgoing connection management, decoupled from the underlying transport
-//! or any higher-level level parts. It essentially encapsulates the reconnection and blocklisting
-//! logic on the `SocketAddr` level.
+//! or any higher-level level parts. It encapsulates the reconnection and blocklisting logic on the
+//! `SocketAddr` level.
 //!
 //! # Basic structure
 //!
-//! The core structure of this module is the `OutgoingManager`, which supports the following
-//! functionality:
+//! Core of this module is the `OutgoingManager`, which supports the following functionality:
 //!
-//! * It can be handed `SocketAddr`s via the `learn_addr` function, which will cause it to attempt
-//!   to permanently maintain a connection to the given address, only giving up if retry thresholds
-//!   are exceeded, after which it will be forgotten.
+//! * Handed a `SocketAddr`s via the `learn_addr` function, it will permanently maintain a
+//!   connection to the given address, only giving up if retry thresholds are exceeded, after which
+//!   it will be forgotten.
 //! * `block_addr` and `redeem_addr` can be used to maintain a `SocketAddr`-keyed block list.
-//! * For established connections, `OutgoingManager` maintains an internal routing table. The
-//!   `get_route` function can be used to retrieve a "route" (typically a `sync::channel` accepting
-//!   network messages) to a remote peer by `PeerId`, which can be used to send messages.
+//! * `OutgoingManager` maintains an internal routing table. The `get_route` function can be used to
+//!   retrieve a "route" (typically a `sync::channel` accepting network messages) to a remote peer
+//!   by `PeerId`.
 //!
 //! # Requirements
 //!
