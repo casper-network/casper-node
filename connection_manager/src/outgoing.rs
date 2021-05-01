@@ -30,7 +30,7 @@
 //!   `OutgoingManager` a chance to initiate reconnections and collect garbage.
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap},
     error::Error,
     fmt::{self, Debug, Display, Formatter},
     mem,
@@ -38,7 +38,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tracing::{debug, error, error_span, info, trace, warn, Span};
+use tracing::{debug, error_span, info, trace, warn, Span};
 
 use super::{display_error, NodeId};
 
@@ -182,14 +182,16 @@ pub(crate) struct OutgoingConfig {
     pub(crate) retry_attempts: u8,
     /// The basic time slot for exponential backoff when reconnecting.
     pub(crate) base_timeout: Duration,
+    /// Time until an outgoing address is unblocked.
+    pub(crate) unblock_after: Duration,
 }
 
 impl Default for OutgoingConfig {
     fn default() -> Self {
-        // The default configuration retries 12 times, over the course of a little over 30 minutes.
         OutgoingConfig {
             retry_attempts: 12,
             base_timeout: Duration::from_millis(500),
+            unblock_after: Duration::from_secs(600),
         }
     }
 }
@@ -399,14 +401,14 @@ where
             });
     }
 
-    /// Performs housekeeping like reconnection, etc.
+    /// Performs housekeeping like reconnection or unblocking peers.
     ///
     /// This function must periodically be called. A good interval is every second.
     fn perform_housekeeping(&mut self, proto: &mut D, now: Instant) {
         let mut to_forget = Vec::new();
         let mut to_reconnect = Vec::new();
 
-        for (&addr, outgoing) in self.outgoing.iter_mut() {
+        for (&addr, outgoing) in self.outgoing.iter() {
             let span = mk_span(addr, Some(&outgoing));
 
             match outgoing.state {
@@ -435,12 +437,22 @@ where
                         if due >= now {
                             debug!(attempts = failures_so_far, "attempting reconnection");
 
-                            proto.connect_outgoing(span, addr);
-
                             to_reconnect.push((addr, failures_so_far + 1));
                         }
                     }
                 }
+
+                OutgoingState::Blocked { since } => {
+                    if now >= since + self.config.unblock_after {
+                        info!(
+                            seconds_blocked = (now - since).as_secs(),
+                            "unblocked address"
+                        );
+
+                        to_reconnect.push((addr, 0));
+                    }
+                }
+
                 _ => {
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
                     // the `trace` level.
