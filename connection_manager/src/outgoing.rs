@@ -28,6 +28,8 @@
 //!   must be forwarded to the `OutgoingManager` via the `handle_dial_outcome` function.
 //! * The `perform_housekeeping` method must be called periodically to give the the
 //!   `OutgoingManager` a chance to initiate reconnections and collect garbage.
+//! * When a connection is dropped, the connection manager must be notified via
+//!   `handle_connection_drop`.
 //!
 //! # Lifecycle
 //!
@@ -577,6 +579,41 @@ where
             DialOutcome::Loopback { addr } => {
                 info!("found loopback address");
                 self.change_outgoing_state(addr, OutgoingState::Loopback);
+            }
+        });
+    }
+
+    /// Notifies the connection manager about a dropped connection.
+    ///
+    /// This will usually result in an immediate reconnection.
+    pub(crate) fn handle_connection_drop(&mut self, proto: &mut D, addr: SocketAddr) {
+        let span = mk_span(addr, self.outgoing.get(&addr));
+
+        span.clone().in_scope(move || {
+            if let Some(outgoing) = self.outgoing.get(&addr) {
+                match outgoing.state {
+                    OutgoingState::Waiting { .. }
+                    | OutgoingState::Loopback
+                    | OutgoingState::Connecting { .. } => {
+                        // We should, under normal circumstances, not receive drop notifications for
+                        // any of these. Connection failures are handled by the dialer.
+                        warn!("unexpected drop notification")
+                    }
+                    OutgoingState::Connected { .. } => {
+                        // Drop the handle, immediately initiate a reconnection.
+                        proto.connect_outgoing(span, addr);
+                        self.change_outgoing_state(
+                            addr,
+                            OutgoingState::Connecting { failures_so_far: 0 },
+                        );
+                    }
+                    OutgoingState::Blocked { .. } => {
+                        // Blocked addresses ignore connection drops.
+                        debug!("received drop notification for blocked connection")
+                    }
+                }
+            } else {
+                warn!("received connection drop notification for unknown connection")
             }
         });
     }
