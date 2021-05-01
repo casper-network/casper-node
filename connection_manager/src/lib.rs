@@ -8,7 +8,41 @@ use std::{
 use tracing::field;
 
 // Placeholders/copied from main source all below. No need to read further.
-type NodeId = u8;
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct Sha512([u8; 64]);
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct KeyFingerprint(Sha512);
+
+/// The network identifier for a node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NodeId {
+    Tls(KeyFingerprint),
+}
+
+pub type NodeRng = ChaCha20Rng;
+
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+
+pub fn new_rng() -> NodeRng {
+    NodeRng::from_entropy()
+}
+
+impl NodeId {
+    /// Generates a random Tls instance using a `TestRng`.
+    #[cfg(test)]
+    pub(crate) fn random_tls(rng: &mut TestRng) -> Self {
+        NodeId::Tls(rng.gen())
+    }
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        std::fmt::Debug::fmt(self, f)
+    }
+}
 
 pub(crate) fn display_error<'a, T>(err: &'a T) -> field::DisplayValue<ErrFormatter<'a, T>>
 where

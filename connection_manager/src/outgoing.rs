@@ -14,7 +14,7 @@
 //! * `block_addr` and `redeem_addr` can be used to maintain a `SocketAddr`-keyed block list.
 //! * `OutgoingManager` maintains an internal routing table. The `get_route` function can be used to
 //!   retrieve a "route" (typically a `sync::channel` accepting network messages) to a remote peer
-//!   by `PeerId`.
+//!   by `NodeId`.
 //!
 //! # Requirements
 //!
@@ -618,3 +618,6 @@ where
         });
     }
 }
+
+#[cfg(test)]
+mod tests {}
