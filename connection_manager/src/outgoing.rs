@@ -89,15 +89,6 @@ where
     Loopback,
 }
 
-impl<P> OutgoingState<P>
-where
-    P: Dialer,
-{
-    fn reset() -> Self {
-        OutgoingState::Connecting { failures_so_far: 0 }
-    }
-}
-
 /// The result of dialing `SocketAddr`.
 #[derive(Debug)]
 pub(crate) enum DialOutcome<P>
