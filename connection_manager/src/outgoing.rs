@@ -32,7 +32,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     error::Error,
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display, Formatter},
     mem,
     net::SocketAddr,
     time::{Duration, Instant},
@@ -87,6 +87,25 @@ where
     Blocked,
     /// The address is a loopback address, connecting to ourselves and will not be tried again.
     Loopback,
+}
+
+impl<P> Display for OutgoingState<P>
+where
+    P: Dialer,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            OutgoingState::Connecting { failures_so_far } => {
+                write!(f, "connecting({})", failures_so_far)
+            }
+            OutgoingState::Waiting {
+                failures_so_far, ..
+            } => write!(f, "waiting({})", failures_so_far),
+            OutgoingState::Connected { .. } => write!(f, "connected"),
+            OutgoingState::Blocked => write!(f, "blocked"),
+            OutgoingState::Loopback => write!(f, "loopback"),
+        }
+    }
 }
 
 /// The result of dialing `SocketAddr`.
@@ -213,8 +232,13 @@ fn mk_span<D: Dialer>(addr: SocketAddr, outgoing: Option<&Outgoing<D>>) -> Span 
     // information, while the drawback is not being able to change the parent span link, which
     // might be awkward.
 
-    if let Some(_outgoing) = outgoing {
-        error_span!("outgoing", %addr, state = "TODO")
+    if let Some(outgoing) = outgoing {
+        match outgoing.state {
+            OutgoingState::Connected { peer_id, .. } => {
+                error_span!("outgoing", %addr, state=%outgoing.state, %peer_id)
+            }
+            _ => error_span!("outgoing", %addr, state=%outgoing.state),
+        }
     } else {
         error_span!("outgoing", %addr, state = "-")
     }
