@@ -215,26 +215,26 @@ where
     waiting_cache: HashSet<SocketAddr>,
 }
 
+/// Creates a logging span for a specific connection.
+#[inline]
+fn mk_span<D: Dialer>(addr: SocketAddr, outgoing: Option<&Outgoing<D>>) -> Span {
+    // Note: The jury is still out on whether we want to create a single span per connection and
+    // cache it, or create a new one (with the same connection ID) each time this is called. The
+    // advantage of the former is external tools have it easier correlating all related
+    // information, while the drawback is not being able to change the parent span link, which
+    // might be awkward.
+
+    if let Some(_outgoing) = outgoing {
+        error_span!("outgoing", %addr, state = "TODO")
+    } else {
+        error_span!("outgoing", %addr, state = "-")
+    }
+}
+
 impl<D> OutgoingManager<D>
 where
     D: Dialer,
 {
-    /// Creates a logging span for a specific connection.
-    #[inline]
-    fn mk_span(&self, addr: SocketAddr) -> Span {
-        // Note: The jury is still out on whether we want to create a single span per connection and
-        // cache it, or create a new one (with the same connection ID) each time this is called. The
-        // advantage of the former is external tools have it easier correlating all related
-        // information, while the drawback is not being able to change the parent span link, which
-        // might be awkward.
-
-        if let Some(_outgoing) = self.outgoing.get(&addr) {
-            error_span!("outgoing", %addr, state = "TODO")
-        } else {
-            error_span!("outgoing", %addr, state = "-")
-        }
-    }
-
     /// Updates internal caches after a state change.
     ///
     /// Given a potential previous state, updates all internal caches like `routes`, etc.
@@ -340,7 +340,7 @@ where
     /// A connection marked `unforgettable` will never be evicted but reset instead when it exceeds
     /// the retry limit.
     pub(crate) fn learn_addr(&mut self, proto: &mut D, addr: SocketAddr, unforgettable: bool) {
-        let span = self.mk_span(addr);
+        let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone().in_scope(move || {
             match self.outgoing.entry(addr) {
                 Entry::Occupied(_) => {
@@ -373,7 +373,7 @@ where
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
     pub(crate) fn block_addr(&mut self, addr: SocketAddr) {
-        let span = self.mk_span(addr);
+        let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.in_scope(move || match self.outgoing.entry(addr) {
             Entry::Vacant(_vacant) => {
@@ -401,7 +401,7 @@ where
     ///
     /// Does nothing if the address was not blocked.
     pub(crate) fn redeem_addr(&mut self, proto: &mut D, addr: SocketAddr) {
-        let span = self.mk_span(addr);
+        let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_) => {
@@ -434,7 +434,7 @@ where
         let now = Instant::now();
 
         for &addr in &self.waiting_cache {
-            let span = self.mk_span(addr);
+            let span = mk_span(addr, self.outgoing.get(&addr));
             let entry = self.outgoing.entry(addr);
 
             span.clone().in_scope(|| match entry {
@@ -499,7 +499,7 @@ where
         reconnections
             .into_iter()
             .for_each(|(addr, failures_so_far)| {
-                proto.connect_outgoing(self.mk_span(addr), addr);
+                proto.connect_outgoing(mk_span(addr, self.outgoing.get(&addr)), addr);
                 self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far });
             })
     }
@@ -508,7 +508,8 @@ where
     ///
     /// Note that reconnects will earliest happen on the next `perform_housekeeping` call.
     pub(crate) fn handle_dial_outcome(&mut self, dial_outcome: DialOutcome<D>) {
-        let span = self.mk_span(dial_outcome.addr());
+        let addr = dial_outcome.addr();
+        let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.in_scope(move || match dial_outcome {
             DialOutcome::Successful {
