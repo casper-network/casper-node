@@ -76,8 +76,13 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
     net::SocketAddr,
-    time::{Duration, Instant},
+    time::Duration,
 };
+
+#[cfg(test)]
+use fake_instant::FakeClock as Instant;
+#[cfg(not(test))]
+use std::time::Instant;
 
 use tracing::{debug, error_span, info, trace, warn, Span};
 
@@ -639,49 +644,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        cell::RefCell,
-        net::SocketAddr,
-        time::{Duration, Instant},
-    };
+    use std::{cell::RefCell, net::SocketAddr, time::Duration};
 
+    use fake_instant::FakeClock;
     use thiserror::Error;
 
     use crate::init_logging;
 
     use super::{DialOutcome, Dialer, NodeId, OutgoingConfig, OutgoingManager};
-
-    /// How far back the test clock can go (roughly 10 years).
-    const TEST_CLOCK_LEEWAY: Duration = Duration::from_secs(315_569_520);
-
-    #[derive(Debug)]
-    struct TestClock {
-        epoch: Instant,
-        now: Instant,
-    }
-
-    impl TestClock {
-        /// Creates a new testing clock.
-        ///
-        /// Testing clocks will not advance unless prompted to do so.
-        fn new() -> Self {
-            let epoch = Instant::now();
-            Self {
-                epoch,
-                now: epoch + TEST_CLOCK_LEEWAY,
-            }
-        }
-
-        /// Returns the "current" time.
-        fn now(&self) -> Instant {
-            self.now
-        }
-
-        /// Advances the clock by duration.
-        fn advance(&mut self, duration: Duration) {
-            self.now += duration;
-        }
-    }
 
     /// Dialer for unit tests.
     ///
@@ -734,11 +704,10 @@ mod tests {
         init_logging();
 
         let mut rng = crate::new_rng();
-        let our_id = NodeId::random_tls(&mut rng);
         let mut dialer = TestDialer::default();
-        let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let id_a = NodeId::random_tls(&mut rng);
 
         let mut manager = OutgoingManager::<TestDialer>::new(test_config());
 
@@ -752,18 +721,40 @@ mod tests {
         manager.handle_dial_outcome(DialOutcome::Failed {
             addr: addr_a,
             error: TestDialerError { id: 1 },
-            when: clock.now(),
+            when: FakeClock::now(),
         });
 
         // The connection should now be in waiting state, but not reconnect, since the minimum delay
-        // is 1 second.
+        // is 2 second (2*base_timeout).
         dialer.requests().clear();
 
-        manager.perform_housekeeping(&mut dialer, clock.now());
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
         assert!(dialer.requests().is_empty());
 
         // Advancing the clock will trigger a reconnection on the next housekeeping.
-        clock.advance(Duration::from_secs(1));
-        manager.perform_housekeeping(&mut dialer, clock.now());
+        FakeClock::advance_time(2000);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert_eq!(dialer.requests(), &vec![addr_a]);
+
+        // This time the connection succeeds.
+        manager.handle_dial_outcome(DialOutcome::Successful {
+            addr: addr_a,
+            handle: 99,
+            node_id: id_a,
+        });
+
+        // The routing table should have been updated and should return the handle.
+        assert_eq!(manager.get_route(id_a), Some(&99));
     }
+
+    // TODO: test Forgets after too many requests
+    // TODO: exponential backoff is correct
+
+    // TODO: test Blocks when asked
+
+    // TODO: test Clears blocking
+
+    // TODO: doesn't crash on random input
+
+    // TODO: blocks loopback
 }
