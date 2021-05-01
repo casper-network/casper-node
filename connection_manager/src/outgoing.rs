@@ -211,8 +211,6 @@ where
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
-    /// A cache of addresses that are in the `Waiting` state, used during housekeeping.
-    waiting_cache: HashSet<SocketAddr>,
 }
 
 /// Creates a logging span for a specific connection.
@@ -275,11 +273,9 @@ where
                 trace!("no change in waiting state, already waiting");
             }
             (Some(OutgoingState::Waiting { .. }), _) => {
-                self.waiting_cache.remove(&addr);
                 debug!("waiting to reconnect");
             }
             (_, OutgoingState::Waiting { .. }) => {
-                self.waiting_cache.remove(&addr);
                 debug!("now reconnecting");
             }
             _ => {
@@ -424,79 +420,60 @@ where
 
     /// Performs housekeeping like reconnection, etc.
     ///
-    /// This function must periodically be called. A good interval is every second or faster.
-    fn perform_housekeeping(&mut self, proto: &mut D) {
-        let mut corrupt_entries = Vec::new();
-        let mut forgettable_entries = Vec::new();
-        let mut reconnections = Vec::new();
+    /// This function must periodically be called. A good interval is every second.
+    fn perform_housekeeping(&mut self, proto: &mut D, now: Instant) {
+        let mut to_forget = Vec::new();
+        let mut to_reconnect = Vec::new();
 
-        let config = &self.config;
-        let now = Instant::now();
+        for (&addr, outgoing) in self.outgoing.iter_mut() {
+            let span = mk_span(addr, Some(&outgoing));
 
-        for &addr in &self.waiting_cache {
-            let span = mk_span(addr, self.outgoing.get(&addr));
-            let entry = self.outgoing.entry(addr);
+            match outgoing.state {
+                // Decide whether to attempt reconnecting a failed-waiting address.
+                OutgoingState::Waiting {
+                    failures_so_far,
+                    last_failure,
+                    ..
+                } => {
+                    if failures_so_far >= self.config.retry_attempts {
+                        if outgoing.is_unforgettable {
+                            // Unforgettable addresses simply have their timer reset.
+                            info!("resetting unforgettable address");
 
-            span.clone().in_scope(|| match entry {
-                Entry::Vacant(_) => {
-                    error!(%addr, "corrupt cache, missing entry");
-                    corrupt_entries.push(addr);
-                }
-                Entry::Occupied(occupied) => {
-                    let outgoing = occupied.into_mut();
-                    match outgoing.state {
-                        // Decide whether to attempt reconnecting a failed-waiting address.
-                        OutgoingState::Waiting {
-                            ref mut failures_so_far,
-                            ref mut last_failure,
-                            ..
-                        } => {
-                            if *failures_so_far >= config.retry_attempts {
-                                if outgoing.is_unforgettable {
-                                    // Unforgettable addresses simply have their timer reset.
-                                    info!("resetting unforgettable address");
+                            to_reconnect.push((addr, 0));
+                        } else {
+                            // Address had too many attempts at reconnection, we will forget
+                            // it later if forgettable.
+                            to_forget.push(addr);
 
-                                    reconnections.push((addr, 0));
-                                } else {
-                                    // Address had too many attempts at reconnection, we will forget
-                                    // it later if forgettable.
-                                    forgettable_entries.push(addr);
-
-                                    info!("gave up on address");
-                                }
-                            } else {
-                                // The address has not exceeded the limit, so check if it is due.
-                                let due = *last_failure + config.calc_backoff(*failures_so_far);
-                                if due >= now {
-                                    debug!(attempts = *failures_so_far, "attempting reconnection");
-
-                                    proto.connect_outgoing(span, addr);
-
-                                    reconnections.push((addr, *failures_so_far + 1));
-                                }
-                            }
+                            info!("gave up on address");
                         }
-                        _ => {
-                            error!(%addr, "corrupt cache, not in failed-waiting state");
+                    } else {
+                        // The address has not exceeded the limit, so check if it is due.
+                        let due = last_failure + self.config.calc_backoff(failures_so_far);
+                        if due >= now {
+                            debug!(attempts = failures_so_far, "attempting reconnection");
+
+                            proto.connect_outgoing(span, addr);
+
+                            to_reconnect.push((addr, failures_so_far + 1));
                         }
                     }
                 }
-            });
+                _ => {
+                    // Entry is ignored. Not outputting any `trace` because this is log spam even at
+                    // the `trace` level.
+                }
+            }
         }
 
-        // There should never be any corrupt entries, but we program defensively here.
-        corrupt_entries.into_iter().for_each(|addr| {
-            self.waiting_cache.remove(&addr);
+        // Remove all addresses marked for forgetting.
+        to_forget.into_iter().for_each(|addr| {
+            self.outgoing.remove(&addr);
         });
 
-        // All entries that have expired can also be removed.
-        forgettable_entries.iter().for_each(|addr| {
-            self.outgoing.remove(addr);
-            self.waiting_cache.remove(addr);
-        });
-
-        // Trigger reconnections for the unforgettables.
-        reconnections
+        // Reconnect all others.
+        to_reconnect
             .into_iter()
             .for_each(|(addr, failures_so_far)| {
                 proto.connect_outgoing(mk_span(addr, self.outgoing.get(&addr)), addr);
