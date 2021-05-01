@@ -466,7 +466,7 @@ where
         for (&addr, outgoing) in self.outgoing.iter() {
             let span = mk_span(addr, Some(&outgoing));
 
-            match outgoing.state {
+            span.in_scope(|| match outgoing.state {
                 // Decide whether to attempt reconnecting a failed-waiting address.
                 OutgoingState::Waiting {
                     failures_so_far,
@@ -512,7 +512,7 @@ where
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
                     // the `trace` level.
                 }
-            }
+            });
         }
 
         // Remove all addresses marked for forgetting.
@@ -524,8 +524,12 @@ where
         to_reconnect
             .into_iter()
             .for_each(|(addr, failures_so_far)| {
-                dialer.connect_outgoing(mk_span(addr, self.outgoing.get(&addr)), addr);
-                self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far });
+                let span = mk_span(addr, self.outgoing.get(&addr));
+                dialer.connect_outgoing(span.clone(), addr);
+
+                span.in_scope(|| {
+                    self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far })
+                });
             })
     }
 
