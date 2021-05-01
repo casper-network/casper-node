@@ -85,21 +85,21 @@ use super::{display_error, NodeId};
 
 /// An outgoing connection/address in various states.
 #[derive(Debug)]
-struct Outgoing<P>
+struct Outgoing<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     /// Whether or not the address is unforgettable, see `learn_addr` for details.
     is_unforgettable: bool,
     /// The current state the connection/address is in.
-    state: OutgoingState<P>,
+    state: OutgoingState<D>,
 }
 
 /// Active state for a connection/address.
 #[derive(Debug)]
-enum OutgoingState<P>
+enum OutgoingState<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     /// The outgoing address has been known for the first time and we are currently connecting.
     Connecting {
@@ -111,7 +111,7 @@ where
         /// Number of attempts that failed, so far.
         failures_so_far: u8,
         /// The most recent connection error.
-        error: P::Error,
+        error: D::Error,
         /// The precise moment when the last connection attempt failed.
         last_failure: Instant,
     },
@@ -122,7 +122,7 @@ where
         /// Handle to a communication channel that can be used to send data to the peer.
         ///
         /// Can be a channel to decouple sending, or even a direct connection handle.
-        handle: P::Handle,
+        handle: D::Handle,
     },
     /// The address was blocked and will not be retried.
     Blocked { since: Instant },
@@ -130,9 +130,9 @@ where
     Loopback,
 }
 
-impl<P> Display for OutgoingState<P>
+impl<D> Display for OutgoingState<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -151,16 +151,16 @@ where
 
 /// The result of dialing `SocketAddr`.
 #[derive(Debug)]
-pub(crate) enum DialOutcome<P>
+pub(crate) enum DialOutcome<D>
 where
-    P: Dialer,
+    D: Dialer,
 {
     /// A connection was successfully established.
     Successful {
         /// The address dialed.
         addr: SocketAddr,
         /// A handle to send data down the connection.
-        handle: P::Handle,
+        handle: D::Handle,
         /// The remote peer's authenticated node ID.
         node_id: NodeId,
     },
@@ -169,7 +169,7 @@ where
         /// The address dialed.
         addr: SocketAddr,
         /// The error encountered while dialing.
-        error: P::Error,
+        error: D::Error,
         /// The moment the connection attempt failed.
         when: Instant,
     },
