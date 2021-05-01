@@ -266,6 +266,20 @@ where
     routes: HashMap<NodeId, SocketAddr>,
 }
 
+impl<D> OutgoingManager<D>
+where
+    D: Dialer,
+{
+    /// Creates a new outgoing manager.
+    pub(crate) fn new(config: OutgoingConfig) -> Self {
+        Self {
+            config,
+            outgoing: Default::default(),
+            routes: Default::default(),
+        }
+    }
+}
+
 /// Creates a logging span for a specific connection.
 #[inline]
 fn mk_span<D: Dialer>(addr: SocketAddr, outgoing: Option<&Outgoing<D>>) -> Span {
@@ -366,7 +380,7 @@ where
     ///
     /// A connection marked `unforgettable` will never be evicted but reset instead when it exceeds
     /// the retry limit.
-    pub(crate) fn learn_addr(&mut self, proto: &mut D, addr: SocketAddr, unforgettable: bool) {
+    pub(crate) fn learn_addr(&mut self, dialer: &mut D, addr: SocketAddr, unforgettable: bool) {
         let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone().in_scope(move || {
             match self.outgoing.entry(addr) {
@@ -375,7 +389,7 @@ where
                 }
                 Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
-                    proto.connect_outgoing(span, addr);
+                    dialer.connect_outgoing(span, addr);
                     let outgoing = self.change_outgoing_state(
                         addr,
                         OutgoingState::Connecting { failures_so_far: 0 },
@@ -420,7 +434,7 @@ where
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
-    pub(crate) fn redeem_addr(&mut self, proto: &mut D, addr: SocketAddr) {
+    pub(crate) fn redeem_addr(&mut self, dialer: &mut D, addr: SocketAddr) {
         let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
@@ -429,7 +443,7 @@ where
                 }
                 Entry::Occupied(occupied) => match occupied.get().state {
                     OutgoingState::Blocked { .. } => {
-                        proto.connect_outgoing(span, addr);
+                        dialer.connect_outgoing(span, addr);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Connecting { failures_so_far: 0 },
@@ -445,7 +459,7 @@ where
     /// Performs housekeeping like reconnection or unblocking peers.
     ///
     /// This function must periodically be called. A good interval is every second.
-    fn perform_housekeeping(&mut self, proto: &mut D, now: Instant) {
+    fn perform_housekeeping(&mut self, dialer: &mut D, now: Instant) {
         let mut to_forget = Vec::new();
         let mut to_reconnect = Vec::new();
 
@@ -510,7 +524,7 @@ where
         to_reconnect
             .into_iter()
             .for_each(|(addr, failures_so_far)| {
-                proto.connect_outgoing(mk_span(addr, self.outgoing.get(&addr)), addr);
+                dialer.connect_outgoing(mk_span(addr, self.outgoing.get(&addr)), addr);
                 self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far });
             })
     }
@@ -586,7 +600,7 @@ where
     /// Notifies the connection manager about a dropped connection.
     ///
     /// This will usually result in an immediate reconnection.
-    pub(crate) fn handle_connection_drop(&mut self, proto: &mut D, addr: SocketAddr) {
+    pub(crate) fn handle_connection_drop(&mut self, dialer: &mut D, addr: SocketAddr) {
         let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.clone().in_scope(move || {
@@ -601,7 +615,7 @@ where
                     }
                     OutgoingState::Connected { .. } => {
                         // Drop the handle, immediately initiate a reconnection.
-                        proto.connect_outgoing(span, addr);
+                        dialer.connect_outgoing(span, addr);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Connecting { failures_so_far: 0 },
