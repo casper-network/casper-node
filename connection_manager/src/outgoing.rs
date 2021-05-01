@@ -61,17 +61,18 @@ where
     P: Dialer,
 {
     /// The outgoing address has been known for the first time and we are currently connecting.
-    Connecting,
+    Connecting {
+        /// Number of attempts that failed, so far.
+        failures_so_far: u8,
+    },
     /// The connection has failed at least one connection attempt and is waiting for a retry.
     Waiting {
         /// Number of attempts that failed, so far.
-        attempts_so_far: u8,
+        failures_so_far: u8,
         /// The most recent connection error.
         error: P::Error,
         /// The precise moment when the last connection attempt failed.
         last_failure: Instant,
-        /// Whether there is currently a reconnection attempt running.
-        in_progress: bool,
     },
     /// An established outgoing connection.
     Connected {
@@ -86,6 +87,15 @@ where
     Blocked,
     /// The address is a loopback address, connecting to ourselves and will not be tried again.
     Loopback,
+}
+
+impl<P> OutgoingState<P>
+where
+    P: Dialer,
+{
+    fn reset() -> Self {
+        OutgoingState::Connecting { failures_so_far: 0 }
+    }
 }
 
 /// The result of dialing `SocketAddr`.
@@ -326,6 +336,9 @@ where
     /// Notify about a potentially new address that has been discovered.
     ///
     /// Immediately triggers the connection process to said address if it was not known before.
+    ///
+    /// A connection marked `unforgettable` will never be evicted but reset instead when it exceeds
+    /// the retry limit.
     pub(crate) fn learn_addr(&mut self, proto: &mut D, addr: SocketAddr, unforgettable: bool) {
         let span = self.mk_span(addr);
         span.clone().in_scope(move || {
@@ -336,7 +349,7 @@ where
                 Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
                     proto.connect_outgoing(span, addr);
-                    self.change_outgoing_state(addr, OutgoingState::Connecting);
+                    self.change_outgoing_state(addr, OutgoingState::reset());
                 }
             };
 
@@ -394,7 +407,7 @@ where
                 Entry::Occupied(occupied) => match occupied.get().state {
                     OutgoingState::Blocked => {
                         proto.connect_outgoing(span, addr);
-                        self.change_outgoing_state(addr, OutgoingState::Connecting);
+                        self.change_outgoing_state(addr, OutgoingState::reset());
                     }
                     _ => {
                         debug!("ignoring redemption of address that is not blocked");
@@ -427,16 +440,12 @@ where
                     let outgoing = occupied.into_mut();
                     match outgoing.state {
                         // Decide whether to attempt reconnecting a failed-waiting address.
-                        OutgoingState::Waiting { in_progress, .. } if in_progress => {
-                            trace!("ignoring in-progress connection attempt");
-                        }
                         OutgoingState::Waiting {
-                            ref mut attempts_so_far,
+                            ref mut failures_so_far,
                             ref mut last_failure,
-                            ref mut in_progress,
                             ..
                         } => {
-                            if *attempts_so_far >= config.retry_attempts {
+                            if *failures_so_far >= config.retry_attempts {
                                 if outgoing.is_unforgettable {
                                     // Unforgettable addresses simply have their timer reset.
                                     info!("resetting unforgettable address");
@@ -451,14 +460,15 @@ where
                                 }
                             } else {
                                 // The address has not exceeded the limit, so check if it is due.
-                                let due = *last_failure + config.calc_backoff(*attempts_so_far);
+                                let due = *last_failure + config.calc_backoff(*failures_so_far);
                                 if due >= now {
-                                    debug!(attempts = *attempts_so_far, "attempting reconnection");
+                                    debug!(attempts = *failures_so_far, "attempting reconnection");
 
                                     proto.connect_outgoing(span, addr);
 
-                                    *attempts_so_far += 1;
-                                    *in_progress = true;
+                                    outgoing.state = OutgoingState::Connecting {
+                                        failures_so_far: *failures_so_far + 1,
+                                    }
                                 }
                             }
                         }
@@ -484,7 +494,7 @@ where
         // Trigger reconnections for the unforgettables.
         resets.iter().for_each(|&addr| {
             proto.connect_outgoing(self.mk_span(addr), addr);
-            self.change_outgoing_state(addr, OutgoingState::Connecting);
+            self.change_outgoing_state(addr, OutgoingState::reset());
         })
     }
 
@@ -514,7 +524,7 @@ where
                 info!(err = display_error(&error), "outgoing connection failed");
                 if let Some(outgoing) = self.outgoing.get(&addr) {
                     if let OutgoingState::Waiting {
-                        attempts_so_far, ..
+                        failures_so_far, ..
                     } = outgoing.state
                     {
                         // This is not the first connection failure for this address, so update the
@@ -522,10 +532,9 @@ where
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Waiting {
-                                attempts_so_far: attempts_so_far + 1,
+                                failures_so_far: failures_so_far + 1,
                                 error,
                                 last_failure: when,
-                                in_progress: false,
                             },
                         )
                     }
@@ -533,10 +542,9 @@ where
                     self.change_outgoing_state(
                         addr,
                         OutgoingState::Waiting {
-                            attempts_so_far: 0,
+                            failures_so_far: 0,
                             error,
                             last_failure: when,
-                            in_progress: false,
                         },
                     )
                 }
