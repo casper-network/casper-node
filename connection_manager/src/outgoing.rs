@@ -84,7 +84,7 @@ where
         handle: P::Handle,
     },
     /// The address was explicitly blocked and will not be retried.
-    Blocked,
+    Blocked { since: Instant },
     /// The address is a loopback address, connecting to ourselves and will not be tried again.
     Loopback,
 }
@@ -102,7 +102,7 @@ where
                 failures_so_far, ..
             } => write!(f, "waiting({})", failures_so_far),
             OutgoingState::Connected { .. } => write!(f, "connected"),
-            OutgoingState::Blocked => write!(f, "blocked"),
+            OutgoingState::Blocked { .. } => write!(f, "blocked"),
             OutgoingState::Loopback => write!(f, "loopback"),
         }
     }
@@ -349,18 +349,18 @@ where
     /// Blocks an address.
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr(&mut self, addr: SocketAddr) {
+    pub(crate) fn block_addr(&mut self, addr: SocketAddr, now: Instant) {
         let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.in_scope(move || match self.outgoing.entry(addr) {
             Entry::Vacant(_vacant) => {
                 info!("address blocked");
-                self.change_outgoing_state(addr, OutgoingState::Blocked);
+                self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
             }
             // TODO: Check what happens on close on our end, i.e. can we distinguish in logs between
             // a closed connection on our end vs one that failed?
             Entry::Occupied(occupied) => match occupied.get().state {
-                OutgoingState::Blocked => {
+                OutgoingState::Blocked { .. } => {
                     debug!("already blocking address");
                 }
                 OutgoingState::Loopback => {
@@ -368,7 +368,7 @@ where
                 }
                 _ => {
                     info!("address blocked");
-                    self.change_outgoing_state(addr, OutgoingState::Blocked);
+                    self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                 }
             },
         });
@@ -385,7 +385,7 @@ where
                     debug!("ignoring redemption of unknown address");
                 }
                 Entry::Occupied(occupied) => match occupied.get().state {
-                    OutgoingState::Blocked => {
+                    OutgoingState::Blocked { .. } => {
                         proto.connect_outgoing(span, addr);
                         self.change_outgoing_state(
                             addr,
