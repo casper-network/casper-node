@@ -309,23 +309,16 @@ where
                 Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
                     proto.connect_outgoing(span, addr);
-                    self.change_outgoing_state(
+                    let outgoing = self.change_outgoing_state(
                         addr,
                         OutgoingState::Connecting { failures_so_far: 0 },
                     );
+                    if !outgoing.is_unforgettable != unforgettable {
+                        outgoing.is_unforgettable = unforgettable;
+                        debug!(unforgettable, "marked");
+                    }
                 }
             };
-
-            if unforgettable {
-                if let Some(outgoing) = self.outgoing.get_mut(&addr) {
-                    if !outgoing.is_unforgettable {
-                        debug!("marked unforgettable");
-                        outgoing.is_unforgettable = true;
-                    }
-                } else {
-                    error!("tried to set unforgettable on lost address");
-                }
-            }
         })
     }
 
