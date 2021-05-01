@@ -228,15 +228,19 @@ where
     ///
     /// Will trigger an update of the routing table if necessary. Does not emit any other
     /// side-effects.
-    fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState<D>) {
-        let (prev_state, new_state) = match self.outgoing.entry(addr) {
+    fn change_outgoing_state(
+        &mut self,
+        addr: SocketAddr,
+        mut new_state: OutgoingState<D>,
+    ) -> &mut Outgoing<D> {
+        let (prev_state, new_outgoing) = match self.outgoing.entry(addr) {
             Entry::Vacant(vacant) => {
                 let inserted = vacant.insert(Outgoing {
                     state: new_state,
                     is_unforgettable: false,
                 });
 
-                (None, &inserted.state)
+                (None, inserted)
             }
 
             Entry::Occupied(occupied) => {
@@ -245,12 +249,12 @@ where
                 mem::swap(&mut prev.state, &mut new_state);
 
                 // `new_state` and `prev.state` are swapped now.
-                (Some(new_state), &prev.state)
+                (Some(new_state), prev)
             }
         };
 
         // Update the routing table.
-        match (&prev_state, &new_state) {
+        match (&prev_state, &new_outgoing.state) {
             (Some(OutgoingState::Connected { .. }), OutgoingState::Connected { .. }) => {
                 trace!("no change in routing, already connected");
             }
@@ -271,6 +275,8 @@ where
                 trace!("no change in routing");
             }
         }
+
+        new_outgoing
     }
 
     /// Retrieves a handle to a peer.
@@ -474,7 +480,7 @@ where
                                 error,
                                 last_failure: when,
                             },
-                        )
+                        );
                     } else {
                         warn!(
                             "processing dial outcome on a connection that was not marked as connecting"
@@ -486,7 +492,7 @@ where
                                 error,
                                 last_failure: when,
                             },
-                        )
+                        );
                     }
                 } else {
                     warn!("processing dial outcome non-existent connection");
@@ -497,7 +503,7 @@ where
                             error,
                             last_failure: when,
                         },
-                    )
+                    );
                 }
             }
             DialOutcome::Loopback { addr } => {
