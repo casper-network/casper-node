@@ -224,18 +224,32 @@ impl<D> OutgoingManager<D>
 where
     D: Dialer,
 {
-    /// Updates internal caches after a state change.
+    /// Changes the state of an outgoing connection.
     ///
-    /// Given a potential previous state, updates all internal caches like `routes`, etc.
-    fn update_caches(&mut self, addr: SocketAddr, prev_state: Option<&OutgoingState<D>>) {
-        // Check if we need to update the routing table.
-        let new_state = if let Some(outgoing) = self.outgoing.get(&addr) {
-            &outgoing.state
-        } else {
-            error!("tried to update cache based on non-existent outgoing connection");
-            return;
+    /// Will trigger an update of the routing table if necessary. Does not emit any other
+    /// side-effects.
+    fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState<D>) {
+        let (prev_state, new_state) = match self.outgoing.entry(addr) {
+            Entry::Vacant(vacant) => {
+                let inserted = vacant.insert(Outgoing {
+                    state: new_state,
+                    is_unforgettable: false,
+                });
+
+                (None, &inserted.state)
+            }
+
+            Entry::Occupied(occupied) => {
+                let prev = occupied.into_mut();
+
+                mem::swap(&mut prev.state, &mut new_state);
+
+                // `new_state` and `prev.state` are swapped now.
+                (Some(new_state), &prev.state)
+            }
         };
 
+        // Update the routing table.
         match (&prev_state, &new_state) {
             (Some(OutgoingState::Connected { .. }), OutgoingState::Connected { .. }) => {
                 trace!("no change in routing, already connected");
@@ -257,53 +271,6 @@ where
                 trace!("no change in routing");
             }
         }
-
-        // Check if we need to consider the connection for reconnection on next sweep.
-        match (&prev_state, &new_state) {
-            (Some(OutgoingState::Waiting { .. }), OutgoingState::Waiting { .. }) => {
-                trace!("no change in waiting state, already waiting");
-            }
-            (Some(OutgoingState::Waiting { .. }), _) => {
-                debug!("waiting to reconnect");
-            }
-            (_, OutgoingState::Waiting { .. }) => {
-                debug!("now reconnecting");
-            }
-            _ => {
-                trace!("no change in waiting state");
-            }
-        }
-    }
-
-    /// Changes the state of an outgoing connection.
-    ///
-    /// Will trigger an update of the routing table if necessary.
-    ///
-    /// Calling this function on an unknown `addr` will emit an error but otherwise be ignored.
-    fn change_outgoing_state(&mut self, addr: SocketAddr, mut new_state: OutgoingState<D>) {
-        let prev_state = match self.outgoing.entry(addr) {
-            Entry::Vacant(vacant) => {
-                vacant.insert(Outgoing {
-                    state: new_state,
-                    is_unforgettable: false,
-                });
-                None
-            }
-
-            Entry::Occupied(occupied) => {
-                let prev = occupied.into_mut();
-
-                // With the routing updated, we can finally exchange the states.
-                mem::swap(&mut prev.state, &mut new_state);
-
-                // `new_state` is actually the previous state here.
-                Some(new_state)
-            }
-        };
-
-        // We would love to call `update_caches` in the match arms above, but `.entry` unfortunately
-        // borrows `self` mutably already.
-        self.update_caches(addr, prev_state.as_ref());
     }
 
     /// Retrieves a handle to a peer.
@@ -497,13 +464,9 @@ where
             }
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
+
                 if let Some(outgoing) = self.outgoing.get(&addr) {
-                    if let OutgoingState::Waiting {
-                        failures_so_far, ..
-                    } = outgoing.state
-                    {
-                        // This is not the first connection failure for this address, so update the
-                        // progress state information.
+                    if let OutgoingState::Connecting { failures_so_far } = outgoing.state {
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Waiting {
@@ -512,12 +475,25 @@ where
                                 last_failure: when,
                             },
                         )
+                    } else {
+                        warn!(
+                            "processing dial outcome on a connection that was not marked as connecting"
+                        );
+                        self.change_outgoing_state(
+                            addr,
+                            OutgoingState::Waiting {
+                                failures_so_far: 1,
+                                error,
+                                last_failure: when,
+                            },
+                        )
                     }
                 } else {
+                    warn!("processing dial outcome non-existent connection");
                     self.change_outgoing_state(
                         addr,
                         OutgoingState::Waiting {
-                            failures_so_far: 0,
+                            failures_so_far: 1,
                             error,
                             last_failure: when,
                         },
