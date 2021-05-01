@@ -5,6 +5,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use tracing::field;
 
 // Placeholders/copied from main source all below. No need to read further.
@@ -30,6 +31,16 @@ pub fn new_rng() -> NodeRng {
     NodeRng::from_entropy()
 }
 
+impl Distribution<KeyFingerprint> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> KeyFingerprint {
+        let mut bytes = [0u8; 64];
+        rng.fill(&mut bytes[..]);
+        KeyFingerprint(Sha512(bytes))
+    }
+}
+
+type TestRng = NodeRng;
+
 impl NodeId {
     /// Generates a random Tls instance using a `TestRng`.
     #[cfg(test)]
@@ -49,6 +60,10 @@ where
     T: error::Error + 'a,
 {
     field::display(ErrFormatter(err))
+}
+
+pub(crate) fn init_logging() {
+    tracing_subscriber::fmt::init()
 }
 
 /// An error formatter.

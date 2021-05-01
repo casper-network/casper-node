@@ -119,13 +119,11 @@ pub fn setup_signal_hooks() {
 }
 
 /// Constructs a new `NodeRng`.
-#[cfg(not(test))]
 pub fn new_rng() -> NodeRng {
     NodeRng::from_entropy()
 }
 
 /// Constructs a new `NodeRng`.
-#[cfg(test)]
 pub fn new_rng() -> NodeRng {
     NodeRng::new()
 }

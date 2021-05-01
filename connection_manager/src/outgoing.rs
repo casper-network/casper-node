@@ -489,7 +489,7 @@ where
                     } else {
                         // The address has not exceeded the limit, so check if it is due.
                         let due = last_failure + self.config.calc_backoff(failures_so_far);
-                        if due >= now {
+                        if now >= due {
                             debug!(attempts = failures_so_far, "attempting reconnection");
 
                             to_reconnect.push((addr, failures_so_far + 1));
@@ -634,4 +634,132 @@ where
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use std::{
+        cell::RefCell,
+        net::SocketAddr,
+        time::{Duration, Instant},
+    };
+
+    use thiserror::Error;
+
+    use crate::init_logging;
+
+    use super::{DialOutcome, Dialer, NodeId, OutgoingConfig, OutgoingManager};
+
+    /// How far back the test clock can go (roughly 10 years).
+    const TEST_CLOCK_LEEWAY: Duration = Duration::from_secs(315_569_520);
+
+    #[derive(Debug)]
+    struct TestClock {
+        epoch: Instant,
+        now: Instant,
+    }
+
+    impl TestClock {
+        /// Creates a new testing clock.
+        ///
+        /// Testing clocks will not advance unless prompted to do so.
+        fn new() -> Self {
+            let epoch = Instant::now();
+            Self {
+                epoch,
+                now: epoch + TEST_CLOCK_LEEWAY,
+            }
+        }
+
+        /// Returns the "current" time.
+        fn now(&self) -> Instant {
+            self.now
+        }
+
+        /// Advances the clock by duration.
+        fn advance(&mut self, duration: Duration) {
+            self.now += duration;
+        }
+    }
+
+    /// Dialer for unit tests.
+    ///
+    /// Records request for dialing, otherwise does nothing.
+    #[derive(Debug, Default)]
+    struct TestDialer {
+        connection_requests: RefCell<Vec<SocketAddr>>,
+    }
+
+    impl TestDialer {
+        /// Returns a mutable reference to the recorded connection requests.
+        fn requests(&mut self) -> &mut Vec<SocketAddr> {
+            self.connection_requests.get_mut()
+        }
+    }
+
+    impl Dialer for TestDialer {
+        type Handle = u32;
+
+        type Error = TestDialerError;
+
+        fn connect_outgoing(&self, span: tracing::Span, addr: SocketAddr) {
+            self.connection_requests
+                .try_borrow_mut()
+                .unwrap()
+                .push(addr);
+        }
+    }
+
+    /// Error for test dialer.
+    ///
+    /// Tracks a configurable id for the error.
+    #[derive(Debug, Error)]
+    #[error("test dialer error({})", id)]
+    struct TestDialerError {
+        id: u32,
+    }
+
+    /// Setup an outgoing configuration for testing.
+    fn test_config() -> OutgoingConfig {
+        OutgoingConfig {
+            retry_attempts: 3,
+            base_timeout: Duration::from_secs(1),
+            unblock_after: Duration::from_secs(60),
+        }
+    }
+
+    #[test]
+    fn successful_lifecycle() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+        let our_id = NodeId::random_tls(&mut rng);
+        let mut dialer = TestDialer::default();
+        let mut clock = TestClock::new();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+
+        let mut manager = OutgoingManager::<TestDialer>::new(test_config());
+
+        // We begin by learning a single, regular address.
+        manager.learn_addr(&mut dialer, addr_a, false);
+
+        // This should trigger a dial request.
+        assert_eq!(dialer.requests(), &vec![addr_a]);
+
+        // Our first connection attempt fails.
+        manager.handle_dial_outcome(DialOutcome::Failed {
+            addr: addr_a,
+            error: TestDialerError { id: 1 },
+            when: clock.now(),
+        });
+
+        // The connection should now be in waiting state, but not reconnect, since the minimum delay
+        // is 1 second.
+        dialer.requests().clear();
+
+        manager.perform_housekeeping(&mut dialer, clock.now());
+        assert!(dialer.requests().is_empty());
+
+        // Advancing the clock will trigger a reconnection on the next housekeeping.
+        clock.advance(Duration::from_secs(1));
+        manager.perform_housekeeping(&mut dialer, clock.now());
+    }
+}
