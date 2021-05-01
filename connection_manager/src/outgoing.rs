@@ -28,6 +28,45 @@
 //!   must be forwarded to the `OutgoingManager` via the `handle_dial_outcome` function.
 //! * The `perform_housekeeping` method must be called periodically to give the the
 //!   `OutgoingManager` a chance to initiate reconnections and collect garbage.
+//!
+//! # Lifecycle
+//!
+//! The following chart illustrates the lifecycle of an outgoing connection.
+//!
+//! ```text
+//!                            learn
+//!                          ┌──────────────  unknown/forgotten
+//!                          │ ┌───────────►  (implicit state)
+//!                          │ │
+//!                          │ │ exceed fail  │
+//!                          │ │ limit        │ block
+//!                          │ │              │
+//!                          │ │              │
+//!                          │ │              ▼
+//!     ┌─────────┐          │ │        ┌─────────┐
+//!     │         │    fail  │ │  block │         │
+//!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄───────────┐
+//! ┌───┤         │        │ │ │ │      │         │            │
+//! │   └────┬────┘        │ │ │ │      └────┬────┘            │
+//! │ block  │             │ │ │ │           │                 │
+//! │        │ timeout     │ ▼ │ │           │ redeem,         │
+//! │        │        ┌────┴─────┴───┐       │ block timeout   │
+//! │        │        │              │       │                 │
+//! │        └───────►│  Connecting  │◄──────┘                 │
+//! │                 │              │                         │
+//! │                 └─────┬────┬───┘                         │
+//! │                       │ ▲  │                             │
+//! │               success │ │  │ detect                      │
+//! │                       │ │  │      ┌──────────┐           │
+//! │ ┌───────────┐         │ │  │      │          │  block    │
+//! │ │           │◄────────┘ │  │      │ Loopback ├───────────┤
+//! │ │ Connected │           │  └─────►│          │           │
+//! │ │           │ dropped   │         └──────────┘           │
+//! │ └─────┬─────┴───────────┘                                │
+//! │       │                                                  │
+//! │       │ block                                            │
+//! └───────┴──────────────────────────────────────────────────┘
+//! ```
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -83,7 +122,7 @@ where
         /// Can be a channel to decouple sending, or even a direct connection handle.
         handle: P::Handle,
     },
-    /// The address was explicitly blocked and will not be retried.
+    /// The address was blocked and will not be retried.
     Blocked { since: Instant },
     /// The address is a loopback address, connecting to ourselves and will not be tried again.
     Loopback,
