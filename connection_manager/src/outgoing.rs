@@ -478,7 +478,7 @@ where
                     last_failure,
                     ..
                 } => {
-                    if failures_so_far >= self.config.retry_attempts {
+                    if failures_so_far > self.config.retry_attempts {
                         if outgoing.is_unforgettable {
                             // Unforgettable addresses simply have their timer reset.
                             info!("resetting unforgettable address");
@@ -764,9 +764,103 @@ mod tests {
         assert_eq!(dialer.requests(), &vec![addr_a]);
     }
 
-    // TODO: test Forgets after too many requests
-    // TODO: does reconnect correct amount of times
-    // TODO: exponential backoff is correct
+    #[test]
+    fn connections_forgotten_after_too_many_tries() {
+        init_logging();
+
+        let mut dialer = TestDialer::default();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+
+        let mut manager = OutgoingManager::<TestDialer>::new(test_config());
+
+        // First, attempt to connect. Tests are set to 3 retries after 2, 4 and 8 seconds.
+        manager.learn_addr(&mut dialer, addr_a, false);
+        assert_eq!(dialer.requests(), &vec![addr_a]);
+
+        // Fail the first connection attempt.
+        manager.handle_dial_outcome(DialOutcome::Failed {
+            addr: addr_a,
+            error: TestDialerError { id: 10 },
+            when: FakeClock::now(),
+        });
+
+        // Learning the address again should not cause a reconnection.
+        dialer.requests().clear();
+        manager.learn_addr(&mut dialer, addr_a, false);
+        assert!(dialer.requests().is_empty());
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        manager.learn_addr(&mut dialer, addr_a, false);
+        assert!(dialer.requests().is_empty());
+
+        // After 1.999 seconds, reconnection should still be delayed.
+        FakeClock::advance_time(1_999);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+
+        // Adding 0.001 seconds finally is enough to reconnect.
+        FakeClock::advance_time(1);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert_eq!(dialer.requests(), &vec![addr_a]);
+
+        // Waiting for more than the reconnection delay should not be harmful or change anything, as
+        // we are currently connecting.
+        FakeClock::advance_time(6_000);
+        dialer.requests().clear();
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+
+        // Fail the connection again, wait 3.999 seconds, expecting no reconnection.
+        manager.handle_dial_outcome(DialOutcome::Failed {
+            addr: addr_a,
+            error: TestDialerError { id: 10 },
+            when: FakeClock::now(),
+        });
+
+        FakeClock::advance_time(3_999);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+
+        // Adding 0.001 seconds finally again pushes us over the threshold.
+        FakeClock::advance_time(1);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert_eq!(dialer.requests(), &vec![addr_a]);
+
+        // Fail the connection quickly.
+        FakeClock::advance_time(25);
+        dialer.requests().clear();
+        manager.handle_dial_outcome(DialOutcome::Failed {
+            addr: addr_a,
+            error: TestDialerError { id: 10 },
+            when: FakeClock::now(),
+        });
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+
+        // The last attempt should happen 8 seconds after the error, not the last attempt.
+        FakeClock::advance_time(7_999);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+        FakeClock::advance_time(1);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert_eq!(dialer.requests(), &vec![addr_a]);
+
+        // Fail the last attempt. No more reconnections should be happening.
+        dialer.requests().clear();
+        manager.handle_dial_outcome(DialOutcome::Failed {
+            addr: addr_a,
+            error: TestDialerError { id: 10 },
+            when: FakeClock::now(),
+        });
+        assert!(dialer.requests().is_empty());
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+
+        // ...even after a long wait.
+        FakeClock::advance_time(1_000_000_000);
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.requests().is_empty());
+    }
 
     // TODO: test Blocks when asked
     // TODO: test Clears blocking
