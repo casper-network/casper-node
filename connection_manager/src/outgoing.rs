@@ -497,7 +497,7 @@ where
                         if now >= due {
                             debug!(attempts = failures_so_far, "attempting reconnection");
 
-                            to_reconnect.push((addr, failures_so_far + 1));
+                            to_reconnect.push((addr, failures_so_far));
                         }
                     }
                 }
@@ -728,11 +728,15 @@ mod tests {
         // is 2 second (2*base_timeout).
         dialer.requests().clear();
 
+        // Performing housekeeping multiple times should not make a difference.
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         assert!(dialer.requests().is_empty());
 
         // Advancing the clock will trigger a reconnection on the next housekeeping.
-        FakeClock::advance_time(2000);
+        FakeClock::advance_time(2_000);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         assert_eq!(dialer.requests(), &vec![addr_a]);
 
@@ -745,13 +749,26 @@ mod tests {
 
         // The routing table should have been updated and should return the handle.
         assert_eq!(manager.get_route(id_a), Some(&99));
+
+        // Time passes, and our connection drops. Reconnecting should be immediate.
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        FakeClock::advance_time(20_000);
+        dialer.requests().clear();
+        manager.handle_connection_drop(&mut dialer, addr_a);
+
+        // The route should have been cleared.
+        assert!(manager.get_route(id_a).is_none());
+
+        // Reconnecting should be immediate.
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert_eq!(dialer.requests(), &vec![addr_a]);
     }
 
     // TODO: test Forgets after too many requests
+    // TODO: does reconnect correct amount of times
     // TODO: exponential backoff is correct
 
     // TODO: test Blocks when asked
-
     // TODO: test Clears blocking
 
     // TODO: doesn't crash on random input
