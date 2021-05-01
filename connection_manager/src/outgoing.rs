@@ -349,7 +349,10 @@ where
                 Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
                     proto.connect_outgoing(span, addr);
-                    self.change_outgoing_state(addr, OutgoingState::reset());
+                    self.change_outgoing_state(
+                        addr,
+                        OutgoingState::Connecting { failures_so_far: 0 },
+                    );
                 }
             };
 
@@ -407,7 +410,10 @@ where
                 Entry::Occupied(occupied) => match occupied.get().state {
                     OutgoingState::Blocked => {
                         proto.connect_outgoing(span, addr);
-                        self.change_outgoing_state(addr, OutgoingState::reset());
+                        self.change_outgoing_state(
+                            addr,
+                            OutgoingState::Connecting { failures_so_far: 0 },
+                        );
                     }
                     _ => {
                         debug!("ignoring redemption of address that is not blocked");
@@ -422,7 +428,7 @@ where
     fn perform_housekeeping(&mut self, proto: &mut D) {
         let mut corrupt_entries = Vec::new();
         let mut forgettable_entries = Vec::new();
-        let mut resets = Vec::new();
+        let mut reconnections = Vec::new();
 
         let config = &self.config;
         let now = Instant::now();
@@ -450,7 +456,7 @@ where
                                     // Unforgettable addresses simply have their timer reset.
                                     info!("resetting unforgettable address");
 
-                                    resets.push(addr);
+                                    reconnections.push((addr, 0));
                                 } else {
                                     // Address had too many attempts at reconnection, we will forget
                                     // it later if forgettable.
@@ -466,9 +472,7 @@ where
 
                                     proto.connect_outgoing(span, addr);
 
-                                    outgoing.state = OutgoingState::Connecting {
-                                        failures_so_far: *failures_so_far + 1,
-                                    }
+                                    reconnections.push((addr, *failures_so_far + 1));
                                 }
                             }
                         }
@@ -492,10 +496,12 @@ where
         });
 
         // Trigger reconnections for the unforgettables.
-        resets.iter().for_each(|&addr| {
-            proto.connect_outgoing(self.mk_span(addr), addr);
-            self.change_outgoing_state(addr, OutgoingState::reset());
-        })
+        reconnections
+            .into_iter()
+            .for_each(|(addr, failures_so_far)| {
+                proto.connect_outgoing(self.mk_span(addr), addr);
+                self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far });
+            })
     }
 
     /// Handles the outcome of a dialing attempt.
