@@ -385,6 +385,11 @@ where
         }
     }
 
+    /// Iterates over all connected peer IDs.
+    pub(crate) fn connected_peers<'a>(&'a self) -> impl Iterator<Item = NodeId> + 'a {
+        self.routes.keys().cloned()
+    }
+
     /// Notify about a potentially new address that has been discovered.
     ///
     /// Immediately triggers the connection process to said address if it was not known before.
@@ -1133,5 +1138,49 @@ mod tests {
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         assert!(dialer.connects().is_empty());
         assert!(dialer.disconnects().is_empty());
+    }
+
+    #[test]
+    fn connected_peers_works() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+        let mut dialer = TestDialer::default();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
+
+        let id_a = NodeId::random_tls(&mut rng);
+        let id_b = NodeId::random_tls(&mut rng);
+
+        let mut manager = OutgoingManager::<TestDialer>::new(test_config());
+
+        manager.learn_addr(&mut dialer, addr_a, false);
+        manager.learn_addr(&mut dialer, addr_b, true);
+
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_a,
+                handle: 22,
+                node_id: id_a,
+            },
+        );
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_b,
+                handle: 33,
+                node_id: id_b,
+            },
+        );
+
+        let mut peer_ids: Vec<_> = manager.connected_peers().collect();
+        let mut expected = vec![id_a, id_b];
+
+        peer_ids.sort();
+        expected.sort();
+
+        assert_eq!(peer_ids, expected);
     }
 }
