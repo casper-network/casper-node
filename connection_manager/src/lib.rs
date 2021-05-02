@@ -63,7 +63,7 @@ where
 }
 
 pub(crate) fn init_logging() {
-    tracing_subscriber::fmt::init()
+    drop(tracing_subscriber::fmt::try_init());
 }
 
 /// An error formatter.

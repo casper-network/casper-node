@@ -203,7 +203,7 @@ where
 pub(crate) trait Dialer {
     /// The type of handle this dialer produces. This module does not interact with handles, but
     /// makes them available on request to other parts.
-    type Handle: Debug;
+    type Handle: Clone + Debug;
 
     /// The error produced by the `Dialer` when a connection fails.
     type Error: Debug + Display + Error + Sized;
@@ -219,6 +219,11 @@ pub(crate) trait Dialer {
     /// Any logging of connection issues should be done in the context of `span` for better log
     /// output.
     fn connect_outgoing(&self, span: Span, addr: SocketAddr);
+
+    /// Disconnects a potentially existing connection.
+    ///
+    /// Used when a peer has been blocked or should be disconnected for other reasons.
+    fn disconnect_outgoing(&self, span: Span, handle: Self::Handle);
 }
 
 #[derive(Debug)]
@@ -411,29 +416,35 @@ where
     /// Blocks an address.
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr(&mut self, addr: SocketAddr, now: Instant) {
+    pub(crate) fn block_addr(&mut self, dialer: &mut D, addr: SocketAddr, now: Instant) {
         let span = mk_span(addr, self.outgoing.get(&addr));
 
-        span.in_scope(move || match self.outgoing.entry(addr) {
-            Entry::Vacant(_vacant) => {
-                info!("address blocked");
-                self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
-            }
-            // TODO: Check what happens on close on our end, i.e. can we distinguish in logs between
-            // a closed connection on our end vs one that failed?
-            Entry::Occupied(occupied) => match occupied.get().state {
-                OutgoingState::Blocked { .. } => {
-                    debug!("already blocking address");
-                }
-                OutgoingState::Loopback => {
-                    warn!("requested to block ourselves, refusing to do so");
-                }
-                _ => {
+        span.clone()
+            .in_scope(move || match self.outgoing.entry(addr) {
+                Entry::Vacant(_vacant) => {
                     info!("address blocked");
                     self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                 }
-            },
-        });
+                // TODO: Check what happens on close on our end, i.e. can we distinguish in logs
+                // between a closed connection on our end vs one that failed?
+                Entry::Occupied(occupied) => match occupied.get().state {
+                    OutgoingState::Blocked { .. } => {
+                        debug!("already blocking address");
+                    }
+                    OutgoingState::Loopback => {
+                        warn!("requested to block ourselves, refusing to do so");
+                    }
+                    OutgoingState::Connected { ref handle, .. } => {
+                        info!("will disconnect peer after it has been blocked");
+                        dialer.disconnect_outgoing(span, handle.clone());
+                        self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                    }
+                    _ => {
+                        info!("address blocked");
+                        self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                    }
+                },
+            });
     }
 
     /// Removes an address from the block list.
@@ -541,11 +552,11 @@ where
     /// Handles the outcome of a dialing attempt.
     ///
     /// Note that reconnects will earliest happen on the next `perform_housekeeping` call.
-    pub(crate) fn handle_dial_outcome(&mut self, dial_outcome: DialOutcome<D>) {
+    pub(crate) fn handle_dial_outcome(&mut self, dialer: &mut D, dial_outcome: DialOutcome<D>) {
         let addr = dial_outcome.addr();
         let span = mk_span(addr, self.outgoing.get(&addr));
 
-        span.in_scope(move || match dial_outcome {
+        span.clone().in_scope(move || match dial_outcome {
             DialOutcome::Successful {
                 addr,
                 handle,
@@ -553,13 +564,25 @@ where
                 ..
             } => {
                 info!("established outgoing connection");
-                self.change_outgoing_state(
-                    addr,
-                    OutgoingState::Connected {
-                        peer_id: node_id,
-                        handle,
+
+                match self.outgoing.get(&addr) {
+                    // If we connected to a blocked address, do not go into connected, but stay
+                    // blocked instead.
+                    Some(Outgoing{
+                        state: OutgoingState::Blocked { .. }, ..
+                    }) => {
+                        dialer.disconnect_outgoing(span, handle);
                     },
-                );
+                    _ => {
+                        self.change_outgoing_state(
+                            addr ,
+                            OutgoingState::Connected {
+                                peer_id: node_id,
+                                handle,
+                            },
+                        );
+                    }
+                }
             }
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
@@ -648,6 +671,7 @@ mod tests {
 
     use fake_instant::FakeClock;
     use thiserror::Error;
+    use tracing::Span;
 
     use crate::init_logging;
 
@@ -659,12 +683,24 @@ mod tests {
     #[derive(Debug, Default)]
     struct TestDialer {
         connection_requests: RefCell<Vec<SocketAddr>>,
+        disconnect_requests: RefCell<Vec<u32>>,
     }
 
     impl TestDialer {
         /// Returns a mutable reference to the recorded connection requests.
-        fn requests(&mut self) -> &mut Vec<SocketAddr> {
+        fn connects(&mut self) -> &mut Vec<SocketAddr> {
             self.connection_requests.get_mut()
+        }
+
+        /// Returns a mutable reference to the recorded disconnect requests.
+        fn disconnects(&mut self) -> &mut Vec<u32> {
+            self.disconnect_requests.get_mut()
+        }
+
+        /// Clears all recorded requests.
+        fn clear(&mut self) {
+            self.connects().clear();
+            self.disconnects().clear();
         }
     }
 
@@ -673,11 +709,18 @@ mod tests {
 
         type Error = TestDialerError;
 
-        fn connect_outgoing(&self, span: tracing::Span, addr: SocketAddr) {
+        fn connect_outgoing(&self, _span: Span, addr: SocketAddr) {
             self.connection_requests
                 .try_borrow_mut()
                 .unwrap()
                 .push(addr);
+        }
+
+        fn disconnect_outgoing(&self, _span: Span, handle: Self::Handle) {
+            self.disconnect_requests
+                .try_borrow_mut()
+                .unwrap()
+                .push(handle);
         }
     }
 
@@ -715,37 +758,43 @@ mod tests {
         manager.learn_addr(&mut dialer, addr_a, false);
 
         // This should trigger a dial request.
-        assert_eq!(dialer.requests(), &vec![addr_a]);
+        assert_eq!(dialer.connects(), &vec![addr_a]);
 
         // Our first connection attempt fails.
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_a,
-            error: TestDialerError { id: 1 },
-            when: FakeClock::now(),
-        });
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 1 },
+                when: FakeClock::now(),
+            },
+        );
 
         // The connection should now be in waiting state, but not reconnect, since the minimum delay
         // is 2 second (2*base_timeout).
-        dialer.requests().clear();
+        dialer.clear();
 
         // Performing housekeeping multiple times should not make a difference.
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
 
         // Advancing the clock will trigger a reconnection on the next housekeeping.
         FakeClock::advance_time(2_000);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert_eq!(dialer.requests(), &vec![addr_a]);
+        assert_eq!(dialer.connects(), &vec![addr_a]);
 
         // This time the connection succeeds.
-        manager.handle_dial_outcome(DialOutcome::Successful {
-            addr: addr_a,
-            handle: 99,
-            node_id: id_a,
-        });
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_a,
+                handle: 99,
+                node_id: id_a,
+            },
+        );
 
         // The routing table should have been updated and should return the handle.
         assert_eq!(manager.get_route(id_a), Some(&99));
@@ -753,7 +802,7 @@ mod tests {
         // Time passes, and our connection drops. Reconnecting should be immediate.
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         FakeClock::advance_time(20_000);
-        dialer.requests().clear();
+        dialer.clear();
         manager.handle_connection_drop(&mut dialer, addr_a);
 
         // The route should have been cleared.
@@ -761,7 +810,7 @@ mod tests {
 
         // Reconnecting should be immediate.
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert_eq!(dialer.requests(), &vec![addr_a]);
+        assert_eq!(dialer.connects(), &vec![addr_a]);
     }
 
     #[test]
@@ -779,122 +828,264 @@ mod tests {
         // First, attempt to connect. Tests are set to 3 retries after 2, 4 and 8 seconds.
         manager.learn_addr(&mut dialer, addr_a, false);
         manager.learn_addr(&mut dialer, addr_b, true);
-        assert_eq!(dialer.requests(), &vec![addr_a, addr_b]);
+        assert_eq!(dialer.connects(), &vec![addr_a, addr_b]);
 
         // Fail the first connection attempts.
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_a,
-            error: TestDialerError { id: 10 },
-            when: FakeClock::now(),
-        });
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_b,
-            error: TestDialerError { id: 11 },
-            when: FakeClock::now(),
-        });
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 10 },
+                when: FakeClock::now(),
+            },
+        );
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_b,
+                error: TestDialerError { id: 11 },
+                when: FakeClock::now(),
+            },
+        );
 
         // Learning the address again should not cause a reconnection.
-        dialer.requests().clear();
+        dialer.clear();
         manager.learn_addr(&mut dialer, addr_a, false);
         manager.learn_addr(&mut dialer, addr_b, false);
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
         manager.learn_addr(&mut dialer, addr_a, false);
         manager.learn_addr(&mut dialer, addr_b, false);
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
 
         // After 1.999 seconds, reconnection should still be delayed.
         FakeClock::advance_time(1_999);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
 
         // Adding 0.001 seconds finally is enough to reconnect.
         FakeClock::advance_time(1);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().contains(&addr_a));
-        assert!(dialer.requests().contains(&addr_b));
+        assert!(dialer.connects().contains(&addr_a));
+        assert!(dialer.connects().contains(&addr_b));
 
         // Waiting for more than the reconnection delay should not be harmful or change anything, as
         // we are currently connecting.
         FakeClock::advance_time(6_000);
-        dialer.requests().clear();
+        dialer.clear();
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
 
         // Fail the connection again, wait 3.999 seconds, expecting no reconnection.
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_a,
-            error: TestDialerError { id: 40 },
-            when: FakeClock::now(),
-        });
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_b,
-            error: TestDialerError { id: 41 },
-            when: FakeClock::now(),
-        });
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 40 },
+                when: FakeClock::now(),
+            },
+        );
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_b,
+                error: TestDialerError { id: 41 },
+                when: FakeClock::now(),
+            },
+        );
 
         FakeClock::advance_time(3_999);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
 
         // Adding 0.001 seconds finally again pushes us over the threshold.
         FakeClock::advance_time(1);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().contains(&addr_a));
-        assert!(dialer.requests().contains(&addr_b));
+        assert!(dialer.connects().contains(&addr_a));
+        assert!(dialer.connects().contains(&addr_b));
 
         // Fail the connection quickly.
         FakeClock::advance_time(25);
-        dialer.requests().clear();
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_a,
-            error: TestDialerError { id: 10 },
-            when: FakeClock::now(),
-        });
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_b,
-            error: TestDialerError { id: 10 },
-            when: FakeClock::now(),
-        });
+        dialer.clear();
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 10 },
+                when: FakeClock::now(),
+            },
+        );
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_b,
+                error: TestDialerError { id: 10 },
+                when: FakeClock::now(),
+            },
+        );
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
 
         // The last attempt should happen 8 seconds after the error, not the last attempt.
         FakeClock::advance_time(7_999);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().is_empty());
+        assert!(dialer.connects().is_empty());
         FakeClock::advance_time(1);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dialer.requests().contains(&addr_a));
-        assert!(dialer.requests().contains(&addr_b));
+        assert!(dialer.connects().contains(&addr_a));
+        assert!(dialer.connects().contains(&addr_b));
 
         // Fail the last attempt. No more reconnections should be happening.
-        dialer.requests().clear();
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_a,
-            error: TestDialerError { id: 10 },
-            when: FakeClock::now(),
-        });
-        manager.handle_dial_outcome(DialOutcome::Failed {
-            addr: addr_b,
-            error: TestDialerError { id: 10 },
-            when: FakeClock::now(),
-        });
-        assert!(dialer.requests().is_empty());
+        dialer.clear();
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_a,
+                error: TestDialerError { id: 10 },
+                when: FakeClock::now(),
+            },
+        );
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Failed {
+                addr: addr_b,
+                error: TestDialerError { id: 10 },
+                when: FakeClock::now(),
+            },
+        );
+        assert!(dialer.connects().is_empty());
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
 
         // Only the unforgettable address should be reconnecting.
-        assert_eq!(dialer.requests(), &vec![addr_b]);
+        assert_eq!(dialer.connects(), &vec![addr_b]);
 
         // But not `addr_a`, even after a long wait.
-        dialer.requests().clear();
+        dialer.clear();
         FakeClock::advance_time(1_000_000_000);
         manager.perform_housekeeping(&mut dialer, FakeClock::now());
-        assert!(dbg!(dialer.requests()).is_empty());
+        assert!(dbg!(dialer.connects()).is_empty());
     }
 
-    // TODO: test Blocks when asked
-    // TODO: test Clears blocking
+    #[test]
+    fn blocking_works() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+        let mut dialer = TestDialer::default();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        // We use `addr_b` as an unforgettable address, which does not mean it cannot be blocked!
+        let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
+        let addr_c: SocketAddr = "9.0.1.2:9012".parse().unwrap();
+        let id_a = NodeId::random_tls(&mut rng);
+        let id_b = NodeId::random_tls(&mut rng);
+        let id_c = NodeId::random_tls(&mut rng);
+
+        let mut manager = OutgoingManager::<TestDialer>::new(test_config());
+
+        // Block `addr_a` from the start.
+        manager.block_addr(&mut dialer, addr_a, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        // Learning both `addr_a` and `addr_b` should only trigger a connection to `addr_b` now.
+        manager.learn_addr(&mut dialer, addr_a, false);
+        manager.learn_addr(&mut dialer, addr_b, true);
+        assert_eq!(dialer.connects(), &vec![addr_b]);
+        dialer.clear();
+
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+
+        // Fifteen seconds later we succeed in connecting to `addr_b`.
+        FakeClock::advance_time(15_000);
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_b,
+                handle: 101,
+                node_id: id_b,
+            },
+        );
+        assert_eq!(manager.get_route(id_b), Some(&101));
+
+        // Invariant through housekeeping.
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert_eq!(manager.get_route(id_b), Some(&101));
+
+        // Another fifteen seconds later, we block `addr_b`.
+        FakeClock::advance_time(15_000);
+        manager.block_addr(&mut dialer, addr_b, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert_eq!(dialer.disconnects(), &vec![101]);
+
+        // `addr_c` will be blocked during the connection phase.
+        dialer.clear();
+        manager.learn_addr(&mut dialer, addr_c, false);
+        assert_eq!(dialer.connects(), &vec![addr_c]);
+        dialer.clear();
+        manager.block_addr(&mut dialer, addr_c, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        // We are still expect to provide a dial outcome, but afterwards, there should be no route
+        // to C and an immediate disconnection should be queued.
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_c,
+                handle: 42,
+                node_id: id_c,
+            },
+        );
+        assert_eq!(dialer.disconnects(), &vec![42]);
+
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+
+        assert!(manager.get_route(id_c).is_none());
+
+        // At this point, we have blocked all three addresses. 30 seconds later, the first one is
+        // unblocked due to the block timing out.
+        FakeClock::advance_time(30_000);
+        dialer.clear();
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert_eq!(dialer.connects(), &vec![addr_a]);
+
+        // Fifteen seconds later, B and C are still blocked, but we redeem B early.
+        FakeClock::advance_time(15_000);
+        dialer.clear();
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+
+        manager.redeem_addr(&mut dialer, addr_b);
+        assert_eq!(dialer.connects(), &vec![addr_b]);
+
+        // Succeed both connections, and ensure we have routes to both.
+        dialer.clear();
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_b,
+                handle: 77,
+                node_id: id_b,
+            },
+        );
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Successful {
+                addr: addr_a,
+                handle: 66,
+                node_id: id_a,
+            },
+        );
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        assert_eq!(manager.get_route(id_a), Some(&66));
+        assert_eq!(manager.get_route(id_b), Some(&77));
+    }
 
     // TODO: doesn't crash on random input
 
