@@ -227,16 +227,6 @@ pub struct OutgoingConfig {
     pub(crate) unblock_after: Duration,
 }
 
-impl Default for OutgoingConfig {
-    fn default() -> Self {
-        OutgoingConfig {
-            retry_attempts: 12,
-            base_timeout: Duration::from_millis(500),
-            unblock_after: Duration::from_secs(600),
-        }
-    }
-}
-
 impl OutgoingConfig {
     /// Calculates the backoff time.
     ///
@@ -250,7 +240,7 @@ impl OutgoingConfig {
 /// Manager of outbound connections.
 ///
 /// See the module documentation for usage suggestions.
-#[derive(DataSize, Debug, Default)]
+#[derive(DataSize, Debug)]
 pub struct OutgoingManager<H, E>
 where
     H: DataSize,
