@@ -96,9 +96,6 @@ use std::{
 };
 
 use datasize::DataSize;
-#[cfg(test)]
-use fake_instant::FakeClock as Instant;
-#[cfg(not(test))]
 use std::time::Instant;
 
 use tracing::{debug, error_span, info, trace, warn, Span};
@@ -765,16 +762,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, net::SocketAddr, time::Duration};
+    use std::{net::SocketAddr, time::Duration};
 
     use datasize::DataSize;
-    use fake_instant::FakeClock;
     use thiserror::Error;
-    use tracing::Span;
-
-    use crate::testing::init_logging;
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
+    use crate::testing::{init_logging, test_clock::TestClock};
 
     /// Error for test dialer.
     ///
@@ -835,6 +829,7 @@ mod tests {
         init_logging();
 
         let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         let id_a = NodeId::random_tls(&mut rng);
@@ -844,7 +839,7 @@ mod tests {
         // We begin by learning a single, regular address, triggering a dial request.
         assert!(dials(
             addr_a,
-            &manager.learn_addr(addr_a, false, FakeClock::now())
+            &manager.learn_addr(addr_a, false, clock.now())
         ));
 
         // Our first connection attempt fails. The connection should now be in waiting state, but
@@ -853,22 +848,19 @@ mod tests {
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_a,
                 error: TestDialerError { id: 1 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
 
         // Performing housekeeping multiple times should not make a difference.
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // Advancing the clock will trigger a reconnection on the next housekeeping.
-        FakeClock::advance_time(2_000);
-        assert!(dials(
-            addr_a,
-            &manager.perform_housekeeping(FakeClock::now())
-        ));
+        clock.advance_time(2_000);
+        assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
 
         // This time the connection succeeds.
         assert!(manager
@@ -883,23 +875,25 @@ mod tests {
         assert_eq!(manager.get_route(id_a), Some(&99));
 
         // Time passes, and our connection drops. Reconnecting should be immediate.
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
-        FakeClock::advance_time(20_000);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        clock.advance_time(20_000);
         assert!(dials(
             addr_a,
-            &manager.handle_connection_drop(addr_a, FakeClock::now())
+            &manager.handle_connection_drop(addr_a, clock.now())
         ));
 
         // The route should have been cleared.
         assert!(manager.get_route(id_a).is_none());
 
         // Reconnection is already in progress, so we do not expect another request on housekeeping.
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
     }
 
     #[test]
     fn connections_forgotten_after_too_many_tries() {
         init_logging();
+
+        let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         // Address `addr_b` will be a known address.
@@ -910,11 +904,11 @@ mod tests {
         // First, attempt to connect. Tests are set to 3 retries after 2, 4 and 8 seconds.
         assert!(dials(
             addr_a,
-            &manager.learn_addr(addr_a, false, FakeClock::now())
+            &manager.learn_addr(addr_a, false, clock.now())
         ));
         assert!(dials(
             addr_b,
-            &manager.learn_addr(addr_b, true, FakeClock::now())
+            &manager.learn_addr(addr_b, true, clock.now())
         ));
 
         // Fail the first connection attempts, not triggering a retry (timeout not reached yet).
@@ -922,98 +916,90 @@ mod tests {
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_a,
                 error: TestDialerError { id: 10 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
         assert!(manager
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_b,
                 error: TestDialerError { id: 11 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
 
         // Learning the address again should not cause a reconnection.
-        assert!(manager
-            .learn_addr(addr_a, false, FakeClock::now())
-            .is_none());
-        assert!(manager
-            .learn_addr(addr_b, false, FakeClock::now())
-            .is_none());
+        assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
+        assert!(manager.learn_addr(addr_b, false, clock.now()).is_none());
 
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
-        assert!(manager
-            .learn_addr(addr_a, false, FakeClock::now())
-            .is_none());
-        assert!(manager
-            .learn_addr(addr_b, false, FakeClock::now())
-            .is_none());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
+        assert!(manager.learn_addr(addr_b, false, clock.now()).is_none());
 
         // After 1.999 seconds, reconnection should still be delayed.
-        FakeClock::advance_time(1_999);
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        clock.advance_time(1_999);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // Adding 0.001 seconds finally is enough to reconnect.
-        FakeClock::advance_time(1);
-        let requests = manager.perform_housekeeping(FakeClock::now());
+        clock.advance_time(1);
+        let requests = manager.perform_housekeeping(clock.now());
         assert!(dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
         // Waiting for more than the reconnection delay should not be harmful or change
         // anything, as  we are currently connecting.
-        FakeClock::advance_time(6_000);
+        clock.advance_time(6_000);
 
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // Fail the connection again, wait 3.999 seconds, expecting no reconnection.
         assert!(manager
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_a,
                 error: TestDialerError { id: 40 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
         assert!(manager
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_b,
                 error: TestDialerError { id: 41 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
 
-        FakeClock::advance_time(3_999);
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        clock.advance_time(3_999);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // Adding 0.001 seconds finally again pushes us over the threshold.
-        FakeClock::advance_time(1);
-        let requests = manager.perform_housekeeping(FakeClock::now());
+        clock.advance_time(1);
+        let requests = manager.perform_housekeeping(clock.now());
         assert!(dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
         // Fail the connection quickly.
-        FakeClock::advance_time(25);
+        clock.advance_time(25);
         assert!(manager
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_a,
                 error: TestDialerError { id: 10 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
         assert!(manager
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_b,
                 error: TestDialerError { id: 10 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // The last attempt should happen 8 seconds after the error, not the last attempt.
-        FakeClock::advance_time(7_999);
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        clock.advance_time(7_999);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
-        FakeClock::advance_time(1);
-        let requests = manager.perform_housekeeping(FakeClock::now());
+        clock.advance_time(1);
+        let requests = manager.perform_housekeeping(clock.now());
         assert!(dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
@@ -1022,25 +1008,25 @@ mod tests {
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_a,
                 error: TestDialerError { id: 10 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
         assert!(manager
             .handle_dial_outcome(DialOutcome::Failed {
                 addr: addr_b,
                 error: TestDialerError { id: 10 },
-                when: FakeClock::now(),
+                when: clock.now(),
             },)
             .is_none());
 
         // Only the unforgettable address should be reconnecting.
-        let requests = manager.perform_housekeeping(FakeClock::now());
+        let requests = manager.perform_housekeeping(clock.now());
         assert!(!dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
         // But not `addr_a`, even after a long wait.
-        FakeClock::advance_time(1_000_000_000);
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        clock.advance_time(1_000_000_000);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
     }
 
     #[test]
@@ -1048,6 +1034,7 @@ mod tests {
         init_logging();
 
         let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         // We use `addr_b` as an unforgettable address, which does not mean it cannot be blocked!
@@ -1060,21 +1047,19 @@ mod tests {
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
         // Block `addr_a` from the start.
-        assert!(manager.block_addr(addr_a, FakeClock::now()).is_none());
+        assert!(manager.block_addr(addr_a, clock.now()).is_none());
 
         // Learning both `addr_a` and `addr_b` should only trigger a connection to `addr_b` now.
-        assert!(manager
-            .learn_addr(addr_a, false, FakeClock::now())
-            .is_none());
+        assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
         assert!(dials(
             addr_b,
-            &manager.learn_addr(addr_b, true, FakeClock::now())
+            &manager.learn_addr(addr_b, true, clock.now())
         ));
 
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // Fifteen seconds later we succeed in connecting to `addr_b`.
-        FakeClock::advance_time(15_000);
+        clock.advance_time(15_000);
         assert!(manager
             .handle_dial_outcome(DialOutcome::Successful {
                 addr: addr_b,
@@ -1085,23 +1070,20 @@ mod tests {
         assert_eq!(manager.get_route(id_b), Some(&101));
 
         //     // Invariant through housekeeping.
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         assert_eq!(manager.get_route(id_b), Some(&101));
 
         // Another fifteen seconds later, we block `addr_b`.
-        FakeClock::advance_time(15_000);
-        assert!(disconnects(
-            101,
-            &manager.block_addr(addr_b, FakeClock::now())
-        ));
+        clock.advance_time(15_000);
+        assert!(disconnects(101, &manager.block_addr(addr_b, clock.now())));
 
         // `addr_c` will be blocked during the connection phase.
         assert!(dials(
             addr_c,
-            &manager.learn_addr(addr_c, false, FakeClock::now())
+            &manager.learn_addr(addr_c, false, clock.now())
         ));
-        assert!(manager.block_addr(addr_c, FakeClock::now()).is_none());
+        assert!(manager.block_addr(addr_c, clock.now()).is_none());
 
         // We are still expect to provide a dial outcome, but afterwards, there should be no
         // route to C and an immediate disconnection should be queued.
@@ -1114,27 +1096,21 @@ mod tests {
             },)
         ));
 
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         assert!(manager.get_route(id_c).is_none());
 
         // At this point, we have blocked all three addresses. 30 seconds later, the first one is
         // unblocked due to the block timing out.
 
-        FakeClock::advance_time(30_000);
-        assert!(dials(
-            addr_a,
-            &manager.perform_housekeeping(FakeClock::now())
-        ));
+        clock.advance_time(30_000);
+        assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
 
         // Fifteen seconds later, B and C are still blocked, but we redeem B early.
-        FakeClock::advance_time(15_000);
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        clock.advance_time(15_000);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
-        assert!(dials(
-            addr_b,
-            &manager.redeem_addr(addr_b, FakeClock::now())
-        ));
+        assert!(dials(addr_b, &manager.redeem_addr(addr_b, clock.now())));
 
         // Succeed both connections, and ensure we have routes to both.
         assert!(manager
@@ -1160,6 +1136,8 @@ mod tests {
     fn loopback_handled_correctly() {
         init_logging();
 
+        let mut clock = TestClock::new();
+
         let loopback_addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
@@ -1167,7 +1145,7 @@ mod tests {
         // Loopback addresses are connected to only once, and then marked as loopback forever.
         assert!(dials(
             loopback_addr,
-            &manager.learn_addr(loopback_addr, false, FakeClock::now())
+            &manager.learn_addr(loopback_addr, false, clock.now())
         ));
 
         assert!(manager
@@ -1176,22 +1154,20 @@ mod tests {
             },)
             .is_none());
 
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // Learning loopbacks again should not trigger another connection
         assert!(manager
-            .learn_addr(loopback_addr, false, FakeClock::now())
+            .learn_addr(loopback_addr, false, clock.now())
             .is_none());
 
         // Blocking loopbacks does not result in a block, since regular blocks would clear after
         // some time.
-        assert!(manager
-            .block_addr(loopback_addr, FakeClock::now())
-            .is_none());
+        assert!(manager.block_addr(loopback_addr, clock.now()).is_none());
 
-        FakeClock::advance_time(1_000_000_000);
+        clock.advance_time(1_000_000_000);
 
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
     }
 
     #[test]
@@ -1199,6 +1175,7 @@ mod tests {
         init_logging();
 
         let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();
@@ -1208,8 +1185,8 @@ mod tests {
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
-        manager.learn_addr(addr_a, false, FakeClock::now());
-        manager.learn_addr(addr_b, true, FakeClock::now());
+        manager.learn_addr(addr_a, false, clock.now());
+        manager.learn_addr(addr_b, true, clock.now());
 
         manager.handle_dial_outcome(DialOutcome::Successful {
             addr: addr_a,
@@ -1236,6 +1213,7 @@ mod tests {
         init_logging();
 
         let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
 
@@ -1246,24 +1224,21 @@ mod tests {
         // Trigger a new connection via learning an address.
         assert!(dials(
             addr_a,
-            &manager.learn_addr(addr_a, false, FakeClock::now())
+            &manager.learn_addr(addr_a, false, clock.now())
         ));
 
         // We now let enough time pass to cause the connection to be considered failed aborted.
         // No effects are expected at this point.
-        FakeClock::advance_time(50_000);
-        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+        clock.advance_time(50_000);
+        assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         // The connection will now experience a regular failure. Since this is the first connection
         // failure, it should reconnect after 2 seconds.
-        FakeClock::advance_time(2_000);
-        assert!(dials(
-            addr_a,
-            &manager.perform_housekeeping(FakeClock::now())
-        ));
+        clock.advance_time(2_000);
+        assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
 
         // We now simulate the second connection (`handle: 2`) succeeding first, after 1 second.
-        FakeClock::advance_time(1_000);
+        clock.advance_time(1_000);
         assert!(manager
             .handle_dial_outcome(DialOutcome::Successful {
                 addr: addr_a,
@@ -1276,7 +1251,7 @@ mod tests {
         assert_eq!(manager.get_route(id_a), Some(&2));
 
         // More time passes and the first connection attempt finally finishes.
-        FakeClock::advance_time(30_000);
+        clock.advance_time(30_000);
         assert!(manager
             .handle_dial_outcome(DialOutcome::Successful {
                 addr: addr_a,
