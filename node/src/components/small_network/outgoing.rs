@@ -46,8 +46,8 @@
 //!                          │ │              │
 //!                          │ │              │
 //!                          │ │              ▼
-//!     ┌─────────┐          │ │        ┌─────────┐
-//!     │         │    fail  │ │  block │         │
+//!     ┌─────────┐ fail,    │ │        ┌─────────┐
+//!     │         │ sweep    │ │  block │         │
 //!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄──────────┐
 //! ┌───┤         │        │ │ │ │      │         │           │
 //! │   └────┬────┘        │ │ │ │      └────┬────┘           │
@@ -69,6 +69,17 @@
 //! │       │                                                 │
 //! │       │ block                                           │
 //! └───────┴─────────────────────────────────────────────────┘
+//!
+//! # Timeouts/safety
+//!
+//! The `sweep` transition for connections usually does not happen during normal operations. Three causes are typical for it:
+//!
+//! * A configured TCP timeout above [`OutgoingConfig::sweep_timeout`].
+//! * Very slow responses from remote peers (similar to a Slowloris-attack)
+//! * Faulty handling by the driver of the [`OutgoingManager`], i.e. the outside component.
+//!
+//! Should a dial attempt exceed a certain timeout, it is considered failed and put into the waiting
+//! state again.
 //! ```
 
 use std::{
@@ -114,13 +125,17 @@ where
     Connecting {
         /// Number of attempts that failed, so far.
         failures_so_far: u8,
+        /// Time when the connection attempt was instantiated.
+        since: Instant,
     },
     /// The connection has failed at least one connection attempt and is waiting for a retry.
     Waiting {
         /// Number of attempts that failed, so far.
         failures_so_far: u8,
         /// The most recent connection error.
-        error: E,
+        ///
+        /// If not given, the connection was put into a `Waiting` state due to a sweep timeout.
+        error: Option<E>,
         /// The precise moment when the last connection attempt failed.
         last_failure: Instant,
     },
@@ -146,7 +161,9 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            OutgoingState::Connecting { failures_so_far } => {
+            OutgoingState::Connecting {
+                failures_so_far, ..
+            } => {
                 write!(f, "connecting({})", failures_so_far)
             }
             OutgoingState::Waiting {
@@ -226,6 +243,8 @@ pub struct OutgoingConfig {
     pub(crate) base_timeout: Duration,
     /// Time until an outgoing address is unblocked.
     pub(crate) unblock_after: Duration,
+    /// Safety timeout, after which a connection is no longer expected to finish dialing.
+    pub(crate) sweep_timeout: Duration,
 }
 
 impl OutgoingConfig {
@@ -387,6 +406,7 @@ where
         &mut self,
         addr: SocketAddr,
         unforgettable: bool,
+        now: Instant,
     ) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone()
@@ -399,7 +419,10 @@ where
                     info!("connecting to newly learned address");
                     let outgoing = self.change_outgoing_state(
                         addr,
-                        OutgoingState::Connecting { failures_so_far: 0 },
+                        OutgoingState::Connecting {
+                            failures_so_far: 0,
+                            since: now,
+                        },
                     );
                     if outgoing.is_unforgettable != unforgettable {
                         outgoing.is_unforgettable = unforgettable;
@@ -452,7 +475,7 @@ where
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
-    pub(crate) fn redeem_addr(&mut self, addr: SocketAddr) -> Option<DialRequest<H>> {
+    pub(crate) fn redeem_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
@@ -464,7 +487,10 @@ where
                     OutgoingState::Blocked { .. } => {
                         self.change_outgoing_state(
                             addr,
-                            OutgoingState::Connecting { failures_so_far: 0 },
+                            OutgoingState::Connecting {
+                                failures_so_far: 0,
+                                since: now,
+                            },
                         );
                         Some(DialRequest::Dial { addr, span })
                     }
@@ -481,6 +507,7 @@ where
     /// This function must periodically be called. A good interval is every second.
     fn perform_housekeeping(&mut self, now: Instant) -> Vec<DialRequest<H>> {
         let mut to_forget = Vec::new();
+        let mut to_fail = Vec::new();
         let mut to_reconnect = Vec::new();
 
         for (&addr, outgoing) in self.outgoing.iter() {
@@ -528,6 +555,19 @@ where
                     }
                 }
 
+                OutgoingState::Connecting { since, failures_so_far } => {
+                    let timeout = since + self.config.sweep_timeout;
+                    if now >= timeout {
+                        // The outer component has not called us with a `DialOutcome` in a
+                        // reasonable amount of time. This should happen very rarely, ideally
+                        // never.
+                        warn!("timed out connection attempt, sweeping");
+
+                        // Count the timeout as a failure against the connection.
+                        to_fail.push((addr, failures_so_far + 1));
+                    }
+                }
+
                 _ => {
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
                     // the `trace` level.
@@ -540,6 +580,22 @@ where
             self.outgoing.remove(&addr);
         });
 
+        // Fail connections that are taking way too long to connect.
+        to_fail.into_iter().for_each(|(addr, failures_so_far)| {
+            let span = mk_span(addr, self.outgoing.get(&addr));
+
+            span.in_scope(|| {
+                self.change_outgoing_state(
+                    addr,
+                    OutgoingState::Waiting {
+                        failures_so_far,
+                        error: None,
+                        last_failure: now,
+                    },
+                )
+            });
+        });
+
         // Reconnect all others.
         to_reconnect
             .into_iter()
@@ -547,7 +603,13 @@ where
                 let span = mk_span(addr, self.outgoing.get(&addr));
 
                 span.clone().in_scope(|| {
-                    self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far })
+                    self.change_outgoing_state(
+                        addr,
+                        OutgoingState::Connecting {
+                            failures_so_far,
+                            since: now,
+                        },
+                    )
                 });
 
                 DialRequest::Dial { addr, span }
@@ -603,12 +665,12 @@ where
                 info!(err = display_error(&error), "outgoing connection failed");
 
                 if let Some(outgoing) = self.outgoing.get(&addr) {
-                    if let OutgoingState::Connecting { failures_so_far } = outgoing.state {
+                    if let OutgoingState::Connecting { failures_so_far,.. } = outgoing.state {
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Waiting {
                                 failures_so_far: failures_so_far + 1,
-                                error,
+                                error: Some(error),
                                 last_failure: when,
                             },
                         );
@@ -621,7 +683,7 @@ where
                             addr,
                             OutgoingState::Waiting {
                                 failures_so_far: 1,
-                                error,
+                                error: Some(error),
                                 last_failure: when,
                             },
                         );
@@ -633,7 +695,7 @@ where
                         addr,
                         OutgoingState::Waiting {
                             failures_so_far: 1,
-                            error,
+                            error: Some(error),
                             last_failure: when,
                         },
                     );
@@ -651,7 +713,11 @@ where
     /// Notifies the connection manager about a dropped connection.
     ///
     /// This will usually result in an immediate reconnection.
-    pub(crate) fn handle_connection_drop(&mut self, addr: SocketAddr) -> Option<DialRequest<H>> {
+    pub(crate) fn handle_connection_drop(
+        &mut self,
+        addr: SocketAddr,
+        now: Instant,
+    ) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.clone().in_scope(move || {
@@ -669,7 +735,10 @@ where
                         // Drop the handle, immediately initiate a reconnection.
                         self.change_outgoing_state(
                             addr,
-                            OutgoingState::Connecting { failures_so_far: 0 },
+                            OutgoingState::Connecting {
+                                failures_so_far: 0,
+                                since: now,
+                            },
                         );
                         Some(DialRequest::Dial { addr, span })
                     }
@@ -715,6 +784,7 @@ mod tests {
             retry_attempts: 3,
             base_timeout: Duration::from_secs(1),
             unblock_after: Duration::from_secs(60),
+            sweep_timeout: Duration::from_secs(45),
         }
     }
 
@@ -765,7 +835,10 @@ mod tests {
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
         // We begin by learning a single, regular address, triggering a dial request.
-        assert!(dials(addr_a, &manager.learn_addr(addr_a, false)));
+        assert!(dials(
+            addr_a,
+            &manager.learn_addr(addr_a, false, FakeClock::now())
+        ));
 
         // Our first connection attempt fails. The connection should now be in waiting state, but
         // not reconnect, since the minimum delay is 2 seconds (2*base_timeout).
@@ -805,7 +878,10 @@ mod tests {
         // Time passes, and our connection drops. Reconnecting should be immediate.
         assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
         FakeClock::advance_time(20_000);
-        assert!(dials(addr_a, &manager.handle_connection_drop(addr_a)));
+        assert!(dials(
+            addr_a,
+            &manager.handle_connection_drop(addr_a, FakeClock::now())
+        ));
 
         // The route should have been cleared.
         assert!(manager.get_route(id_a).is_none());
@@ -825,8 +901,14 @@ mod tests {
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
         // First, attempt to connect. Tests are set to 3 retries after 2, 4 and 8 seconds.
-        assert!(dials(addr_a, &manager.learn_addr(addr_a, false)));
-        assert!(dials(addr_b, &manager.learn_addr(addr_b, true)));
+        assert!(dials(
+            addr_a,
+            &manager.learn_addr(addr_a, false, FakeClock::now())
+        ));
+        assert!(dials(
+            addr_b,
+            &manager.learn_addr(addr_b, true, FakeClock::now())
+        ));
 
         // Fail the first connection attempts, not triggering a retry (timeout not reached yet).
         assert!(manager
@@ -845,12 +927,20 @@ mod tests {
             .is_none());
 
         // Learning the address again should not cause a reconnection.
-        assert!(manager.learn_addr(addr_a, false).is_none());
-        assert!(manager.learn_addr(addr_b, false).is_none());
+        assert!(manager
+            .learn_addr(addr_a, false, FakeClock::now())
+            .is_none());
+        assert!(manager
+            .learn_addr(addr_b, false, FakeClock::now())
+            .is_none());
 
         assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
-        assert!(manager.learn_addr(addr_a, false).is_none());
-        assert!(manager.learn_addr(addr_b, false).is_none());
+        assert!(manager
+            .learn_addr(addr_a, false, FakeClock::now())
+            .is_none());
+        assert!(manager
+            .learn_addr(addr_b, false, FakeClock::now())
+            .is_none());
 
         // After 1.999 seconds, reconnection should still be delayed.
         FakeClock::advance_time(1_999);
@@ -966,8 +1056,13 @@ mod tests {
         assert!(manager.block_addr(addr_a, FakeClock::now()).is_none());
 
         // Learning both `addr_a` and `addr_b` should only trigger a connection to `addr_b` now.
-        assert!(manager.learn_addr(addr_a, false).is_none());
-        assert!(dials(addr_b, &manager.learn_addr(addr_b, true)));
+        assert!(manager
+            .learn_addr(addr_a, false, FakeClock::now())
+            .is_none());
+        assert!(dials(
+            addr_b,
+            &manager.learn_addr(addr_b, true, FakeClock::now())
+        ));
 
         assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
 
@@ -995,7 +1090,10 @@ mod tests {
         ));
 
         // `addr_c` will be blocked during the connection phase.
-        assert!(dials(addr_c, &manager.learn_addr(addr_c, false)));
+        assert!(dials(
+            addr_c,
+            &manager.learn_addr(addr_c, false, FakeClock::now())
+        ));
         assert!(manager.block_addr(addr_c, FakeClock::now()).is_none());
 
         // We are still expect to provide a dial outcome, but afterwards, there should be no
@@ -1026,7 +1124,10 @@ mod tests {
         FakeClock::advance_time(15_000);
         assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
 
-        assert!(dials(addr_b, &manager.redeem_addr(addr_b)));
+        assert!(dials(
+            addr_b,
+            &manager.redeem_addr(addr_b, FakeClock::now())
+        ));
 
         // Succeed both connections, and ensure we have routes to both.
         assert!(manager
@@ -1059,7 +1160,7 @@ mod tests {
         // Loopback addresses are connected to only once, and then marked as loopback forever.
         assert!(dials(
             loopback_addr,
-            &manager.learn_addr(loopback_addr, false)
+            &manager.learn_addr(loopback_addr, false, FakeClock::now())
         ));
 
         assert!(manager
@@ -1071,7 +1172,9 @@ mod tests {
         assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
 
         // Learning loopbacks again should not trigger another connection
-        assert!(manager.learn_addr(loopback_addr, false).is_none());
+        assert!(manager
+            .learn_addr(loopback_addr, false, FakeClock::now())
+            .is_none());
 
         // Blocking loopbacks does not result in a block, since regular blocks would clear after
         // some time.
@@ -1099,23 +1202,19 @@ mod tests {
 
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
-        manager.learn_addr( addr_a, false);
-        manager.learn_addr( addr_b, true);
+        manager.learn_addr(addr_a, false, FakeClock::now());
+        manager.learn_addr(addr_b, true, FakeClock::now());
 
-        manager.handle_dial_outcome(
-            DialOutcome::Successful {
-                addr: addr_a,
-                handle: 22,
-                node_id: id_a,
-            },
-        );
-        manager.handle_dial_outcome(
-            DialOutcome::Successful {
-                addr: addr_b,
-                handle: 33,
-                node_id: id_b,
-            },
-        );
+        manager.handle_dial_outcome(DialOutcome::Successful {
+            addr: addr_a,
+            handle: 22,
+            node_id: id_a,
+        });
+        manager.handle_dial_outcome(DialOutcome::Successful {
+            addr: addr_b,
+            handle: 33,
+            node_id: id_b,
+        });
 
         let mut peer_ids: Vec<_> = manager.connected_peers().collect();
         let mut expected = vec![id_a, id_b];
