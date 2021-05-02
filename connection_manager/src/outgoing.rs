@@ -47,27 +47,27 @@
 //!                          │ │              ▼
 //!     ┌─────────┐          │ │        ┌─────────┐
 //!     │         │    fail  │ │  block │         │
-//!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄───────────┐
-//! ┌───┤         │        │ │ │ │      │         │            │
-//! │   └────┬────┘        │ │ │ │      └────┬────┘            │
-//! │ block  │             │ │ │ │           │                 │
-//! │        │ timeout     │ ▼ │ │           │ redeem,         │
-//! │        │        ┌────┴─────┴───┐       │ block timeout   │
-//! │        │        │              │       │                 │
-//! │        └───────►│  Connecting  │◄──────┘                 │
-//! │                 │              │                         │
-//! │                 └─────┬────┬───┘                         │
-//! │                       │ ▲  │                             │
-//! │               success │ │  │ detect                      │
-//! │                       │ │  │      ┌──────────┐           │
-//! │ ┌───────────┐         │ │  │      │          │  block    │
-//! │ │           │◄────────┘ │  │      │ Loopback ├───────────┤
-//! │ │ Connected │           │  └─────►│          │           │
-//! │ │           │ dropped   │         └──────────┘           │
-//! │ └─────┬─────┴───────────┘                                │
-//! │       │                                                  │
-//! │       │ block                                            │
-//! └───────┴──────────────────────────────────────────────────┘
+//!     │ Waiting │◄───────┐ │ │ ┌─────►│ Blocked │◄──────────┐
+//! ┌───┤         │        │ │ │ │      │         │           │
+//! │   └────┬────┘        │ │ │ │      └────┬────┘           │
+//! │ block  │             │ │ │ │           │                │
+//! │        │ timeout     │ ▼ │ │           │ redeem,        │
+//! │        │        ┌────┴─────┴───┐       │ block timeout  │
+//! │        │        │              │       │                │
+//! │        └───────►│  Connecting  │◄──────┘                │
+//! │                 │              │                        │
+//! │                 └─────┬────┬───┘                        │
+//! │                       │ ▲  │                            │
+//! │               success │ │  │ detect                     │
+//! │                       │ │  │      ┌──────────┐          │
+//! │ ┌───────────┐         │ │  │      │          │          │
+//! │ │           │◄────────┘ │  │      │ Loopback │          │
+//! │ │ Connected │           │  └─────►│          │          │
+//! │ │           │ dropped   │         └──────────┘          │
+//! │ └─────┬─────┴───────────┘                               │
+//! │       │                                                 │
+//! │       │ block                                           │
+//! └───────┴─────────────────────────────────────────────────┘
 //! ```
 
 use std::{
@@ -1087,7 +1087,49 @@ mod tests {
         assert_eq!(manager.get_route(id_b), Some(&77));
     }
 
-    // TODO: doesn't crash on random input
+    #[test]
+    fn loopback_handled_correctly() {
+        init_logging();
 
-    // TODO: blocks loopback
+        let mut dialer = TestDialer::default();
+
+        let loopback_addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+
+        let mut manager = OutgoingManager::<TestDialer>::new(test_config());
+
+        // Loopback addresses are connected to only once, and then marked as loopback forever.
+        manager.learn_addr(&mut dialer, loopback_addr, false);
+        assert_eq!(dialer.connects(), &vec![loopback_addr]);
+
+        dialer.clear();
+        manager.handle_dial_outcome(
+            &mut dialer,
+            DialOutcome::Loopback {
+                addr: loopback_addr,
+            },
+        );
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        // Learning loopbacks again should not trigger another connection
+        manager.learn_addr(&mut dialer, loopback_addr, false);
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        // Blocking loopbacks does not result in a block, since regular blocks would clear after
+        // some time.
+        manager.block_addr(&mut dialer, loopback_addr, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+
+        FakeClock::advance_time(1_000_000_000);
+
+        manager.perform_housekeeping(&mut dialer, FakeClock::now());
+        assert!(dialer.connects().is_empty());
+        assert!(dialer.disconnects().is_empty());
+    }
 }
