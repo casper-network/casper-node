@@ -80,6 +80,10 @@
 //!
 //! Should a dial attempt exceed a certain timeout, it is considered failed and put into the waiting
 //! state again.
+//!
+//! If a conflict (multiple successful dial results) occurs, the more recent connection takes
+//! precedence over the previous one. This prevents problems when a notification of a terminated
+//! connection is overtaken by the new connection announcement.
 //! ```
 
 use std::{
@@ -555,7 +559,10 @@ where
                     }
                 }
 
-                OutgoingState::Connecting { since, failures_so_far } => {
+                OutgoingState::Connecting {
+                    since,
+                    failures_so_far,
+                } => {
                     let timeout = since + self.config.sweep_timeout;
                     if now >= timeout {
                         // The outer component has not called us with a `DialOutcome` in a
@@ -1178,7 +1185,6 @@ mod tests {
 
         // Blocking loopbacks does not result in a block, since regular blocks would clear after
         // some time.
-
         assert!(manager
             .block_addr(loopback_addr, FakeClock::now())
             .is_none());
@@ -1188,7 +1194,7 @@ mod tests {
         assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
     }
 
-    // #[test]
+    #[test]
     fn connected_peers_works() {
         init_logging();
 
@@ -1223,5 +1229,63 @@ mod tests {
         expected.sort();
 
         assert_eq!(peer_ids, expected);
+    }
+
+    #[test]
+    fn sweeping_works() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+
+        let id_a = NodeId::random_tls(&mut rng);
+
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
+
+        // Trigger a new connection via learning an address.
+        assert!(dials(
+            addr_a,
+            &manager.learn_addr(addr_a, false, FakeClock::now())
+        ));
+
+        // We now let enough time pass to cause the connection to be considered failed aborted.
+        // No effects are expected at this point.
+        FakeClock::advance_time(50_000);
+        assert!(manager.perform_housekeeping(FakeClock::now()).is_empty());
+
+        // The connection will now experience a regular failure. Since this is the first connection
+        // failure, it should reconnect after 2 seconds.
+        FakeClock::advance_time(2_000);
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(FakeClock::now())
+        ));
+
+        // We now simulate the second connection (`handle: 2`) succeeding first, after 1 second.
+        FakeClock::advance_time(1_000);
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Successful {
+                addr: addr_a,
+                handle: 2,
+                node_id: id_a,
+            })
+            .is_none());
+
+        // A route should now be established.
+        assert_eq!(manager.get_route(id_a), Some(&2));
+
+        // More time passes and the first connection attempt finally finishes.
+        FakeClock::advance_time(30_000);
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Successful {
+                addr: addr_a,
+                handle: 1,
+                node_id: id_a,
+            })
+            .is_none());
+
+        // We now expect to be connected through the first connection (see documentation).
+        assert_eq!(manager.get_route(id_a), Some(&1));
     }
 }
