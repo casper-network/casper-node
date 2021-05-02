@@ -91,21 +91,23 @@ use super::{display_error, NodeId};
 
 /// An outgoing connection/address in various states.
 #[derive(DataSize, Debug)]
-pub struct Outgoing<D>
+pub struct Outgoing<H, E>
 where
-    D: Dialer,
+    H: DataSize,
+    E: DataSize,
 {
     /// Whether or not the address is unforgettable, see `learn_addr` for details.
     is_unforgettable: bool,
     /// The current state the connection/address is in.
-    state: OutgoingState<D>,
+    state: OutgoingState<H, E>,
 }
 
 /// Active state for a connection/address.
 #[derive(DataSize, Debug)]
-pub enum OutgoingState<D>
+pub enum OutgoingState<H, E>
 where
-    D: Dialer,
+    H: DataSize,
+    E: DataSize,
 {
     /// The outgoing address has been known for the first time and we are currently connecting.
     Connecting {
@@ -117,7 +119,7 @@ where
         /// Number of attempts that failed, so far.
         failures_so_far: u8,
         /// The most recent connection error.
-        error: D::Error,
+        error: E,
         /// The precise moment when the last connection attempt failed.
         last_failure: Instant,
     },
@@ -128,7 +130,7 @@ where
         /// Handle to a communication channel that can be used to send data to the peer.
         ///
         /// Can be a channel to decouple sending, or even a direct connection handle.
-        handle: D::Handle,
+        handle: H,
     },
     /// The address was blocked and will not be retried.
     Blocked { since: Instant },
@@ -136,9 +138,10 @@ where
     Loopback,
 }
 
-impl<D> Display for OutgoingState<D>
+impl<H, E> Display for OutgoingState<H, E>
 where
-    D: Dialer,
+    H: DataSize,
+    E: DataSize,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -157,16 +160,13 @@ where
 
 /// The result of dialing `SocketAddr`.
 #[derive(Debug)]
-pub enum DialOutcome<D>
-where
-    D: Dialer,
-{
+pub enum DialOutcome<H, E> {
     /// A connection was successfully established.
     Successful {
         /// The address dialed.
         addr: SocketAddr,
         /// A handle to send data down the connection.
-        handle: D::Handle,
+        handle: H,
         /// The remote peer's authenticated node ID.
         node_id: NodeId,
     },
@@ -175,7 +175,7 @@ where
         /// The address dialed.
         addr: SocketAddr,
         /// The error encountered while dialing.
-        error: D::Error,
+        error: E,
         /// The moment the connection attempt failed.
         when: Instant,
     },
@@ -186,10 +186,7 @@ where
     },
 }
 
-impl<D> DialOutcome<D>
-where
-    D: Dialer,
-{
+impl<H, E> DialOutcome<H, E> {
     /// Retrieves the socket address from the `DialOutcome`.
     fn addr(&self) -> SocketAddr {
         match self {
@@ -200,31 +197,23 @@ where
     }
 }
 
-/// A connection dialer.
-pub trait Dialer {
-    /// The type of handle this dialer produces. This module does not interact with handles, but
-    /// makes them available on request to other parts.
-    type Handle: DataSize + Clone + Debug;
-
-    /// The error produced by the `Dialer` when a connection fails.
-    type Error: DataSize + Debug + Display + Error + Sized;
-
+/// A request made for dialing.
+#[derive(Clone, Debug)]
+#[must_use]
+pub(crate) enum DialRequest<H> {
     /// Attempt to connect to the outgoing socket address.
     ///
-    /// For every time this function is called, there must be a corresponding call to
+    /// For every time this request is emitted, there must be a corresponding call to
     /// `handle_dial_outcome` eventually.
-    ///
-    /// The caller is responsible for ensuring that there is always only one `connect_outgoing` call
-    /// that has not been answered by `handle_dial_outcome` for every `addr`.
     ///
     /// Any logging of connection issues should be done in the context of `span` for better log
     /// output.
-    fn connect_outgoing(&self, span: Span, addr: SocketAddr);
+    Dial { addr: SocketAddr, span: Span },
 
     /// Disconnects a potentially existing connection.
     ///
     /// Used when a peer has been blocked or should be disconnected for other reasons.
-    fn disconnect_outgoing(&self, span: Span, handle: Self::Handle);
+    Disconnect { handle: H, span: Span },
 }
 
 #[derive(DataSize, Debug)]
@@ -262,14 +251,15 @@ impl OutgoingConfig {
 ///
 /// See the module documentation for usage suggestions.
 #[derive(DataSize, Debug, Default)]
-pub struct OutgoingManager<D>
+pub struct OutgoingManager<H, E>
 where
-    D: Dialer,
+    H: DataSize,
+    E: DataSize,
 {
     /// Outgoing connections subsystem configuration.
     config: OutgoingConfig,
     /// Mapping of address to their current connection state.
-    outgoing: HashMap<SocketAddr, Outgoing<D>>,
+    outgoing: HashMap<SocketAddr, Outgoing<H, E>>,
     /// Routing table.
     ///
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
@@ -277,9 +267,10 @@ where
     routes: HashMap<NodeId, SocketAddr>,
 }
 
-impl<D> OutgoingManager<D>
+impl<H, E> OutgoingManager<H, E>
 where
-    D: Dialer,
+    H: DataSize,
+    E: DataSize,
 {
     /// Creates a new outgoing manager.
     pub(crate) fn new(config: OutgoingConfig) -> Self {
@@ -293,7 +284,11 @@ where
 
 /// Creates a logging span for a specific connection.
 #[inline]
-fn mk_span<D: Dialer>(addr: SocketAddr, outgoing: Option<&Outgoing<D>>) -> Span {
+fn mk_span<H, E>(addr: SocketAddr, outgoing: Option<&Outgoing<H, E>>) -> Span
+where
+    H: DataSize,
+    E: DataSize,
+{
     // Note: The jury is still out on whether we want to create a single span per connection and
     // cache it, or create a new one (with the same connection ID) each time this is called. The
     // advantage of the former is external tools have it easier correlating all related
@@ -312,9 +307,10 @@ fn mk_span<D: Dialer>(addr: SocketAddr, outgoing: Option<&Outgoing<D>>) -> Span 
     }
 }
 
-impl<D> OutgoingManager<D>
+impl<H, E> OutgoingManager<H, E>
 where
-    D: Dialer,
+    H: DataSize + Clone,
+    E: DataSize + Error,
 {
     /// Changes the state of an outgoing connection.
     ///
@@ -323,8 +319,8 @@ where
     fn change_outgoing_state(
         &mut self,
         addr: SocketAddr,
-        mut new_state: OutgoingState<D>,
-    ) -> &mut Outgoing<D> {
+        mut new_state: OutgoingState<H, E>,
+    ) -> &mut Outgoing<H, E> {
         let (prev_state, new_outgoing) = match self.outgoing.entry(addr) {
             Entry::Vacant(vacant) => {
                 let inserted = vacant.insert(Outgoing {
@@ -375,7 +371,7 @@ where
     ///
     /// Primary function to send data to peers; clients retrieve a handle to it which can then
     /// be used to send data.
-    pub(crate) fn get_route(&self, peer_id: NodeId) -> Option<&D::Handle> {
+    pub(crate) fn get_route(&self, peer_id: NodeId) -> Option<&H> {
         let outgoing = self.outgoing.get(self.routes.get(&peer_id)?)?;
 
         if let OutgoingState::Connected { ref handle, .. } = outgoing.state {
@@ -396,16 +392,20 @@ where
     ///
     /// A connection marked `unforgettable` will never be evicted but reset instead when it exceeds
     /// the retry limit.
-    pub(crate) fn learn_addr(&mut self, dialer: &mut D, addr: SocketAddr, unforgettable: bool) {
+    pub(crate) fn learn_addr(
+        &mut self,
+        addr: SocketAddr,
+        unforgettable: bool,
+    ) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
-        span.clone().in_scope(move || {
-            match self.outgoing.entry(addr) {
+        span.clone()
+            .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Occupied(_) => {
                     debug!("ignoring already known address");
+                    None
                 }
                 Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
-                    dialer.connect_outgoing(span, addr);
                     let outgoing = self.change_outgoing_state(
                         addr,
                         OutgoingState::Connecting { failures_so_far: 0 },
@@ -414,15 +414,15 @@ where
                         outgoing.is_unforgettable = unforgettable;
                         debug!(unforgettable, "marked");
                     }
+                    Some(DialRequest::Dial { addr, span })
                 }
-            };
-        })
+            })
     }
 
     /// Blocks an address.
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr(&mut self, dialer: &mut D, addr: SocketAddr, now: Instant) {
+    pub(crate) fn block_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.clone()
@@ -430,58 +430,65 @@ where
                 Entry::Vacant(_vacant) => {
                     info!("address blocked");
                     self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                    None
                 }
                 // TODO: Check what happens on close on our end, i.e. can we distinguish in logs
                 // between a closed connection on our end vs one that failed?
                 Entry::Occupied(occupied) => match occupied.get().state {
                     OutgoingState::Blocked { .. } => {
                         debug!("already blocking address");
+                        None
                     }
                     OutgoingState::Loopback => {
                         warn!("requested to block ourselves, refusing to do so");
+                        None
                     }
                     OutgoingState::Connected { ref handle, .. } => {
                         info!("will disconnect peer after it has been blocked");
-                        dialer.disconnect_outgoing(span, handle.clone());
+                        let handle = handle.clone();
                         self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                        Some(DialRequest::Disconnect { span, handle })
                     }
                     _ => {
                         info!("address blocked");
                         self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                        None
                     }
                 },
-            });
+            })
     }
 
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
-    pub(crate) fn redeem_addr(&mut self, dialer: &mut D, addr: SocketAddr) {
+    pub(crate) fn redeem_addr(&mut self, addr: SocketAddr) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_) => {
                     debug!("ignoring redemption of unknown address");
+                    None
                 }
                 Entry::Occupied(occupied) => match occupied.get().state {
                     OutgoingState::Blocked { .. } => {
-                        dialer.connect_outgoing(span, addr);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Connecting { failures_so_far: 0 },
                         );
+                        Some(DialRequest::Dial { addr, span })
                     }
                     _ => {
                         debug!("ignoring redemption of address that is not blocked");
+                        None
                     }
                 },
-            });
+            })
     }
 
     /// Performs housekeeping like reconnection or unblocking peers.
     ///
     /// This function must periodically be called. A good interval is every second.
-    fn perform_housekeeping(&mut self, dialer: &mut D, now: Instant) {
+    fn perform_housekeeping(&mut self, now: Instant) -> Vec<DialRequest<H>> {
         let mut to_forget = Vec::new();
         let mut to_reconnect = Vec::new();
 
@@ -545,20 +552,25 @@ where
         // Reconnect all others.
         to_reconnect
             .into_iter()
-            .for_each(|(addr, failures_so_far)| {
+            .map(|(addr, failures_so_far)| {
                 let span = mk_span(addr, self.outgoing.get(&addr));
-                dialer.connect_outgoing(span.clone(), addr);
 
-                span.in_scope(|| {
+                span.clone().in_scope(|| {
                     self.change_outgoing_state(addr, OutgoingState::Connecting { failures_so_far })
                 });
+
+                DialRequest::Dial { addr, span }
             })
+            .collect()
     }
 
     /// Handles the outcome of a dialing attempt.
     ///
     /// Note that reconnects will earliest happen on the next `perform_housekeeping` call.
-    pub(crate) fn handle_dial_outcome(&mut self, dialer: &mut D, dial_outcome: DialOutcome<D>) {
+    pub(crate) fn handle_dial_outcome(
+        &mut self,
+        dial_outcome: DialOutcome<H, E>,
+    ) -> Option<DialRequest<H>> {
         let addr = dial_outcome.addr();
         let span = mk_span(addr, self.outgoing.get(&addr));
 
@@ -577,8 +589,12 @@ where
                     Some(Outgoing{
                         state: OutgoingState::Blocked { .. }, ..
                     }) => {
-                        dialer.disconnect_outgoing(span, handle);
+                        Some(DialRequest::Disconnect{
+                            handle, span
+                        })
                     },
+
+                    // Otherwise, just record the connected state.
                     _ => {
                         self.change_outgoing_state(
                             addr ,
@@ -587,9 +603,11 @@ where
                                 handle,
                             },
                         );
+                        None
                     }
                 }
             }
+
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
 
@@ -603,6 +621,7 @@ where
                                 last_failure: when,
                             },
                         );
+                        None
                     } else {
                         warn!(
                             "processing dial outcome on a connection that was not marked as connecting"
@@ -615,6 +634,7 @@ where
                                 last_failure: when,
                             },
                         );
+                        None
                     }
                 } else {
                     warn!("processing dial outcome non-existent connection");
@@ -626,19 +646,21 @@ where
                             last_failure: when,
                         },
                     );
+                    None
                 }
             }
             DialOutcome::Loopback { addr } => {
                 info!("found loopback address");
                 self.change_outgoing_state(addr, OutgoingState::Loopback);
+                None
             }
-        });
+        })
     }
 
     /// Notifies the connection manager about a dropped connection.
     ///
     /// This will usually result in an immediate reconnection.
-    pub(crate) fn handle_connection_drop(&mut self, dialer: &mut D, addr: SocketAddr) {
+    pub(crate) fn handle_connection_drop(&mut self, addr: SocketAddr) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
 
         span.clone().in_scope(move || {
@@ -649,25 +671,28 @@ where
                     | OutgoingState::Connecting { .. } => {
                         // We should, under normal circumstances, not receive drop notifications for
                         // any of these. Connection failures are handled by the dialer.
-                        warn!("unexpected drop notification")
+                        warn!("unexpected drop notification");
+                        None
                     }
                     OutgoingState::Connected { .. } => {
                         // Drop the handle, immediately initiate a reconnection.
-                        dialer.connect_outgoing(span, addr);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Connecting { failures_so_far: 0 },
                         );
+                        Some(DialRequest::Dial { addr, span })
                     }
                     OutgoingState::Blocked { .. } => {
                         // Blocked addresses ignore connection drops.
-                        debug!("received drop notification for blocked connection")
+                        debug!("received drop notification for blocked connection");
+                        None
                     }
                 }
             } else {
-                warn!("received connection drop notification for unknown connection")
+                warn!("received connection drop notification for unknown connection");
+                None
             }
-        });
+        })
     }
 }
 
