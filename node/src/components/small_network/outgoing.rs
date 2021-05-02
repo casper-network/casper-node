@@ -79,6 +79,7 @@ use std::{
     time::Duration,
 };
 
+use datasize::DataSize;
 #[cfg(test)]
 use fake_instant::FakeClock as Instant;
 #[cfg(not(test))]
@@ -89,8 +90,8 @@ use tracing::{debug, error_span, info, trace, warn, Span};
 use super::{display_error, NodeId};
 
 /// An outgoing connection/address in various states.
-#[derive(Debug)]
-struct Outgoing<D>
+#[derive(DataSize, Debug)]
+pub struct Outgoing<D>
 where
     D: Dialer,
 {
@@ -101,8 +102,8 @@ where
 }
 
 /// Active state for a connection/address.
-#[derive(Debug)]
-enum OutgoingState<D>
+#[derive(DataSize, Debug)]
+pub enum OutgoingState<D>
 where
     D: Dialer,
 {
@@ -156,7 +157,7 @@ where
 
 /// The result of dialing `SocketAddr`.
 #[derive(Debug)]
-pub(crate) enum DialOutcome<D>
+pub enum DialOutcome<D>
 where
     D: Dialer,
 {
@@ -200,13 +201,13 @@ where
 }
 
 /// A connection dialer.
-pub(crate) trait Dialer {
+pub trait Dialer {
     /// The type of handle this dialer produces. This module does not interact with handles, but
     /// makes them available on request to other parts.
-    type Handle: Clone + Debug;
+    type Handle: DataSize + Clone + Debug;
 
     /// The error produced by the `Dialer` when a connection fails.
-    type Error: Debug + Display + Error + Sized;
+    type Error: DataSize + Debug + Display + Error + Sized;
 
     /// Attempt to connect to the outgoing socket address.
     ///
@@ -226,9 +227,9 @@ pub(crate) trait Dialer {
     fn disconnect_outgoing(&self, span: Span, handle: Self::Handle);
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 /// Connection settings for the outgoing connection manager.
-pub(crate) struct OutgoingConfig {
+pub struct OutgoingConfig {
     /// The maximum number of attempts before giving up and forgetting an address, if permitted.
     pub(crate) retry_attempts: u8,
     /// The basic time slot for exponential backoff when reconnecting.
@@ -260,8 +261,8 @@ impl OutgoingConfig {
 /// Manager of outbound connections.
 ///
 /// See the module documentation for usage suggestions.
-#[derive(Debug, Default)]
-pub(crate) struct OutgoingManager<D>
+#[derive(DataSize, Debug, Default)]
+pub struct OutgoingManager<D>
 where
     D: Dialer,
 {
@@ -669,6 +670,7 @@ where
 mod tests {
     use std::{cell::RefCell, net::SocketAddr, time::Duration};
 
+    use datasize::DataSize;
     use fake_instant::FakeClock;
     use thiserror::Error;
     use tracing::Span;
@@ -727,7 +729,7 @@ mod tests {
     /// Error for test dialer.
     ///
     /// Tracks a configurable id for the error.
-    #[derive(Debug, Error)]
+    #[derive(DataSize, Debug, Error)]
     #[error("test dialer error({})", id)]
     struct TestDialerError {
         id: u32,
