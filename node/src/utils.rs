@@ -9,6 +9,8 @@ pub mod pid_file;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
+#[cfg(test)]
+pub mod test_clock;
 
 use std::{
     any,
