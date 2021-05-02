@@ -6,36 +6,24 @@ use std::{
 use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::types::Timestamp;
-
 pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
 impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
 
 /// A validator identifier.
-pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash + Send + DataSize {}
-impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize {}
+pub trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display {}
+impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display
+{}
 
 /// The consensus value type, e.g. a list of transactions.
-pub(crate) trait ConsensusValueT:
+pub trait ConsensusValueT:
     Eq + Clone + Debug + Hash + Serialize + DeserializeOwned + Send + DataSize
 {
-    type Hash: HashT;
-
-    /// Returns hash of self.
-    fn hash(&self) -> Self::Hash;
-
     /// Returns whether the consensus value needs validation.
     fn needs_validation(&self) -> bool;
-
-    /// Returns the value's timestamp.
-    fn timestamp(&self) -> Timestamp;
-
-    /// Returns the parent value, or `None` if this is the first block in this era.
-    fn parent(&self) -> Option<&Self::Hash>;
 }
 
 /// A hash, as an identifier for a block or unit.
-pub(crate) trait HashT:
+pub trait HashT:
     Eq + Ord + Copy + Clone + DataSize + Debug + Display + Hash + Serialize + DeserializeOwned + Send
 {
 }
@@ -55,7 +43,7 @@ impl<H> HashT for H where
 }
 
 /// A validator's secret signing key.
-pub(crate) trait ValidatorSecret: Send + DataSize {
+pub trait ValidatorSecret: Send + DataSize {
     type Hash: DataSize;
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned + DataSize;
@@ -66,7 +54,7 @@ pub(crate) trait ValidatorSecret: Send + DataSize {
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
 // TODO: These trait bounds make `#[derive(...)]` work for types with a `C: Context` type
 // parameter. Split this up or replace the derives with explicit implementations.
-pub(crate) trait Context: Clone + DataSize + Debug + Eq + Ord + Hash + Send {
+pub trait Context: Clone + DataSize + Debug + Eq + Ord + Hash + Send {
     /// The consensus value type, e.g. a list of transactions.
     type ConsensusValue: ConsensusValueT;
     /// Unique identifiers for validators.

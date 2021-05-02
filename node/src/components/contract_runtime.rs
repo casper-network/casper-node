@@ -143,12 +143,11 @@ pub struct ContractRuntime {
 
     protocol_version: ProtocolVersion,
 
-    /// A mapping from proto block to executed block's ID and post-state hash, to allow
+    /// A mapping from block height to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
     /// The key is a tuple of block's height (it's a linear chain so it's monotonically
-    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block which is
-    /// created from that proto block.
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block.
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
@@ -326,7 +325,7 @@ where
                         upgrade_config,
                         responder,
                     } => {
-                        trace!(?upgrade_config, "upgrade");
+                        debug!(?upgrade_config, "upgrade");
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         async move {
@@ -337,7 +336,7 @@ where
                             metrics
                                 .commit_upgrade
                                 .observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "upgrade result");
+                            debug!(?result, "upgrade result");
                             responder.respond(result).await
                         }
                         .ignore()
@@ -606,20 +605,25 @@ where
                         parent_summary,
                     )
                 }
-
                 ContractRuntimeResult::RunStepResult { mut state, result } => {
                     trace!(?result, "run step result");
                     match result {
                         Ok(StepResult::Success {
                             post_state_hash,
                             next_era_validators,
+                            execution_effect,
                         }) => {
                             state.state_root_hash = post_state_hash.into();
-                            self.finalize_block_execution(
+                            let era_id = state.finalized_block.era_id();
+                            let mut effects = effect_builder
+                                .announce_step_success(era_id, execution_effect)
+                                .ignore();
+                            effects.extend(self.finalize_block_execution(
                                 effect_builder,
                                 state,
                                 Some(next_era_validators),
-                            )
+                            ));
+                            effects
                         }
                         _ => {
                             // When step fails, the auction process is broken and we should panic.
@@ -677,7 +681,7 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new();
+        let engine_config = EngineConfig::new(contract_runtime_config.max_query_depth());
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
@@ -735,16 +739,19 @@ impl ContractRuntime {
     /// When transitioning from `joiner` to `validator` states we need
     /// to carry over the last finalized block so that the next blocks in the linear chain
     /// have the state to build on.
-    pub(crate) fn set_parent_map_from_block(&mut self, lfb: Option<Block>) {
-        let parent_map = lfb
+    pub(crate) fn set_parent_map_from_block(
+        &mut self,
+        maybe_last_finalized_block_header: Option<BlockHeader>,
+    ) {
+        let parent_map = maybe_last_finalized_block_header
             .into_iter()
-            .map(|block| {
+            .map(|block_header| {
                 (
-                    block.height(),
+                    block_header.height(),
                     ExecutedBlockSummary {
-                        hash: *block.hash(),
-                        state_root_hash: *block.state_root_hash(),
-                        accumulated_seed: block.header().accumulated_seed(),
+                        hash: block_header.hash(),
+                        state_root_hash: *block_header.state_root_hash(),
+                        accumulated_seed: block_header.accumulated_seed(),
                     },
                 )
             })

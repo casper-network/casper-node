@@ -47,7 +47,8 @@ use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock, TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
+        TimeDiff,
     },
     NodeRng,
 };
@@ -503,6 +504,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
+    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
+        match self.state {
+            State::SyncingTrustedHash { latest_block, .. } => latest_block.map(Block::take_header),
+            State::SyncingDescendants { latest_block, .. } => Some(latest_block.take_header()),
+            State::Done(maybe_latest_block) => {
+                maybe_latest_block.map(|latest_block| latest_block.take_header())
+            }
+            State::None => None,
+        }
+    }
+
     fn should_upgrade(&self, era_id: EraId) -> bool {
         match self.next_upgrade_activation_point {
             None => false,
@@ -826,11 +838,10 @@ fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    let block_timestamp = block.header().timestamp();
     effect_builder
-        .validate_block(peer.clone(), block, block_timestamp)
-        .event(move |(found, block)| {
-            if found {
+        .validate_block(peer.clone(), block.clone())
+        .event(move |valid| {
+            if valid {
                 Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))
             } else {
                 Event::GetDeploysResult(DeploysResult::NotFound(Box::new(block), peer))

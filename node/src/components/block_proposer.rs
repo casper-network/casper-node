@@ -17,26 +17,27 @@ use std::{
     time::Duration,
 };
 
+use casper_types::PublicKey;
 pub use config::Config;
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::{self, Registry};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     components::Component,
     effect::{
-        requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
+        requests::{BlockPayloadRequest, BlockProposerRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Chainspec, DeployHash, DeployHeader, ProtoBlock, Timestamp,
+        BlockPayload, Chainspec, DeployHash, DeployHeader, Timestamp,
     },
     NodeRng,
 };
-pub(crate) use deploy_sets::BlockProposerDeploySets;
+use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
 
@@ -69,7 +70,7 @@ type FinalizationQueue = HashMap<BlockHeight, Vec<DeployHash>>;
 /// A queue of requests we can't respond to yet, because we aren't up to date on finalized blocks.
 /// The key is the height of the next block we will expect to be finalized at the point when we can
 /// fulfill the corresponding requests.
-type RequestQueue = HashMap<BlockHeight, Vec<ProtoBlockRequest>>;
+type RequestQueue = HashMap<BlockHeight, Vec<BlockPayloadRequest>>;
 
 /// Current operational state of a block proposer.
 #[derive(DataSize, Debug)]
@@ -79,8 +80,6 @@ enum BlockProposerState {
     Initializing {
         /// Events cached pending transition to `Ready` state when they can be handled.
         pending: Vec<Event>,
-        /// The key under which this component's state is cached in storage.
-        state_key: Vec<u8>,
         /// The deploy config from the current chainspec.
         deploy_config: DeployConfig,
         /// The configuration, containing local settings for deploy selection
@@ -103,8 +102,6 @@ impl BlockProposer {
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
     {
         debug!(%next_finalized_block, "creating block proposer");
-        // load the state from storage or use a fresh instance if loading fails.
-        let state_key = deploy_sets::create_storage_key(chainspec);
         let effects = effect_builder
             .get_finalized_deploys(chainspec.deploy_config.max_ttl)
             .event(move |finalized_deploys| Event::Loaded {
@@ -115,7 +112,6 @@ impl BlockProposer {
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
                 pending: Vec::new(),
-                state_key,
                 deploy_config: chainspec.deploy_config,
                 local_config,
             },
@@ -148,7 +144,6 @@ where
             (
                 BlockProposerState::Initializing {
                     ref mut pending,
-                    state_key,
                     deploy_config,
                     local_config,
                 },
@@ -164,7 +159,6 @@ where
                     ),
                     unhandled_finalized: Default::default(),
                     deploy_config: *deploy_config,
-                    state_key: state_key.clone(),
                     request_queue: Default::default(),
                     local_config: local_config.clone(),
                 };
@@ -218,8 +212,6 @@ struct BlockProposerReady {
     unhandled_finalized: HashSet<DeployHash>,
     /// We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
-    /// Key for storing the block proposer state.
-    state_key: Vec<u8>,
     /// The queue of requests awaiting being handled.
     request_queue: RequestQueue,
     /// The block proposer configuration, containing local settings for selecting deploys.
@@ -236,11 +228,10 @@ impl BlockProposerReady {
         REv: Send + From<StateStoreRequest>,
     {
         match event {
-            Event::Request(BlockProposerRequest::RequestProtoBlock(request)) => {
+            Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
-                    debug!(
-                        request_next_finalized = %request.next_finalized,
-                        self_next_finalized = %self.sets.next_finalized,
+                    warn!(
+                        %request.next_finalized, %self.sets.next_finalized,
                         "received request before finalization announcement"
                     );
                     self.request_queue
@@ -249,13 +240,14 @@ impl BlockProposerReady {
                         .push(request);
                     Effects::new()
                 } else {
-                    info!(%request.next_finalized, "proposing a proto block");
+                    info!(%request.next_finalized, "proposing a block payload");
                     request
                         .responder
-                        .respond(self.propose_proto_block(
+                        .respond(self.propose_block_payload(
                             self.deploy_config,
                             request.current_instant,
                             request.past_deploys,
+                            request.accusations,
                             request.random_bit,
                         ))
                         .ignore()
@@ -284,9 +276,8 @@ impl BlockProposerReady {
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {
-                    debug!(
-                        %height,
-                        next_finalized = %self.sets.next_finalized,
+                    warn!(
+                        %height, next_finalized = %self.sets.next_finalized,
                         "received finalized blocks out of order; queueing"
                     );
                     // safe to subtract 1 - height will never be 0 in this branch, because
@@ -384,10 +375,11 @@ impl BlockProposerReady {
                 .flat_map(|request| {
                     request
                         .responder
-                        .respond(self.propose_proto_block(
+                        .respond(self.propose_block_payload(
                             self.deploy_config,
                             request.current_instant,
                             request.past_deploys,
+                            request.accusations,
                             request.random_bit,
                         ))
                         .ignore()
@@ -407,13 +399,14 @@ impl BlockProposerReady {
     }
 
     /// Returns a list of candidates for inclusion into a block.
-    fn propose_proto_block(
+    fn propose_block_payload(
         &mut self,
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
         past_deploys: HashSet<DeployHash>,
+        accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> ProtoBlock {
+    ) -> BlockPayload {
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
         // We prioritize transfers over deploys, so we try to include them first.
@@ -477,7 +470,7 @@ impl BlockProposerReady {
             }
         }
 
-        appendable_block.into_proto_block(random_bit)
+        appendable_block.into_block_payload(accusations, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.

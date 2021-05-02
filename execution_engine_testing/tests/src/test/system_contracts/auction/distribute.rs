@@ -1438,7 +1438,7 @@ fn should_distribute_delegation_rate_half() {
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
 
-    const VALIDATOR_1_DELGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
     // Validator share
     let validator_share = Ratio::new(U512::from(2), U512::from(3));
@@ -1493,7 +1493,7 @@ fn should_distribute_delegation_rate_half() {
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
-            ARG_DELEGATION_RATE => VALIDATOR_1_DELGATION_RATE,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )

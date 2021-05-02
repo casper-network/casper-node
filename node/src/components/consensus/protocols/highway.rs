@@ -24,7 +24,9 @@ use casper_types::{system::auction::BLOCK_REWARD, U512};
 use crate::{
     components::consensus::{
         config::{Config, ProtocolConfig},
-        consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome, ProtocolOutcomes},
+        consensus_protocol::{
+            BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
+        },
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
@@ -74,7 +76,7 @@ where
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
-    pending_values: HashMap<<C::ConsensusValue as ConsensusValueT>::Hash, Vec<ValidVertex<C>>>,
+    pending_values: HashMap<ProposedBlock<C>, Vec<ValidVertex<C>>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
@@ -90,6 +92,8 @@ where
     standstill_timeout: TimeDiff,
     /// Log inactive or faulty validators periodically, with this interval.
     log_participation_interval: TimeDiff,
+    /// Whether to log the size of every incoming and outgoing serialized unit.
+    log_unit_sizes: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -139,13 +143,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
-            .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time))
+            .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time.max(now)))
             .unwrap_or_else(|| {
                 RoundSuccessMeter::new(
                     highway_config.minimum_round_exponent,
                     highway_config.minimum_round_exponent,
                     highway_config.maximum_round_exponent,
-                    era_start_time,
+                    era_start_time.max(now),
                     config.into(),
                 )
             });
@@ -202,6 +206,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
             log_participation_interval: config.highway.log_participation_interval,
+            log_unit_sizes: config.highway.log_unit_sizes,
         });
 
         (hw_proto, outcomes)
@@ -242,6 +247,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn process_av_effect(&mut self, effect: AvEffect<C>, now: Timestamp) -> ProtocolOutcomes<I, C> {
         match effect {
             AvEffect::NewVertex(vv) => {
+                self.log_unit_size(vv.inner(), "sending new unit");
                 self.calculate_round_exponent(&vv, now);
                 self.process_new_vertex(vv)
             }
@@ -251,19 +257,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     TIMER_ID_ACTIVE_VALIDATOR,
                 )]
             }
-            AvEffect::RequestNewBlock {
-                block_context,
-                fork_choice,
-            } => {
-                let parent_value = fork_choice
-                    .as_ref()
-                    .map(|hash| self.highway.state().block(hash).value.clone());
-                let past_values = self.non_finalized_values(fork_choice).cloned().collect();
-                vec![ProtocolOutcome::CreateNewBlock {
-                    block_context,
-                    past_values,
-                    parent_value,
-                }]
+            AvEffect::RequestNewBlock(block_context) => {
+                vec![ProtocolOutcome::CreateNewBlock(block_context)]
             }
             AvEffect::WeAreFaulty(fault) => {
                 error!("this validator is faulty: {:?}", fault);
@@ -333,7 +328,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             Err((pvv, err)) => {
                 info!(?pvv, ?err, "invalid vertex");
                 let vertices = vec![pvv.inner().id()];
-                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
+                let faulty_senders = self.synchronizer.invalid_vertices(vertices);
                 outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
                 return outcomes;
             }
@@ -346,33 +341,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         {
             let panorama = &swunit.wire_unit().panorama;
             let fork_choice = self.highway.state().fork_choice(panorama);
-            let parent_value =
-                fork_choice.map(|hash| self.highway.state().block(hash).value.hash());
-            // The timestamp and parent are currently duplicated: The information in the consensus
-            // value must match the information in the Highway DAG.
-            if timestamp != value.timestamp() || parent_value.as_ref() != value.parent() {
-                info!(
-                    timestamp = %value.timestamp(), consensus_timestamp = %timestamp,
-                    parent = ?value.parent(), consensus_parent = ?parent_value,
-                    "consensus value does not match vertex"
-                );
-                let vertices = vec![vv.inner().id()];
-                let faulty_senders = self.synchronizer.drop_dependent_vertices(vertices);
-                outcomes.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
-                return outcomes;
-            }
             if value.needs_validation() {
                 self.log_proposal(vertex, "requesting proposal validation");
                 let ancestor_values = self.ancestors(fork_choice).cloned().collect();
-                let consensus_value = value.clone();
+                let block_context = BlockContext::new(timestamp, ancestor_values);
+                let proposed_block = ProposedBlock::new(value.clone(), block_context);
                 self.pending_values
-                    .entry(value.hash())
+                    .entry(proposed_block.clone())
                     .or_default()
                     .push(vv);
                 outcomes.push(ProtocolOutcome::ValidateConsensusValue {
                     sender,
-                    consensus_value,
-                    ancestor_values,
+                    proposed_block,
                 });
                 return outcomes;
             } else {
@@ -416,6 +396,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
             return vec![];
         }
+        if self.highway.has_vertex(vv.inner()) {
+            return vec![];
+        }
+        self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
         // Check whether we should change the round exponent.
@@ -431,26 +415,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    fn next_era_round_succ_meter(&self, era_start_timestamp: Timestamp) -> RoundSuccessMeter<C> {
-        self.round_success_meter.next_era(era_start_timestamp)
-    }
-
-    /// Returns an iterator over all the values that are expected to become finalized, but are not
-    /// finalized yet.
-    fn non_finalized_values(
-        &self,
-        mut fork_choice: Option<C::Hash>,
-    ) -> impl Iterator<Item = &C::ConsensusValue> {
-        let last_finalized = self.finality_detector.last_finalized();
-        iter::from_fn(move || {
-            if fork_choice.as_ref() == last_finalized {
-                return None;
-            }
-            let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
-            let value = maybe_block.map(|block| &block.value);
-            fork_choice = maybe_block.and_then(|block| block.parent().cloned());
-            value
-        })
+    fn next_era_round_succ_meter(&self, timestamp: Timestamp) -> RoundSuccessMeter<C> {
+        self.round_success_meter.next_era(timestamp)
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
@@ -472,6 +438,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let instance_id = self.highway.instance_id();
         let participation = participation::Participation::new(&self.highway);
         info!(?participation, %instance_id, "validator participation");
+    }
+
+    /// If the `log_unit_sizes` flag is set and the vertex is a unit, logs its serialized size.
+    fn log_unit_size(&self, vertex: &Vertex<C>, log_msg: &str) {
+        if self.log_unit_sizes {
+            if let Some(hash) = vertex.unit_hash() {
+                let size = HighwayMessage::NewVertex(vertex.clone()).serialize().len();
+                info!(size, %hash, "{}", log_msg);
+            }
+        }
     }
 
     /// Returns whether the switch block has already been finalized.
@@ -546,7 +522,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -602,7 +578,7 @@ where
                     Err((_, err)) => {
                         trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
-                        let faulty_senders = self.synchronizer.drop_dependent_vertices(vec![v_id]);
+                        let faulty_senders = self.synchronizer.invalid_vertices(vec![v_id]);
                         return iter::once(ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
@@ -793,24 +769,24 @@ where
 
     fn propose(
         &mut self,
-        value: C::ConsensusValue,
-        block_context: BlockContext,
+        proposed_block: ProposedBlock<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
+        let (value, block_context) = proposed_block.destructure();
         let effects = self.highway.propose(value, block_context);
         self.process_av_effects(effects, now)
     }
 
     fn resolve_validity(
         &mut self,
-        value: &C::ConsensusValue,
+        proposed_block: ProposedBlock<C>,
         valid: bool,
         now: Timestamp,
     ) -> ProtocolOutcomes<I, C> {
         if valid {
             let mut outcomes = self
                 .pending_values
-                .remove(&value.hash())
+                .remove(&proposed_block)
                 .into_iter()
                 .flatten()
                 .flat_map(|vv| self.add_valid_vertex(vv, now))
@@ -821,8 +797,8 @@ where
         } else {
             // TODO: Slash proposer?
             // Drop vertices dependent on the invalid value.
-            let dropped_vertices = self.pending_values.remove(&value.hash());
-            warn!(?value, ?dropped_vertices, "consensus value is invalid");
+            let dropped_vertices = self.pending_values.remove(&proposed_block);
+            warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");
             let dropped_vertex_ids = dropped_vertices
                 .into_iter()
                 .flatten()
@@ -832,9 +808,7 @@ where
                 })
                 .collect();
             // recursively remove vertices depending on the dropped ones
-            let _faulty_senders = self
-                .synchronizer
-                .drop_dependent_vertices(dropped_vertex_ids);
+            let _faulty_senders = self.synchronizer.invalid_vertices(dropped_vertex_ids);
             // We don't disconnect from the faulty senders here: The block validator considers the
             // value "invalid" even if it just couldn't download the deploys, which could just be
             // because the original sender went offline.

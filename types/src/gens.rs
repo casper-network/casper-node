@@ -88,7 +88,6 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
         account_hash_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Withdraw),
-        era_id_arb().prop_map(Key::EraValidators),
     ]
 }
 

@@ -37,17 +37,18 @@ use casper_types::{
 use super::Responder;
 use crate::{
     components::{
+        block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
-    rpcs::chain::BlockIdentifier,
+    rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        NodeId, ProtoBlock, StatusFeed, TimeDiff, Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
+        Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
+        Item, NodeId, StatusFeed, TimeDiff, Timestamp,
     },
     utils::DisplayIter,
 };
@@ -62,7 +63,7 @@ const_assert!(_STATE_REQUEST_SIZE < 89);
 pub enum MetricsRequest {
     /// Render current node metrics as prometheus-formatted string.
     RenderNodeMetricsText {
-        /// Resopnder returning the rendered metrics or `None`, if an internal error occurred.
+        /// Responder returning the rendered metrics or `None`, if an internal error occurred.
         responder: Responder<Option<String>>,
     },
 }
@@ -482,7 +483,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct ProtoBlockRequest {
+pub struct BlockPayloadRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
     /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
@@ -492,10 +493,12 @@ pub struct ProtoBlockRequest {
     /// request was made. Block Proposer uses this in order to determine if there might be any
     /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
     pub(crate) next_finalized: u64,
-    /// Random bit with which to construct the `ProtoBlock` requested.
+    /// A list of validators reported as malicious in this block.
+    pub(crate) accusations: Vec<PublicKey>,
+    /// Random bit with which to construct the `BlockPayload` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<ProtoBlock>,
+    pub(crate) responder: Responder<BlockPayload>,
 }
 
 /// A `BlockProposer` request.
@@ -503,17 +506,18 @@ pub struct ProtoBlockRequest {
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
-    RequestProtoBlock(ProtoBlockRequest),
+    RequestBlockPayload(BlockPayloadRequest),
 }
 
 impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
+            BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                 current_instant,
                 past_deploys,
                 next_finalized,
                 responder: _,
+                accusations: _,
                 random_bit: _,
             }) => write!(
                 formatter,
@@ -693,6 +697,11 @@ pub enum RestRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
+    /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
+    GetRpcSchema {
+        /// Responder to call with the result
+        responder: Responder<OpenRpcSchema>,
+    },
 }
 
 impl<I> Display for RestRequest<I> {
@@ -700,6 +709,7 @@ impl<I> Display for RestRequest<I> {
         match self {
             RestRequest::GetStatus { .. } => write!(formatter, "get status"),
             RestRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            RestRequest::GetRpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }
@@ -914,21 +924,18 @@ impl<I, T: Item> Display for FetcherRequest<I, T> {
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub struct BlockValidationRequest<T, I> {
+pub struct BlockValidationRequest<I> {
     /// The block to be validated.
-    pub(crate) block: T,
+    pub(crate) block: ValidatingBlock,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: I,
     /// Responder to call with the result.
     ///
-    /// Indicates whether or not validation was successful and returns `block` unchanged.
-    pub(crate) responder: Responder<(bool, T)>,
-    /// A check will be performed against the deploys to ensure their timestamp is
-    /// older than or equal to the block itself.
-    pub(crate) block_timestamp: Timestamp,
+    /// Indicates whether or not validation was successful.
+    pub(crate) responder: Responder<bool>,
 }
 
-impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
+impl<I: Display> Display for BlockValidationRequest<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BlockValidationRequest { block, sender, .. } = self;
         write!(f, "validate block {} from {}", block, sender)

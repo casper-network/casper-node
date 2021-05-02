@@ -31,16 +31,19 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = 'secret_key.pem'
 
+
 # ===========================================
 # Configuration options for Highway consensus
 # ===========================================
 [consensus.highway]
+
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "../node-storage"
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '1min'
 
+# The period at which we will ask peers for their latest state.
 request_latest_state_timeout = '30sec'
 
 # If the current era's protocol state has not progressed for this long, shut down.
@@ -48,6 +51,9 @@ standstill_timeout = '5min'
 
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
+
+# Log the size of every incoming and outgoing serialized unit.
+log_unit_sizes = false
 
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
@@ -74,6 +80,7 @@ acceleration_parameter = 40
 # The required quorum in a summit we will look for to check if a round was successful is
 # determined by this FTT.
 acceleration_ftt = [1, 100]
+
 
 # ====================================
 # Configuration options for networking
@@ -121,9 +128,10 @@ initial_gossip_delay = '5s'
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
 
-# =============================================
+
+# ==================================================
 # Configuration options for the JSON-RPC HTTP server
-# =============================================
+# ==================================================
 [rpc_server]
 
 # Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
@@ -138,9 +146,10 @@ address = '0.0.0.0:7777'
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 100
 
-# =============================================
+
+# ==============================================
 # Configuration options for the REST HTTP server
-# =============================================
+# ==============================================
 [rest_server]
 
 # Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
@@ -155,9 +164,10 @@ address = '0.0.0.0:8888'
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 100
 
-# =============================================
+
+# ==========================================================
 # Configuration options for the SSE HTTP event stream server
-# =============================================
+# ==========================================================
 [event_stream_server]
 
 # Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
@@ -169,14 +179,12 @@ qps_limit = 100
 address = '0.0.0.0:9999'
 
 # The number of event stream events to buffer.
-event_stream_buffer_length = 100
-
-# The capacity of the broadcast channel size.
-broadcast_channel_size = 100
+event_stream_buffer_length = 5000
 
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 100
+
 
 # ===============================================
 # Configuration options for the storage component
@@ -219,6 +227,7 @@ max_deploy_metadata_store_size = 12_884_901_888
 # 10_737_418_240 == 10 GiB.
 max_state_store_size = 10_737_418_240
 
+
 # ===================================
 # Configuration options for gossiping
 # ===================================
@@ -251,15 +260,16 @@ gossip_request_timeout_secs = 10
 get_remainder_timeout_secs = 5
 
 
-# ===================================
+# =================================
 # Configuration options for fetcher
-# ===================================
+# =================================
 [fetcher]
 
 # The timeout duration in seconds for a single fetcher request, i.e. for a single fetcher message
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
 get_from_peer_timeout = 3
+
 
 # ===================================================
 # Configuration options for deploy acceptor component
@@ -274,6 +284,7 @@ verify_accounts = true
 # Configuration options for the contract runtime component
 # ========================================================
 [contract_runtime]
+
 # Optional setting to enable bonding or not.  If unset, defaults to false.
 #enable_bonding = false
 
@@ -284,13 +295,17 @@ verify_accounts = true
 # The size should be a multiple of the OS page size.
 #max_global_state_size = 32_212_254_720
 
+# Optional depth limit to use for global state queries.
+#
+# If unset, defaults to 5.
+#max_query_depth = 5
 
 # ====================================================================
 # Configuration options for selecting deploys to propose in new blocks
 # ====================================================================
 [block_proposer]
 
-# Deploys are only proposed in a new block if the have been received at least this long ago.
+# Deploys are only proposed in a new block if they have been received at least this long ago.
 # A longer delay makes it more likely that many proposed deploys are already known by the
 # other nodes, and don't have to be requested from the proposer afterwards.
 #deploy_delay = '1min'

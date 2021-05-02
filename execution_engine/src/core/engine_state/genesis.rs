@@ -27,7 +27,7 @@ use casper_types::{
             INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
             METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
             METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
@@ -40,7 +40,6 @@ use casper_types::{
             TOTAL_SUPPLY_KEY,
         },
         standard_payment::METHOD_PAY,
-        SystemContractType,
     },
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
@@ -842,16 +841,11 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = self.store_system_contract(
-            SystemContractType::Mint,
-            access_key,
-            named_keys,
-            entry_points,
-        );
+        let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        self.protocol_data = ProtocolData::partial_with_mint(contract_hash);
+        self.protocol_data = ProtocolData::partial_with_mint(mint_hash);
 
-        Ok(contract_hash)
+        Ok(mint_hash)
     }
 
     pub fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
@@ -874,14 +868,9 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = self.store_system_contract(
-            SystemContractType::HandlePayment,
-            access_key,
-            named_keys,
-            entry_points,
-        );
+        let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        Ok(handle_payment_hash)
     }
 
     pub(crate) fn create_auction(&self) -> Result<ContractHash, GenesisError> {
@@ -998,13 +987,6 @@ where
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&validators, auction_delay);
 
-        for (era_id, recipients) in initial_seigniorage_recipients.into_iter() {
-            self.tracking_copy.borrow_mut().write(
-                Key::EraValidators(era_id),
-                StoredValue::EraValidators(recipients),
-            )
-        }
-
         let era_id_uref = self
             .uref_address_generator
             .borrow_mut()
@@ -1032,6 +1014,21 @@ where
         named_keys.insert(
             ERA_END_TIMESTAMP_MILLIS_KEY.into(),
             era_end_timestamp_millis_uref.into(),
+        );
+
+        let initial_seigniorage_recipients_uref = self
+            .uref_address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        self.tracking_copy.borrow_mut().write(
+            initial_seigniorage_recipients_uref.into(),
+            StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
+                |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
+            )?),
+        );
+        named_keys.insert(
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
+            initial_seigniorage_recipients_uref.into(),
         );
 
         for (validator_public_key, bid) in validators.into_iter() {
@@ -1106,14 +1103,9 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = self.store_system_contract(
-            SystemContractType::Auction,
-            access_key,
-            named_keys,
-            entry_points,
-        );
+        let (_, auction_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        Ok(auction_hash)
     }
 
     pub(crate) fn create_standard_payment(&self) -> ContractHash {
@@ -1126,12 +1118,9 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        self.store_system_contract(
-            SystemContractType::StandardPayment,
-            access_key,
-            named_keys,
-            entry_points,
-        )
+        let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
+
+        standard_payment_hash
     }
 
     pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
@@ -1242,18 +1231,17 @@ where
         Ok(purse_uref)
     }
 
-    fn store_system_contract(
+    fn store_contract(
         &self,
-        contract_type: SystemContractType,
         access_key: URef,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
-    ) -> ContractHash {
+    ) -> (ContractPackageHash, ContractHash) {
         let protocol_version = self.protocol_version;
-
-        let contract_hash = contract_type.into_contract_hash();
         let contract_wasm_hash =
             ContractWasmHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+        let contract_hash =
+            ContractHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
         let contract_package_hash =
             ContractPackageHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
 
@@ -1291,7 +1279,7 @@ where
             StoredValue::ContractPackage(contract_package),
         );
 
-        contract_hash
+        (contract_package_hash, contract_hash)
     }
 
     fn mint_entry_points(&self) -> EntryPoints {

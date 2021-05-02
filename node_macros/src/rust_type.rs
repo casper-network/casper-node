@@ -58,7 +58,7 @@ impl RustType {
 
     /// Returns the module name that canonically would contain the type, e.g. `small_net`.
     ///
-    /// Based on the identifier only, i.e. will discard any actualy path.
+    /// Based on the identifier only, i.e. will discard any actual path.
     pub fn module_ident(&self) -> Ident {
         to_ident(&to_snake_case(&self.ident().to_string()))
     }

@@ -207,7 +207,7 @@ async fn send_large_message_across_network() {
         }
 
         for dummy_payload in &dummy_payloads {
-            // Calling `broadcast_message` actually triggers libp2p gossping.
+            // Calling `broadcast_message` actually triggers libp2p gossiping.
             net.process_injected_effect_on(sender, |effect_builder| {
                 effect_builder
                     .broadcast_message(dummy_payload.clone())

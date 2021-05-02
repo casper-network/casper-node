@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork,
+    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, GossipedAddress, MessageKind,
+    Payload, SmallNetwork,
 };
 use crate::{
     components::{
@@ -112,6 +113,15 @@ enum Message {
 impl Display for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
+    }
+}
+
+impl Payload for Message {
+    #[inline]
+    fn classify(&self) -> MessageKind {
+        match self {
+            Message::AddressGossiper(_) => MessageKind::AddressGossip,
+        }
     }
 }
 
