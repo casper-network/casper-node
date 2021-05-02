@@ -19,13 +19,14 @@
 //! # Requirements
 //!
 //! `OutgoingManager` is decoupled from the underlying protocol, all of its interactions are
-//! performed through a `Dialer`. This frees the `OutgoingManager` from having to worry about
-//! protocol specifics, but requires a dialer to be present for most actions.
+//! performed through [`DialRequest`] and [`DialOutcome`]s. This frees the `OutgoingManager` from
+//! having to worry about protocol specifics.
 //!
-//! Two conditions not expressed in code must be fulfilled for the `OutgoingManager` to function:
+//! Three conditions not expressed in code must be fulfilled for the `OutgoingManager` to function:
 //!
-//! * The `Dialer` is expected to produce `DialOutcomes` for every dial attempt eventually. These
-//!   must be forwarded to the `OutgoingManager` via the `handle_dial_outcome` function.
+//! * The `Dialer` is expected to produce `DialOutcomes` for every dial [`DialRequest::Dial`]
+//!   eventually. These must be forwarded to the `OutgoingManager` via the `handle_dial_outcome`
+//!   function.
 //! * The `perform_housekeeping` method must be called periodically to give the the
 //!   `OutgoingManager` a chance to initiate reconnections and collect garbage.
 //! * When a connection is dropped, the connection manager must be notified via
