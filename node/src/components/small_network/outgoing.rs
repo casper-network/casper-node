@@ -675,7 +675,7 @@ mod tests {
     use thiserror::Error;
     use tracing::Span;
 
-    use crate::init_logging;
+    use crate::testing::init_logging;
 
     use super::{DialOutcome, Dialer, NodeId, OutgoingConfig, OutgoingManager};
 
