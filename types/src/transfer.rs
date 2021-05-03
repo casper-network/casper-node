@@ -433,7 +433,7 @@ pub mod gens {
 mod tests {
     use proptest::prelude::*;
 
-    use crate::bytesrepr;
+    use crate::{bytesrepr, AccessRights, URef};
 
     use super::*;
 
@@ -485,5 +485,27 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&transfer_address).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(transfer_address, decoded);
+    }
+
+    #[test]
+    fn ee_1257_gas_field_should_be_hidden() {
+        let transfer = Transfer {
+            deploy_hash: DeployHash::new([42; 32]),
+            from: AccountHash::new([43; 32]),
+            to: Some(AccountHash::new([44; 32])),
+            source: URef::new([45; 32], AccessRights::READ_ADD_WRITE),
+            target: URef::new([46; 32], AccessRights::WRITE),
+            amount: U512::MAX,
+            id: Some(42),
+            ..Default::default()
+        };
+
+        let transfer_json = serde_json::to_value(&transfer).expect("should create a value");
+        let transfer_object = transfer_json.as_object().expect("should be an object");
+        assert!(
+            !transfer_object.contains_key("gas"),
+            "{:?}",
+            transfer_object.keys().collect::<Vec<_>>()
+        );
     }
 }
