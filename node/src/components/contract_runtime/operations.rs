@@ -1,7 +1,10 @@
 use std::{collections::VecDeque, sync::Arc, time::Instant};
 
-use super::ContractRuntimeMetrics;
-use crate::{crypto::hash::Digest, types::DeployHash};
+use engine_state::ExecuteRequest;
+use itertools::Itertools;
+use smallvec::SmallVec;
+use tracing::{debug, error, trace};
+
 use casper_execution_engine::{
     core::engine_state::{
         self, EngineState, ExecutionResult as EngineExecutionResult, ExecutionResults,
@@ -10,9 +13,14 @@ use casper_execution_engine::{
     storage::global_state::{lmdb::LmdbGlobalState, CommitResult},
 };
 use casper_types::{ExecutionResult, Key};
-use engine_state::ExecuteRequest;
-use itertools::Itertools;
-use tracing::{debug, error, trace};
+
+use crate::{
+    components::contract_runtime::{ContractRuntimeMetrics, ContractRuntimeResult, Event},
+    crypto::hash::Digest,
+    effect::{announcements::ControlAnnouncement, requests::StorageRequest, EffectBuilder},
+    fatal,
+    types::{Deploy, DeployHash, FinalizedBlock},
+};
 
 /// Commits the execution effects.
 pub(super) async fn commit_execution_effects(
@@ -98,4 +106,45 @@ pub(super) async fn execute(
     metrics.run_execute.observe(start.elapsed().as_secs_f64());
     trace!(?result, "execute result");
     result
+}
+
+/// Gets the deploy(s) of the given finalized block from storage.
+pub(super) async fn get_deploys_and_finalize_block<REv>(
+    effect_builder: EffectBuilder<REv>,
+    finalized_block: FinalizedBlock,
+) -> Option<Event>
+where
+    REv: From<ControlAnnouncement> + From<StorageRequest>,
+{
+    // Get the deploy hashes for the finalized block.
+    let deploy_hashes = finalized_block
+        .deploys_and_transfers_iter()
+        .copied()
+        .collect::<SmallVec<_>>();
+
+    let era_id = finalized_block.era_id();
+    let height = finalized_block.height();
+
+    // Get all deploys in order they appear in the finalized block.
+    let mut deploys: VecDeque<Deploy> = VecDeque::with_capacity(deploy_hashes.len());
+    for maybe_deploy in effect_builder.get_deploys_from_storage(deploy_hashes).await {
+        if let Some(deploy) = maybe_deploy {
+            deploys.push_back(deploy)
+        } else {
+            fatal!(
+                effect_builder,
+                "deploy for block in era={} and height={} is expected to exist in the storage",
+                era_id,
+                height
+            )
+            .await;
+            return None;
+        }
+    }
+    Some(Event::Result(Box::new(
+        ContractRuntimeResult::GetDeploysResult {
+            finalized_block,
+            deploys,
+        },
+    )))
 }

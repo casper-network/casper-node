@@ -467,7 +467,7 @@ where
             // We do nothing in the case of having an incoming deploy rejected.
             Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
-                info!(%id, %peer, "element absent on the remote node");
+                info!(%id, %peer, "item absent on the remote node: {tag:?}", tag=T::TAG);
                 self.signal(id, Err(FetcherError::AbsentFromPeer { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {

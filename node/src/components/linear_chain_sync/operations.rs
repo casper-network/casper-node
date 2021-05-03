@@ -1,8 +1,13 @@
-use std::{fmt::Debug, time::Duration};
+use std::{
+    collections::BTreeMap,
+    fmt::Debug,
+    ops::{Add, Div},
+    time::Duration,
+};
 
+use num::rational::Ratio;
 use rand::seq::SliceRandom;
-use std::collections::BTreeMap;
-use tracing::{trace, warn};
+use tracing::{info, trace, warn};
 
 use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
@@ -14,13 +19,13 @@ use crate::{
     components::{
         consensus,
         fetcher::{FetchedData, FetcherError},
-        linear_chain_sync::error::LinearChainSyncError,
+        linear_chain_sync::error::{FinalitySignatureError, LinearChainSyncError},
     },
     effect::{
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder,
     },
-    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, Chainspec, Item},
+    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Chainspec, Item},
 };
 
 const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
@@ -78,10 +83,10 @@ where
                 }
                 Err(FetcherError::AbsentFromPeer { .. }) => {
                     warn!(
-                        "Fast sync could not fetch {:?} with id {:?} from peer {:?}; trying next peer",
-                        T::TAG,
-                        id,
-                        peer
+                        ?id,
+                        tag = ?T::TAG,
+                        ?peer,
+                        "Fast sync could not fetch; trying next peer",
                     )
                 }
                 Err(error) => return Err(error),
@@ -91,34 +96,96 @@ where
     }
 }
 
+/// Fetches and stores a block header from the network
 async fn fetch_and_store_block_header<REv, I>(
     effect_builder: EffectBuilder<REv>,
     block_hash: BlockHash,
-) -> Result<Box<BlockHeader>, LinearChainSyncError<I>>
+) -> Result<Box<BlockHeader>, FetcherError<BlockHeader, I>>
 where
     REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {
     let block_header =
         fetch_retry_forever::<BlockHeader, REv, I>(effect_builder, block_hash).await?;
-    if !effect_builder
+    effect_builder
         .put_block_header_to_storage(block_header.clone())
-        .await
-    {
-        Err(LinearChainSyncError::CouldNotStoreBlockHeader { block_header })
-    } else {
-        Ok(block_header)
+        .await;
+    Ok(block_header)
+}
+
+fn validate_finality_signatures(
+    block_header: &BlockHeader,
+    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+    block_signatures: &BlockSignatures,
+) -> Result<(), FinalitySignatureError> {
+    // Check the signatures' block hash is the header's block hash
+    let block_hash = block_header.hash();
+    if block_signatures.block_hash != block_hash {
+        return Err(
+            FinalitySignatureError::SignaturesDoNotCorrespondToBlockHeader {
+                block_header: Box::new(block_header.clone()),
+                block_hash: Box::new(block_hash),
+                block_signatures: Box::new(block_signatures.clone()),
+            },
+        );
     }
+
+    // Cryptographically verify block signatures
+    block_signatures.verify()?;
+
+    // Calculate the weight of the signatures
+    let mut signature_weight: U512 = U512::zero();
+    for (public_key, _) in block_signatures.proofs.iter() {
+        match trusted_validator_weights.get(public_key) {
+            None => {
+                return Err(FinalitySignatureError::BogusValidator {
+                    trusted_validator_weights: trusted_validator_weights.clone(),
+                    block_signatures: Box::new(block_signatures.clone()),
+                    bogus_validator_public_key: Box::new(public_key.clone()),
+                })
+            }
+            Some(validator_weight) => {
+                signature_weight += *validator_weight;
+            }
+        }
+    }
+
+    // Check the finality signatures have sufficient weight
+    let total_weight: U512 = trusted_validator_weights
+        .iter()
+        .map(|(_, weight)| *weight)
+        .sum();
+
+    let lower_bound = finality_threshold_fraction.add(1).div(2);
+    // Verify: signature_weight / total_weight >= lower_bound
+    // Equivalent to the following
+    if signature_weight * U512::from(*lower_bound.denom())
+        <= total_weight * U512::from(*lower_bound.numer())
+    {
+        return Err(FinalitySignatureError::InsufficientWeightForFinality {
+            trusted_validator_weights: trusted_validator_weights.clone(),
+            block_signatures: Box::new(block_signatures.clone()),
+            signature_weight: Box::new(signature_weight),
+            total_validator_weight: Box::new(total_weight),
+            finality_threshold_fraction,
+        });
+    }
+
+    Ok(())
 }
 
 /// Fetches a block header from the network by height.
-async fn fetch_block_header_by_height<REv, I>(
+async fn fetch_and_store_block_header_by_height<REv, I>(
     effect_builder: EffectBuilder<REv>,
     height: u64,
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
 ) -> Result<Option<Box<BlockHeaderWithMetadata>>, FetcherError<BlockHeaderWithMetadata, I>>
 where
-    REv: From<FetcherRequest<I, BlockHeaderWithMetadata>> + From<NetworkInfoRequest<I>>,
+    REv: From<FetcherRequest<I, BlockHeaderWithMetadata>>
+        + From<NetworkInfoRequest<I>>
+        + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {
     for peer in get_and_shuffle_network_peers(effect_builder).await {
@@ -128,21 +195,47 @@ where
         {
             Ok(FetchedData::FromStorage { item }) => return Ok(Some(item)),
             Ok(FetchedData::FromPeer { item, .. }) => {
-                // TODO: Validate item, ban peer if necessary
-                // Compute the total weight of the validators
-                let _total_weight: U512 = trusted_validator_weights
-                    .iter()
-                    .map(|(_, weight)| *weight)
-                    .sum();
+                let BlockHeaderWithMetadata {
+                    block_header,
+                    block_signatures,
+                } = *item.clone();
+
+                if let Err(error) = validate_finality_signatures(
+                    &block_header,
+                    &trusted_validator_weights,
+                    finality_threshold_fraction,
+                    &block_signatures,
+                ) {
+                    warn!(
+                        ?error,
+                        ?peer,
+                        "Error validating finality signatures from peer.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                // Store the block header
+                effect_builder
+                    .put_block_header_to_storage(Box::new(block_header.clone()))
+                    .await;
+
+                // Store the finality signatures
+                effect_builder
+                    .put_signatures_to_storage(block_signatures.clone())
+                    .await;
+
                 return Ok(Some(item));
             }
             Err(FetcherError::AbsentFromPeer { .. }) => {
                 warn!(
-                    "Fast sync could not fetch {:?} with id {:?} from peer {:?}; trying next peer",
-                    BlockHeaderWithMetadata::TAG,
                     height,
-                    peer
-                )
+                    tag = ?BlockHeaderWithMetadata::TAG,
+                    ?peer,
+                    "Fast sync could not fetch",
+                );
+                // If the peer we requested doesn't have the item, continue with the next peer
+                continue;
             }
             Err(error) => return Err(error),
         }
@@ -225,10 +318,11 @@ where
                 },
             );
         }
-        let maybe_fetched_block = fetch_block_header_by_height(
+        let maybe_fetched_block = fetch_and_store_block_header_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
             &trusted_validator_weights,
+            chainspec.highway_config.finality_threshold_fraction,
         )
         .await?;
         match maybe_fetched_block {
@@ -292,6 +386,10 @@ where
     }
 
     // Use the state root to synchronize the trie.
+    info!(
+        state_root_hash = ?most_recent_block_header.state_root_hash(),
+        "Fast syncing",
+    );
     let mut outstanding_trie_keys = vec![Blake2bHash::from(
         *most_recent_block_header.state_root_hash(),
     )];

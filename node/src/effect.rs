@@ -668,19 +668,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce that a block had been executed before.
-    pub(crate) async fn announce_block_already_executed(self, block: Block)
-    where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ContractRuntimeAnnouncement::block_already_executed(block),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
     /// Announce a committed Step success.
     pub(crate) async fn announce_step_success(
         self,
@@ -1676,6 +1663,6 @@ impl<REv> EffectBuilder<REv> {
 #[macro_export]
 macro_rules! fatal {
     ($effect_builder:expr, $($arg:tt)*) => {
-        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string())
+        $effect_builder.fatal(file!(), line!(), format!($($arg)*).to_string())
     };
 }

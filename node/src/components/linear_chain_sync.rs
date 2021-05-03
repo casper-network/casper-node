@@ -814,9 +814,7 @@ where
                             {
                                 Ok(()) => Some(Event::Start(peer_id)),
                                 Err(error) => {
-                                    effect_builder
-                                        .fatal(file!(), line!(), format!("{:?}", error))
-                                        .await;
+                                    fatal!(effect_builder, "{:?}", error).await;
                                     None
                                 }
                             }

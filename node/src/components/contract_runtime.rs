@@ -11,7 +11,6 @@ use std::{
 };
 
 pub use config::Config;
-use smallvec::SmallVec;
 
 pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
@@ -20,7 +19,7 @@ use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -46,9 +45,9 @@ use crate::{
     components::Component,
     crypto::hash::Digest,
     effect::{
-        announcements::ContractRuntimeAnnouncement,
+        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployHeader, FinalizedBlock,
@@ -64,11 +63,6 @@ pub enum Event {
     /// A request made for the contract runtime component.
     #[from]
     Request(Box<ContractRuntimeRequest>),
-    /// Indicates that block has already been finalized and executed in the past.
-    BlockAlreadyExecuted(Box<Block>),
-    /// Indicates that a block is not known yet, and needs to be executed.
-    BlockNotAlreadyExecuted(Box<FinalizedBlock>),
-
     /// Results received by the contract runtime.
     #[from]
     Result(Box<ContractRuntimeResult>),
@@ -292,7 +286,7 @@ impl ContractRuntimeMetrics {
 
 impl<REv: ReactorEventT> Component<REv> for ContractRuntime
 where
-    REv: From<Event> + Send,
+    REv: From<Event> + From<ControlAnnouncement> + Send,
 {
     type Event = Event;
     type ConstructionError = ConfigError;
@@ -519,43 +513,9 @@ where
                         .ignore()
                     }
                     ContractRuntimeRequest::ExecuteBlock(finalized_block) => {
-                        debug!(?finalized_block, "execute block");
-                        let engine_state = Arc::downgrade(&self.engine_state);
-                        async move {
-                            match (
-                                effect_builder
-                                    .get_block_at_height_from_storage(finalized_block.height())
-                                    .await,
-                                engine_state.upgrade(),
-                            ) {
-                                (Some(block_at_height), Some(engine_state))
-                                    // TODO: This is a band-aid. If a block is not executed, we
-                                    // should fetch old blocks backwards until we find one with a
-                                    // state root that exists and execute forwards.
-                                    if engine_state
-                                        .read_trie(
-                                            Default::default(),
-                                            (*block_at_height.state_root_hash()).into(),
-                                        )
-                                        .map_or_else(
-                                            |_| false,
-                                            |maybe_trie| maybe_trie.is_some(),
-                                        ) =>
-                                {
-                                    Event::BlockAlreadyExecuted(Box::new(block_at_height))
-                                }
-                                // Could not find it in storage or not in state trie
-                                _ => Event::BlockNotAlreadyExecuted(Box::new(finalized_block)),
-                            }
-                        }
-                        .event(std::convert::identity)
-
-                        // .event(move |maybe_block| {
-                        //     maybe_block.map(Box::new).map_or_else(
-                        //         || Event::BlockIsNew(Box::new(finalized_block)),
-                        //         Event::BlockAlreadyExists,
-                        //     )
-                        // })
+                        info!(?finalized_block, "execute finalized block");
+                        operations::get_deploys_and_finalize_block(effect_builder, finalized_block)
+                            .map_some(std::convert::identity)
                     }
                     ContractRuntimeRequest::GetBids {
                         get_bids_request,
@@ -593,14 +553,6 @@ where
                         .ignore()
                     }
                 }
-            }
-            Event::BlockAlreadyExecuted(block) => effect_builder
-                .announce_block_already_executed(*block)
-                .ignore(),
-            // If we haven't executed the block before in the past (for example during
-            // joining), do it now.
-            Event::BlockNotAlreadyExecuted(finalized_block) => {
-                self.get_deploys(effect_builder, *finalized_block)
             }
             Event::Result(contract_runtime_result) => match *contract_runtime_result {
                 ContractRuntimeResult::GetDeploysResult {
@@ -780,52 +732,6 @@ impl ContractRuntime {
             })
             .collect();
         self.parent_map = parent_map;
-    }
-
-    /// Gets the deploy(s) of the given finalized block from storage.
-    fn get_deploys<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        finalized_block: FinalizedBlock,
-    ) -> Effects<Event> {
-        let deploy_hashes = finalized_block
-            .deploys_and_transfers_iter()
-            .copied()
-            .collect::<SmallVec<_>>();
-        if deploy_hashes.is_empty() {
-            let result_event = move |_| {
-                Event::Result(Box::new(ContractRuntimeResult::GetDeploysResult {
-                    finalized_block,
-                    deploys: VecDeque::new(),
-                }))
-            };
-            return effect_builder.immediately().event(result_event);
-        }
-
-        let era_id = finalized_block.era_id();
-        let height = finalized_block.height();
-
-        // Get all deploys in order they appear in the finalized block.
-        effect_builder
-            .get_deploys_from_storage(deploy_hashes)
-            .event(move |result| {
-                Event::Result(Box::new(ContractRuntimeResult::GetDeploysResult {
-                    finalized_block,
-                    deploys: result
-                        .into_iter()
-                        // Assumes all deploys are present
-                        .map(|maybe_deploy| {
-                            maybe_deploy.unwrap_or_else(|| {
-                                panic!(
-                                "deploy for block in era={} and height={} is expected to exist \
-                                in the storage",
-                                era_id, height
-                            )
-                            })
-                        })
-                        .collect(),
-                }))
-            })
     }
 
     /// Creates and announces the linear chain block.

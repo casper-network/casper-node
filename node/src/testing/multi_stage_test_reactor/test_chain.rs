@@ -200,8 +200,9 @@ impl TestChain {
     }
 }
 
-/// Given an era number, returns a predicate to check if all of the nodes are in the specified era.
-fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
+/// Given an era number, returns a predicate to check if all of the nodes are in the specified era
+/// or have moved forward.
+fn has_passed_by_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
     move |nodes: &Nodes<MultiStageTestReactor>| {
         let era_id = EraId::from(era_num);
         nodes.values().all(|runner| {
@@ -209,7 +210,7 @@ fn is_in_era(era_num: u64) -> impl Fn(&Nodes<MultiStageTestReactor>) -> bool {
                 .reactor()
                 .inner()
                 .consensus()
-                .map_or(false, |consensus| consensus.current_era() == era_id)
+                .map_or(false, |consensus| consensus.current_era() >= era_id)
         })
     }
 }
@@ -229,7 +230,11 @@ async fn run_validator_network() {
         info!("Waiting for Era {} to end", era_num);
         chain
             .network
-            .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+            .settle_on(
+                &mut rng,
+                has_passed_by_era(era_num),
+                Duration::from_secs(600),
+            )
             .await;
     }
 }
@@ -264,7 +269,11 @@ async fn run_equivocator_network() {
         info!("Waiting for Era {} to end", era_num);
         chain
             .network
-            .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+            .settle_on(
+                &mut rng,
+                has_passed_by_era(era_num),
+                Duration::from_secs(600),
+            )
             .await;
     }
 }
@@ -278,7 +287,7 @@ async fn get_switch_block_hash(
     info!("Waiting for Era {} to end", era_after_switch_block_era_num);
     net.settle_on(
         rng,
-        is_in_era(era_after_switch_block_era_num),
+        has_passed_by_era(era_after_switch_block_era_num),
         Duration::from_secs(600),
     )
     .await;
@@ -335,7 +344,11 @@ async fn test_joiner() {
     info!("Waiting for Era {} to end", era_num);
     chain
         .network
-        .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(era_num),
+            Duration::from_secs(600),
+        )
         .await;
 
     // Have a node join the network with that hash
@@ -360,7 +373,11 @@ async fn test_joiner() {
     info!("Waiting for Era {} to end", era_num);
     chain
         .network
-        .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(era_num),
+            Duration::from_secs(600),
+        )
         .await;
 }
 
@@ -402,6 +419,10 @@ async fn test_joiner_network() {
     info!("Waiting for Era {} to end", era_num);
     chain
         .network
-        .settle_on(&mut rng, is_in_era(era_num), Duration::from_secs(600))
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(era_num),
+            Duration::from_secs(600),
+        )
         .await;
 }
