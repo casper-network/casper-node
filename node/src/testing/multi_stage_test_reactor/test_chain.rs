@@ -21,7 +21,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHash, Chainspec, NodeId, Timestamp,
+        ActivationPoint, Block, BlockHash, Chainspec, NodeId, Timestamp,
     },
     utils::{External, Loadable, WithDir},
     NodeRng,
@@ -278,11 +278,11 @@ async fn run_equivocator_network() {
     }
 }
 
-async fn get_switch_block_hash(
+async fn get_switch_block(
     switch_block_era_num: u64,
     net: &mut Network<MultiStageTestReactor>,
     rng: &mut NodeRng,
-) -> BlockHash {
+) -> Block {
     let era_after_switch_block_era_num = switch_block_era_num + 1;
     info!("Waiting for Era {} to end", era_after_switch_block_era_num);
     net.settle_on(
@@ -310,12 +310,62 @@ async fn get_switch_block_hash(
     let switch_block = storage
         .transactional_get_switch_block_by_era_id(switch_block_era_num)
         .expect("Could not find block for era num");
-    let switch_block_hash = switch_block.hash();
     info!(
-        "Found block hash for Era {}: {}",
-        switch_block_era_num, switch_block_hash
+        "Found block hash for Era {}: {:?}",
+        switch_block_era_num,
+        switch_block.hash()
     );
-    *switch_block_hash
+    switch_block
+}
+
+/// Test a node joining to a single node network at genesis
+#[tokio::test]
+async fn test_joiner_at_genesis() {
+    testing::init_logging();
+
+    const INITIAL_NETWORK_SIZE: usize = 1;
+
+    let mut rng = crate::new_rng();
+
+    // Create a chain with just one node
+    let mut chain = TestChain::new(INITIAL_NETWORK_SIZE, &mut rng).await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        INITIAL_NETWORK_SIZE,
+        "There should be just one bonded validator in the network"
+    );
+
+    // Get the first switch block hash
+    // As part of the fast sync process, we will need to retrieve the first switch block
+    let trusted_hash = *get_switch_block(1, &mut chain.network, &mut rng)
+        .await
+        .header()
+        .parent_hash();
+
+    // Have a node join the network with that hash
+    info!("Joining with trusted hash {}", trusted_hash);
+    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    chain
+        .add_node(false, joiner_node_secret_key, Some(trusted_hash), &mut rng)
+        .await;
+
+    assert_eq!(
+        chain.network.nodes().len(),
+        2,
+        "There should be two validators in the network (one bonded and one read only)"
+    );
+
+    let era_num = 2;
+    info!("Waiting for Era {} to end", era_num);
+    chain
+        .network
+        .settle_on(
+            &mut rng,
+            has_passed_by_era(era_num),
+            Duration::from_secs(600),
+        )
+        .await;
 }
 
 /// Test a node joining to a single node network
@@ -338,7 +388,9 @@ async fn test_joiner() {
 
     // Get the second switch block hash
     // As part of the fast sync process, we will need to retrieve the first switch block
-    let switch_block_hash = get_switch_block_hash(2, &mut chain.network, &mut rng).await;
+    let switch_block_hash = *get_switch_block(2, &mut chain.network, &mut rng)
+        .await
+        .hash();
 
     let era_num = 5;
     info!("Waiting for Era {} to end", era_num);
@@ -399,7 +451,9 @@ async fn test_joiner_network() {
     );
 
     // Get the first switch block hash
-    let first_switch_block_hash = get_switch_block_hash(1, &mut chain.network, &mut rng).await;
+    let first_switch_block_hash = *get_switch_block(1, &mut chain.network, &mut rng)
+        .await
+        .hash();
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", first_switch_block_hash);

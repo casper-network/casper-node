@@ -113,6 +113,66 @@ where
     Ok(block_header)
 }
 
+/// Get trusted block headers; falls back to genesis if none are available
+async fn get_trusted_validator_weights<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    chainspec: &Chainspec,
+    trusted_header: &BlockHeader,
+) -> Result<BTreeMap<PublicKey, U512>, LinearChainSyncError<I>>
+where
+    REv: From<FetcherRequest<I, BlockHeader>> + From<NetworkInfoRequest<I>> + From<StorageRequest>,
+    I: Eq + Debug + Clone + Send + 'static,
+{
+    // If we are right after genesis, use the genesis validators.
+    if trusted_header.era_id() == EraId::new(0) {
+        let genesis_validator_weights: BTreeMap<PublicKey, U512> = chainspec
+            .network_config
+            .accounts_config
+            .accounts()
+            .iter()
+            .filter_map(|account_config| {
+                if account_config.is_genesis_validator() {
+                    Some((
+                        account_config.public_key(),
+                        account_config.bonded_amount().value(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        return Ok(genesis_validator_weights);
+    }
+
+    // Check that we are not restarting right after an emergency restart, which is too early
+    // Consider emitting a switch block after an emergency restart to make this simpler...
+    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
+
+    let min_era = maybe_last_emergency_restart_era_id.unwrap_or_else(|| EraId::new(0));
+    if min_era >= trusted_header.era_id() {
+        return Err(LinearChainSyncError::TrustedHeaderEraTooEarly {
+            trusted_header: Box::new(trusted_header.clone()),
+            maybe_last_emergency_restart_era_id,
+        });
+    };
+
+    // Fetch each parent hash one by one until we have the trusted validator weights
+    let mut current_header_to_walk_back_from = Box::new(trusted_header.clone());
+    loop {
+        if let Some(trusted_validator_weights) =
+            current_header_to_walk_back_from.next_era_validator_weights()
+        {
+            return Ok(trusted_validator_weights.clone());
+        }
+        current_header_to_walk_back_from = fetch_and_store_block_header(
+            effect_builder,
+            *current_header_to_walk_back_from.parent_hash(),
+        )
+        .await?;
+    }
+}
+
+/// Verifies finality signatures for a block header
 fn validate_finality_signatures(
     block_header: &BlockHeader,
     trusted_validator_weights: &BTreeMap<PublicKey, U512>,
@@ -281,29 +341,8 @@ where
     // Fetch the trusted header
     let trusted_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
-    // Walk back to get validators from the last switch block header
-    // First, check that we are at least one era past genesis or the last emergency restart
-    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
-    let min_era = maybe_last_emergency_restart_era_id.unwrap_or_else(|| EraId::new(0));
-    if min_era >= trusted_header.era_id() {
-        return Err(LinearChainSyncError::TrustedHeaderEraTooEarly {
-            trusted_header,
-            maybe_last_emergency_restart_era_id,
-        });
-    };
-
-    // Fetch each parent hash one by one until we have the trusted validator weights
-    let mut current_walk_back_header = trusted_header.clone();
-    let mut trusted_validator_weights = loop {
-        if let Some(trusted_validator_weights) =
-            current_walk_back_header.next_era_validator_weights()
-        {
-            break trusted_validator_weights.clone();
-        }
-        current_walk_back_header =
-            fetch_and_store_block_header(effect_builder, *current_walk_back_header.parent_hash())
-                .await?;
-    };
+    let mut trusted_validator_weights =
+        get_trusted_validator_weights(effect_builder, &chainspec, &trusted_header).await?;
 
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height
@@ -360,6 +399,7 @@ where
     // The era supervisor requires at least to 3*delay + 1 eras back to be stored in the database.
     let historical_eras_needed = delay.saturating_mul(3).saturating_add(1);
 
+    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     match maybe_last_emergency_restart_era_id {
         Some(last_emergency_restart_era_id)
             if last_emergency_restart_era_id
