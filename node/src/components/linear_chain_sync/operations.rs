@@ -512,7 +512,7 @@ where
         outstanding_trie_keys.extend(missing_descendant_trie_keys);
     }
 
-    // Process blocks to until we are current.
+    // Process blocks until we are current.
     info!(?most_recent_block_header, "Processing blocks to current",);
     while let Some(BlockWithMetadataFetchedFromRemote {
         block_with_metadata,
