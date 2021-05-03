@@ -154,8 +154,8 @@ impl Transfer {
             source,
             target,
             amount,
-            id,
             gas: U512::zero(), // Unused and reserved field
+            id,
         }
     }
 
