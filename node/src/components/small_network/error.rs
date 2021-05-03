@@ -102,6 +102,9 @@ pub enum Error {
         #[source]
         ErrorStack,
     ),
+    /// Received a message that was not a handshake during connection setup.
+    #[error("handshake expected, but not received")]
+    HandshakeExpected,
     /// Handshaking error.
     #[error("handshake error: {0}")]
     Handshake(

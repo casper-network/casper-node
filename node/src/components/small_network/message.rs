@@ -4,9 +4,7 @@ use std::{
 };
 
 use casper_types::ProtocolVersion;
-use serde::{Deserialize, Serialize};
-
-use super::{MessageKind, Payload};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -54,6 +52,48 @@ impl<P: Display> Display for Message<P> {
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
+}
+
+/// A classification system for networking messages.
+#[derive(Copy, Clone, Debug)]
+pub enum MessageKind {
+    /// Non-payload messages, like handshakes.
+    Protocol,
+    /// Messages directly related to consensus.
+    Consensus,
+    /// Deploys being gossiped.
+    DeployGossip,
+    /// Addresses begin gossiped.
+    AddressGossip,
+    /// Deploys being transferred directly (via requests).
+    DeployTransfer,
+    /// Blocks for finality signatures being transferred directly (via requests and other means).
+    BlockTransfer,
+    /// Any other kind of payload (or missing classification).
+    Other,
+}
+
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageKind::Protocol => f.write_str("protocol"),
+            MessageKind::Consensus => f.write_str("consensus"),
+            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::AddressGossip => f.write_str("address_gossip"),
+            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::Other => f.write_str("other"),
+        }
+    }
+}
+
+/// Network message payload.
+///
+/// Payloads are what is transferred across the network outside of control messages from the
+/// networking component itself.
+pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
+    /// Classifies the payload based on its contents.
+    fn classify(&self) -> MessageKind;
 }
 
 #[cfg(test)]

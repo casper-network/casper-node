@@ -8,8 +8,8 @@
 //!
 //! Each node has a self-generated node ID based on its self-signed TLS certificate. Whenever a
 //! connection is made to another node, it verifies the "server"'s certificate to check that it
-//! connected to the correct node and sends its own certificate during the TLS handshake,
-//! establishing identity.
+//! connected to a valid node and sends its own certificate during the TLS handshake, establishing
+//! identity.
 //!
 //! # Connection
 //!
@@ -31,6 +31,8 @@ mod event;
 mod gossiped_address;
 mod message;
 mod message_pack_format;
+mod outgoing;
+mod symmetry;
 #[cfg(test)]
 mod tests;
 
@@ -39,7 +41,7 @@ use std::{
     convert::Infallible,
     env,
     fmt::{self, Debug, Display, Formatter},
-    io,
+    io, mem,
     net::{SocketAddr, TcpListener},
     pin::Pin,
     result,
@@ -57,7 +59,6 @@ use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
 };
-use once_cell::sync::Lazy;
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
@@ -75,15 +76,20 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_serde::SymmetricallyFramed;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn, Instrument};
 
 use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::Result,
     message_pack_format::MessagePackFormat,
+    outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
+    symmetry::ConnectionSymmetry,
 };
 pub(crate) use self::{
-    error::display_error, event::Event, gossiped_address::GossipedAddress, message::Message,
+    error::display_error,
+    event::Event,
+    gossiped_address::GossipedAddress,
+    message::{Message, MessageKind, Payload},
 };
 use crate::{
     components::{
@@ -96,87 +102,48 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
-    types::{NodeId, TimeDiff, Timestamp},
+    types::NodeId,
     utils, NodeRng,
 };
 use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
 
-const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 4;
+const MAX_ASYMMETRIC_TIME: Duration = Duration::from_secs(60);
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
-static BLOCKLIST_RETAIN_DURATION: Lazy<TimeDiff> =
-    Lazy::new(|| Duration::from_secs(60 * 10).into());
+/// Duration peers are kept on the block list, before being redeemed.
+static BLOCKLIST_RETAIN_DURATION: Duration = Duration::from_secs(60 * 10);
 
-/// Network message payload.
+/// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
+/// delays increase exponentially!
+static RECONNECTION_ATTEMPTS: u8 = 8;
+
+/// Basic reconnection timeout.
 ///
-/// Payloads are what is transferred across the network outside of control messages from the
-/// networking component itself.
-pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
-    /// Classifies the payload based on its contents.
-    fn classify(&self) -> MessageKind;
-}
+/// The first reconnection attempt will be made after 2x this timeout.
+static BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// A classification system for networking messages.
-#[derive(Copy, Clone, Debug)]
-pub enum MessageKind {
-    /// Non-payload messages, like handshakes.
-    Protocol,
-    /// Messages directly related to consensus.
-    Consensus,
-    /// Deploys being gossiped.
-    DeployGossip,
-    /// Addresses begin gossiped.
-    AddressGossip,
-    /// Deploys being transferred directly (via requests).
-    DeployTransfer,
-    /// Blocks for finality signatures being transferred directly (via requests and other means).
-    BlockTransfer,
-    /// Any other kind of payload (or missing classification).
-    Other,
-}
+/// Interval during which to perform outgoing manager housekeeping.
+static OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
-impl Display for MessageKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            MessageKind::Protocol => f.write_str("protocol"),
-            MessageKind::Consensus => f.write_str("consensus"),
-            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
-            MessageKind::AddressGossip => f.write_str("address_gossip"),
-            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
-            MessageKind::BlockTransfer => f.write_str("block_transfer"),
-            MessageKind::Other => f.write_str("other"),
-        }
-    }
-}
+/// Interval for checking for symmetrical connections.
+static SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
-#[derive(DataSize, Debug)]
-pub(crate) struct OutgoingConnection<P> {
+#[derive(Clone, DataSize, Debug)]
+pub struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
-
-    // for keeping track of connection asymmetry, tracking the number of times we've seen this
-    // connection be asymmetric.
-    times_seen_asymmetric: u16,
-}
-
-#[derive(DataSize, Debug)]
-pub(crate) struct IncomingConnection {
-    peer_address: SocketAddr,
-
-    // for keeping track of connection asymmetry, tracking the number of times we've seen this
-    // connection be asymmetric.
-    times_seen_asymmetric: u16,
 }
 
 #[derive(DataSize)]
 pub(crate) struct SmallNetwork<REv, P>
 where
     REv: 'static,
+    P: Payload,
 {
     /// Initial configuration values.
     cfg: Config,
@@ -188,21 +155,13 @@ where
     public_address: SocketAddr,
     /// Our node ID,
     our_id: NodeId,
-    /// If we connect to ourself, this flag is set to true.
-    is_bootstrap_node: bool,
     /// Handle to event queue.
     event_queue: EventQueueHandle<REv>,
 
-    /// Incoming network connection addresses.
-    incoming: HashMap<NodeId, IncomingConnection>,
-    /// Outgoing network connections' messages.
-    outgoing: HashMap<NodeId, OutgoingConnection<P>>,
-
-    /// List of addresses which this node will avoid connecting to and the time they were added.
-    blocklist: HashMap<SocketAddr, Timestamp>,
-
-    /// Pending outgoing connections: ones for which we are currently trying to make a connection.
-    pending: HashMap<SocketAddr, Instant>,
+    /// Outgoing connections manager.
+    outgoing_manager: OutgoingManager<OutgoingConnection<P>, Error>,
+    /// Tracks whether a connection is symmetric or not.
+    connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
     /// Information retained from the chainspec required for operating the networking component.
     chain_info: Arc<ChainInfo>,
@@ -225,9 +184,6 @@ where
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<NetworkingMetrics>,
-
-    /// Known addresses for this node.
-    known_addresses: HashSet<SocketAddr>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -268,6 +224,13 @@ where
             return Err(Error::InvalidConfig);
         }
 
+        let outgoing_manager = OutgoingManager::new(OutgoingConfig {
+            retry_attempts: RECONNECTION_ATTEMPTS,
+            base_timeout: BASE_RECONNECTION_TIMEOUT,
+            unblock_after: BLOCKLIST_RETAIN_DURATION,
+            sweep_timeout: cfg.max_addr_pending_time.into(),
+        });
+
         let mut public_address =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
@@ -277,22 +240,17 @@ where
 
         let chain_info = Arc::new(chain_info_source.into());
 
-        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the
-        // server.
+        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the server.
         if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
             let model = SmallNetwork {
                 cfg,
-                known_addresses,
                 certificate,
                 secret_key,
                 public_address,
                 our_id,
-                is_bootstrap_node: false,
                 event_queue,
-                incoming: HashMap::new(),
-                outgoing: HashMap::new(),
-                pending: HashMap::new(),
-                blocklist: HashMap::new(),
+                outgoing_manager,
+                connection_symmetries: HashMap::new(),
                 chain_info,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
@@ -348,19 +306,15 @@ where
             our_id,
         ));
 
-        let mut model = SmallNetwork {
+        let mut component = SmallNetwork {
             cfg,
-            known_addresses,
             certificate,
             secret_key,
             public_address,
             our_id,
-            is_bootstrap_node: false,
             event_queue,
-            incoming: HashMap::new(),
-            outgoing: HashMap::new(),
-            pending: HashMap::new(),
-            blocklist: HashMap::new(),
+            outgoing_manager,
+            connection_symmetries: HashMap::new(),
             chain_info,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
@@ -369,64 +323,31 @@ where
             net_metrics: Arc::new(net_metrics),
         };
 
-        // Bootstrap process.
         let effect_builder = EffectBuilder::new(event_queue);
+        let mut effects = Effects::new();
 
-        // We kick things off by adding effects to connect to all known addresses. This will
-        // automatically attempt to repeat the connection process if it fails (see
-        // `connect_to_known_addresses` for details).
-        let mut effects = model.connect_to_known_addresses();
+        // Learn all known addresses and mark them as unforgettable.
+        for known_address in known_addresses {
+            component
+                .outgoing_manager
+                .learn_addr(known_address, true, Instant::now());
+        }
 
         // Start broadcasting our public listening address.
         effects.extend(
             effect_builder
-                .set_timeout(model.cfg.initial_gossip_delay.into())
+                .set_timeout(component.cfg.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
         );
 
-        Ok((model, effects))
+        Ok((component, effects))
     }
 
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Message<P>) {
-        for peer_id in self.outgoing.keys() {
-            self.send_message(*peer_id, msg.clone());
+        for peer_id in self.outgoing_manager.connected_peers() {
+            self.send_message(peer_id, msg.clone());
         }
-    }
-
-    /// Try to establish a connection to all known addresses in the configuration.
-    ///
-    /// Will schedule another reconnection if no DNS addresses could be resolved.
-    fn connect_to_known_addresses(&mut self) -> Effects<Event<P>> {
-        let mut effects = Effects::new();
-
-        let now = Instant::now();
-        for &address in &self.known_addresses {
-            self.pending.insert(address, now);
-
-            // Add an effect to connect to the known address.
-            effects.extend(
-                connect_outgoing(
-                    address,
-                    Arc::clone(&self.certificate),
-                    Arc::clone(&self.secret_key),
-                    Arc::clone(&self.is_stopped),
-                )
-                .result(
-                    move |(peer_id, transport)| Event::OutgoingEstablished {
-                        peer_id: Box::new(peer_id),
-                        transport,
-                    },
-                    move |error| Event::OutgoingFailed {
-                        peer_address: Box::new(address),
-                        peer_id: Box::new(None),
-                        error: Box::new(Some(error)),
-                    },
-                ),
-            );
-        }
-
-        effects
     }
 
     /// Queues a message to `count` random nodes on the network.
@@ -438,9 +359,9 @@ where
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
         let peer_ids = self
-            .outgoing
-            .keys()
-            .filter(|&peer_id| !exclude.contains(peer_id))
+            .outgoing_manager
+            .connected_peers()
+            .filter(|peer_id| !exclude.contains(peer_id))
             .choose_multiple(rng, count);
 
         if peer_ids.len() != count {
@@ -455,17 +376,17 @@ where
             );
         }
 
-        for &&peer_id in &peer_ids {
+        for &peer_id in &peer_ids {
             self.send_message(peer_id, msg.clone());
         }
 
-        peer_ids.into_iter().copied().collect()
+        peer_ids.into_iter().collect()
     }
 
     /// Queues a message to be sent to a specific node.
     fn send_message(&self, dest: NodeId, msg: Message<P>) {
         // Try to send the message.
-        if let Some(connection) = self.outgoing.get(&dest) {
+        if let Some(connection) = self.outgoing_manager.get_route(dest) {
             if let Err(msg) = connection.sender.send(msg) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
@@ -478,46 +399,6 @@ where
         }
     }
 
-    /// Sweep and timeout pending connections.
-    ///
-    /// This is a reliability measure that sweeps pending connections, since leftover entries will
-    /// block any renewed connection attempts to a specific address.
-    ///
-    /// In 100% bug free code, this would not be necessary, so this is in here as a stop-gap measure
-    /// to avoid locking up a node with unremoved pending connections.
-    ///
-    /// Connections will only be removed from pending, they will NOT be forcefully disconnected.
-    fn sweep_pending_connections(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<P>> {
-        let now = Instant::now();
-        let max_addr_pending_time: Duration = self.cfg.max_addr_pending_time.into();
-
-        // Remove pending connections that have been pending for a long time. Ideally, we would use
-        // `drain_filter` here, but it is still unstable, so just collect the keys.
-        let outdated_keys: Vec<_> = self
-            .pending
-            .iter()
-            .filter_map(|(&addr, &timestamp)| {
-                if now - timestamp > max_addr_pending_time {
-                    Some(addr)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        outdated_keys.iter().for_each(|key| {
-            warn!(addr=%key, "swept pending address");
-            self.pending.remove(key);
-        });
-
-        effect_builder
-            .set_timeout(max_addr_pending_time / 2)
-            .event(|_| Event::SweepPending)
-    }
-
     fn handle_incoming_tls_handshake_completed(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -528,7 +409,6 @@ where
             Ok((peer_id, transport)) => {
                 // If we have connected to ourself, allow the connection to drop.
                 if peer_id == self.our_id {
-                    self.is_bootstrap_node = true;
                     debug!(
                         our_id=%self.our_id,
                         %peer_address,
@@ -566,19 +446,15 @@ where
                 }
                 .ignore::<Event<P>>();
 
-                let _ = self.incoming.insert(
-                    peer_id,
-                    IncomingConnection {
-                        peer_address,
-                        times_seen_asymmetric: 0,
-                    },
-                );
-                self.net_metrics
-                    .open_connections
-                    .set(self.incoming.len() as i64);
-
-                // If the connection is now complete, announce the new peer before starting reader.
-                effects.extend(self.check_connection_complete(effect_builder, peer_id));
+                // Record the incoming connection.
+                if self
+                    .connection_symmetries
+                    .entry(peer_id)
+                    .or_default()
+                    .add_incoming(peer_address, Instant::now())
+                {
+                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                }
 
                 effects.extend(
                     message_reader(
@@ -605,38 +481,21 @@ where
     }
 
     /// Sets up an established outgoing connection.
+    ///
+    /// Initiates sending of the handshake as soon as the connection is established.
     fn setup_outgoing(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        peer_address: SocketAddr,
         peer_id: NodeId,
         transport: Transport,
     ) -> Effects<Event<P>> {
-        // This connection is send-only, we only use the sink.
-        let peer_address = match transport.get_ref().peer_addr() {
-            Ok(peer_addr) => peer_addr,
-            Err(ref err) => {
-                // The peer address disappeared, likely because the connection was closed while
-                // we are setting up.
-                warn!(%peer_id, err=display_error(err), "peer connection terminated while setting up outgoing connection, dropping");
-
-                // We still need to clean up any trace of the connection.
-                return self.remove(effect_builder, &peer_id, false);
-            }
-        };
-
-        // Remove from pending connection set, but ignore if it is missing.
-        self.pending.remove(&peer_address);
-
-        // If we have connected to ourself, allow the connection to drop.
+        // If we have connected to ourself, inform the outgoing manager, then drop the connection.
         if peer_id == self.our_id {
-            self.is_bootstrap_node = true;
-            debug!(
-                our_id=%self.our_id,
-                peer_address=?transport.get_ref().peer_addr(),
-                local_address=?transport.get_ref().local_addr(),
-                "connected outgoing to ourself - closing connection",
-            );
-            return self.reconnect_if_not_connected_to_any_known_addresses(effect_builder);
+            let request = self
+                .outgoing_manager
+                .handle_dial_outcome(DialOutcome::Loopback { addr: peer_address });
+            return self.process_dial_requests(request);
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
@@ -648,23 +507,38 @@ where
             self.chain_info.maximum_net_message_size,
         )
         .split();
-        debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
+        // Setup the actual connection and inform the outgoing manager and record in symmetry.
         let (sender, receiver) = mpsc::unbounded_channel();
         let connection = OutgoingConnection {
             peer_address,
             sender,
-            times_seen_asymmetric: 0,
         };
-        if self.outgoing.insert(peer_id, connection).is_some() {
-            // We assume that for a reconnect to have happened, the outgoing entry must have
-            // been either non-existent yet or cleaned up by the handler of the connection
-            // closing event. If this is not the case, an assumed invariant has been violated.
-            error!(our_id=%self.our_id, %peer_id, "did not expect leftover channel in outgoing map");
+
+        let mut effects = Effects::new();
+
+        // Mark as outgoing in symmetry tracker.
+        if self
+            .connection_symmetries
+            .entry(peer_id)
+            .or_default()
+            .mark_outgoing(Instant::now())
+        {
+            effects.extend(self.connection_completed(effect_builder, peer_id));
         }
 
-        let mut effects = self.check_connection_complete(effect_builder, peer_id);
+        let request = self
+            .outgoing_manager
+            .handle_dial_outcome(DialOutcome::Successful {
+                addr: peer_address,
+                handle: connection,
+                node_id: peer_id,
+            });
 
+        // Process resulting effects.
+        effects.extend(self.process_dial_requests(request));
+
+        // Send the handshake and start the reader.
         let handshake = self.chain_info.create_handshake(self.public_address);
 
         effects.extend(
@@ -674,8 +548,8 @@ where
                 self.net_metrics.queued_messages.clone(),
                 handshake,
             )
-            .event(move |result| Event::OutgoingFailed {
-                peer_id: Box::new(Some(peer_id)),
+            .event(move |result| Event::OutgoingDropped {
+                peer_id: Box::new(peer_id),
                 peer_address: Box::new(peer_address),
                 error: Box::new(result.err().map(Into::into)),
             }),
@@ -690,121 +564,97 @@ where
 
     fn handle_outgoing_lost(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        peer_id: Option<NodeId>,
+        peer_id: NodeId,
         peer_address: SocketAddr,
-        error: Option<Error>,
     ) -> Effects<Event<P>> {
-        let _ = self.pending.remove(&peer_address);
+        let requests = self
+            .outgoing_manager
+            .handle_connection_drop(peer_address, Instant::now());
 
-        if let Some(peer_id) = peer_id {
-            if let Some(ref err) = error {
-                warn!(
-                    our_id=%self.our_id,
-                    %peer_id,
-                    %peer_address,
-                    err=display_error(err),
-                    "outgoing connection failed"
-                );
-            } else {
-                warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
-            }
-            return self.remove(effect_builder, &peer_id, false);
-        }
+        self.connection_symmetries
+            .entry(peer_id)
+            .or_default()
+            .unmark_outgoing(Instant::now());
 
-        // If we don't have the node ID passed in here, it was never added as an
-        // outgoing connection, hence no need to call `self.remove()`.
-        if let Some(ref err) = error {
-            warn!(
-                our_id=%self.our_id,
-                %peer_address,
-                err=display_error(err),
-                "outgoing connection to known address failed"
-            );
-        } else {
-            warn!(
-                our_id=%self.our_id,
-                %peer_address,
-                "outgoing connection to known address closed"
-            );
-        }
-        // Since we are not calling `self.remove()`, call the reconnection check explicitly.
-        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
-    }
-
-    fn remove(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        peer_id: &NodeId,
-        add_to_blocklist: bool,
-    ) -> Effects<Event<P>> {
-        if let Some(incoming) = self.incoming.remove(&peer_id) {
-            trace!(our_id=%self.our_id, %peer_id, "removing peer from the incoming connections");
-            let _ = self.pending.remove(&incoming.peer_address);
-
-            self.net_metrics
-                .open_connections
-                .set(self.incoming.len() as i64);
-        }
-        if let Some(outgoing) = self.outgoing.remove(&peer_id) {
-            trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
-            if add_to_blocklist && !self.known_addresses.contains(&outgoing.peer_address) {
-                info!(our_id=%self.our_id, %peer_id, "blocklisting peer");
-                self.blocklist
-                    .insert(outgoing.peer_address, Timestamp::now());
-            }
-        }
-
-        self.reconnect_if_not_connected_to_any_known_addresses(effect_builder)
+        self.process_dial_requests(requests)
     }
 
     /// Gossips our public listening address, and schedules the next such gossip round.
     fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
         let our_address = GossipedAddress::new(self.public_address);
-        let mut effects = effect_builder
+        effect_builder
             .announce_gossip_our_address(our_address)
-            .ignore();
-        effects.extend(
-            effect_builder
-                .set_timeout(self.cfg.gossip_interval)
-                .event(|_| Event::GossipOurAddress),
-        );
-        effects
+            .ignore()
     }
 
-    /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they
-    /// pass the upper limit for this. Connections that are symmetrical are reset to 0.
-    fn enforce_symmetric_connections(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<P>> {
-        let mut remove = Vec::new();
-        for (node_id, conn) in self.incoming.iter_mut() {
-            if !self.outgoing.contains_key(node_id) {
-                if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(*node_id);
+    /// Sweeps across connection symmetry, enforcing symmetrical connections.
+    fn enforce_symmetric_connections(&mut self, now: Instant) -> Effects<Event<P>> {
+        let mut dial_requests = Vec::new();
+
+        let conn_syms = mem::take(&mut self.connection_symmetries);
+        self.connection_symmetries = conn_syms
+            .into_iter()
+            .filter_map(|(peer_id, sym)| {
+                if sym.should_be_reaped(now, MAX_ASYMMETRIC_TIME) {
+                    info!(%peer_id, "reaping asymmetric connection");
+
+                    // Get the outgoing connection and block it.
+                    if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
+                            if let Some(req) = self.outgoing_manager.block_addr(addr, now) {
+                                dial_requests.push(req);
+                            }
+                    } else {
+                        debug!(%peer_id, "tried to reap non-existent asymmetric connection, must be incoming only");
+                    }
+
+                    None
                 } else {
-                    conn.times_seen_asymmetric += 1;
+                    Some((peer_id, sym))
                 }
-            } else {
-                conn.times_seen_asymmetric = 0;
-            }
-        }
-        for (node_id, conn) in self.outgoing.iter_mut() {
-            if !self.incoming.contains_key(node_id) {
-                if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(*node_id);
-                } else {
-                    conn.times_seen_asymmetric += 1;
-                }
-            } else {
-                conn.times_seen_asymmetric = 0;
-            }
-        }
+            })
+            .collect();
+
+        self.process_dial_requests(dial_requests)
+    }
+
+    /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
+    fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
+    where
+        T: IntoIterator<Item = DialRequest<OutgoingConnection<P>>>,
+    {
         let mut effects = Effects::new();
-        for node_id in remove {
-            effects.extend(self.remove(effect_builder, &node_id, true));
+
+        for request in requests.into_iter() {
+            match request {
+                DialRequest::Dial { addr, span } => effects.extend(
+                    connect_outgoing(
+                        addr,
+                        self.certificate.clone(),
+                        self.secret_key.clone(),
+                        self.is_stopped.clone(),
+                    )
+                    .instrument(span)
+                    .result(
+                        move |(peer_id, transport)| Event::OutgoingEstablished {
+                            remote_address: addr,
+                            peer_id: Box::new(peer_id),
+                            transport,
+                        },
+                        move |error| Event::OutgoingDialFailure {
+                            peer_address: Box::new(addr),
+                            error: Box::new(error),
+                        },
+                    ),
+                ),
+                DialRequest::Disconnect { handle: _, span } => {
+                    // Dropping the `handle` is enough to signal the connection to shutdown.
+                    span.in_scope(|| {
+                        debug!("dropping connection, as requested");
+                    })
+                }
+            }
         }
+
         effects
     }
 
@@ -824,7 +674,7 @@ where
                 public_address,
                 protocol_version,
             } => {
-                if network_name != self.chain_info.network_name {
+                let requests = if network_name != self.chain_info.network_name {
                     info!(
                         our_id=%self.our_id,
                         %peer_id,
@@ -834,16 +684,16 @@ where
                         their_protocol_version=%protocol_version,
                         "dropping connection due to network name mismatch"
                     );
-                    let remove = self.remove(effect_builder, &peer_id, false);
-                    self.update_peers_metric();
-                    return remove;
-                }
 
-                // This speeds up the connection process, but masks potential bugs in the gossiper.
-                let effects = self.connect_to_peer_if_required(public_address);
-                self.update_peers_metric();
-
-                effects
+                    // Node is on the wrong network, but there is nothing we can do about it, as
+                    // small_network currently lacks the capability to drop incoming connections.
+                    Default::default()
+                } else {
+                    // Speed up the connection process by directly learning the peer's address.
+                    self.outgoing_manager
+                        .learn_addr(public_address, false, Instant::now())
+                };
+                self.process_dial_requests(requests)
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
@@ -851,115 +701,39 @@ where
         }
     }
 
-    fn update_peers_metric(&mut self) {
-        self.net_metrics.peers.set(self.peers().len() as i64);
-    }
-
-    fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
-        let now = Timestamp::now();
-        self.blocklist
-            .retain(|_, ts| *ts > now.saturating_sub(*BLOCKLIST_RETAIN_DURATION));
-        if self.pending.contains_key(&peer_address)
-            || self.blocklist.contains_key(&peer_address)
-            || self
-                .outgoing
-                .iter()
-                .any(|(_peer_id, connection)| connection.peer_address == peer_address)
-        {
-            // We're already trying to connect, are connected, or the connection is on the blocklist
-            // - do nothing.
-            Effects::new()
-        } else {
-            // We need to connect.
-            let now = Instant::now();
-            self.pending.insert(peer_address, now);
-            connect_outgoing(
-                peer_address,
-                Arc::clone(&self.certificate),
-                Arc::clone(&self.secret_key),
-                Arc::clone(&self.is_stopped),
-            )
-            .result(
-                move |(peer_id, transport)| Event::OutgoingEstablished {
-                    peer_id: Box::new(peer_id),
-                    transport,
-                },
-                move |error| Event::OutgoingFailed {
-                    peer_id: Box::new(None),
-                    peer_address: Box::new(peer_address),
-                    error: Box::new(Some(error)),
-                },
-            )
-        }
-    }
-
-    /// Checks whether a connection has been established fully, i.e. with an incoming and outgoing
-    /// connection.
-    ///
-    /// Returns either no effect or an announcement that a new peer has connected.
-    fn check_connection_complete(
+    /// Emits an announcement that a connection has been completed.
+    fn connection_completed(
         &self,
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
     ) -> Effects<Event<P>> {
-        if self.outgoing.contains_key(&peer_id) && self.incoming.contains_key(&peer_id) {
-            debug!(%peer_id, "connection to peer is now complete");
-            effect_builder.announce_new_peer(peer_id).ignore()
-        } else {
-            Effects::new()
-        }
-    }
-
-    /// If we are isolated, try to reconnect to all known nodes.
-    fn reconnect_if_not_connected_to_any_known_addresses(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<P>> {
-        if self.is_not_connected_to_any_known_address() {
-            info!(delay=?self.cfg.isolation_reconnect_delay, "we are isolated. will attempt to reconnect to all known nodes after a delay");
-
-            effect_builder
-                .set_timeout(self.cfg.isolation_reconnect_delay.into())
-                .event(|_| Event::IsolationReconnection)
-        } else {
-            Effects::new()
-        }
+        effect_builder.announce_new_peer(peer_id).ignore()
     }
 
     /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
         let mut ret = BTreeMap::new();
-        for (node_id, connection) in &self.outgoing {
-            ret.insert(*node_id, connection.peer_address.to_string());
+        for node_id in self.outgoing_manager.connected_peers() {
+            if let Some(connection) = self.outgoing_manager.get_route(node_id) {
+                ret.insert(node_id, connection.peer_address.to_string());
+            } else {
+                // This should never happen unless the state of `OutgoingManager` is corrupt.
+                warn!("route disappeared unexpectedly")
+            }
         }
-        for (node_id, connection) in &self.incoming {
-            ret.entry(*node_id)
-                .or_insert_with(|| connection.peer_address.to_string());
+
+        // Keeping the old interface intact, we simply override earlier with later addresses.
+        for (node_id, sym) in &self.connection_symmetries {
+            if let Some(addrs) = sym.incoming_addrs() {
+                for addr in addrs {
+                    ret.insert(*node_id, addr.to_string());
+                }
+            }
         }
         ret
     }
 
-    /// Returns whether or not this node has been disconnected from all known nodes.
-    fn is_not_connected_to_any_known_address(&self) -> bool {
-        for &known_address in &self.known_addresses {
-            if self.pending.contains_key(&known_address) {
-                return false;
-            }
-
-            if self
-                .outgoing
-                .values()
-                .any(|outgoing_connection| outgoing_connection.peer_address == known_address)
-            {
-                return false;
-            }
-        }
-
-        true
-    }
-
     /// Returns the node id of this network node.
-    /// - Used in validator test.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.our_id
@@ -969,7 +743,7 @@ where
 impl<REv, P> Finalize for SmallNetwork<REv, P>
 where
     REv: Send + 'static,
-    P: Send + 'static,
+    P: Payload,
 {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
@@ -1014,20 +788,13 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::IsolationReconnection => {
-                if self.is_not_connected_to_any_known_address() {
-                    info!("still isolated after grace time, attempting to reconnect to all known_nodes");
-                    self.connect_to_known_addresses()
-                } else {
-                    info!("would attempt to reconnect, but no longer isolated. not reconnecting");
-                    Effects::new()
-                }
-            }
+            // A new TCP connection has arrived (stage 1/3).
             Event::IncomingNew {
                 stream,
                 peer_address,
             } => {
-                debug!(our_id=%self.our_id, %peer_address, "incoming connection, starting TLS handshake");
+                debug!(our_id=%self.our_id, %peer_address, "incoming connection, starting TLS
+        handshake");
 
                 setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
                     .boxed()
@@ -1036,6 +803,8 @@ where
                         peer_address,
                     })
             }
+            // The TLS connection has been established (stage 2/3).
+            // Stage 3 is implicitly handled.
             Event::IncomingHandshakeCompleted {
                 result,
                 peer_address,
@@ -1050,25 +819,52 @@ where
                 peer_id,
                 peer_address,
             } => {
+                // TODO: Move the logging of these errors into the `async` function that is using
+                //       the correct span passed in from the `OutgoingManager`.
                 match result {
                     Ok(()) => {
                         info!(our_id=%self.our_id, %peer_id, %peer_address, "connection closed",)
                     }
                     Err(ref err) => {
-                        warn!(our_id=%self.our_id, %peer_id, %peer_address, err=display_error(err), "connection dropped")
+                        warn!(our_id=%self.our_id, %peer_id, %peer_address,
+        err=display_error(err), "connection dropped")
                     }
                 }
-                self.remove(effect_builder, &peer_id, false)
+
+                let now = Instant::now();
+                self.connection_symmetries
+                    .entry(*peer_id)
+                    .or_default()
+                    .remove_incoming(*peer_address, now);
+
+                Effects::new()
             }
-            Event::OutgoingEstablished { peer_id, transport } => {
-                self.setup_outgoing(effect_builder, *peer_id, transport)
-            }
-            Event::OutgoingFailed {
+
+            Event::OutgoingEstablished {
+                remote_address,
                 peer_id,
+                transport,
+            } => self.setup_outgoing(effect_builder, remote_address, *peer_id, transport),
+            Event::OutgoingDialFailure {
                 peer_address,
                 error,
-            } => self.handle_outgoing_lost(effect_builder, *peer_id, *peer_address, *error),
-            Event::SweepPending => self.sweep_pending_connections(effect_builder),
+            } => {
+                let requests = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Failed {
+                        addr: *peer_address,
+                        error: *error,
+                        when: Instant::now(),
+                    });
+
+                self.process_dial_requests(requests)
+            }
+            Event::OutgoingDropped {
+                peer_id,
+                peer_address,
+                error: _,
+            } => self.handle_outgoing_lost(*peer_id, *peer_address),
+
             Event::NetworkRequest { req } => {
                 match *req {
                     NetworkRequest::SendMessage {
@@ -1105,17 +901,63 @@ where
                     responder.respond(self.peers()).ignore()
                 }
             },
+            Event::PeerAddressReceived(gossiped_address) => {
+                let requests = self.outgoing_manager.learn_addr(
+                    gossiped_address.into(),
+                    false,
+                    Instant::now(),
+                );
+                self.process_dial_requests(requests)
+            }
+            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(peer_id)) => {
+                // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
+                // current outgoing address of a peer.
+                warn!(%peer_id, "adding peer to blocklist after transgression");
+
+                if let Some(addr) = self.outgoing_manager.get_addr(*peer_id) {
+                    let requests = self.outgoing_manager.block_addr(addr, Instant::now());
+                    self.process_dial_requests(requests)
+                } else {
+                    // Peer got away with it, no longer an outgoing connection.
+                    Effects::new()
+                }
+            }
+
             Event::GossipOurAddress => {
                 let mut effects = self.gossip_our_address(effect_builder);
-                effects.extend(self.enforce_symmetric_connections(effect_builder));
+                effects.extend(
+                    effect_builder
+                        .set_timeout(self.cfg.gossip_interval)
+                        .event(|_| Event::GossipOurAddress),
+                );
                 effects
             }
-            Event::PeerAddressReceived(gossiped_address) => {
-                self.connect_to_peer_if_required(gossiped_address.into())
+
+            Event::SweepSymmetries => {
+                let now = Instant::now();
+
+                let mut effects = self.enforce_symmetric_connections(now);
+
+                effects.extend(
+                    effect_builder
+                        .set_timeout(SYMMETRY_SWEEP_INTERVAL)
+                        .event(|_| Event::SweepSymmetries),
+                );
+
+                effects
             }
-            Event::BlocklistAnnouncement(BlocklistAnnouncement::OffenseCommitted(ref peer_id)) => {
-                warn!(%peer_id, "adding peer to blocklist after transgression");
-                self.remove(effect_builder, peer_id, true)
+            Event::SweepOutgoing => {
+                let now = Instant::now();
+                let requests = self.outgoing_manager.perform_housekeeping(now);
+                let mut effects = self.process_dial_requests(requests);
+
+                effects.extend(
+                    effect_builder
+                        .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
+                        .event(|_| Event::SweepOutgoing),
+                );
+
+                effects
             }
         }
     }
@@ -1207,7 +1049,10 @@ impl SmallNetworkIdentity {
     }
 }
 
-impl<REv, P> From<&SmallNetwork<REv, P>> for SmallNetworkIdentity {
+impl<REv, P> From<&SmallNetwork<REv, P>> for SmallNetworkIdentity
+where
+    P: Payload,
+{
     fn from(small_network: &SmallNetwork<REv, P>) -> Self {
         SmallNetworkIdentity {
             secret_key: small_network.secret_key.clone(),
@@ -1281,8 +1126,8 @@ async fn handshake_reader<REv, P>(
     warn!(%our_id, %peer_id, "receiving handshake failed, closing connection");
     event_queue
         .schedule(
-            Event::OutgoingFailed {
-                peer_id: Box::new(Some(peer_id)),
+            Event::OutgoingDropped {
+                peer_id: Box::new(peer_id),
                 peer_address: Box::new(peer_address),
                 error: Box::new(None),
             },
@@ -1450,18 +1295,14 @@ async fn connect_outgoing(
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where
-    P: Debug,
+    P: Payload,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // We output only the most important fields of the component, as it gets unwieldy quite fast
+        // otherwise.
         f.debug_struct("SmallNetwork")
             .field("our_id", &self.our_id)
-            .field("certificate", &"<SSL cert>")
-            .field("secret_key", &"<hidden>")
             .field("public_address", &self.public_address)
-            .field("event_queue", &"<event_queue>")
-            .field("incoming", &self.incoming)
-            .field("outgoing", &self.outgoing)
-            .field("pending", &self.pending)
             .finish()
     }
 }

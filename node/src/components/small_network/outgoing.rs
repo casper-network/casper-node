@@ -380,7 +380,7 @@ where
 
     /// Retrieves the address by peer.
     pub(crate) fn get_addr(&self, peer_id: NodeId) -> Option<SocketAddr> {
-        self.routes.get(&peer_id)
+        self.routes.get(&peer_id).copied()
     }
 
     /// Retrieves a handle to a peer.
@@ -481,6 +481,8 @@ where
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
+    // This function is currently not in use by `small_network` itself.
+    #[allow(dead_code)]
     pub(crate) fn redeem_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
         let span = mk_span(addr, self.outgoing.get(&addr));
         span.clone()
@@ -511,7 +513,7 @@ where
     /// Performs housekeeping like reconnection or unblocking peers.
     ///
     /// This function must periodically be called. A good interval is every second.
-    fn perform_housekeeping(&mut self, now: Instant) -> Vec<DialRequest<H>> {
+    pub(super) fn perform_housekeeping(&mut self, now: Instant) -> Vec<DialRequest<H>> {
         let mut to_forget = Vec::new();
         let mut to_fail = Vec::new();
         let mut to_reconnect = Vec::new();
@@ -1182,7 +1184,7 @@ mod tests {
         init_logging();
 
         let mut rng = crate::new_rng();
-        let mut clock = TestClock::new();
+        let clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
         let addr_b: SocketAddr = "5.6.7.8:5678".parse().unwrap();

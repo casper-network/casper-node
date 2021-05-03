@@ -5,6 +5,7 @@
 
 use std::{
     collections::BTreeSet,
+    mem,
     net::SocketAddr,
     time::{Duration, Instant},
 };
@@ -55,7 +56,7 @@ impl ConnectionSymmetry {
                 peer_addrs.insert(peer_addr);
                 false
             }
-            ConnectionSymmetry::OutgoingOnly { since } => {
+            ConnectionSymmetry::OutgoingOnly { .. } => {
                 // Outgoing graduates to Symmetric when we receive an incoming connection.
                 let mut peer_addrs = BTreeSet::new();
                 peer_addrs.insert(peer_addr);
@@ -124,7 +125,7 @@ impl ConnectionSymmetry {
             ConnectionSymmetry::IncomingOnly { peer_addrs, .. } => {
                 // Connection is now complete.
                 *self = ConnectionSymmetry::Symmetric {
-                    peer_addrs: peer_addrs.drain().collect(),
+                    peer_addrs: mem::take(peer_addrs),
                 };
                 true
             }
@@ -158,7 +159,7 @@ impl ConnectionSymmetry {
             }
             ConnectionSymmetry::Symmetric { peer_addrs } => {
                 *self = ConnectionSymmetry::IncomingOnly {
-                    peer_addrs: peer_addrs.drain().collect(),
+                    peer_addrs: mem::take(peer_addrs),
                     since: now,
                 };
                 true
@@ -173,11 +174,9 @@ impl ConnectionSymmetry {
     /// Indicates whether or not a connection should be cleaned up.
     pub(super) fn should_be_reaped(&self, now: Instant, max_time_asymmetric: Duration) -> bool {
         match self {
-            ConnectionSymmetry::IncomingOnly { since, peer_addrs } => {
-                now >= *since + max_time_asymmetric
-            }
+            ConnectionSymmetry::IncomingOnly { since, .. } => now >= *since + max_time_asymmetric,
             ConnectionSymmetry::OutgoingOnly { since } => now >= *since + max_time_asymmetric,
-            ConnectionSymmetry::Symmetric { peer_addrs } => false,
+            ConnectionSymmetry::Symmetric { .. } => false,
             ConnectionSymmetry::Gone => true,
         }
     }
@@ -194,7 +193,7 @@ impl ConnectionSymmetry {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::SocketAddr, time::Duration};
+    use std::{collections::BTreeSet, net::SocketAddr, time::Duration};
 
     use crate::testing::test_clock::TestClock;
 
