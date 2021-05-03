@@ -76,7 +76,7 @@ where
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
-    pending_values: HashMap<ProposedBlock<C>, Vec<ValidVertex<C>>>,
+    pending_values: HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
@@ -302,8 +302,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
     fn add_vertex(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
-        let (maybe_pending_vertex, mut outcomes) =
-            self.synchronizer.pop_vertex_to_add(&self.highway);
+        let (maybe_pending_vertex, mut outcomes) = self
+            .synchronizer
+            .pop_vertex_to_add(&self.highway, &self.pending_values);
         let pending_vertex = match maybe_pending_vertex {
             None => return outcomes,
             Some(pending_vertex) => pending_vertex,
@@ -346,14 +347,17 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 let ancestor_values = self.ancestors(fork_choice).cloned().collect();
                 let block_context = BlockContext::new(timestamp, ancestor_values);
                 let proposed_block = ProposedBlock::new(value.clone(), block_context);
-                self.pending_values
+                if self
+                    .pending_values
                     .entry(proposed_block.clone())
                     .or_default()
-                    .push(vv);
-                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
-                    sender,
-                    proposed_block,
-                });
+                    .insert((vv, sender.clone()))
+                {
+                    outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                        sender,
+                        proposed_block,
+                    });
+                }
                 return outcomes;
             } else {
                 self.log_proposal(vertex, "proposal does not need validation");
@@ -789,7 +793,7 @@ where
                 .remove(&proposed_block)
                 .into_iter()
                 .flatten()
-                .flat_map(|vv| self.add_valid_vertex(vv, now))
+                .flat_map(|(vv, _)| self.add_valid_vertex(vv, now))
                 .collect_vec();
             outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
             outcomes.extend(self.detect_finality());
@@ -802,7 +806,7 @@ where
             let dropped_vertex_ids = dropped_vertices
                 .into_iter()
                 .flatten()
-                .map(|vv| {
+                .map(|(vv, _)| {
                     self.log_proposal(vv.inner(), "dropping invalid proposal");
                     vv.inner().id()
                 })
