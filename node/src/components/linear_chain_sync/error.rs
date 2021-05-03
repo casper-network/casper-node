@@ -10,7 +10,7 @@ use casper_types::{EraId, Key, ProtocolVersion, PublicKey, U512};
 use crate::{
     components::fetcher::FetcherError,
     crypto,
-    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures},
+    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata},
 };
 use num::rational::Ratio;
 use std::collections::BTreeMap;
@@ -93,6 +93,9 @@ where
 
     #[error(transparent)]
     BlockHeaderWithMetadataFetcherError(#[from] FetcherError<BlockHeaderWithMetadata, I>),
+
+    #[error(transparent)]
+    BlockWithMetadataFetcherError(#[from] FetcherError<BlockWithMetadata, I>),
 
     #[error(transparent)]
     TrieFetcherError(#[from] FetcherError<Trie<Key, StoredValue>, I>),

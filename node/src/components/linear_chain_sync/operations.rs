@@ -22,10 +22,16 @@ use crate::{
         linear_chain_sync::error::{FinalitySignatureError, LinearChainSyncError},
     },
     effect::{
-        requests::{ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest},
+        requests::{
+            BlockValidationRequest, ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest,
+            StorageRequest,
+        },
         EffectBuilder,
     },
-    types::{BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, Chainspec, Item},
+    types::{
+        BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
+        Chainspec, Item,
+    },
 };
 
 const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
@@ -263,6 +269,108 @@ where
     return Ok(outstanding_tries);
 }
 
+struct BlockWithMetadataFetchedFromRemote<I> {
+    block_with_metadata: Box<BlockWithMetadata>,
+    sender: I,
+}
+
+/// Fetches a block from the network by height.
+async fn fetch_and_store_block_by_height_from_remote<REv, I>(
+    effect_builder: EffectBuilder<REv>,
+    height: u64,
+    trusted_validator_weights: &BTreeMap<PublicKey, U512>,
+    finality_threshold_fraction: Ratio<u64>,
+) -> Result<Option<BlockWithMetadataFetchedFromRemote<I>>, FetcherError<BlockWithMetadata, I>>
+where
+    REv: From<FetcherRequest<I, BlockWithMetadata>>
+        + From<NetworkInfoRequest<I>>
+        + From<StorageRequest>,
+    I: Eq + Debug + Clone + Send + 'static,
+{
+    for peer in get_and_shuffle_network_peers(effect_builder).await {
+        match effect_builder
+            .fetch::<BlockWithMetadata, I>(height, peer.clone())
+            .await
+        {
+            Ok(FetchedData::FromStorage { item }) => {
+                // TODO: We do not know this peer has the block, don't use a fetcher
+                return Ok(Some(BlockWithMetadataFetchedFromRemote {
+                    block_with_metadata: item,
+                    sender: peer,
+                }));
+            }
+            Ok(FetchedData::FromPeer { item, .. }) => {
+                let BlockWithMetadata {
+                    block,
+                    finality_signatures,
+                } = *item.clone();
+
+                if *block.hash() != block.header().hash() {
+                    warn!(
+                        header_hash_reported_by_block=?block.hash(),
+                        actual_header_hash=?block.header().hash(),
+                        ?peer,
+                        "Hash reported by block does not correspond to header hash.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                if *block.header().body_hash() != block.body().hash() {
+                    warn!(
+                        header_body_hash=?block.header().body_hash(),
+                        actual_body_hash=?block.body().hash(),
+                        ?peer,
+                        "Header body hash does not correspond to the actual body hash.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                if let Err(error) = validate_finality_signatures(
+                    block.header(),
+                    &trusted_validator_weights,
+                    finality_threshold_fraction,
+                    &finality_signatures,
+                ) {
+                    warn!(
+                        ?error,
+                        ?peer,
+                        "Error validating finality signatures from peer.",
+                    );
+                    // TODO: ban peer
+                    continue;
+                }
+
+                // Store the block
+                effect_builder.put_block_to_storage(Box::new(block)).await;
+
+                // Store the finality signatures
+                effect_builder
+                    .put_signatures_to_storage(finality_signatures.clone())
+                    .await;
+
+                return Ok(Some(BlockWithMetadataFetchedFromRemote {
+                    block_with_metadata: item,
+                    sender: peer,
+                }));
+            }
+            Err(FetcherError::AbsentFromPeer { .. }) => {
+                warn!(
+                    height,
+                    tag = ?BlockHeaderWithMetadata::TAG,
+                    ?peer,
+                    "Fast sync could not fetch",
+                );
+                // If the peer we requested doesn't have the item, continue with the next peer
+                continue;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(None)
+}
+
 /// Runs the fast synchronization task.
 pub(crate) async fn run_fast_sync_task<REv, I>(
     effect_builder: EffectBuilder<REv>,
@@ -270,9 +378,11 @@ pub(crate) async fn run_fast_sync_task<REv, I>(
     chainspec: Chainspec,
 ) -> Result<(), LinearChainSyncError<I>>
 where
-    REv: From<ContractRuntimeRequest>
+    REv: From<BlockValidationRequest<I>>
+        + From<ContractRuntimeRequest>
         + From<FetcherRequest<I, BlockHeader>>
         + From<FetcherRequest<I, BlockHeaderWithMetadata>>
+        + From<FetcherRequest<I, BlockWithMetadata>>
         + From<FetcherRequest<I, Trie<Key, StoredValue>>>
         + From<NetworkInfoRequest<I>>
         + From<StorageRequest>,
@@ -318,14 +428,15 @@ where
                 },
             );
         }
-        let maybe_fetched_block = fetch_and_store_block_header_by_height(
+
+        let maybe_fetched_block_header = fetch_and_store_block_header_by_height(
             effect_builder,
             most_recent_block_header.height() + 1,
             &trusted_validator_weights,
             chainspec.highway_config.finality_threshold_fraction,
         )
         .await?;
-        match maybe_fetched_block {
+        match maybe_fetched_block_header {
             Some(more_recent_block_header_with_metadata) => {
                 most_recent_block_header = more_recent_block_header_with_metadata.block_header;
                 // If the new block is a switch block, update the validator weights
@@ -336,6 +447,8 @@ where
                 }
             }
             // If we could not fetch, we can stop if the most recent has our protocol version
+            // TODO: have better heuristics; consider retrying in
+            // fetch_and_store_block_header_by_height
             None if most_recent_block_header.protocol_version()
                 == chainspec.protocol_config.version =>
             {
@@ -351,7 +464,7 @@ where
     // Synchronize the trie store for the most recent block header.
 
     // Corner case: if an emergency restart happened recently, it is necessary to synchronize the
-    // state for the block right after the emergency restart.  This is needed for the EraSupervisor.
+    // state for the block right after the emergency restart. This is needed for the EraSupervisor.
 
     // The era supervisor needs validator information from previous eras it may potentially slash.
     // The number of previous eras is determined by a *delay* in which consensus participants become
@@ -397,6 +510,35 @@ where
         let missing_descendant_trie_keys =
             fetch_trie_and_insert_into_trie_store(effect_builder, trie_key).await?;
         outstanding_trie_keys.extend(missing_descendant_trie_keys);
+    }
+
+    // Process blocks to until we are current.
+    info!(?most_recent_block_header, "Processing blocks to current",);
+    while let Some(BlockWithMetadataFetchedFromRemote {
+        block_with_metadata,
+        sender,
+    }) = fetch_and_store_block_by_height_from_remote(
+        effect_builder,
+        most_recent_block_header.height() + 1,
+        &trusted_validator_weights,
+        chainspec.highway_config.finality_threshold_fraction,
+    )
+    .await?
+    {
+        if let Some(new_trusted_validator_weights) = block_with_metadata
+            .block
+            .header()
+            .next_era_validator_weights()
+        {
+            trusted_validator_weights = new_trusted_validator_weights.clone();
+        };
+        most_recent_block_header = block_with_metadata.block.header().clone();
+        // Block is valid, calling validate_block to fetch deploys.
+        // Keep trying until it returns true.
+        while !effect_builder
+            .validate_block(sender.clone(), block_with_metadata.block.clone())
+            .await
+        {}
     }
 
     Ok(())
