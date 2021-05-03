@@ -267,7 +267,7 @@ fn network_is_complete(
             }
         }
 
-        if !missing.next().is_none() {
+        if missing.next().is_some() {
             // We have at least two missing, which cannot be.
             return false;
         }

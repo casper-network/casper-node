@@ -22,6 +22,12 @@ pub struct TestClock {
     now: Instant,
 }
 
+impl Default for TestClock {
+    fn default() -> Self {
+        TestClock::new()
+    }
+}
+
 impl TestClock {
     /// Creates a new testing clock.
     ///

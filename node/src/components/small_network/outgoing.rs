@@ -86,6 +86,9 @@
 //! connection is overtaken by the new connection announcement.
 //! ```
 
+// Clippy has a lot of false positives due to `span.clone()`-closures.
+#![allow(clippy::redundant_clone)]
+
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error,
@@ -367,7 +370,7 @@ where
             // Otherwise we have established a new route.
             (_, OutgoingState::Connected { peer_id, .. }) => {
                 debug!(%peer_id, "route added");
-                self.routes.insert(peer_id.clone(), addr);
+                self.routes.insert(*peer_id, addr);
             }
 
             _ => {
@@ -398,6 +401,7 @@ where
     }
 
     /// Iterates over all connected peer IDs.
+    #[allow(clippy::needless_lifetimes)]
     pub(crate) fn connected_peers<'a>(&'a self) -> impl Iterator<Item = NodeId> + 'a {
         self.routes.keys().cloned()
     }
@@ -810,7 +814,7 @@ mod tests {
             }
         }
 
-        return false;
+        false
     }
 
     /// Helper function that checks if a given dial request actually disconnects the expected
@@ -828,7 +832,7 @@ mod tests {
             }
         }
 
-        return false;
+        false
     }
 
     #[test]
