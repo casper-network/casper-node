@@ -116,21 +116,23 @@ impl Distribution<DeployHash> for Standard {
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
     /// Deploy that created the transfer
-    pub deploy_hash: DeployHash,
+    deploy_hash: DeployHash,
     /// Account from which transfer was executed
-    pub from: AccountHash,
+    from: AccountHash,
     /// Account to which funds are transferred
-    pub to: Option<AccountHash>,
+    to: Option<AccountHash>,
     /// Source purse
-    pub source: URef,
+    source: URef,
     /// Target purse
-    pub target: URef,
+    target: URef,
     /// Transfer amount
-    pub amount: U512,
-    /// Gas
-    pub gas: U512,
+    amount: U512,
+    /// Gas (unused)
+    #[serde(skip)]
+    #[doc(hidden)]
+    gas: U512,
     /// User-defined id
-    pub id: Option<u64>,
+    id: Option<u64>,
 }
 
 impl Transfer {
@@ -143,7 +145,6 @@ impl Transfer {
         source: URef,
         target: URef,
         amount: U512,
-        gas: U512,
         id: Option<u64>,
     ) -> Self {
         Transfer {
@@ -153,9 +154,44 @@ impl Transfer {
             source,
             target,
             amount,
-            gas,
             id,
+            gas: U512::zero(), // Unused and reserved field
         }
+    }
+
+    /// Returns deploy that created the transfer
+    pub fn deploy_hash(&self) -> &DeployHash {
+        &self.deploy_hash
+    }
+
+    /// Returns account from which transfer was executed
+    pub fn from(&self) -> &AccountHash {
+        &self.from
+    }
+
+    /// Returns account to which funds are transferred
+    pub fn to(&self) -> &Option<AccountHash> {
+        &self.to
+    }
+
+    /// Returns source purse
+    pub fn source(&self) -> &URef {
+        &self.source
+    }
+
+    /// Returns target purse
+    pub fn target(&self) -> &URef {
+        &self.target
+    }
+
+    /// Returns transfer amount
+    pub fn amount(&self) -> &U512 {
+        &self.amount
+    }
+
+    /// Returns user-defined id
+    pub fn id(&self) -> &Option<u64> {
+        &self.id
     }
 }
 
@@ -411,20 +447,10 @@ pub mod gens {
             uref_arb(),
             uref_arb(),
             u512_arb(),
-            u512_arb(),
             option::of(<u64>::arbitrary()),
         )
-            .prop_map(|(deploy_hash, from, to, source, target, amount, gas, id)| {
-                Transfer {
-                    deploy_hash,
-                    from,
-                    to,
-                    source,
-                    target,
-                    amount,
-                    gas,
-                    id,
-                }
+            .prop_map(|(deploy_hash, from, to, source, target, amount, id)| {
+                Transfer::new(deploy_hash, from, to, source, target, amount, id)
             })
     }
 }
