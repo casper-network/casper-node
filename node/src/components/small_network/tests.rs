@@ -241,43 +241,34 @@ impl Finalize for TestReactor {
     }
 }
 
-/// Checks whether or not a given network with a unhealthy node is completely connected.
+/// Checks whether or not a given network with potentially blocked nodes is completely connected.
 fn network_is_complete(
     blocklist: &HashSet<NodeId>,
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
 ) -> bool {
-    // We need at least one node.
-    if nodes.is_empty() {
-        return false;
-    }
-
-    if nodes.len() == 1 {
-        let nodes = &nodes.values().collect::<Vec<_>>();
-        let net = &nodes[0].reactor().inner().net;
-        if net.is_not_connected_to_any_known_address() {
-            return true;
-        }
-    }
+    // Collect expected nodes.
+    let expected: HashSet<_> = nodes
+        .keys()
+        .filter(|&node_id| !blocklist.contains(node_id))
+        .copied()
+        .collect();
 
     for (node_id, node) in nodes {
         let net = &node.reactor().inner().net;
-        if blocklist.contains(node_id) {
-            // ignore blocklisted node
-            continue;
-        }
-        let outgoing = net.outgoing.keys().collect::<HashSet<_>>();
-        let incoming = net.incoming.keys().collect::<HashSet<_>>();
-        let difference = incoming
-            .symmetric_difference(&outgoing)
-            .collect::<HashSet<_>>();
+        // TODO: Ensure the connections are symmetrical.
+        let peers: HashSet<_> = net.peers().into_iter().map(|(k, _)| k).collect();
 
-        // All nodes should be connected to every other node, except itself, so we add it to the
-        // set of nodes and pretend we have a loopback connection.
-        if !difference.is_empty() {
-            return false;
+        let mut missing = expected.difference(&peers);
+
+        if let Some(first_missing) = missing.next() {
+            // We only allow loopbacks to be missing.
+            if first_missing != node_id {
+                return false;
+            }
         }
 
-        if outgoing.is_empty() && incoming.is_empty() {
+        if !missing.next().is_none() {
+            // We have at least two missing, which cannot be.
             return false;
         }
     }
