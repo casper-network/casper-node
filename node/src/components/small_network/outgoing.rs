@@ -378,6 +378,11 @@ where
         new_outgoing
     }
 
+    /// Retrieves the address by peer.
+    pub(crate) fn get_addr(&self, peer_id: NodeId) -> Option<SocketAddr> {
+        self.routes.get(&peer_id)
+    }
+
     /// Retrieves a handle to a peer.
     ///
     /// Primary function to send data to peers; clients retrieve a handle to it which can then
@@ -873,6 +878,7 @@ mod tests {
 
         // The routing table should have been updated and should return the handle.
         assert_eq!(manager.get_route(id_a), Some(&99));
+        assert_eq!(manager.get_addr(id_a), Some(addr_a));
 
         // Time passes, and our connection drops. Reconnecting should be immediate.
         assert!(manager.perform_housekeeping(clock.now()).is_empty());
@@ -884,6 +890,7 @@ mod tests {
 
         // The route should have been cleared.
         assert!(manager.get_route(id_a).is_none());
+        assert!(manager.get_addr(id_a).is_none());
 
         // Reconnection is already in progress, so we do not expect another request on housekeeping.
         assert!(manager.perform_housekeeping(clock.now()).is_empty());
