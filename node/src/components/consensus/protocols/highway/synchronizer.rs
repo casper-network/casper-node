@@ -22,6 +22,8 @@ use crate::{
 
 use super::{HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
 
+const MAX_REQUESTS_FOR_VERTEX: usize = 10;
+
 #[cfg(test)]
 mod tests;
 
@@ -172,6 +174,7 @@ where
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
     /// Used only for logging.
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
+    requests_sent: BTreeMap<Dependency<C>, HashSet<I>>,
     /// Boolean flag indicating whether we're synchronizing current era.
     pub(crate) current_era: bool,
 }
@@ -192,6 +195,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             request_latest_state_timeout,
             oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
             instance_id,
+            requests_sent: BTreeMap::new(),
             current_era: true,
         }
     }
@@ -200,6 +204,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn purge_vertices(&mut self, now: Timestamp) {
         let oldest = now.saturating_sub(self.pending_vertex_timeout);
         self.vertices_no_deps.remove_expired(oldest);
+        self.requests_sent.clear();
         Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
         Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
     }
@@ -317,7 +322,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
         let pvs = satisfied_deps
             .into_iter()
-            .flat_map(|dep| self.vertices_awaiting_deps.remove(&dep).unwrap())
+            .flat_map(|dep| {
+                self.requests_sent.remove(&dep);
+                self.vertices_awaiting_deps.remove(&dep).unwrap()
+            })
             .collect_vec();
         self.schedule_add_vertices(pvs)
     }
@@ -331,7 +339,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
     ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
         let mut outcomes = Vec::new();
-        let mut requested_dependencies: HashSet<(I, Dependency<C>)> = Default::default();
         // Get the next vertex to be added; skip the ones that are already in the protocol state,
         // and the ones that are still missing dependencies.
         loop {
@@ -363,16 +370,20 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // since there's a higher chance of adding `pv` to the protocol
                 // state after `dep` is added, rather than `transitive_dependency`.
                 self.add_missing_dependency(dep.clone(), pv);
-                if requested_dependencies.contains(&(sender.clone(), transitive_dependency.clone()))
-                    || pending_values
-                        .values()
-                        .flatten()
-                        .any(|(vv, s)| vv.inner().id() == transitive_dependency && s == &sender)
+                if pending_values
+                    .values()
+                    .flatten()
+                    .any(|(vv, s)| vv.inner().id() == transitive_dependency && s == &sender)
                 {
-                    // If we've already requested the same dependency from the same peer, ignore.
                     continue;
                 }
-                requested_dependencies.insert((sender.clone(), transitive_dependency.clone()));
+                let entry = self
+                    .requests_sent
+                    .entry(transitive_dependency.clone())
+                    .or_default();
+                if entry.len() >= MAX_REQUESTS_FOR_VERTEX || !entry.insert(sender.clone()) {
+                    continue;
+                }
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
@@ -458,6 +469,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.vertices_awaiting_deps.clear();
         self.vertices_to_be_added_later.clear();
         self.vertices_no_deps.retain_evidence_only();
+        self.requests_sent.clear();
     }
 
     /// Schedules vertices to be added to the protocol state.

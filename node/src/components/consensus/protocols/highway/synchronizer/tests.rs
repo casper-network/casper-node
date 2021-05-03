@@ -144,6 +144,7 @@ fn do_not_download_synchronized_dependencies() {
     let pvv = |hash: u64| util_highway.pre_validate_vertex(unit(hash)).unwrap();
 
     let peer0 = NodeId(0);
+    let peer1 = NodeId(1);
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let mut sync = Synchronizer::<NodeId, TestContext>::new(
@@ -187,7 +188,7 @@ fn do_not_download_synchronized_dependencies() {
     // `c1` is now part of the synchronizer's state, we should not try requesting it if other
     // vertices depend on it.
     assert!(matches!(
-        *sync.schedule_add_vertex(peer0, pvv(b0), now),
+        *sync.schedule_add_vertex(peer1, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
     let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
@@ -197,7 +198,7 @@ fn do_not_download_synchronized_dependencies() {
     // done that for `c1`.
     assert_targeted_message(
         &unwrap_single(outcomes),
-        &peer0,
+        &peer1,
         HighwayMessage::RequestDependency(Dependency::Unit(c0)),
     );
     // "Download" the last dependency.
