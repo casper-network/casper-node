@@ -202,6 +202,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     /// Removes expired pending vertices from the queues, and schedules the next purge.
     pub(crate) fn purge_vertices(&mut self, now: Timestamp) {
+        info!("purging synchronizer queues");
         let oldest = now.saturating_sub(self.pending_vertex_timeout);
         self.vertices_no_deps.remove_expired(oldest);
         self.requests_sent.clear();
