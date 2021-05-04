@@ -260,6 +260,7 @@ fn transitive_proposal_dependency() {
     let pvv = |hash: u64| util_highway.pre_validate_vertex(unit(hash)).unwrap();
 
     let peer0 = NodeId(0);
+    let peer1 = NodeId(1);
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let mut sync = Synchronizer::<NodeId, TestContext>::new(
@@ -297,7 +298,7 @@ fn transitive_proposal_dependency() {
     assert!(outcomes.is_empty());
     // `b0` can't be added either b/c it's relying on `c1` and `c0`.
     assert!(matches!(
-        *sync.schedule_add_vertex(peer0, pvv(b0), now),
+        *sync.schedule_add_vertex(peer1, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
     let c0_pending_values = {
@@ -309,8 +310,10 @@ fn transitive_proposal_dependency() {
         tmp.insert(proposed_block, set);
         tmp
     };
-    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &c0_pending_values);
-    assert!(pv.is_none());
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &c0_pending_values);
+    let pv = maybe_pv.unwrap();
+    assert!(pv.sender() == &peer1);
+    assert!(pv.vertex() == &unit(c0));
     // `b0` depends on `c1` and `c0` transitively but `c0`'s deploys are being downloaded,
     // so we don't re-request it.
     assert!(outcomes.is_empty())
