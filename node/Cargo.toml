@@ -103,13 +103,11 @@ wheelbuf = "0.2.0"
 vergen = "3"
 
 [dev-dependencies]
-assert_matches = "1"
 fake_instant = "0.4.0"
 multihash = "0.13.2"
 pnet = "0.27.2"
 rand_core = "0.6.2"
 rand_pcg = "0.3.0"
-reqwest = "0.10.8"
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
