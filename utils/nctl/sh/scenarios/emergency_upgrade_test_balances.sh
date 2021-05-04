@@ -26,9 +26,9 @@ function main() {
     do_await_genesis_era_to_complete
 
     # 1. Send batch of Wasm deploys
-    #do_send_wasm_deploys
+    do_send_wasm_deploys
     # 2. Send batch of native transfers
-    #do_send_transfers
+    do_send_transfers
     # 3. Wait until they're all included in the chain.
     do_await_deploy_inclusion
     # 4. Stop the network for the emergency upgrade.
@@ -40,9 +40,9 @@ function main() {
     # 7. Wait for the network to upgrade.
     do_await_network_upgrade
     # 8. Send batch of Wasm deploys
-    #do_send_wasm_deploys
+    do_send_wasm_deploys
     # 9. Send batch of native transfers
-    #do_send_transfers
+    do_send_transfers
     # 10. Wait until they're all included in the chain.
     do_await_deploy_inclusion
 
@@ -90,7 +90,7 @@ function do_prepare_upgrade() {
     local TGT_ACC=$(get_account_hash ${TGT_KEY})
     local PROPOSER=$(get_account_key "node" 1)
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
-        _emergency_upgrade_node_2 "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$SRC_ACC" "$TGT_ACC" "1000000000" "$PROPOSER"
+        _emergency_upgrade_node_balances "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$SRC_ACC" "$TGT_ACC" "1000000000" "$PROPOSER"
     done
 }
 

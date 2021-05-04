@@ -87,7 +87,7 @@ function _generate_global_state_update() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash.
     local PARAMS
-    PARAMS="-d ${STATE_SOURCE_PATH}/storage -s ${STATE_HASH}"
+    PARAMS="validators -d ${STATE_SOURCE_PATH}/storage -s ${STATE_HASH}"
 
     # Add the parameters that define the new validators.
     # We're using the reserve validators, from NODE_COUNT+1 to NODE_COUNT*2.
@@ -154,7 +154,7 @@ function _emergency_upgrade_node() {
 #   ID of the node to use as the source of the pre-upgrade global state
 #   Number of the nodes in the network
 #######################################
-function _generate_global_state_update_2() {
+function _generate_global_state_update_balances() {
     local PROTOCOL_VERSION=${1}
     local STATE_HASH=${2}
     local STATE_SOURCE=${3:-1}
@@ -176,12 +176,12 @@ function _generate_global_state_update_2() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash.
     local PARAMS
-    PARAMS="-d ${STATE_SOURCE_PATH}/storage -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT} -p ${PROPOSER}"
+    PARAMS="balances -d ${STATE_SOURCE_PATH}/storage -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT} -p ${PROPOSER}"
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
     # Create the global state update file.
-    "$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/transfer-gen $PARAMS \
+    "$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen $PARAMS \
         > "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml
 }
 
@@ -195,7 +195,7 @@ function _generate_global_state_update_2() {
 #   ID of a node to be used as the source of the pre-upgrade global state
 #   The number of nodes in the network
 #######################################
-function _emergency_upgrade_node_2() {
+function _emergency_upgrade_node_balances() {
     local PROTOCOL_VERSION=${1}
     local ACTIVATE_ERA=${2}
     local NODE_ID=${3}
