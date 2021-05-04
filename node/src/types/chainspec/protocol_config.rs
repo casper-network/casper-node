@@ -7,6 +7,7 @@ use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -33,9 +34,56 @@ pub struct ProtocolConfig {
     pub(crate) last_emergency_restart: Option<EraId>,
 }
 
-#[cfg(test)]
 impl ProtocolConfig {
+    /// Checks whether the values set in the config make sense and returns `false` if they don't.
+    pub(super) fn is_valid(&self) -> bool {
+        // If this is not an emergency restart config, assert the `last_emergency_restart` is `None`
+        // or less than `activation_point`.
+        if self.global_state_update.is_none() {
+            if let Some(last_emergency_restart) = self.last_emergency_restart {
+                let activation_point = self.activation_point.era_id();
+                if last_emergency_restart >= activation_point {
+                    error!(
+                        %activation_point,
+                        %last_emergency_restart,
+                        "[protocol.last_emergency_restart] must be lower than \
+                        [protocol.activation_point] in the chainspec."
+                    );
+                    return false;
+                };
+            }
+            return true;
+        }
+
+        // If this IS an emergency restart config, assert the `last_emergency_restart` is `Some` and
+        // equal to `activation_point`.
+        let last_emergency_restart = match self.last_emergency_restart {
+            Some(era_id) => era_id,
+            None => {
+                error!(
+                    "[protocol.last_emergency_restart] must exist in the chainspec since a global \
+                    state update was provided, implying this upgrade is an emergency restart."
+                );
+                return false;
+            }
+        };
+        let activation_point = self.activation_point.era_id();
+        if activation_point != last_emergency_restart {
+            error!(
+                %activation_point,
+                %last_emergency_restart,
+                "[protocol.last_emergency_restart] must equal [protocol.activation_point] in the \
+                chainspec since a global state update was provided, implying this upgrade is an \
+                emergency restart."
+            );
+            return false;
+        }
+
+        true
+    }
+
     /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(0..10),
@@ -120,5 +168,73 @@ mod tests {
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
+    }
+
+    #[test]
+    fn should_validate_if_not_emergency_restart() {
+        let mut rng = crate::new_rng();
+        let mut protocol_config = ProtocolConfig::random(&mut rng);
+
+        // If `global_state_update` is `None` then config is valid if `last_emergency_restart` is
+        // also `None`.
+        protocol_config.global_state_update = None;
+        protocol_config.last_emergency_restart = None;
+        assert!(protocol_config.is_valid());
+
+        // If `global_state_update` is `None` then config is valid if `last_emergency_restart` is
+        // less than `activation_point`.
+        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
+        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
+        protocol_config.last_emergency_restart = Some(activation_point - 1);
+        assert!(protocol_config.is_valid());
+    }
+
+    #[test]
+    fn should_fail_to_validate_if_no_last_emergency_restart() {
+        let mut rng = crate::new_rng();
+        let mut protocol_config = ProtocolConfig::random(&mut rng);
+
+        // If `global_state_update` is `Some`, this is an emergency restart, so
+        // `last_emergency_restart` should be `Some`.
+        protocol_config.global_state_update = Some(GlobalStateUpdate::random(&mut rng));
+        protocol_config.last_emergency_restart = None;
+        assert!(!protocol_config.is_valid());
+    }
+
+    #[test]
+    fn should_fail_to_validate_if_emergency_restart_with_invalid_last() {
+        let mut rng = crate::new_rng();
+        let mut protocol_config = ProtocolConfig::random(&mut rng);
+
+        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
+
+        // If `global_state_update` is `Some`, this is an emergency restart, so
+        // `last_emergency_restart` should match the given activation point.
+        protocol_config.global_state_update = Some(GlobalStateUpdate::random(&mut rng));
+        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
+
+        protocol_config.last_emergency_restart = Some(activation_point + 1);
+        assert!(!protocol_config.is_valid());
+
+        protocol_config.last_emergency_restart = Some(activation_point - 1);
+        assert!(!protocol_config.is_valid());
+    }
+
+    #[test]
+    fn should_fail_to_validate_if_not_emergency_restart_with_invalid_last() {
+        let mut rng = crate::new_rng();
+        let mut protocol_config = ProtocolConfig::random(&mut rng);
+
+        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
+
+        // If `global_state_update` is `None` then config is valid only if `last_emergency_restart`
+        // is less than `activation_point`.
+        protocol_config.global_state_update = None;
+        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
+        protocol_config.last_emergency_restart = Some(activation_point);
+        assert!(!protocol_config.is_valid());
+
+        protocol_config.last_emergency_restart = Some(activation_point + 1);
+        assert!(!protocol_config.is_valid());
     }
 }
