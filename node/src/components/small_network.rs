@@ -136,6 +136,12 @@ pub struct OutgoingConnection<P> {
     peer_address: SocketAddr,
 }
 
+impl<P> Display for OutgoingConnection<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "outgoing connection to {}", self.peer_address)
+    }
+}
+
 #[derive(DataSize)]
 pub(crate) struct SmallNetwork<REv, P>
 where
@@ -601,6 +607,7 @@ where
         let mut effects = Effects::new();
 
         for request in requests.into_iter() {
+            trace!(%request, "processing dial request");
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
                     connect_outgoing(

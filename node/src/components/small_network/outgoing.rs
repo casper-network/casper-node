@@ -238,6 +238,22 @@ pub(crate) enum DialRequest<H> {
     Disconnect { handle: H, span: Span },
 }
 
+impl<H> Display for DialRequest<H>
+where
+    H: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DialRequest::Dial { addr, .. } => {
+                write!(f, "dial: {}", addr)
+            }
+            DialRequest::Disconnect { handle, .. } => {
+                write!(f, "disconnect: {}", handle)
+            }
+        }
+    }
+}
+
 #[derive(DataSize, Debug)]
 /// Connection settings for the outgoing connection manager.
 pub struct OutgoingConfig {
