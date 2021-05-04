@@ -40,7 +40,7 @@ reactor!(LoadTestingReactor {
 
   components: {
       net = has_effects Network::<LoadTestingReactorEvent, DummyPayload>(
-        event_queue, cfg.network_config, registry, NetworkIdentity::new(), &cfg.chainspec, false
+        event_queue, cfg.network_config, registry, NetworkIdentity::new(), &cfg.chainspec
       );
       collector = infallible Collector::<DummyPayload>();
   }
