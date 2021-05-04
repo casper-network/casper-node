@@ -221,7 +221,7 @@ function _emergency_upgrade_node_balances() {
 
     local PATH_TO_NET=$(get_path_to_net)
 
-    _generate_global_state_update_2 "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$SRC_ACC" "$TARGET_ACC" "$AMOUNT" "$PROPOSER"
+    _generate_global_state_update_balances "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$SRC_ACC" "$TARGET_ACC" "$AMOUNT" "$PROPOSER"
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml

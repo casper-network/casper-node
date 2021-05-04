@@ -25,26 +25,47 @@ function main() {
 
     do_await_genesis_era_to_complete
 
-    # 1. Send batch of Wasm deploys
-    do_send_wasm_deploys
-    # 2. Send batch of native transfers
-    do_send_transfers
-    # 3. Wait until they're all included in the chain.
-    do_await_deploy_inclusion
-    # 4. Stop the network for the emergency upgrade.
+    local SRC_KEY=$(get_account_key "user" 1)
+    local SRC_PURSE=$(get_main_purse_uref ${SRC_KEY})
+    local INITIAL_SRC_BALANCE=$(get_account_balance ${SRC_PURSE})
+
+    log "Src key = ${SRC_KEY}"
+    log "Src purse = ${SRC_PURSE}"
+    log "Initial src balance = ${INITIAL_SRC_BALANCE}"
+
+    # 1. Wait until they're all included in the chain.
+    do_await_one_era
+    # 2. Stop the network for the emergency upgrade.
     do_stop_network
-    # 5. Prepare the nodes for the upgrade.
+    # 3. Prepare the nodes for the upgrade.
     do_prepare_upgrade
-    # 6. Restart the network (start both the old and the new validators).
+    # 4. Restart the network (start both the old and the new validators).
     do_restart_network
-    # 7. Wait for the network to upgrade.
+    # 5. Wait for the network to upgrade.
     do_await_network_upgrade
-    # 8. Send batch of Wasm deploys
-    do_send_wasm_deploys
-    # 9. Send batch of native transfers
-    do_send_transfers
-    # 10. Wait until they're all included in the chain.
-    do_await_deploy_inclusion
+    # 6. Wait until they're all included in the chain.
+    do_await_one_era
+
+    local TGT_KEY="010101010101010101010101010101010101010101010101010101010101010101"
+    local TGT_PURSE=$(get_main_purse_uref ${TGT_KEY})
+    local FINAL_SRC_BALANCE=$(get_account_balance ${SRC_PURSE})
+    local FINAL_TGT_BALANCE=$(get_account_balance ${TGT_PURSE})
+
+    local SRC_DIFF=$((INITIAL_SRC_BALANCE - FINAL_SRC_BALANCE))
+
+    log "Transferred $TRANSFER_AMOUNT"
+    log "Source: final balance $FINAL_SRC_BALANCE, diff $SRC_DIFF"
+    log "Target: final balance $FINAL_TGT_BALANCE"
+
+    if [ $FINAL_TGT_BALANCE -ne $TRANSFER_AMOUNT ]; then
+        log "FAILED: target final balance differs from the transfer amount."
+        exit 1
+    fi
+
+    if [ $SRC_DIFF -lt $TRANSFER_AMOUNT ]; then
+        log "FAILED: source balance changed by less than the transfer amount."
+        exit 1
+    fi
 
     log "------------------------------------------------------------"
     log "Emergency upgrade test ends"
@@ -84,20 +105,21 @@ function do_stop_network() {
 
 function do_prepare_upgrade() {
     log_step "preparing the network emergency upgrade to version ${PROTOCOL_VERSION} at era ${ACTIVATE_ERA}"
+
     local ACCOUNT_KEY=$(get_account_key "user" 1)
     local SRC_ACC=$(get_account_hash ${ACCOUNT_KEY})
     local TGT_KEY="010101010101010101010101010101010101010101010101010101010101010101"
     local TGT_ACC=$(get_account_hash ${TGT_KEY})
     local PROPOSER=$(get_account_key "node" 1)
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
-        _emergency_upgrade_node_balances "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$SRC_ACC" "$TGT_ACC" "1000000000" "$PROPOSER"
+        _emergency_upgrade_node_balances "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$SRC_ACC" "$TGT_ACC" "$TRANSFER_AMOUNT" "$PROPOSER"
     done
 }
 
 function do_restart_network() {
     log_step "restarting the network: starting both old and new validators"
     # start the network
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
+    for NODE_ID in $(seq 1 "$(get_count_of_genesis_nodes)"); do
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
 }
@@ -116,69 +138,10 @@ function do_await_network_upgrade() {
     done
 }
 
-function do_send_wasm_deploys() {
-    # NOTE: Maybe make these arguments to the test?
-    local BATCH_COUNT=1
-    local BATCH_SIZE=1
-    local TRANSFER_AMOUNT=10000
-    log_step "sending Wasm deploys"
-    # prepare wasm batch
-    prepare_wasm_batch "$TRANSFER_AMOUNT" "$BATCH_COUNT" "$BATCH_SIZE"
-    # dispatch wasm batches
-    for BATCH_ID in $(seq 1 $BATCH_COUNT); do
-        dispatch_wasm_batch "$BATCH_ID"
-    done
-}
-
-function do_send_transfers() {
-    log_step "sending native transfers"
-    # NOTE: Maybe make these arguments to the test?
-    local AMOUNT=2500000000
-    local TRANSFERS_COUNT=5
-    local NODE_ID="random"
-
-    # Enumerate set of users.
-    for USER_ID in $(seq 1 "$(get_count_of_users)"); do
-        dispatch_native "$AMOUNT" "$USER_ID" "$TRANSFERS_COUNT" "$NODE_ID"
-    done
-}
-
-function do_await_deploy_inclusion() {
+function do_await_one_era() {
     # Should be enough to await for one era.
     log_step "awaiting one era…"
     await_n_eras 1
-}
-
-function dispatch_native() {
-    local AMOUNT=${1}
-    local USER_ID=${2}
-    local TRANSFERS=${3}
-    local NODE_ID=${4}
-
-    source "$NCTL"/sh/contracts-transfers/do_dispatch_native.sh amount="$AMOUNT" \
-        user="$USER_ID" \
-        transfers="$TRANSFERS" \
-        node="$NODE_ID"
-}
-
-function dispatch_wasm_batch() {
-    local BATCH_ID=${1:-1}
-    local INTERVAL=${2:-0.01}
-    local NODE_ID=${3:-"random"}
-
-    source "$NCTL"/sh/contracts-transfers/do_dispatch_wasm_batch.sh batch="$BATCH_ID" \
-        interval="$INTERVAL" \
-        node="$NODE_ID"
-}
-
-function prepare_wasm_batch() {
-    local AMOUNT=${1}
-    local BATCH_COUNT=${2}
-    local BATCH_SIZE=${3}
-
-    source "$NCTL"/sh/contracts-transfers/do_prepare_wasm_batch.sh amount="$AMOUNT" \
-        count="$BATCH_COUNT" \
-        size="$BATCH_SIZE"
 }
 
 # ----------------------------------------------------------------
@@ -189,6 +152,7 @@ unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
 unset PROTOCOL_VERSION
 STEP=0
+TRANSFER_AMOUNT="1000000000"
 
 for ARGUMENT in "$@"; do
     KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
