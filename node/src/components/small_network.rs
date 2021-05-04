@@ -39,7 +39,6 @@ mod tests;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
-    env,
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::{SocketAddr, TcpListener},
@@ -92,9 +91,7 @@ pub(crate) use self::{
     message::{Message, MessageKind, Payload},
 };
 use crate::{
-    components::{
-        network::ENABLE_LIBP2P_NET_ENV_VAR, networking_metrics::NetworkingMetrics, Component,
-    },
+    components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
         announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -239,27 +236,6 @@ where
         let certificate = small_network_identity.tls_certificate;
 
         let chain_info = Arc::new(chain_info_source.into());
-
-        // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without starting the server.
-        if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-            let model = SmallNetwork {
-                cfg,
-                certificate,
-                secret_key,
-                public_address,
-                our_id,
-                event_queue,
-                outgoing_manager,
-                connection_symmetries: HashMap::new(),
-                chain_info,
-                shutdown_sender: None,
-                shutdown_receiver: watch::channel(()).1,
-                server_join_handle: None,
-                is_stopped: Arc::new(AtomicBool::new(true)),
-                net_metrics: Arc::new(NetworkingMetrics::new(&Registry::default())?),
-            };
-            return Ok((model, Effects::new()));
-        }
 
         let net_metrics = NetworkingMetrics::new(&registry)?;
 
@@ -762,8 +738,6 @@ where
                         error!(%self.our_id, err=display_error(err), "could not join server task cleanly")
                     }
                 }
-            } else if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_err() {
-                warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
 
             // Ensure there are no ongoing metrics updates.
