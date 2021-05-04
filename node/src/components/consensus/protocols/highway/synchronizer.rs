@@ -366,10 +366,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
                 let sender = pv.sender().clone();
+                let time_received = pv.time_received;
                 // Make `pv` depend on the direct dependency `dep` and not `transitive_dependency`
                 // since there's a higher chance of adding `pv` to the protocol
                 // state after `dep` is added, rather than `transitive_dependency`.
                 self.add_missing_dependency(dep.clone(), pv);
+                // If we already have the dependency and it is a proposal that is currently being
+                // handled by the block validator, and this sender is already known as a source,
+                // do nothing.
                 if pending_values
                     .values()
                     .flatten()
@@ -377,6 +381,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 {
                     continue;
                 }
+                // If we have already requested the dependency from this peer, or from the maximum
+                // number of peers, do nothing.
                 let entry = self
                     .requests_sent
                     .entry(transitive_dependency.clone())
@@ -384,6 +390,23 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 if entry.len() >= MAX_REQUESTS_FOR_VERTEX || !entry.insert(sender.clone()) {
                     continue;
                 }
+                // If we already have the dependency and it is a proposal that is currently being
+                // handled by the block validator, and this sender is not yet known as a source,
+                // we return the proposal as if this sender had sent it to us, so they get added.
+                if let Some((vv, _)) = pending_values
+                    .values()
+                    .flatten()
+                    .find(|(vv, _)| vv.inner().id() == transitive_dependency)
+                {
+                    let dep_pv = PendingVertex::new(sender, vv.clone().into(), time_received);
+                    // We found the next vertex to add.
+                    if !self.vertices_no_deps.is_empty() {
+                        // There are still vertices in the queue: schedule next call.
+                        outcomes.push(ProtocolOutcome::QueueAction(ACTION_ID_VERTEX));
+                    }
+                    return (Some(dep_pv), outcomes);
+                }
+                // Otherwise request the missing dependency from the sender.
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
