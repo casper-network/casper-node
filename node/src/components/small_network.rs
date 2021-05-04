@@ -306,14 +306,14 @@ where
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let mut effects = Effects::new();
 
         // Learn all known addresses and mark them as unforgettable.
-        for known_address in known_addresses {
-            component
-                .outgoing_manager
-                .learn_addr(known_address, true, Instant::now());
-        }
+        let now = Instant::now();
+        let dial_requests: Vec<_> = known_addresses
+            .into_iter()
+            .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
+            .collect();
+        let mut effects = component.process_dial_requests(dial_requests);
 
         // Start broadcasting our public listening address.
         effects.extend(
