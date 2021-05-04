@@ -381,15 +381,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 {
                     continue;
                 }
-                // If we have already requested the dependency from this peer, or from the maximum
-                // number of peers, do nothing.
-                let entry = self
-                    .requests_sent
-                    .entry(transitive_dependency.clone())
-                    .or_default();
-                if entry.len() >= MAX_REQUESTS_FOR_VERTEX || !entry.insert(sender.clone()) {
-                    continue;
-                }
                 // If we already have the dependency and it is a proposal that is currently being
                 // handled by the block validator, and this sender is not yet known as a source,
                 // we return the proposal as if this sender had sent it to us, so they get added.
@@ -405,6 +396,15 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                         outcomes.push(ProtocolOutcome::QueueAction(ACTION_ID_VERTEX));
                     }
                     return (Some(dep_pv), outcomes);
+                }
+                // If we have already requested the dependency from this peer, or from the maximum
+                // number of peers, do nothing.
+                let entry = self
+                    .requests_sent
+                    .entry(transitive_dependency.clone())
+                    .or_default();
+                if entry.len() >= MAX_REQUESTS_FOR_VERTEX || !entry.insert(sender.clone()) {
+                    continue;
                 }
                 // Otherwise request the missing dependency from the sender.
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
