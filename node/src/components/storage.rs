@@ -621,8 +621,9 @@ impl Storage {
 
                     if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
                         for transform_entry in effect.transforms {
-                            if let Transform::WriteTransfer(transfer) = transform_entry.transform {
-                                transfers.push(transfer);
+                            if let Transform::WriteTransfer(transfer) = transform_entry.transform()
+                            {
+                                transfers.push(*transfer);
                             }
                         }
                     }
