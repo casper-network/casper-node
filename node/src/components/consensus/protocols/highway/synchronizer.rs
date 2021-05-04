@@ -6,7 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{
     components::consensus::{
@@ -389,6 +389,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .flatten()
                     .find(|(vv, _)| vv.inner().id() == transitive_dependency)
                 {
+                    info!(
+                        dependency = ?transitive_dependency, %sender,
+                        "adding sender as a source for proposal"
+                    );
                     let dep_pv = PendingVertex::new(sender, vv.clone().into(), time_received);
                     // We found the next vertex to add.
                     if !self.vertices_no_deps.is_empty() {
@@ -407,6 +411,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
+                info!(dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
