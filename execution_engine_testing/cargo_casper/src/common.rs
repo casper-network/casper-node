@@ -12,9 +12,9 @@ use once_cell::sync::Lazy;
 use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
 pub static CL_CONTRACT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-contract", "1.1.1", "smart_contracts/contract"));
+    Lazy::new(|| Dependency::new("casper-contract", "1.1.2", "smart_contracts/contract"));
 pub static CL_TYPES: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-types", "1.1.1", "types"));
+    Lazy::new(|| Dependency::new("casper-types", "1.1.2", "types"));
 
 pub fn print_error_and_exit(msg: &str) -> ! {
     e_red!("error");
