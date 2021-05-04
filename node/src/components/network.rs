@@ -154,9 +154,6 @@ pub struct Network<REv, P> {
 
 impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     /// Creates a new small network component instance.
-    ///
-    /// If `notify` is set to `false`, no systemd notifications will be sent, regardless of
-    /// configuration.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
@@ -164,7 +161,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         registry: &Registry,
         network_identity: NetworkIdentity,
         chainspec: &Chainspec,
-        notify: bool,
     ) -> Result<(Network<REv, P>, Effects<Event<P>>), Error> {
         let our_peer_id = PeerId::from(&network_identity);
         let our_id = NodeId::from(&network_identity);
@@ -213,10 +209,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         let net_metrics = NetworkingMetrics::new(registry).map_err(Error::MetricsError)?;
-
-        if notify {
-            debug!("our node id: {}", our_id);
-        }
 
         // Create a keypair for authenticated encryption of the transport.
         let noise_keys = noise::Keypair::<X25519Spec>::new()

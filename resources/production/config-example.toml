@@ -110,13 +110,6 @@ known_addresses = ['139.162.132.144:35000','3.225.191.9:35000','31.7.207.16:3500
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
 
-# Enable systemd support. If enabled, the node will notify systemd once it has synced and its
-# listening socket for incoming connections is open.
-#
-# It is usually better to leave this option off and enable it explicitly via command-line override
-# only in the unit files themselves via `-C=network.systemd_support=true`.
-systemd_support = false
-
 # Minimum amount of time that has to pass before attempting to reconnect after losing all
 # connections to established nodes.
 isolation_reconnect_delay = '2s'

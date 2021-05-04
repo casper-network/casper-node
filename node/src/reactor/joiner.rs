@@ -387,7 +387,6 @@ impl reactor::Reactor for Reactor {
             registry,
             network_identity,
             chainspec_loader.chainspec(),
-            false,
         )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -395,7 +394,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            false,
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
