@@ -52,6 +52,9 @@ standstill_timeout = '5min'
 # Log inactive or faulty validators periodically, with this interval.
 log_participation_interval = '1min'
 
+# Log the size of every incoming and outgoing serialized unit.
+log_unit_sizes = false
+
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
@@ -106,13 +109,6 @@ known_addresses = ['127.0.0.1:34553']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 30000
-
-# Enable systemd support. If enabled, the node will notify systemd once it has synced and its
-# listening socket for incoming connections is open.
-#
-# It is usually better to leave this option off and enable it explicitly via command-line override
-# only in the unit files themselves via `-C=network.systemd_support=true`.
-systemd_support = false
 
 # Minimum amount of time that has to pass before attempting to reconnect after losing all
 # connections to established nodes.

@@ -62,7 +62,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, BlockHash, Deploy, ExitCode, NodeId, Tag},
+    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -311,7 +311,7 @@ pub struct ValidatorInitConfig {
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
-    pub(super) latest_block: Option<Block>,
+    pub(super) maybe_latest_block_header: Option<BlockHeader>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) network_identity: NetworkIdentity,
@@ -393,7 +393,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader,
             storage,
             mut contract_runtime,
-            latest_block,
+            maybe_latest_block_header,
             event_stream_server,
             small_network_identity,
             network_identity,
@@ -413,7 +413,6 @@ impl reactor::Reactor for Reactor {
             registry,
             network_identity,
             chainspec_loader.chainspec(),
-            true,
         )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -421,7 +420,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            true,
         )?;
 
         let address_gossiper =
@@ -448,17 +446,17 @@ impl reactor::Reactor for Reactor {
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
-            latest_block
+            maybe_latest_block_header
                 .as_ref()
-                .map(|block| block.height() + 1)
+                .map(|block_header| block_header.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
             config.block_proposer,
         )?;
 
-        let initial_era = latest_block.as_ref().map_or_else(
+        let initial_era = maybe_latest_block_header.as_ref().map_or_else(
             || chainspec_loader.initial_era(),
-            |block| block.header().next_block_era_id(),
+            |block_header| block_header.next_block_era_id(),
         );
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
 
@@ -470,7 +468,7 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
-            latest_block.as_ref().map(Block::header),
+            maybe_latest_block_header.as_ref(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
@@ -483,7 +481,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
         );
-        contract_runtime.set_parent_map_from_block(latest_block);
+        contract_runtime.set_parent_map_from_block(maybe_latest_block_header);
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -1013,6 +1011,16 @@ impl reactor::Reactor for Reactor {
             ) => {
                 debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
                 Effects::new()
+            }
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
+                era_id,
+                execution_effect,
+            }) => {
+                let reactor_event = Event::EventStreamServer(event_stream_server::Event::Step {
+                    era_id,
+                    effect: execution_effect,
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")

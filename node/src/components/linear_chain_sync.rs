@@ -47,7 +47,8 @@ use crate::{
     effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
     fatal,
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, Chainspec, FinalizedBlock, TimeDiff,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, Chainspec, FinalizedBlock,
+        TimeDiff,
     },
     NodeRng,
 };
@@ -499,6 +500,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
             State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
             State::Done(latest_block) => latest_block.as_deref(),
+            State::None => None,
+        }
+    }
+
+    pub fn into_maybe_latest_block_header(self) -> Option<BlockHeader> {
+        match self.state {
+            State::SyncingTrustedHash { latest_block, .. } => latest_block.map(Block::take_header),
+            State::SyncingDescendants { latest_block, .. } => Some(latest_block.take_header()),
+            State::Done(maybe_latest_block) => {
+                maybe_latest_block.map(|latest_block| latest_block.take_header())
+            }
             State::None => None,
         }
     }

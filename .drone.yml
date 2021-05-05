@@ -38,6 +38,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -72,6 +73,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -97,7 +99,6 @@ steps:
   - make setup
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
-  - make test-fast-sync CARGO_FLAGS=--release
 
 - name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
@@ -119,6 +120,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -161,6 +163,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -178,6 +181,7 @@ steps:
     - master
     - dev
     - "release-*"
+    - "feat-*"
     event:
     - push
 
@@ -208,6 +212,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -221,6 +226,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -248,6 +254,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -279,6 +286,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -293,6 +301,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -321,6 +330,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -362,6 +372,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag

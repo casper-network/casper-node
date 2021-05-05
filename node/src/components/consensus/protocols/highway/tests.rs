@@ -73,13 +73,12 @@ where
     let config = Config {
         secret_key_path: Default::default(),
         highway: HighwayConfig {
-            unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
-            round_success_meter: Default::default(),
             request_latest_state_timeout: "10sec".parse().unwrap(),
+            ..HighwayConfig::default()
         },
     };
     // Timestamp of the genesis era start and test start.

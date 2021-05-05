@@ -22,7 +22,7 @@ pub use config::Config;
 use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::{self, Registry};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     components::Component,
@@ -230,7 +230,7 @@ impl BlockProposerReady {
         match event {
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
-                    info!(
+                    warn!(
                         %request.next_finalized, %self.sets.next_finalized,
                         "received request before finalization announcement"
                     );
@@ -276,9 +276,8 @@ impl BlockProposerReady {
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {
-                    info!(
-                        %height,
-                        next_finalized = %self.sets.next_finalized,
+                    warn!(
+                        %height, next_finalized = %self.sets.next_finalized,
                         "received finalized blocks out of order; queueing"
                     );
                     // safe to subtract 1 - height will never be 0 in this branch, because

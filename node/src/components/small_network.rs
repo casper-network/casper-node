@@ -236,9 +236,6 @@ where
     REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
 {
     /// Creates a new small network component instance.
-    ///
-    /// If `notify` is set to `false`, no systemd notifications will be sent, regardless of
-    /// configuration.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
         event_queue: EventQueueHandle<REv>,
@@ -246,7 +243,6 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
-        notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -314,20 +310,6 @@ where
             .set_nonblocking(true)
             .map_err(Error::ListenerSetNonBlocking)?;
 
-        // Once the port has been bound, we can notify systemd if instructed to do so.
-        if notify {
-            if cfg.systemd_support {
-                if sd_notify::booted().map_err(Error::SystemD)? {
-                    info!("notifying systemd that the network is ready to receive connections");
-                    sd_notify::notify(true, &[sd_notify::NotifyState::Ready])
-                        .map_err(Error::SystemD)?;
-                } else {
-                    warn!("systemd_support enabled but not booted with systemd, ignoring");
-                }
-            } else {
-                debug!("systemd_support disabled, not notifying");
-            }
-        }
         let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Substitute the actually bound port if set to 0.
@@ -858,7 +840,7 @@ where
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
         let now = Timestamp::now();
         self.blocklist
-            .retain(|_, ts| *ts > now - *BLOCKLIST_RETAIN_DURATION);
+            .retain(|_, ts| *ts > now.saturating_sub(*BLOCKLIST_RETAIN_DURATION));
         if self.pending.contains_key(&peer_address)
             || self.blocklist.contains_key(&peer_address)
             || self

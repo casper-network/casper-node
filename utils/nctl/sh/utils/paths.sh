@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 
 #######################################
+# Returns path to primary assets folder.
+# Globals:
+#   NCTL - path to nctl home directory.
+#######################################
+function get_path_to_assets()
+{
+    echo "$NCTL/assets"
+}
+
+#######################################
 # Returns path to a binary file.
 # Arguments:
 #   Binary file name.
@@ -188,6 +198,54 @@ function get_path_to_secret_key()
     elif [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_USER" ]; then
         echo "$(get_path_to_user "$ACCOUNT_IDX")"/secret_key.pem
     fi
+}
+
+#######################################
+# Returns path to a stage folder.
+# Arguments:
+#   Stage ordinal identifier.
+#######################################
+function get_path_to_stage()
+{
+    local STAGE_ID=${1} 
+
+    echo "$(get_path_to_stages)/stage-$STAGE_ID"
+}
+
+#######################################
+# Returns path to a stage settings file.
+# Arguments:
+#   Stage ordinal identifier.
+#######################################
+function get_path_to_stage_settings()
+{
+    local STAGE_ID=${1} 
+
+    echo "$(get_path_to_stage "$STAGE_ID")/settings.sh"
+}
+
+#######################################
+# Returns path to folder hosting set of stages.
+#######################################
+function get_path_to_stages()
+{
+    echo "$NCTL/stages"
+}
+
+#######################################
+# Returns path to folder hosting set of temporary assets.
+#######################################
+function get_path_to_temp()
+{
+    echo "$NCTL/tmp"
+}
+
+#######################################
+# Returns path to folder mapped to temporary casper-node source code.
+#######################################
+function get_path_to_temp_node()
+{
+    echo "$(get_path_to_temp)/casper-node"
 }
 
 #######################################

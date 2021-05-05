@@ -143,17 +143,12 @@ impl DeployAcceptor {
 
         match verified {
             Some(true) => {
-                // The client submitted a valid deploy. Return an Ok status to the RPC component via
-                // the responder.
-                if let Some(responder) = maybe_responder {
-                    effects.extend(responder.respond(Ok(())).ignore());
-                }
-
                 effects.extend(effect_builder.put_deploy_to_storage(deploy.clone()).event(
                     move |is_new| Event::PutToStorageResult {
                         deploy,
                         source,
                         is_new,
+                        maybe_responder,
                     },
                 ));
 
@@ -197,13 +192,21 @@ impl DeployAcceptor {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         is_new: bool,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
+        let mut effects = Effects::new();
         if is_new {
-            return effect_builder
-                .announce_new_deploy_accepted(deploy, source)
-                .ignore();
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(deploy, source)
+                    .ignore(),
+            );
         }
-        Effects::new()
+        // We can now repond with result of accepting of the deploy
+        if let Some(responder) = maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+        effects
     }
 }
 
@@ -228,7 +231,10 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 deploy,
                 source,
                 is_new,
-            } => self.handle_put_to_storage(effect_builder, deploy, source, is_new),
+                maybe_responder,
+            } => {
+                self.handle_put_to_storage(effect_builder, deploy, source, is_new, maybe_responder)
+            }
             Event::AccountVerificationResult {
                 deploy,
                 source,

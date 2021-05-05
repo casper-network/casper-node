@@ -85,6 +85,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
+        execution_effect::ExecutionEffect,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
@@ -690,6 +691,22 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ContractRuntimeAnnouncement::block_already_executed(block),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce a committed Step success.
+    pub(crate) async fn announce_step_success(
+        self,
+        era_id: EraId,
+        execution_effect: ExecutionEffect,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
                 QueueKind::Regular,
             )
             .await
@@ -1536,23 +1553,23 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the correct era validators set for the given era.
-    /// Takes upgrades and emergency restarts into account based on the `initial_state_root_hash`
-    /// and `activation_era_id` parameters.
+    /// Takes emergency restarts into account based on the information from the chainspec loader.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         let CurrentRunInfo {
-            activation_point,
             protocol_version,
             initial_state_root_hash,
+            last_emergency_restart,
+            ..
         } = self.get_current_run_info().await;
-        let activation_era_id = activation_point.era_id();
-        if era_id < activation_era_id {
-            // we don't support getting the validators from before the last upgrade
+        let cutoff_era_id = last_emergency_restart.unwrap_or_else(|| EraId::new(0));
+        if era_id < cutoff_era_id {
+            // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        if era_id == activation_era_id {
+        if era_id == cutoff_era_id {
             // in the activation era, we read the validators from the global state; we use the
             // global state hash of the first block in the era, if it exists - if we can't get it,
             // we use the initial_state_root_hash passed from the chainspec loader

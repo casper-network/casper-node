@@ -22,6 +22,8 @@ pub struct Config {
     pub standstill_timeout: TimeDiff,
     /// Log inactive or faulty validators periodically, with this interval.
     pub log_participation_interval: TimeDiff,
+    /// Log the size of every incoming and outgoing serialized unit.
+    pub log_unit_sizes: bool,
     /// The maximum number of blocks by which execution is allowed to lag behind finalization.
     /// If it is more than that, consensus will pause, and resume once the executor has caught up.
     pub max_execution_delay: u64,
@@ -36,6 +38,7 @@ impl Default for Config {
             request_latest_state_timeout: "5sec".parse().unwrap(),
             standstill_timeout: "1min".parse().unwrap(),
             log_participation_interval: "10sec".parse().unwrap(),
+            log_unit_sizes: false,
             max_execution_delay: 3,
             round_success_meter: RSMConfig::default(),
         }
