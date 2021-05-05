@@ -756,7 +756,7 @@ impl BlockHeader {
         } = self;
 
         let hashed_era_end = match era_end {
-            None => hash::SENTINEL,
+            None => hash::SENTINEL0,
             Some(era_end) => era_end.hash(),
         };
 

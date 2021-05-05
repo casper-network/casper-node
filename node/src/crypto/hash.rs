@@ -174,8 +174,12 @@ impl From<Blake2bHash> for Digest {
     }
 }
 
-/// The sentinel value used for empty entries in Merkle proofs.
-pub const SENTINEL: Digest = Digest([0; 32]);
+/// Sentinel hash to be used for hashing options in the case of [None].
+pub const SENTINEL0: Digest = Digest([0u8; 32]);
+/// Sentinel hash to be used by [hash_slice_rfold]. Terminates the fold.
+pub const SENTINEL1: Digest = Digest([1u8; 32]);
+/// Sentinel hash to be used by [hash_vec_merkle_tree] in the case of [
+pub const SENTINEL2: Digest = Digest([2u8; 32]);
 
 /// Hashes a pair of [Digest]s.
 pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
@@ -210,7 +214,7 @@ pub fn hash_pair(hash1: &Digest, hash2: &Digest) -> Digest {
 pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
     vec.into_iter()
         .tree_fold1(|x, y| hash_pair(&x, &y))
-        .unwrap_or(SENTINEL)
+        .unwrap_or(SENTINEL2)
 }
 
 /// Hashes a [BTreeMap].
@@ -233,14 +237,17 @@ where
 /// ```text
 /// hash_pair(a, &hash_pair(b, &hash_pair(c, &SENTINEL)))
 /// ```
-/// Unlike Merkle trees, this is suited to hashing heterogeneous lists we may wish
-/// to extend in the future (ie, hashes of data structures that may undergo revision).
+///
+/// Unlike Merkle trees, this is suited to hashing heterogeneous lists we may wish to extend in the
+/// future (ie, hashes of data structures that may undergo revision).
+///
+/// Returns [SENTINEL1] when given an empty [Vec] as input.
 ///
 /// [1]: https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds
 pub fn hash_slice_rfold(slice: &[Digest]) -> Digest {
     slice
         .iter()
-        .rfold(SENTINEL, |prev, next| hash_pair(next, &prev))
+        .rfold(SENTINEL1, |prev, next| hash_pair(next, &prev))
 }
 
 /// Hashes a `&[Digest]` using a [right fold][1]. Uses `proof` as a Merkle proof for the missing
