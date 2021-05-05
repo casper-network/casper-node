@@ -14,6 +14,7 @@ mod tests;
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
+    sync::Arc,
     time::Duration,
 };
 
@@ -406,7 +407,7 @@ impl BlockProposerReady {
         past_deploys: HashSet<DeployHash>,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> BlockPayload {
+    ) -> Arc<BlockPayload> {
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
         // We prioritize transfers over deploys, so we try to include them first.
@@ -470,7 +471,7 @@ impl BlockProposerReady {
             }
         }
 
-        appendable_block.into_block_payload(accusations, random_bit)
+        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.

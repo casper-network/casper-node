@@ -1053,7 +1053,7 @@ where
                         .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
-                    value,
+                    Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
                     era_end,
                     timestamp,
                     era_id,

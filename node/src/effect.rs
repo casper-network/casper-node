@@ -1142,7 +1142,7 @@ impl<REv> EffectBuilder<REv> {
         next_finalized: u64,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> BlockPayload
+    ) -> Arc<BlockPayload>
     where
         REv: From<BlockProposerRequest>,
     {

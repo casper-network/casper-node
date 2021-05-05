@@ -498,7 +498,7 @@ pub struct BlockPayloadRequest {
     /// Random bit with which to construct the `BlockPayload` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<BlockPayload>,
+    pub(crate) responder: Responder<Arc<BlockPayload>>,
 }
 
 /// A `BlockProposer` request.
