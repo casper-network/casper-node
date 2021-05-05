@@ -72,7 +72,8 @@
 //!
 //! # Timeouts/safety
 //!
-//! The `sweep` transition for connections usually does not happen during normal operations. Three causes are typical for it:
+//! The `sweep` transition for connections usually does not happen during normal operations. Three
+//! causes are typical for it:
 //!
 //! * A configured TCP timeout above [`OutgoingConfig::sweep_timeout`].
 //! * Very slow responses from remote peers (similar to a Slowloris-attack)
@@ -154,7 +155,7 @@ where
     },
     /// The address was blocked and will not be retried.
     Blocked { since: Instant },
-    /// The address is a loopback address, connecting to ourselves and will not be tried again.
+    /// The address is owned by ourselves and will not be tried again.
     Loopback,
 }
 
@@ -314,7 +315,7 @@ where
 
 /// Creates a logging span for a specific connection.
 #[inline]
-fn mk_span<H, E>(addr: SocketAddr, outgoing: Option<&Outgoing<H, E>>) -> Span
+fn make_span<H, E>(addr: SocketAddr, outgoing: Option<&Outgoing<H, E>>) -> Span
 where
     H: DataSize,
     E: DataSize,
@@ -374,12 +375,12 @@ where
         // Update the routing table.
         match (&prev_state, &new_outgoing.state) {
             (Some(OutgoingState::Connected { .. }), OutgoingState::Connected { .. }) => {
-                trace!("no change in routing, already connected");
+                trace!("route unchanged, already connected");
             }
 
             // Dropping from connected to any other state requires clearing the route.
             (Some(OutgoingState::Connected { peer_id, .. }), _) => {
-                debug!(%peer_id, "no more route for peer");
+                debug!(%peer_id, "route removed");
                 self.routes.remove(peer_id);
             }
 
@@ -390,7 +391,7 @@ where
             }
 
             _ => {
-                trace!("no change in routing");
+                trace!("route unchanged");
             }
         }
 
@@ -434,7 +435,7 @@ where
         unforgettable: bool,
         now: Instant,
     ) -> Option<DialRequest<H>> {
-        let span = mk_span(addr, self.outgoing.get(&addr));
+        let span = make_span(addr, self.outgoing.get(&addr));
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Occupied(_) => {
@@ -463,12 +464,12 @@ where
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
     pub(crate) fn block_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
-        let span = mk_span(addr, self.outgoing.get(&addr));
+        let span = make_span(addr, self.outgoing.get(&addr));
 
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_vacant) => {
-                    info!("address blocked");
+                    info!("unknown address blocked");
                     self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                     None
                 }
@@ -476,20 +477,20 @@ where
                 // between a closed connection on our end vs one that failed?
                 Entry::Occupied(occupied) => match occupied.get().state {
                     OutgoingState::Blocked { .. } => {
-                        debug!("already blocking address");
+                        debug!("address already blocked");
                         None
                     }
                     OutgoingState::Loopback => {
-                        warn!("requested to block ourselves, refusing to do so");
+                        warn!("loopback address block ignored");
                         None
                     }
                     OutgoingState::Connected { ref handle, .. } => {
-                        info!("will disconnect peer after it has been blocked");
+                        info!("connected address blocked, disconnecting");
                         let handle = handle.clone();
                         self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                         Some(DialRequest::Disconnect { span, handle })
                     }
-                    _ => {
+                    OutgoingState::Waiting { .. } | OutgoingState::Connecting { .. } => {
                         info!("address blocked");
                         self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
                         None
@@ -504,11 +505,11 @@ where
     // This function is currently not in use by `small_network` itself.
     #[allow(dead_code)]
     pub(crate) fn redeem_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
-        let span = mk_span(addr, self.outgoing.get(&addr));
+        let span = make_span(addr, self.outgoing.get(&addr));
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_) => {
-                    debug!("ignoring redemption of unknown address");
+                    debug!("unknown address redeemed");
                     None
                 }
                 Entry::Occupied(occupied) => match occupied.get().state {
@@ -523,7 +524,7 @@ where
                         Some(DialRequest::Dial { addr, span })
                     }
                     _ => {
-                        debug!("ignoring redemption of address that is not blocked");
+                        debug!("address redemption ignored, not blocked");
                         None
                     }
                 },
@@ -539,7 +540,7 @@ where
         let mut to_reconnect = Vec::new();
 
         for (&addr, outgoing) in self.outgoing.iter() {
-            let span = mk_span(addr, Some(&outgoing));
+            let span = make_span(addr, Some(&outgoing));
 
             span.in_scope(|| match outgoing.state {
                 // Decide whether to attempt reconnecting a failed-waiting address.
@@ -551,21 +552,21 @@ where
                     if failures_so_far > self.config.retry_attempts {
                         if outgoing.is_unforgettable {
                             // Unforgettable addresses simply have their timer reset.
-                            info!("resetting unforgettable address");
+                            info!("unforgettable address reset");
 
                             to_reconnect.push((addr, 0));
                         } else {
                             // Address had too many attempts at reconnection, we will forget
-                            // it later if forgettable.
+                            // it after exiting this closure.
                             to_forget.push(addr);
 
-                            info!("gave up on address");
+                            info!("address forgotten");
                         }
                     } else {
                         // The address has not exceeded the limit, so check if it is due.
                         let due = last_failure + self.config.calc_backoff(failures_so_far);
                         if now >= due {
-                            debug!(attempts = failures_so_far, "attempting reconnection");
+                            debug!(attempts = failures_so_far, "address reconnecting");
 
                             to_reconnect.push((addr, failures_so_far));
                         }
@@ -574,10 +575,7 @@ where
 
                 OutgoingState::Blocked { since } => {
                     if now >= since + self.config.unblock_after {
-                        info!(
-                            seconds_blocked = (now - since).as_secs(),
-                            "unblocked address"
-                        );
+                        info!("address unblocked");
 
                         to_reconnect.push((addr, 0));
                     }
@@ -592,14 +590,14 @@ where
                         // The outer component has not called us with a `DialOutcome` in a
                         // reasonable amount of time. This should happen very rarely, ideally
                         // never.
-                        warn!("timed out connection attempt, sweeping");
+                        warn!("address timed out connecting, was swept");
 
                         // Count the timeout as a failure against the connection.
                         to_fail.push((addr, failures_so_far + 1));
                     }
                 }
 
-                _ => {
+                OutgoingState::Connected { .. } | OutgoingState::Loopback => {
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
                     // the `trace` level.
                 }
@@ -613,7 +611,7 @@ where
 
         // Fail connections that are taking way too long to connect.
         to_fail.into_iter().for_each(|(addr, failures_so_far)| {
-            let span = mk_span(addr, self.outgoing.get(&addr));
+            let span = make_span(addr, self.outgoing.get(&addr));
 
             span.in_scope(|| {
                 self.change_outgoing_state(
@@ -631,7 +629,7 @@ where
         to_reconnect
             .into_iter()
             .map(|(addr, failures_so_far)| {
-                let span = mk_span(addr, self.outgoing.get(&addr));
+                let span = make_span(addr, self.outgoing.get(&addr));
 
                 span.clone().in_scope(|| {
                     self.change_outgoing_state(
@@ -656,7 +654,7 @@ where
         dial_outcome: DialOutcome<H, E>,
     ) -> Option<DialRequest<H>> {
         let addr = dial_outcome.addr();
-        let span = mk_span(addr, self.outgoing.get(&addr));
+        let span = make_span(addr, self.outgoing.get(&addr));
 
         span.clone().in_scope(move || match dial_outcome {
             DialOutcome::Successful {
@@ -749,7 +747,7 @@ where
         addr: SocketAddr,
         now: Instant,
     ) -> Option<DialRequest<H>> {
-        let span = mk_span(addr, self.outgoing.get(&addr));
+        let span = make_span(addr, self.outgoing.get(&addr));
 
         span.clone().in_scope(move || {
             if let Some(outgoing) = self.outgoing.get(&addr) {
