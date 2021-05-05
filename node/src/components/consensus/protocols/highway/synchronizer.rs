@@ -22,8 +22,6 @@ use crate::{
 
 use super::{HighwayConfig, HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
 
-const MAX_REQUESTS_FOR_VERTEX: usize = 2;
-
 #[cfg(test)]
 mod tests;
 
@@ -404,7 +402,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .requests_sent
                     .entry(transitive_dependency.clone())
                     .or_default();
-                if entry.len() >= MAX_REQUESTS_FOR_VERTEX || !entry.insert(sender.clone()) {
+                if entry.len() >= self.config.max_requests_for_vertex
+                    || !entry.insert(sender.clone())
+                {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
