@@ -43,8 +43,11 @@ fn purge_vertices() {
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let mut sync = Synchronizer::<NodeId, TestContext>::new(
-        0x20.into(),
-        0x20.into(),
+        HighwayConfig {
+            request_latest_state_timeout: 0x20.into(),
+            pending_vertex_timeout: 0x20.into(),
+            ..Default::default()
+        },
         WEIGHTS.len(),
         TEST_INSTANCE_ID,
     );
@@ -148,8 +151,11 @@ fn do_not_download_synchronized_dependencies() {
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let mut sync = Synchronizer::<NodeId, TestContext>::new(
-        0x20.into(),
-        0x20.into(),
+        HighwayConfig {
+            request_latest_state_timeout: 0x20.into(),
+            pending_vertex_timeout: 0x20.into(),
+            ..Default::default()
+        },
         WEIGHTS.len(),
         TEST_INSTANCE_ID,
     );
@@ -264,8 +270,11 @@ fn transitive_proposal_dependency() {
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let mut sync = Synchronizer::<NodeId, TestContext>::new(
-        0x20.into(),
-        0x20.into(),
+        HighwayConfig {
+            request_latest_state_timeout: 0x20.into(),
+            pending_vertex_timeout: 0x20.into(),
+            ..Default::default()
+        },
         WEIGHTS.len(),
         TEST_INSTANCE_ID,
     );
