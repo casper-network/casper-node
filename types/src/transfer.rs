@@ -127,10 +127,6 @@ pub struct Transfer {
     target: URef,
     /// Transfer amount
     amount: U512,
-    /// Gas (unused)
-    #[serde(skip)]
-    #[doc(hidden)]
-    gas: U512,
     /// User-defined id
     id: Option<u64>,
 }
@@ -154,7 +150,6 @@ impl Transfer {
             source,
             target,
             amount,
-            gas: U512::zero(), // Unused and reserved field
             id,
         }
     }
@@ -203,7 +198,7 @@ impl FromBytes for Transfer {
         let (source, rem) = URef::from_bytes(rem)?;
         let (target, rem) = URef::from_bytes(rem)?;
         let (amount, rem) = U512::from_bytes(rem)?;
-        let (gas, rem) = U512::from_bytes(rem)?;
+        let (_reserved_u512, rem) = U512::from_bytes(rem)?;
         let (id, rem) = <Option<u64>>::from_bytes(rem)?;
         Ok((
             Transfer {
@@ -213,7 +208,6 @@ impl FromBytes for Transfer {
                 source,
                 target,
                 amount,
-                gas,
                 id,
             },
             rem,
@@ -223,6 +217,8 @@ impl FromBytes for Transfer {
 
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let reserved_u512 = U512::zero();
+
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.append(&mut self.deploy_hash.to_bytes()?);
         result.append(&mut self.from.to_bytes()?);
@@ -230,19 +226,21 @@ impl ToBytes for Transfer {
         result.append(&mut self.source.to_bytes()?);
         result.append(&mut self.target.to_bytes()?);
         result.append(&mut self.amount.to_bytes()?);
-        result.append(&mut self.gas.to_bytes()?);
+        result.append(&mut reserved_u512.to_bytes()?);
         result.append(&mut self.id.to_bytes()?);
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
+        let reserved_u512 = U512::zero();
+
         self.deploy_hash.serialized_length()
             + self.from.serialized_length()
             + self.to.serialized_length()
             + self.source.serialized_length()
             + self.target.serialized_length()
             + self.amount.serialized_length()
-            + self.gas.serialized_length()
+            + reserved_u512.serialized_length()
             + self.id.serialized_length()
     }
 }
@@ -459,7 +457,7 @@ pub mod gens {
 mod tests {
     use proptest::prelude::*;
 
-    use crate::{bytesrepr, AccessRights, URef};
+    use crate::bytesrepr;
 
     use super::*;
 
@@ -511,27 +509,5 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&transfer_address).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(transfer_address, decoded);
-    }
-
-    #[test]
-    fn ee_1257_gas_field_should_be_hidden() {
-        let transfer = Transfer {
-            deploy_hash: DeployHash::new([42; 32]),
-            from: AccountHash::new([43; 32]),
-            to: Some(AccountHash::new([44; 32])),
-            source: URef::new([45; 32], AccessRights::READ_ADD_WRITE),
-            target: URef::new([46; 32], AccessRights::WRITE),
-            amount: U512::MAX,
-            id: Some(42),
-            ..Default::default()
-        };
-
-        let transfer_json = serde_json::to_value(&transfer).expect("should create a value");
-        let transfer_object = transfer_json.as_object().expect("should be an object");
-        assert!(
-            !transfer_object.contains_key("gas"),
-            "{:?}",
-            transfer_object.keys().collect::<Vec<_>>()
-        );
     }
 }
