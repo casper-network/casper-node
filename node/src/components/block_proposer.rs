@@ -26,7 +26,10 @@ use prometheus::{self, Registry};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-    components::Component,
+    components::{
+        consensus::{BlockContext, ClContext},
+        Component,
+    },
     effect::{
         requests::{BlockPayloadRequest, BlockProposerRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -246,8 +249,7 @@ impl BlockProposerReady {
                         .responder
                         .respond(self.propose_block_payload(
                             self.deploy_config,
-                            request.current_instant,
-                            request.past_deploys,
+                            request.context,
                             request.accusations,
                             request.random_bit,
                         ))
@@ -378,8 +380,7 @@ impl BlockProposerReady {
                         .responder
                         .respond(self.propose_block_payload(
                             self.deploy_config,
-                            request.current_instant,
-                            request.past_deploys,
+                            request.context,
                             request.accusations,
                             request.random_bit,
                         ))
@@ -392,7 +393,7 @@ impl BlockProposerReady {
     }
 
     /// Checks if a deploy's dependencies are satisfied, so the deploy is eligible for inclusion.
-    fn deps_resolved(&self, header: &DeployHeader, past_deploys: &HashSet<DeployHash>) -> bool {
+    fn deps_resolved(&self, header: &DeployHeader, past_deploys: &HashSet<&DeployHash>) -> bool {
         header
             .dependencies()
             .iter()
@@ -403,11 +404,16 @@ impl BlockProposerReady {
     fn propose_block_payload(
         &mut self,
         deploy_config: DeployConfig,
-        block_timestamp: Timestamp,
-        past_deploys: HashSet<DeployHash>,
+        context: BlockContext<ClContext>,
         accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Arc<BlockPayload> {
+        let past_deploys = context
+            .ancestor_values()
+            .iter()
+            .flat_map(|block_payload| block_payload.deploys_and_transfers_iter())
+            .collect();
+        let block_timestamp = context.timestamp();
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
 
         // We prioritize transfers over deploys, so we try to include them first.
