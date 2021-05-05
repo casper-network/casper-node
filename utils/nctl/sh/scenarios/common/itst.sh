@@ -208,6 +208,40 @@ function verify_transfer_inclusion() {
     fi
 }
 
+function verify_wasm_inclusion() {
+    local NODE_ID=${1}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${2}
+    local DEPLOY_HASH=${3}
+    local BLOCK_HASH=${4}
+    local JSON_OUT
+    local PARENT
+    local BLOCK_HEADER
+    local BLOCK_DEPLOY_HASHES
+
+    if [ -z "$BLOCK_HASH" ]; then
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID"))
+    else
+        JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$NODE_ID") -b "$BLOCK_HASH")
+    fi
+
+    if [ "$WALKBACK" -gt 0 ]; then
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
+        BLOCK_DEPLOY_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block.body.deploy_hashes[]')
+        if grep -q "${DEPLOY_HASH}" <<< "$BLOCK_DEPLOY_HASHES"; then
+            log "DEPLOY: $DEPLOY_HASH found in block!"
+        else
+            PARENT=$(echo "$BLOCK_HEADER" | jq -r '.parent_hash')
+            WALKBACK=$((WALKBACK - 1))
+            log "$WALKBACK: Walking back to block: $PARENT"
+            verify_wasm_inclusion "$NODE_ID" "$WALKBACK" "$DEPLOY_HASH" "$PARENT"
+        fi
+    else
+        log "Error: Deploy $DEPLOY_HASH not found within walkback!"
+        exit 1
+    fi
+}
+
 function get_running_node_count {
     local RUNNING_COUNT=$(nctl-status | grep 'RUNNING' | wc -l)
     echo "$RUNNING_COUNT"
