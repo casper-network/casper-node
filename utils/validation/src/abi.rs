@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::{self, ToBytes},
     CLValue, ExecutionResult, Key, StoredValue, Transform, U512,
@@ -25,6 +26,7 @@ pub enum Input {
     Transform(Transform),
     StoredValue(StoredValue),
     ExecutionResult(ExecutionResult),
+    ExecutableDeployItem(ExecutableDeployItem),
 }
 
 impl ToBytes for Input {
@@ -42,6 +44,7 @@ impl ToBytes for Input {
             Input::Transform(value) => value.to_bytes(),
             Input::StoredValue(value) => value.to_bytes(),
             Input::ExecutionResult(value) => value.to_bytes(),
+            Input::ExecutableDeployItem(value) => value.to_bytes(),
         }
     }
 
@@ -59,6 +62,7 @@ impl ToBytes for Input {
             Input::Transform(value) => value.serialized_length(),
             Input::StoredValue(value) => value.serialized_length(),
             Input::ExecutionResult(value) => value.serialized_length(),
+            Input::ExecutableDeployItem(value) => value.serialized_length(),
         }
     }
 }
