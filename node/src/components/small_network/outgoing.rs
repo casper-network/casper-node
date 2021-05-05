@@ -689,43 +689,29 @@ where
             DialOutcome::Failed { addr, error, when } => {
                 info!(err = display_error(&error), "outgoing connection failed");
 
-                if let Some(outgoing) = self.outgoing.get(&addr) {
+                let failures_so_far = if let Some(outgoing) = self.outgoing.get(&addr) {
                     if let OutgoingState::Connecting { failures_so_far,.. } = outgoing.state {
-                        self.change_outgoing_state(
-                            addr,
-                            OutgoingState::Waiting {
-                                failures_so_far: failures_so_far + 1,
-                                error: Some(error),
-                                last_failure: when,
-                            },
-                        );
-                        None
+                         failures_so_far + 1
                     } else {
                         warn!(
                             "processing dial outcome on a connection that was not marked as connecting"
                         );
-                        self.change_outgoing_state(
-                            addr,
-                            OutgoingState::Waiting {
-                                failures_so_far: 1,
-                                error: Some(error),
-                                last_failure: when,
-                            },
-                        );
-                        None
+                        1
                     }
                 } else {
                     warn!("processing dial outcome non-existent connection");
-                    self.change_outgoing_state(
-                        addr,
-                        OutgoingState::Waiting {
-                            failures_so_far: 1,
-                            error: Some(error),
-                            last_failure: when,
-                        },
-                    );
-                    None
-                }
+                    1
+                };
+
+                self.change_outgoing_state(
+                    addr,
+                    OutgoingState::Waiting {
+                        failures_so_far,
+                        error: Some(error),
+                        last_failure: when,
+                    },
+                );
+                None
             }
             DialOutcome::Loopback { addr } => {
                 info!("found loopback address");
