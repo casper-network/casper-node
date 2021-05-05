@@ -665,28 +665,24 @@ where
             } => {
                 info!("established outgoing connection");
 
-                match self.outgoing.get(&addr) {
+                if let Some(Outgoing{
+                    state: OutgoingState::Blocked { .. }, ..
+                }) = self.outgoing.get(&addr) {
                     // If we connected to a blocked address, do not go into connected, but stay
                     // blocked instead.
-                    Some(Outgoing{
-                        state: OutgoingState::Blocked { .. }, ..
-                    }) => {
-                        Some(DialRequest::Disconnect{
-                            handle, span
-                        })
-                    },
-
+                    Some(DialRequest::Disconnect{
+                        handle, span
+                    })
+                } else {
                     // Otherwise, just record the connected state.
-                    _ => {
-                        self.change_outgoing_state(
-                            addr ,
-                            OutgoingState::Connected {
-                                peer_id: node_id,
-                                handle,
-                            },
-                        );
-                        None
-                    }
+                    self.change_outgoing_state(
+                        addr,
+                        OutgoingState::Connected {
+                            peer_id: node_id,
+                            handle,
+                        },
+                    );
+                    None
                 }
             }
 
