@@ -388,7 +388,7 @@ mod test {
 
         assert_eq!(
             hash_lower_hex,
-            "aa0f8025b8548930b3a3b6b1912686eedd45c6655daeb1f5f9603a96740b0355"
+            "e137f4eb94d2387065454eecfe2cdb5584e3dbd5f1ca07fc511fffd13d234e8e"
         );
 
         let proof = hash_slice_rfold(&hashes[2..]);
