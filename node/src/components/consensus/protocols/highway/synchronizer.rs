@@ -22,7 +22,7 @@ use crate::{
 
 use super::{HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
 
-const MAX_REQUESTS_FOR_VERTEX: usize = 10;
+const MAX_REQUESTS_FOR_VERTEX: usize = 2;
 
 #[cfg(test)]
 mod tests;
