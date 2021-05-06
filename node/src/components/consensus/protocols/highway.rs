@@ -474,7 +474,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
             let mut outcomes = self.latest_panorama_request();
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + self.standstill_timeout * 2,
+                now + self.standstill_timeout,
                 TIMER_ID_STANDSTILL_ALERT,
             ));
             return outcomes;
