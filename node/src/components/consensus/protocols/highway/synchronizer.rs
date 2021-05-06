@@ -473,11 +473,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.config.pending_vertex_timeout
     }
 
-    /// Returns the duration between two consecutive requests of the latest state.
-    pub(crate) fn request_latest_state_timeout(&self) -> TimeDiff {
-        self.config.request_latest_state_timeout
-    }
-
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and
     /// returns the set of their senders. If the specified dependencies are known to be invalid,
     /// those senders must be faulty.
