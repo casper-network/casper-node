@@ -71,6 +71,13 @@ pub enum FetchedOrNotFound<T, Id> {
 }
 
 pub trait ItemFetcher<T: Item + 'static> {
+    /// Indicator on whether it is safe to respond to all of our responders. For example, [Deploy]s
+    /// and [BlockHeader]s are safe because their [Item::id] is all that is needed for
+    /// authentication. But other structures have _finality signatures_ or have substructures that
+    /// require validation. These are not infallible, and only the responders corresponding to the
+    /// node queried may be responded to.
+    const SAFE_TO_RESPOND_TO_ALL: bool;
+
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
     fn metrics(&mut self) -> &FetcherMetrics;
@@ -154,6 +161,44 @@ pub trait ItemFetcher<T: Item + 'static> {
         }
     }
 
+    /// Sends result to all responders
+    fn respond_to_all(&mut self, id: T::Id, result: FetchResult<T, NodeId>) -> Effects<Event<T>> {
+        let mut effects = Effects::new();
+        let all_responders = self.responders().remove(&id).unwrap_or_default();
+        for (_peer, responders) in all_responders {
+            for responder in responders {
+                effects.extend(responder.respond(result.clone()).ignore());
+            }
+        }
+        effects
+    }
+
+    /// Responds to all responders corresponding to an item/peer
+    fn send_response_from_peer(
+        &mut self,
+        id: T::Id,
+        result: FetchResult<T, NodeId>,
+        peer: NodeId,
+    ) -> Effects<Event<T>> {
+        let mut effects = Effects::new();
+        let mut all_responders = self.responders().remove(&id).unwrap_or_default();
+        for responder in all_responders.remove(&peer).into_iter().flatten() {
+            effects.extend(responder.respond(result.clone()).ignore());
+            if let Err(FetcherError::TimedOutFromPeer { .. }) = result {
+                // Only if there's still a responder waiting for the item we increment the
+                // metric. Otherwise we will count every request as timed out, even if the item
+                // had been fetched. We increment the metric for every responder as that's how
+                // many requests were made in the first place – since requests are duplicated we
+                // will request the same item multiple times.
+                self.metrics().timeouts.inc();
+            }
+        }
+        if !all_responders.is_empty() {
+            self.responders().insert(id, all_responders);
+        }
+        effects
+    }
+
     /// Handles signalling responders with the item or `None`.
     fn signal(
         &mut self,
@@ -161,46 +206,28 @@ pub trait ItemFetcher<T: Item + 'static> {
         result: FetchResult<T, NodeId>,
         peer: NodeId,
     ) -> Effects<Event<T>> {
-        // Capture metrics for successful requests
         match result {
-            Ok(FetchedData::FromStorage { .. }) => self.metrics().found_in_storage.inc(),
-            Ok(FetchedData::FromPeer { .. }) => self.metrics().found_on_peer.inc(),
-            // The case where we timeout is exceptional and is handled below
-            Err(_) => {}
-        }
-
-        // Respond to callbacks
-        let mut effects = Effects::new();
-        let mut all_responders = self.responders().remove(&id).unwrap_or_default();
-        if let Ok(FetchedData::FromStorage { .. }) | Ok(FetchedData::FromPeer { .. }) = result {
-            // signal all responders waiting for this item
-            // TODO: While this works for deploys, block headers and tries, this is wrong for
-            //       block-headers-by-height and blocks-by-height.  In those latter cases the peer
-            //       might have sent us bogus data and downstream logic will need to validate the
-            //       fetched data and ban peers appropriately.
-            for (_peer, responders) in all_responders {
-                for responder in responders {
-                    effects.extend(responder.respond(result.clone()).ignore());
+            Ok(FetchedData::FromStorage { .. }) => {
+                debug!(
+                    ?result,
+                    ?peer,
+                    "Got from storage when fetching {:?} from peer",
+                    T::TAG,
+                );
+                self.metrics().found_in_storage.inc();
+                // It is always safe to respond to all when we retrieved from storage.
+                self.respond_to_all(id, result)
+            }
+            Ok(FetchedData::FromPeer { .. }) => {
+                self.metrics().found_on_peer.inc();
+                if Self::SAFE_TO_RESPOND_TO_ALL {
+                    self.respond_to_all(id, result)
+                } else {
+                    self.send_response_from_peer(id, result, peer)
                 }
             }
-        } else {
-            for responder in all_responders.remove(&peer).into_iter().flatten() {
-                effects.extend(responder.respond(result.clone()).ignore());
-                if let Err(FetcherError::TimedOutFromPeer { .. }) = result {
-                    // Only if there's still a responder waiting for the item we increment the
-                    // metric. Otherwise we will count every request as timed out, even if the item
-                    // had been fetched. We increment the metric for every responder as that's how
-                    // many requests were made in the first place – since requests are duplicated we
-                    // will request the same item multiple times.
-                    self.metrics().timeouts.inc();
-                }
-            }
-            if !all_responders.is_empty() {
-                self.responders().insert(id, all_responders);
-            }
+            Err(_) => self.send_response_from_peer(id, result, peer),
         }
-
-        effects
     }
 }
 
@@ -231,6 +258,8 @@ impl<T: Item> Fetcher<T> {
 }
 
 impl ItemFetcher<Deploy> for Fetcher<Deploy> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<Deploy>>>> {
@@ -263,6 +292,8 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 }
 
 impl ItemFetcher<Block> for Fetcher<Block> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<Block>>>> {
@@ -294,6 +325,8 @@ impl ItemFetcher<Block> for Fetcher<Block> {
 }
 
 impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockWithMetadata>>>> {
@@ -325,6 +358,8 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
 }
 
 impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockHeaderWithMetadata>>>> {
@@ -358,6 +393,8 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
 type GlobalStorageTrie = Trie<Key, StoredValue>;
 
 impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
@@ -389,6 +426,8 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
 }
 
 impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<BlockHeader>>>> {
