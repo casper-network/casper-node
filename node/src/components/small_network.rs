@@ -61,7 +61,7 @@ use once_cell::sync::Lazy;
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
 use pkey::{PKey, Private};
 use prometheus::{IntGauge, Registry};
-use rand::seq::IteratorRandom;
+use rand::seq::{IteratorRandom, SliceRandom};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
@@ -1085,6 +1085,11 @@ where
             Event::NetworkInfoRequest { req } => match *req {
                 NetworkInfoRequest::GetPeers { responder } => {
                     responder.respond(self.peers()).ignore()
+                }
+                NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
+                    let mut peers_vec: Vec<NodeId> = self.outgoing.keys().cloned().collect();
+                    peers_vec.shuffle(rng);
+                    responder.respond(peers_vec).ignore()
                 }
             },
             Event::GossipOurAddress => {

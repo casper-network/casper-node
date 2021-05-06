@@ -6,7 +6,6 @@ use std::{
 };
 
 use num::rational::Ratio;
-use rand::seq::SliceRandom;
 use tracing::{info, trace, warn};
 
 use casper_execution_engine::{
@@ -30,23 +29,6 @@ use crate::{
 
 const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
-/// Gets the currently connected peers from the networking component and shuffles them.
-async fn get_and_shuffle_network_peers<REv, I>(effect_builder: EffectBuilder<REv>) -> Vec<I>
-where
-    REv: From<NetworkInfoRequest<I>>,
-    I: Send + 'static,
-{
-    let mut vector_of_peers: Vec<I> = effect_builder
-        .network_peers::<I>()
-        .await
-        .into_iter()
-        .map(|(peer, _)| peer)
-        .collect();
-    let mut rng = rand::thread_rng();
-    vector_of_peers.shuffle(&mut rng);
-    vector_of_peers
-}
-
 /// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
 /// necessary for the item. Not suited to fetching a block header or block by height, which require
 /// verification with finality signatures.
@@ -60,7 +42,7 @@ where
     I: Eq + Debug + Clone + Send + 'static,
 {
     loop {
-        for peer in get_and_shuffle_network_peers(effect_builder).await {
+        for peer in effect_builder.get_peers_in_random_order().await {
             trace!(
                 "Attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
@@ -248,7 +230,7 @@ where
         + From<StorageRequest>,
     I: Eq + Debug + Clone + Send + 'static,
 {
-    for peer in get_and_shuffle_network_peers(effect_builder).await {
+    for peer in effect_builder.get_peers_in_random_order().await {
         match effect_builder
             .fetch::<BlockHeaderWithMetadata, I>(height, peer.clone())
             .await
