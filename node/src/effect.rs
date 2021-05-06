@@ -536,7 +536,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets connected network peers.
+    /// Gets a map of the current network peers to their socket addresses.
     pub async fn network_peers<I>(self) -> BTreeMap<I, String>
     where
         REv: From<NetworkInfoRequest<I>>,
@@ -544,6 +544,19 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkInfoRequest::GetPeers { responder },
+            QueueKind::Api,
+        )
+        .await
+    }
+
+    /// Gets the current network peers in a random order.
+    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    where
+        REv: From<NetworkInfoRequest<I>>,
+        I: Send + 'static,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
             QueueKind::Api,
         )
         .await

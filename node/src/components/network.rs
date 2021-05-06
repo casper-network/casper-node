@@ -37,7 +37,7 @@ use libp2p::{
     Multiaddr, PeerId, Swarm, Transport,
 };
 use prometheus::{IntGauge, Registry};
-use rand::seq::IteratorRandom;
+use rand::seq::{IteratorRandom, SliceRandom};
 use serde::{Deserialize, Serialize};
 use tokio::{select, sync::watch, task::JoinHandle, time};
 use tracing::{debug, error, info, trace, warn};
@@ -1017,6 +1017,11 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                         })
                         .collect();
                     responder.respond(peers).ignore()
+                }
+                NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
+                    let mut peers_vec: Vec<NodeId> = self.peers.keys().cloned().collect();
+                    peers_vec.shuffle(rng);
+                    responder.respond(peers_vec).ignore()
                 }
             },
         }
