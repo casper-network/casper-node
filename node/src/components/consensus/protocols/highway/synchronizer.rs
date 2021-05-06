@@ -170,6 +170,8 @@ where
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
     /// Used only for logging.
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
+    /// Keeps track of the requests we've sent so far and the recipients.
+    /// Used to decide whether we should ask more nodes for a particular dependency.
     requests_sent: BTreeMap<Dependency<C>, HashSet<I>>,
     /// Boolean flag indicating whether we're synchronizing current era.
     pub(crate) current_era: bool,
