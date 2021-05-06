@@ -104,6 +104,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        consensus::{BlockContext, ClContext},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1137,20 +1138,18 @@ impl<REv> EffectBuilder<REv> {
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     pub(crate) async fn request_block_payload(
         self,
-        current_instant: Timestamp,
-        past_deploys: HashSet<DeployHash>,
+        context: BlockContext<ClContext>,
         next_finalized: u64,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> BlockPayload
+    ) -> Arc<BlockPayload>
     where
         REv: From<BlockProposerRequest>,
     {
         self.make_request(
             |responder| {
                 BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                    current_instant,
-                    past_deploys,
+                    context,
                     next_finalized,
                     responder,
                     accusations,
