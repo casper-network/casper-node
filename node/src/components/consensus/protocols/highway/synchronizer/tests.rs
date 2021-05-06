@@ -42,8 +42,14 @@ fn purge_vertices() {
     let peer0 = NodeId(0);
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
-    let mut sync =
-        Synchronizer::<NodeId, TestContext>::new(0x20.into(), WEIGHTS.len(), TEST_INSTANCE_ID);
+    let mut sync = Synchronizer::<NodeId, TestContext>::new(
+        HighwayConfig {
+            pending_vertex_timeout: 0x20.into(),
+            ..Default::default()
+        },
+        WEIGHTS.len(),
+        TEST_INSTANCE_ID,
+    );
     let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
 
     // At time 0x20, we receive c2, b0 and b1 — the latter ahead of their timestamp.
@@ -140,10 +146,17 @@ fn do_not_download_synchronized_dependencies() {
     let pvv = |hash: u64| util_highway.pre_validate_vertex(unit(hash)).unwrap();
 
     let peer0 = NodeId(0);
+    let peer1 = NodeId(1);
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
-    let mut sync =
-        Synchronizer::<NodeId, TestContext>::new(0x20.into(), WEIGHTS.len(), TEST_INSTANCE_ID);
+    let mut sync = Synchronizer::<NodeId, TestContext>::new(
+        HighwayConfig {
+            pending_vertex_timeout: 0x20.into(),
+            ..Default::default()
+        },
+        WEIGHTS.len(),
+        TEST_INSTANCE_ID,
+    );
 
     let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
     let now = 0x20.into();
@@ -179,7 +192,7 @@ fn do_not_download_synchronized_dependencies() {
     // `c1` is now part of the synchronizer's state, we should not try requesting it if other
     // vertices depend on it.
     assert!(matches!(
-        *sync.schedule_add_vertex(peer0, pvv(b0), now),
+        *sync.schedule_add_vertex(peer1, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
     let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &Default::default());
@@ -189,7 +202,7 @@ fn do_not_download_synchronized_dependencies() {
     // done that for `c1`.
     assert_targeted_message(
         &unwrap_single(outcomes),
-        &peer0,
+        &peer1,
         HighwayMessage::RequestDependency(Dependency::Unit(c0)),
     );
     // "Download" the last dependency.
@@ -251,10 +264,17 @@ fn transitive_proposal_dependency() {
     let pvv = |hash: u64| util_highway.pre_validate_vertex(unit(hash)).unwrap();
 
     let peer0 = NodeId(0);
+    let peer1 = NodeId(1);
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
-    let mut sync =
-        Synchronizer::<NodeId, TestContext>::new(0x20.into(), WEIGHTS.len(), TEST_INSTANCE_ID);
+    let mut sync = Synchronizer::<NodeId, TestContext>::new(
+        HighwayConfig {
+            pending_vertex_timeout: 0x20.into(),
+            ..Default::default()
+        },
+        WEIGHTS.len(),
+        TEST_INSTANCE_ID,
+    );
 
     let highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
     let now = 0x20.into();
@@ -284,7 +304,7 @@ fn transitive_proposal_dependency() {
     assert!(outcomes.is_empty());
     // `b0` can't be added either b/c it's relying on `c1` and `c0`.
     assert!(matches!(
-        *sync.schedule_add_vertex(peer0, pvv(b0), now),
+        *sync.schedule_add_vertex(peer1, pvv(b0), now),
         [ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
     ));
     let c0_pending_values = {
@@ -296,8 +316,10 @@ fn transitive_proposal_dependency() {
         tmp.insert(proposed_block, set);
         tmp
     };
-    let (pv, outcomes) = sync.pop_vertex_to_add(&highway, &c0_pending_values);
-    assert!(pv.is_none());
+    let (maybe_pv, outcomes) = sync.pop_vertex_to_add(&highway, &c0_pending_values);
+    let pv = maybe_pv.unwrap();
+    assert!(pv.sender() == &peer1);
+    assert!(pv.vertex() == &unit(c0));
     // `b0` depends on `c1` and `c0` transitively but `c0`'s deploys are being downloaded,
     // so we don't re-request it.
     assert!(outcomes.is_empty())

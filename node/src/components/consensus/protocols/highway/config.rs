@@ -25,6 +25,8 @@ pub struct Config {
     /// The maximum number of blocks by which execution is allowed to lag behind finalization.
     /// If it is more than that, consensus will pause, and resume once the executor has caught up.
     pub max_execution_delay: u64,
+    /// The maximum number of peers we request the same vertex from in parallel.
+    pub max_requests_for_vertex: usize,
     pub round_success_meter: RSMConfig,
 }
 
@@ -37,6 +39,7 @@ impl Default for Config {
             log_participation_interval: "10sec".parse().unwrap(),
             log_unit_sizes: false,
             max_execution_delay: 3,
+            max_requests_for_vertex: 5,
             round_success_meter: RSMConfig::default(),
         }
     }

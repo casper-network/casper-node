@@ -195,11 +195,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(
-                config.highway.pending_vertex_timeout,
-                validators_count,
-                instance_id,
-            ),
+            synchronizer: Synchronizer::new(config.highway.clone(), validators_count, instance_id),
             pvv_cache: Default::default(),
             evidence_only: false,
             last_panorama,

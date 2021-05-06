@@ -123,7 +123,6 @@ fn should_add_and_take_deploys() {
     let block_time2 = Timestamp::from(120);
     let block_time3 = Timestamp::from(220);
 
-    let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer(0.into());
     let mut rng = crate::new_rng();
     let deploy1 = generate_deploy(
@@ -161,8 +160,7 @@ fn should_add_and_take_deploys() {
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time2,
-        no_deploys.clone(),
+        BlockContext::new(block_time2, vec![]),
         vec![],
         true,
     );
@@ -177,8 +175,7 @@ fn should_add_and_take_deploys() {
     // deploys
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time1,
-        no_deploys.clone(),
+        BlockContext::new(block_time1, vec![]),
         vec![],
         true,
     );
@@ -189,8 +186,7 @@ fn should_add_and_take_deploys() {
     // deploys, either
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time3,
-        no_deploys.clone(),
+        BlockContext::new(block_time3, vec![]),
         vec![],
         true,
     );
@@ -200,8 +196,7 @@ fn should_add_and_take_deploys() {
     // take the deploys out
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time2,
-        no_deploys.clone(),
+        BlockContext::new(block_time2, vec![]),
         vec![],
         true,
     );
@@ -213,8 +208,7 @@ fn should_add_and_take_deploys() {
     // take the deploys out
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time2,
-        no_deploys.clone(),
+        BlockContext::new(block_time2, vec![]),
         vec![],
         true,
     );
@@ -225,8 +219,7 @@ fn should_add_and_take_deploys() {
     let deploy_hashes = block.deploys_and_transfers_iter().copied().collect_vec();
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time2,
-        block.deploys_and_transfers_iter().copied().collect(),
+        BlockContext::new(block_time2, vec![block]),
         vec![],
         true,
     );
@@ -242,8 +235,7 @@ fn should_add_and_take_deploys() {
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time2,
-        no_deploys,
+        BlockContext::new(block_time2, vec![]),
         vec![],
         true,
     );
@@ -554,7 +546,6 @@ fn test_proposer_with(
     let creation_time = Timestamp::from(100);
     let test_time = Timestamp::from(120);
     let ttl = TimeDiff::from(Duration::from_millis(100));
-    let past_deploys = HashSet::new();
 
     let mut rng = crate::new_rng();
     let mut proposer = create_test_proposer(0.into());
@@ -588,7 +579,8 @@ fn test_proposer_with(
         );
     }
 
-    let block = proposer.propose_block_payload(config, test_time, past_deploys, vec![], true);
+    let block =
+        proposer.propose_block_payload(config, BlockContext::new(test_time, vec![]), vec![], true);
     let all_deploys = block.deploys_and_transfers_iter().collect_vec();
     proposer.finalized_deploys(all_deploys.iter().map(|hash| **hash));
     println!("proposed deploys {}", block.deploy_hashes().len());
@@ -635,7 +627,6 @@ fn should_return_deploy_dependencies() {
         DEFAULT_TEST_GAS_PRICE,
     );
 
-    let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer(0.into());
 
     // add deploy2
@@ -644,8 +635,7 @@ fn should_return_deploy_dependencies() {
     // deploy2 has an unsatisfied dependency
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time,
-        no_deploys.clone(),
+        BlockContext::new(block_time, vec![]),
         vec![],
         true,
     );
@@ -657,8 +647,7 @@ fn should_return_deploy_dependencies() {
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time,
-        no_deploys.clone(),
+        BlockContext::new(block_time, vec![]),
         vec![],
         true,
     );
@@ -672,8 +661,7 @@ fn should_return_deploy_dependencies() {
 
     let block = proposer.propose_block_payload(
         DeployConfig::default(),
-        block_time,
-        no_deploys,
+        BlockContext::new(block_time, vec![]),
         vec![],
         true,
     );
@@ -688,7 +676,6 @@ fn should_respect_deploy_delay() {
     let mut rng = crate::new_rng();
     let creation_time = Timestamp::from(0);
     let ttl = TimeDiff::from(10000);
-    let no_deploys = HashSet::new();
     let deploy_config = DeployConfig::default();
     let deploy = generate_deploy(
         &mut rng,
@@ -702,9 +689,18 @@ fn should_respect_deploy_delay() {
 
     // Add the deploy at time 100. So at 109 it cannot be proposed yet, but at time 110 it can.
     proposer.add_deploy_or_transfer(100.into(), *deploy.id(), deploy.deploy_type().unwrap());
-    let block =
-        proposer.propose_block_payload(deploy_config, 109.into(), no_deploys.clone(), vec![], true);
+    let block = proposer.propose_block_payload(
+        deploy_config,
+        BlockContext::new(109.into(), vec![]),
+        vec![],
+        true,
+    );
     assert!(block.deploy_hashes().is_empty());
-    let block = proposer.propose_block_payload(deploy_config, 110.into(), no_deploys, vec![], true);
+    let block = proposer.propose_block_payload(
+        deploy_config,
+        BlockContext::new(110.into(), vec![]),
+        vec![],
+        true,
+    );
     assert_eq!(&vec![*deploy.id()], block.deploy_hashes());
 }

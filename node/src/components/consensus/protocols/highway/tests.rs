@@ -198,7 +198,7 @@ fn send_a_valid_wire_unit() {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: Some(BlockPayload::new(vec![], vec![], vec![], false)),
+        value: Some(Arc::new(BlockPayload::new(vec![], vec![], vec![], false))),
         seq_number,
         timestamp: now,
         round_exp: 14,
@@ -258,7 +258,7 @@ fn detect_doppelganger() {
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let now = Timestamp::zero();
-    let value = BlockPayload::new(vec![], vec![], vec![], false);
+    let value = Arc::new(BlockPayload::new(vec![], vec![], vec![], false));
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
