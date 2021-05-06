@@ -258,7 +258,7 @@ where
         info!(%local_address, %public_address, "{}: starting server background task", our_id);
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
-        let server_join_handle = tokio::spawn(tasks::server_task(
+        let server_join_handle = tokio::spawn(tasks::server(
             event_queue,
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
             server_shutdown_receiver,

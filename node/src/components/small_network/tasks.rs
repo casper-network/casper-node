@@ -152,7 +152,7 @@ pub(super) async fn connect_outgoing(
 /// Core accept loop for the networking server.
 ///
 /// Never terminates.
-pub(super) async fn server_task<P, REv>(
+pub(super) async fn server<P, REv>(
     event_queue: EventQueueHandle<REv>,
     listener: tokio::net::TcpListener,
     mut shutdown_receiver: watch::Receiver<()>,
