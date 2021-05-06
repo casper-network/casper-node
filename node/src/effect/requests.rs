@@ -185,7 +185,11 @@ pub enum NetworkInfoRequest<I> {
     },
 
     /// Get the peers in random order.
-    GetPeersInRandomOrder { responder: Responder<Vec<I>> },
+    GetPeersInRandomOrder {
+        /// Responder to be called with all connected peers.
+        /// Responds with a vector in a random order.
+        responder: Responder<Vec<I>>,
+    },
 }
 
 impl<I> Display for NetworkInfoRequest<I>
