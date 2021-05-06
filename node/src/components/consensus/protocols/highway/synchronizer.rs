@@ -165,8 +165,6 @@ where
     vertices_no_deps: PendingVertices<I, C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pending_vertex_timeout: TimeDiff,
-    /// The duration between two consecutive requests of the latest state.
-    request_latest_state_timeout: TimeDiff,
     /// Instance ID of an era for which this synchronizer is constructed.
     instance_id: C::InstanceId,
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
@@ -180,7 +178,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
     pub(crate) fn new(
         pending_vertex_timeout: TimeDiff,
-        request_latest_state_timeout: TimeDiff,
         validator_len: usize,
         instance_id: C::InstanceId,
     ) -> Self {
@@ -189,7 +186,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_no_deps: Default::default(),
             pending_vertex_timeout,
-            request_latest_state_timeout,
             oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
             instance_id,
             current_era: true,
@@ -433,11 +429,6 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
     pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
         self.pending_vertex_timeout
-    }
-
-    /// Returns the duration between two consecutive requests of the latest state.
-    pub(crate) fn request_latest_state_timeout(&self) -> TimeDiff {
-        self.request_latest_state_timeout
     }
 
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and

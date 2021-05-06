@@ -77,7 +77,6 @@ where
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
-            request_latest_state_timeout: "10sec".parse().unwrap(),
             ..HighwayConfig::default()
         },
     };
