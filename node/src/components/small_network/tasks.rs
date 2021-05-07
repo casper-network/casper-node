@@ -1,15 +1,6 @@
 //! Tasks run by the component.
 
-use std::{
-    fmt::Display,
-    io,
-    net::SocketAddr,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{fmt::Display, io, net::SocketAddr, pin::Pin, sync::Arc};
 
 use anyhow::Context;
 
@@ -112,7 +103,6 @@ pub(super) async fn connect_outgoing(
     peer_address: SocketAddr,
     our_certificate: Arc<TlsCert>,
     secret_key: Arc<PKey<Private>>,
-    server_is_stopped: Arc<AtomicBool>,
 ) -> Result<(NodeId, Transport)> {
     let ssl = tls::create_tls_connector(&our_certificate.as_x509(), &secret_key)
         .context("could not create TLS connector")?
@@ -137,16 +127,7 @@ pub(super) async fn connect_outgoing(
 
     let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
 
-    if server_is_stopped.load(Ordering::SeqCst) {
-        debug!(
-            our_id=%our_certificate.public_key_fingerprint(),
-            %peer_address,
-            "server stopped - aborting outgoing TLS connection"
-        );
-        Err(Error::ServerStopped)
-    } else {
-        Ok((NodeId::from(peer_id), tls_stream))
-    }
+    Ok((NodeId::from(peer_id), tls_stream))
 }
 
 /// Core accept loop for the networking server.

@@ -44,10 +44,7 @@ use std::{
     mem,
     net::{SocketAddr, TcpListener},
     result,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
@@ -173,8 +170,6 @@ where
     /// order that they can be gracefully terminated.
     #[data_size(skip)]
     shutdown_receiver: watch::Receiver<()>,
-    /// Flag to indicate the server has stopped running.
-    is_stopped: Arc<AtomicBool>,
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -278,7 +273,6 @@ where
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
-            is_stopped: Arc::new(AtomicBool::new(false)),
             net_metrics: Arc::new(net_metrics),
         };
 
@@ -598,7 +592,6 @@ where
                         addr,
                         self.certificate.clone(),
                         self.secret_key.clone(),
-                        self.is_stopped.clone(),
                     )
                     .instrument(span)
                     .result(
@@ -721,10 +714,6 @@ where
         async move {
             // Close the shutdown socket, causing the server to exit.
             drop(self.shutdown_sender.take());
-
-            // Set the flag to true, ensuring any ongoing attempts to establish outgoing TLS
-            // connections return errors.
-            self.is_stopped.store(true, Ordering::SeqCst);
 
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
