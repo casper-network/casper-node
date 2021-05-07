@@ -252,7 +252,7 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
 
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
-/// See [super::put_deploy](super::put_deploy) for more details
+/// See [super::put_deploy](super::put_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_put_deploy(
     maybe_rpc_id: *const c_char,
@@ -288,7 +288,7 @@ pub extern "C" fn casper_put_deploy(
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_deploy](super::make_deploy) for more details
+/// See [super::make_deploy](super::make_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_make_deploy(
     maybe_output_path: *const c_char,
@@ -356,7 +356,7 @@ pub extern "C" fn casper_send_deploy_file(
 
 /// Transfers funds between purses.
 ///
-/// See [super::transfer](super::transfer) for more details
+/// See [super::transfer](super::transfer) for more details.
 #[no_mangle]
 pub extern "C" fn casper_transfer(
     maybe_rpc_id: *const c_char,
@@ -394,6 +394,36 @@ pub extern "C" fn casper_transfer(
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
     })
+}
+
+/// Creates a transfer `Deploy` and outputs it to a file or stdout.
+///
+/// See [super::make_transfer](super::make_transfer) for more details.
+#[no_mangle]
+pub extern "C" fn casper_make_transfer(
+    maybe_output_path: *const c_char,
+    amount: *const c_char,
+    maybe_target_account: *const c_char,
+    maybe_id: *const c_char,
+    deploy_params: *const casper_deploy_params_t,
+    payment_params: *const casper_payment_params_t,
+) -> casper_error_t {
+    let maybe_output_path = try_unsafe_arg!(maybe_output_path);
+    let amount = try_unsafe_arg!(amount);
+    let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let maybe_id = try_unsafe_arg!(maybe_id);
+    let deploy_params = try_arg_into!(deploy_params);
+    let payment_params = try_arg_into!(payment_params);
+    let result = super::make_transfer(
+        maybe_output_path,
+        amount,
+        maybe_target_account,
+        maybe_id,
+        deploy_params,
+        payment_params,
+    );
+    try_unwrap_result!(result);
+    casper_error_t::CASPER_SUCCESS
 }
 
 /// Retrieves a `Deploy` from the network.

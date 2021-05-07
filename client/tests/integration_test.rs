@@ -682,8 +682,51 @@ mod sign_deploy {
     }
 }
 
-mod keygen_generate_files {
+mod make_transfer {
+    use super::*;
 
+    const AMOUNT: &str = "30000000000";
+    const TARGET_ACCOUNT: &str =
+        "01aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const TRANSFER_ID: &str = "1314";
+
+    #[test]
+    fn should_succeed_for_stdout() {
+        assert_eq!(
+            casper_client::make_transfer(
+                "",
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_succeed_for_file() {
+        let temp_dir = TempDir::new()
+            .unwrap_or_else(|err| panic!("Failed to create temp dir with error: {}", err));
+        let file_path = temp_dir.path().join("test_deploy.json");
+        assert_eq!(
+            casper_client::make_transfer(
+                file_path.to_str().unwrap(),
+                AMOUNT,
+                TARGET_ACCOUNT,
+                TRANSFER_ID,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+}
+
+mod keygen_generate_files {
     use super::*;
 
     #[test]
@@ -862,22 +905,6 @@ mod transfer {
                 payment_params::test_data_with_name()
             ),
             Ok(())
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn should_fail_if_both_target_purse_and_target_account_are_excluded() {
-        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
-        assert_eq!(
-            server_handle.transfer(
-                "100",
-                "",
-                deploy_params::test_data_valid(),
-                payment_params::test_data_with_name()
-            ),
-            Err(Error::InvalidArgument(
-                "target_account",
-                "Invalid arguments to get_transfer_target - must provide either a target account. account=".to_string()).into())
         );
     }
 }
