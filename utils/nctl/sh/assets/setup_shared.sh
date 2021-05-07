@@ -189,6 +189,11 @@ function setup_asset_binaries()
         cp "$PATH_TO_WASM/$CONTRACT" \
            "$PATH_TO_BIN/auction"
     done  
+    for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
+    do
+        cp "$PATH_TO_WASM/$CONTRACT" \
+           "$PATH_TO_BIN/shared"
+    done  
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
         cp "$PATH_TO_WASM/$CONTRACT" \
@@ -281,6 +286,7 @@ function setup_asset_directories()
     mkdir "$PATH_TO_NET"/bin 
     mkdir "$PATH_TO_NET"/bin/auction
     mkdir "$PATH_TO_NET"/bin/eco
+    mkdir "$PATH_TO_NET"/bin/shared
     mkdir "$PATH_TO_NET"/bin/transfers
     mkdir "$PATH_TO_NET"/chainspec
     mkdir "$PATH_TO_NET"/daemon

@@ -15,6 +15,7 @@ function main()
     local PATH_TO_CLIENT
     local PATH_TO_CONTRACT
     local CONTRACT_OWNER_SECRET_KEY
+    local CONTRACT_ARG_MESSAGE="Hello Dolly"
 
     # Set standard deploy parameters.
     CHAIN_NAME=$(get_chain_name)
@@ -24,9 +25,9 @@ function main()
     PATH_TO_CLIENT=$(get_path_to_client)
 
     # Set contract path.
-    PATH_TO_CONTRACT=$(get_path_to_contract "eco/kv_storage.wasm")
+    PATH_TO_CONTRACT=$(get_path_to_contract "eco/hello_world.wasm")
     if [ ! -f "$PATH_TO_CONTRACT" ]; then
-        echo "ERROR: The kv-storage.wasm binary file cannot be found.  Please compile it and move it to the following directory: $(get_path_to_net)"
+        echo "ERROR: The hello_world.wasm binary file cannot be found.  Please compile it and move it to the following directory: $(get_path_to_net)"
         return
     fi
 
@@ -39,7 +40,7 @@ function main()
     log "... gas payment = $GAS_PAYMENT"
     log "... gas price = $GAS_PRICE"
     log "contract constructor args:"
-    log "... N/A"
+    log "... message = $CONTRACT_ARG_MESSAGE"
     log "contract installation details:"
     log "... path = $PATH_TO_CONTRACT"
 
@@ -53,6 +54,7 @@ function main()
             --ttl "1day" \
             --secret-key "$CONTRACT_OWNER_SECRET_KEY" \
             --session-path "$PATH_TO_CONTRACT" \
+            --session-arg "$(get_cl_arg_string 'message' "$CONTRACT_ARG_MESSAGE")" \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
         )

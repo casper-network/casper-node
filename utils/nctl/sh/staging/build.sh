@@ -99,6 +99,11 @@ function _set_fileset()
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
            "$PATH_TO_STAGE/bin/wasm"
     done  
+    for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
+    do
+        cp "$PATH_TO_WASM/$CONTRACT" \
+           "$PATH_TO_BIN/shared"
+    done  
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
