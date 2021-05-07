@@ -993,12 +993,6 @@ where
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
-                let past_deploys = block_context
-                    .ancestor_values()
-                    .iter()
-                    .flat_map(|block_payload| block_payload.deploys_and_transfers_iter())
-                    .cloned()
-                    .collect();
                 let accusations = self
                     .era_supervisor
                     .iter_past(era_id, self.era_supervisor.bonded_eras())
@@ -1009,8 +1003,7 @@ where
                     .collect();
                 self.effect_builder
                     .request_block_payload(
-                        block_context.timestamp(),
-                        past_deploys,
+                        block_context.clone(),
                         self.era_supervisor.next_block_height,
                         accusations,
                         self.rng.gen(),
@@ -1053,7 +1046,7 @@ where
                         .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
-                    value,
+                    Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
                     era_end,
                     timestamp,
                     era_id,

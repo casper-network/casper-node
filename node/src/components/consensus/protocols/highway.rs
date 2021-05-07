@@ -63,8 +63,8 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
 const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
-/// The timer for sending the latest panorama request.
-const TIMER_ID_PANORAMA_REQUEST: TimerId = TimerId(6);
+/// The timer to check for initial progress.
+const TIMER_ID_PROGRESS_ALERT: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -195,12 +195,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(
-                config.highway.pending_vertex_timeout,
-                config.highway.request_latest_state_timeout,
-                validators_count,
-                instance_id,
-            ),
+            synchronizer: Synchronizer::new(config.highway.clone(), validators_count, instance_id),
             pvv_cache: Default::default(),
             evidence_only: false,
             last_panorama,
@@ -228,7 +223,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             ),
             ProtocolOutcome::ScheduleTimer(
                 now.max(era_start_time) + highway_config.standstill_timeout,
-                TIMER_ID_STANDSTILL_ALERT,
+                TIMER_ID_PROGRESS_ALERT,
             ),
             ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_SYNCHRONIZER_LOG),
         ]
@@ -460,6 +455,33 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.finality_detector
             .last_finalized()
             .map_or(false, is_switch)
+    }
+
+    // Check if we've made any progress since joining.
+    // If we haven't, we might have been left alone in the era and we should request the state from
+    // peers.
+    fn handle_progress_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
+        if self.evidence_only || self.finalized_switch_block() {
+            return vec![]; // Era has ended. No further progress is expected.
+        }
+        if self.last_panorama == *self.highway.state().panorama() {
+            // We haven't made any progress. Request latest panorama from peers and schedule
+            // standstill alert. If we still won't progress by the time
+            // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
+            let mut outcomes = self.latest_panorama_request();
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now + self.standstill_timeout,
+                TIMER_ID_STANDSTILL_ALERT,
+            ));
+            return outcomes;
+        }
+
+        // Record the current panorama and schedule the next standstill check.
+        self.last_panorama = self.highway.state().panorama().clone();
+        vec![ProtocolOutcome::ScheduleTimer(
+            now + self.standstill_timeout,
+            TIMER_ID_STANDSTILL_ALERT,
+        )]
     }
 
     /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
@@ -729,6 +751,7 @@ where
                     vec![]
                 }
             }
+            TIMER_ID_PROGRESS_ALERT => self.handle_progress_alert_timer(now),
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
             TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
@@ -739,29 +762,13 @@ where
                     vec![]
                 }
             }
-            TIMER_ID_PANORAMA_REQUEST => {
-                if !self.finalized_switch_block() {
-                    let mut outcomes = self.latest_panorama_request();
-                    let next_timer =
-                        Timestamp::now() + self.synchronizer.request_latest_state_timeout();
-                    outcomes.push(ProtocolOutcome::ScheduleTimer(next_timer, timer_id));
-                    outcomes
-                } else {
-                    vec![]
-                }
-            }
             _ => unreachable!("unexpected timer ID"),
         }
     }
 
     fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
         // Request latest protocol state of the current era.
-        let mut outcomes = self.latest_panorama_request();
-        outcomes.push(ProtocolOutcome::ScheduleTimer(
-            Timestamp::now() + self.synchronizer.request_latest_state_timeout(),
-            TIMER_ID_PANORAMA_REQUEST,
-        ));
-        outcomes
+        self.latest_panorama_request()
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {
