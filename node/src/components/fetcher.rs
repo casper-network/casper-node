@@ -515,7 +515,7 @@ where
                     self.metrics.found_in_storage.inc();
                     self.got_from_storage(item, peer)
                 }
-                _ => self.failed_to_get_from_storage(effect_builder, id, peer),
+                None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely { item, source } => {
                 match source {
