@@ -63,7 +63,7 @@ pub enum MessageKind {
     Consensus,
     /// Deploys being gossiped.
     DeployGossip,
-    /// Addresses begin gossiped.
+    /// Addresses being gossiped.
     AddressGossip,
     /// Deploys being transferred directly (via requests).
     DeployTransfer,

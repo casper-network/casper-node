@@ -102,7 +102,7 @@ impl ConnectionSymmetry {
             }
             ConnectionSymmetry::Symmetric { peer_addrs } => {
                 if !peer_addrs.remove(&peer_addr) {
-                    warn!("tried to remove non-existent incoming connection from symmetry");
+                    warn!("tried to remove non-existent symmetric connection from symmetry");
                 }
                 if peer_addrs.is_empty() {
                     *self = ConnectionSymmetry::OutgoingOnly { since: now };
@@ -117,7 +117,7 @@ impl ConnectionSymmetry {
         }
     }
 
-    /// Marks a connection has having an outgoing connection.
+    /// Marks a connection as having an outgoing connection.
     ///
     /// Returns true, if the connection achieved symmetry with this change.
     pub(super) fn mark_outgoing(&mut self, now: Instant) -> bool {
@@ -130,11 +130,11 @@ impl ConnectionSymmetry {
                 true
             }
             ConnectionSymmetry::OutgoingOnly { .. } => {
-                warn!("duplicate outgoing connection marked");
+                warn!("outgoing connection marked outgoing");
                 false
             }
             ConnectionSymmetry::Symmetric { .. } => {
-                warn!("duplicate outgoing connection marked");
+                warn!("symmetric connection marked outgoing");
                 false
             }
             ConnectionSymmetry::Gone => {
@@ -145,10 +145,12 @@ impl ConnectionSymmetry {
     }
 
     /// Unmarks a connection as having an outgoing connection.
+    ///
+    /// Returns `false` if the `ConnectionSymmetry` should be removed after this.
     pub(super) fn unmark_outgoing(&mut self, now: Instant) -> bool {
         match self {
             ConnectionSymmetry::IncomingOnly { .. } => {
-                warn!("duplicate outgoing-unmarking of symmetry");
+                warn!("incoming-only unmarked outgoing");
                 true
             }
             ConnectionSymmetry::OutgoingOnly { .. } => {
@@ -165,7 +167,7 @@ impl ConnectionSymmetry {
                 true
             }
             ConnectionSymmetry::Gone => {
-                warn!("duplicate outgoing-unmarking of symmetry");
+                warn!("gone marked outgoing");
                 false
             }
         }
@@ -262,7 +264,7 @@ mod tests {
 
         let mut sym = ConnectionSymmetry::default();
 
-        // Mark as outgoing, to prevent reaping..
+        // Mark as outgoing, to prevent reaping.
         sym.mark_outgoing(clock.now());
         assert!(!sym.should_be_reaped(clock.now(), max_time_asymmetric));
 

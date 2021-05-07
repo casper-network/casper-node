@@ -96,11 +96,10 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
     net::SocketAddr,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use datasize::DataSize;
-use std::time::Instant;
 
 use tracing::{debug, error_span, info, trace, warn, Span};
 
@@ -1078,7 +1077,7 @@ mod tests {
             .is_none());
         assert_eq!(manager.get_route(id_b), Some(&101));
 
-        //     // Invariant through housekeeping.
+        // Invariant through housekeeping.
         assert!(manager.perform_housekeeping(clock.now()).is_empty());
 
         assert_eq!(manager.get_route(id_b), Some(&101));

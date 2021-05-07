@@ -112,22 +112,22 @@ const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 /// Duration peers are kept on the block list, before being redeemed.
-static BLOCKLIST_RETAIN_DURATION: Duration = Duration::from_secs(60 * 10);
+const BLOCKLIST_RETAIN_DURATION: Duration = Duration::from_secs(60 * 10);
 
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
 /// delays increase exponentially!
-static RECONNECTION_ATTEMPTS: u8 = 8;
+const RECONNECTION_ATTEMPTS: u8 = 8;
 
 /// Basic reconnection timeout.
 ///
 /// The first reconnection attempt will be made after 2x this timeout.
-static BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
+const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Interval during which to perform outgoing manager housekeeping.
-static OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
+const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Interval for checking for symmetrical connections.
-static SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
+const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Clone, DataSize, Debug)]
 pub struct OutgoingConnection<P> {
@@ -688,7 +688,7 @@ where
                 ret.insert(node_id, connection.peer_address.to_string());
             } else {
                 // This should never happen unless the state of `OutgoingManager` is corrupt.
-                warn!("route disappeared unexpectedly")
+                warn!(%node_id, "route disappeared unexpectedly")
             }
         }
 
@@ -761,8 +761,8 @@ where
                 stream,
                 peer_address,
             } => {
-                debug!(our_id=%self.our_id, %peer_address, "incoming connection, starting TLS
-        handshake");
+                debug!(our_id=%self.our_id, %peer_address,
+                       "incoming connection, starting TLS handshake");
 
                 setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
                     .boxed()
@@ -794,8 +794,8 @@ where
                         info!(our_id=%self.our_id, %peer_id, %peer_address, "connection closed",)
                     }
                     Err(ref err) => {
-                        warn!(our_id=%self.our_id, %peer_id, %peer_address,
-        err=display_error(err), "connection dropped")
+                        warn!(our_id=%self.our_id, %peer_id, %peer_address, err=display_error(err),
+                              "connection dropped")
                     }
                 }
 
