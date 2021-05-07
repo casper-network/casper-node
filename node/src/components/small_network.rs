@@ -650,9 +650,14 @@ where
                         "dropping connection due to network name mismatch"
                     );
 
-                    // Node is on the wrong network, but there is nothing we can do about it, as
-                    // small_network currently lacks the capability to drop incoming connections.
-                    Default::default()
+                    // Node is on the wrong network. As a workaround until the connection logic
+                    // eliminates these cases immediately, we look up the peer's outgoing
+                    // connections and block them.
+                    if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
+                        self.outgoing_manager.block_addr(addr, Instant::now())
+                    } else {
+                        Default::default()
+                    }
                 } else {
                     // Speed up the connection process by directly learning the peer's address.
                     self.outgoing_manager
