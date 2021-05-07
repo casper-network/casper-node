@@ -63,7 +63,7 @@ pub(super) async fn setup_tls(
 }
 
 /// Network handshake reader for single handshake message received by outgoing connection.
-pub(super) async fn handshake_reader<REv, P>(
+pub(super) async fn read_handshake<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut stream: SplitStream<FramedTransport<P>>,
     our_id: NodeId,

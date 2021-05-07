@@ -515,7 +515,7 @@ where
             }),
         );
         effects.extend(
-            tasks::handshake_reader(self.event_queue, stream, self.our_id, peer_id, peer_address)
+            tasks::read_handshake(self.event_queue, stream, self.our_id, peer_id, peer_address)
                 .ignore::<Event<P>>(),
         );
 
