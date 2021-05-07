@@ -22,7 +22,7 @@ mod parsing;
 mod rpc;
 mod validation;
 
-use std::{convert::TryInto, fs::File};
+use std::{convert::TryInto, fs, io::Cursor};
 
 use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
@@ -80,11 +80,6 @@ pub fn put_deploy(
 /// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
-/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
-///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
-/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
-///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
 ///   file already exists, it will be overwritten.
 /// * `deploy` contains deploy-related options for this `Deploy`. See
@@ -122,7 +117,12 @@ pub fn make_deploy(
 ///   file already exists, it will be overwritten.
 pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &str) -> Result<()> {
     let secret_key = parsing::secret_key(secret_key)?;
-    let maybe_output_path = parsing::output(maybe_output_path);
+    let maybe_output_path = none_if_empty(maybe_output_path);
+
+    let input = fs::read(input_path).map_err(|error| Error::IoError {
+        context: format!("unable to read deploy file at '{}'", input_path),
+        error,
+    })?;
 
     let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
         context: format!(
@@ -132,12 +132,7 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
         error,
     })?;
 
-    let input = File::open(&input_path).map_err(|error| Error::IoError {
-        context: format!("unable to read deploy file at '{}'", input_path),
-        error,
-    })?;
-
-    Deploy::sign_and_write_deploy(input, secret_key, output)
+    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
@@ -218,6 +213,55 @@ pub fn transfer(
         deploy_params.try_into()?,
         payment_params.try_into()?,
     )
+}
+
+/// Creates a transfer `Deploy` and outputs it to a file or stdout.
+///
+/// As a file, the transfer `Deploy` can subsequently be signed by other parties using
+/// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
+/// using [`send_deploy_file()`](fn.send_deploy_file.html).
+///
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
+///   file already exists, it will be overwritten.
+/// * `deploy` contains deploy-related options for this `Deploy`. See
+///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
+/// * `session` contains session-related options for this `Deploy`. See
+///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
+/// * `payment` contains payment-related options for this `Deploy`. See
+///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
+pub fn make_transfer(
+    maybe_output_path: &str,
+    amount: &str,
+    maybe_target_account: &str,
+    maybe_id: &str,
+    deploy_params: DeployStrParams<'_>,
+    payment_params: PaymentStrParams<'_>,
+) -> Result<()> {
+    let amount = U512::from_dec_str(amount)
+        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+    let source_purse = None;
+    let target = parsing::get_transfer_target(maybe_target_account)?;
+    let maybe_id = parsing::transfer_id(maybe_id)?;
+
+    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
+        Error::IoError {
+            context: format!(
+                "unable to get file or stdout, provided '{:?}'",
+                maybe_output_path
+            ),
+            error,
+        }
+    })?;
+
+    Deploy::new_transfer(
+        amount,
+        source_purse,
+        target,
+        maybe_id,
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
+    )?
+    .write_deploy(output)
 }
 
 /// Retrieves a `Deploy` from the network.
