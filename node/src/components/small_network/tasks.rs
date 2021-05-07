@@ -130,38 +130,67 @@ pub(super) async fn connect_outgoing(
     Ok((NodeId::from(peer_id), tls_stream))
 }
 
+/// A context holding all relevant information for networking communication shared across tasks.
+pub(super) struct NetworkContext<REv>
+where
+    REv: 'static,
+{
+    pub(super) event_queue: EventQueueHandle<REv>,
+    pub(super) our_id: NodeId,
+    pub(super) our_cert: Arc<TlsCert>,
+    pub(super) secret_key: Arc<PKey<Private>>,
+}
+
+/// Handles an incoming connection.
+///
+/// Will setup a TLS connection on the incoming connection.
+async fn handle_incoming<P, REv>(
+    context: Arc<NetworkContext<REv>>,
+    stream: TcpStream,
+    peer_address: SocketAddr,
+) where
+    REv: From<Event<P>> + 'static,
+{
+    let tls_setup_result =
+        setup_tls(stream, context.our_cert.clone(), context.secret_key.clone()).await;
+
+    let event = Event::IncomingHandshakeCompleted {
+        result: Box::new(tls_setup_result),
+        peer_address: Box::new(peer_address),
+    };
+
+    context
+        .event_queue
+        .schedule(event, QueueKind::NetworkIncoming)
+        .await;
+}
+
 /// Core accept loop for the networking server.
 ///
 /// Never terminates.
 pub(super) async fn server<P, REv>(
-    event_queue: EventQueueHandle<REv>,
+    context: Arc<NetworkContext<REv>>,
     listener: tokio::net::TcpListener,
     mut shutdown_receiver: watch::Receiver<()>,
-    our_id: NodeId,
 ) where
-    REv: From<Event<P>>,
+    REv: From<Event<P>> + Send,
+    P: Send + 'static,
 {
     // The server task is a bit tricky, since it has to wait on incoming connections while at the
     // same time shut down if the networking component is dropped, otherwise the TCP socket will
     // stay open, preventing reuse.
 
     // We first create a future that never terminates, handling incoming connections:
-    let accept_connections = async move {
+    let accept_connections = async {
         loop {
             // We handle accept errors here, since they can be caused by a temporary resource
             // shortage or the remote side closing the connection while it is waiting in
             // the queue.
             match listener.accept().await {
                 Ok((stream, peer_address)) => {
-                    // Move the incoming connection to the event queue for handling.
-                    let event = Event::IncomingNew {
-                        stream,
-                        peer_address: Box::new(peer_address),
-                    };
-                    event_queue
-                        .schedule(event, QueueKind::NetworkIncoming)
-                        .await;
+                    tokio::spawn(handle_incoming(context.clone(), stream, peer_address));
                 }
+
                 // TODO: Handle resource errors gracefully.
                 //       In general, two kinds of errors occur here: Local resource exhaustion,
                 //       which should be handled by waiting a few milliseconds, or remote connection
@@ -170,7 +199,7 @@ pub(super) async fn server<P, REv>(
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
                 Err(ref err) => {
-                    warn!(%our_id, err=display_error(err), "dropping incoming connection during accept")
+                    warn!(%context.our_id, err=display_error(err), "dropping incoming connection during accept")
                 }
             }
         }
@@ -182,7 +211,7 @@ pub(super) async fn server<P, REv>(
     // infinite loop to terminate, which never happens.
     match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
         Either::Left(_) => info!(
-            %our_id,
+            %context.our_id,
             "shutting down socket, no longer accepting incoming connections"
         ),
         Either::Right(_) => unreachable!(),

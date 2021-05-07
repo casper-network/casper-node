@@ -7,7 +7,6 @@ use std::{
 use derive_more::From;
 use serde::Serialize;
 use static_assertions::const_assert;
-use tokio::net::TcpStream;
 
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
 use crate::{
@@ -23,12 +22,6 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
 pub enum Event<P> {
-    /// A new TCP connection has been established from an incoming connection.
-    IncomingNew {
-        #[serde(skip_serializing)]
-        stream: TcpStream,
-        peer_address: Box<SocketAddr>,
-    },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
         #[serde(skip_serializing)]
@@ -111,9 +104,6 @@ impl From<NetworkInfoRequest<NodeId>> for Event<ProtocolMessage> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::IncomingNew { peer_address, .. } => {
-                write!(f, "incoming connection from {}", peer_address)
-            }
             Event::IncomingHandshakeCompleted {
                 result,
                 peer_address,

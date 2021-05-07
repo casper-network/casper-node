@@ -75,6 +75,7 @@ use self::{
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
+    tasks::NetworkContext,
 };
 pub(crate) use self::{
     error::display_error,
@@ -247,6 +248,13 @@ where
             public_address.set_port(local_address.port());
         }
 
+        let context = NetworkContext {
+            event_queue,
+            our_id,
+            our_cert: certificate.clone(),
+            secret_key: secret_key.clone(),
+        };
+
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
@@ -254,10 +262,9 @@ where
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
         let server_join_handle = tokio::spawn(tasks::server(
-            event_queue,
+            Arc::new(context),
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
             server_shutdown_receiver,
-            our_id,
         ));
 
         let mut component = SmallNetwork {
@@ -747,21 +754,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            // A new TCP connection has arrived (stage 1/3).
-            Event::IncomingNew {
-                stream,
-                peer_address,
-            } => {
-                debug!(our_id=%self.our_id, %peer_address,
-                       "incoming connection, starting TLS handshake");
-
-                tasks::setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
-                    .boxed()
-                    .event(move |result| Event::IncomingHandshakeCompleted {
-                        result: Box::new(result),
-                        peer_address,
-                    })
-            }
             // The TLS connection has been established (stage 2/3).
             // Stage 3 is implicitly handled.
             Event::IncomingHandshakeCompleted {
