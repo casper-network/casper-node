@@ -39,8 +39,6 @@ pub struct Config {
     /// if it has no peer connections, and is intended to be amongst the first nodes started on
     /// a network.
     pub is_bootstrap_node: bool,
-    /// Enable systemd startup notification.
-    pub systemd_support: bool,
     /// The timeout for connection setup (including upgrades) for all inbound and outbound
     /// connections.
     pub connection_setup_timeout: TimeDiff,
@@ -64,7 +62,6 @@ impl Default for Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             known_addresses: Vec::new(),
             is_bootstrap_node: false,
-            systemd_support: false,
             connection_setup_timeout: TimeDiff::from_str(temp::CONNECTION_SETUP_TIMEOUT).unwrap(),
             max_one_way_message_size: temp::MAX_ONE_WAY_MESSAGE_SIZE,
             request_timeout: TimeDiff::from_str(temp::REQUEST_TIMEOUT).unwrap(),
@@ -127,7 +124,6 @@ impl From<&small_network::Config> for Config {
             bind_address: config.bind_address.clone(),
             known_addresses: config.known_addresses.clone(),
             is_bootstrap_node,
-            systemd_support: config.systemd_support,
             ..Default::default()
         }
     }

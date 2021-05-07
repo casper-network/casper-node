@@ -122,9 +122,6 @@ pub enum Error {
         #[from]
         SystemTimeError,
     ),
-    /// Systemd notification error
-    #[error("could not interact with systemd: {0}")]
-    SystemD(#[serde(skip_serializing)] io::Error),
     /// Other error.
     #[error(transparent)]
     Anyhow(

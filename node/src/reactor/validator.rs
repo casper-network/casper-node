@@ -413,7 +413,6 @@ impl reactor::Reactor for Reactor {
             registry,
             network_identity,
             chainspec_loader.chainspec(),
-            true,
         )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -421,7 +420,6 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            true,
         )?;
 
         let address_gossiper =

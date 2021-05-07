@@ -150,14 +150,17 @@ steps:
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
 
 - name: put-drone-s3-cache
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+  image: plugins/s3-sync:latest
+  settings:
+    bucket:
+      from_secret: put-drone-s3-bucket
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: target/debian/
+    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
   when:
     branch:
       - master
@@ -242,13 +245,16 @@ steps:
 - name: get-and-del-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
-    - ./ci/drone_s3_storage.sh del
+    - s3cmd sync "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/" "./target/debian/"
+    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+    AWS_DEFAULT_REGION: "us-east-2"
+    AWS_BUCKET:
+      from_secret: put-drone-s3-bucket
   when:
     branch:
       - master
@@ -319,12 +325,15 @@ steps:
 - name: del-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/drone_s3_storage.sh del
+    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+    AWS_DEFAULT_REGION: "us-east-2"
+    AWS_BUCKET:
+      from_secret: put-drone-s3-bucket
   when:
     branch:
       - master
