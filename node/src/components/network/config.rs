@@ -35,9 +35,9 @@ pub struct Config {
     pub bind_address: String,
     /// Known address of a node on the network used for joining.
     pub known_addresses: Vec<String>,
-    /// Whether this node is a bootstrap node or not.  A boostrap node will continue to run even if
-    /// it has no peer connections, and is intended to be amongst the first nodes started on a
-    /// network.
+    /// Whether this node is a bootstrap node or not.  A bootstrap node will continue to run even
+    /// if it has no peer connections, and is intended to be amongst the first nodes started on
+    /// a network.
     pub is_bootstrap_node: bool,
     /// The timeout for connection setup (including upgrades) for all inbound and outbound
     /// connections.
