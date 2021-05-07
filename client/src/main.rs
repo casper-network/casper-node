@@ -25,11 +25,9 @@ use casper_node::rpcs::{
     state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
 };
 
-use deploy::{ListDeploys, MakeDeploy, SendDeploy, SignDeploy};
-
 use account_address::GenerateAccountHash as AccountAddress;
 use command::{ClientCommand, Success};
-use deploy::Transfer;
+use deploy::{ListDeploys, MakeDeploy, MakeTransfer, SendDeploy, SignDeploy, Transfer};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
 
@@ -42,6 +40,7 @@ enum DisplayOrder {
     SignDeploy,
     SendDeploy,
     Transfer,
+    MakeTransfer,
     GetDeploy,
     GetBlock,
     GetBlockTransfers,
@@ -66,6 +65,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(SignDeploy::build(DisplayOrder::SignDeploy as usize))
         .subcommand(SendDeploy::build(DisplayOrder::SendDeploy as usize))
         .subcommand(Transfer::build(DisplayOrder::Transfer as usize))
+        .subcommand(MakeTransfer::build(DisplayOrder::MakeTransfer as usize))
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
         .subcommand(GetBlock::build(DisplayOrder::GetBlock as usize))
         .subcommand(GetBlockTransfers::build(
@@ -98,6 +98,7 @@ async fn main() {
         (SignDeploy::NAME, Some(matches)) => (SignDeploy::run(matches), matches),
         (SendDeploy::NAME, Some(matches)) => (SendDeploy::run(matches), matches),
         (Transfer::NAME, Some(matches)) => (Transfer::run(matches), matches),
+        (MakeTransfer::NAME, Some(matches)) => (MakeTransfer::run(matches), matches),
         (GetDeploy::NAME, Some(matches)) => (GetDeploy::run(matches), matches),
         (GetBlock::NAME, Some(matches)) => (GetBlock::run(matches), matches),
         (GetBlockTransfers::NAME, Some(matches)) => (GetBlockTransfers::run(matches), matches),

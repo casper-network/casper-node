@@ -1,31 +1,44 @@
-use clap::{App, ArgMatches, SubCommand};
+use clap::{App, ArgGroup, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
 
-use super::creation_common;
+use super::{creation_common, transfer};
 use crate::{command::ClientCommand, common, Success};
 
-pub struct MakeDeploy;
+pub struct MakeTransfer;
 
-impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
-    const NAME: &'static str = "make-deploy";
+impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
+    const NAME: &'static str = "make-transfer";
     const ABOUT: &'static str =
-        "Creates a deploy and outputs it to a file or stdout. As a file, the deploy can \
+        "Creates a transfer deploy and outputs it to a file or stdout. As a file, the deploy can \
         subsequently be signed by other parties using the 'sign-deploy' subcommand and then sent \
         to the network for execution using the 'send-deploy' subcommand";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         let subcommand = SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
+            .display_order(display_order)
             .arg(creation_common::output::arg())
-            .display_order(display_order);
-        let subcommand = creation_common::apply_common_session_options(subcommand);
+            .arg(transfer::amount::arg())
+            .arg(transfer::target_account::arg())
+            .arg(transfer::transfer_id::arg())
+            // Group the target args to ensure exactly one is required.
+            .group(
+                ArgGroup::with_name("required-target-args")
+                    .arg(transfer::target_account::ARG_NAME)
+                    .arg(creation_common::show_arg_examples::ARG_NAME)
+                    .required(true),
+            );
         let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, false)
     }
 
     fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         creation_common::show_arg_examples_and_exit_if_required(matches);
+
+        let amount = transfer::amount::get(matches);
+        let target_account = transfer::target_account::get(matches);
+        let transfer_id = transfer::transfer_id::get(matches);
 
         let secret_key = common::secret_key::get(matches);
         let timestamp = creation_common::timestamp::get(matches);
@@ -34,13 +47,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
         let dependencies = creation_common::dependencies::get(matches);
         let chain_name = creation_common::chain_name::get(matches);
 
-        let session_str_params = creation_common::session_str_params(matches);
         let payment_str_params = creation_common::payment_str_params(matches);
 
         let maybe_output_path = creation_common::output::get(matches).unwrap_or_default();
 
-        casper_client::make_deploy(
+        casper_client::make_transfer(
             maybe_output_path,
+            amount,
+            target_account,
+            transfer_id,
             DeployStrParams {
                 secret_key,
                 timestamp,
@@ -49,14 +64,13 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
                 gas_price,
                 chain_name,
             },
-            session_str_params,
             payment_str_params,
         )
         .map(|_| {
             Success::Output(if maybe_output_path.is_empty() {
                 String::new()
             } else {
-                format!("Wrote the deploy to {}", maybe_output_path)
+                format!("Wrote the transfer deploy to {}", maybe_output_path)
             })
         })
     }
