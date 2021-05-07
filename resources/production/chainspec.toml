@@ -148,6 +148,7 @@ call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
 call_versioned_contract = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
 create_contract_package_at_hash = { cost = 200, arguments = [0, 0] }
 create_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
+create_local = { cost = 200_000, arguments = [0] }
 create_purse = { cost = 170_000, arguments = [0, 0] }
 disable_contract_version = { cost = 200, arguments = [0, 0, 0, 0] }
 get_balance = { cost = 3_800, arguments = [0, 0, 0] }
@@ -168,7 +169,7 @@ provision_contract_user_group_uref = { cost = 200, arguments = [0, 0, 0, 0, 0] }
 put_key = { cost = 38_000, arguments = [0, 1_100, 0, 0] }
 read_host_buffer = { cost = 3_500, arguments = [0, 310, 0] }
 read_value = { cost = 6_000, arguments = [0, 0, 0] }
-read_value_local = { cost = 5_500, arguments = [0, 590, 0] }
+read_local = { cost = 5_500, arguments = [0, 0, 0, 590, 0] }
 remove_associated_key = { cost = 4_200, arguments = [0, 0] }
 remove_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0] }
 remove_contract_user_group_urefs = { cost = 200, arguments = [0, 0, 0, 0, 0, 0] }
@@ -181,7 +182,7 @@ transfer_from_purse_to_purse = { cost = 82_000, arguments = [0, 0, 0, 0, 0, 0, 0
 transfer_to_account = { cost = 24_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
 update_associated_key = { cost = 4_200, arguments = [0, 0, 0] }
 write = { cost = 14_000, arguments = [0, 0, 0, 980] }
-write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
+write_local = { cost = 9_500, arguments = [0, 0, 0, 1_800, 0, 520] }
 
 [system_costs]
 wasmless_transfer_cost = 10_000

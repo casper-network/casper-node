@@ -1047,4 +1047,37 @@ where
         self.validate_uref(&contract_package.access_key())?;
         Ok(contract_package)
     }
+
+    pub(crate) fn read_ls(
+        &mut self,
+        uref: URef,
+        key_bytes: &[u8],
+    ) -> Result<Option<CLValue>, Error> {
+        let local_key = Key::local(uref, key_bytes);
+
+        let maybe_stored_value = self
+            .tracking_copy
+            .borrow_mut()
+            .read(self.correlation_id, &local_key)
+            .map_err(Into::into)?;
+
+        if let Some(stored_value) = maybe_stored_value {
+            Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn write_ls(
+        &mut self,
+        uref: URef,
+        key_bytes: &[u8],
+        cl_value: CLValue,
+    ) -> Result<(), Error> {
+        let local_key = Key::local(uref, key_bytes);
+        self.tracking_copy
+            .borrow_mut()
+            .write(local_key, StoredValue::CLValue(cl_value));
+        Ok(())
+    }
 }

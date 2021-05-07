@@ -90,7 +90,7 @@ provision_contract_user_group_uref = { cost = 124, arguments = [0,1,2,3,4] }
 put_key = { cost = 125, arguments = [0, 1, 2, 3] }
 read_host_buffer = { cost = 126, arguments = [0, 1, 2] }
 read_value = { cost = 127, arguments = [0, 1, 0] }
-read_value_local = { cost = 128,  arguments = [0, 1, 0] }
+read_local = { cost = 128,  arguments = [0, 0, 0, 1, 0] }
 remove_associated_key = { cost = 129, arguments = [0, 1] }
 remove_contract_user_group = { cost = 130, arguments = [0, 1, 2, 3] }
 remove_contract_user_group_urefs = { cost = 131, arguments = [0,1,2,3,4,5] }
@@ -103,7 +103,8 @@ transfer_from_purse_to_purse = { cost = 137, arguments = [0, 1, 2, 3, 4, 5, 6, 7
 transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3, 4, 5, 6] }
 update_associated_key = { cost = 139, arguments = [0, 1, 2] }
 write = { cost = 140,  arguments = [0, 1, 0, 2] }
-write_local = { cost = 141, arguments = [0, 1, 2, 3] }
+write_local = { cost = 141, arguments = [0, 0, 0, 1, 2, 3] }
+create_local = { cost = 142, arguments = [0] }
 
 [system_costs]
 wasmless_transfer_cost = 10_000

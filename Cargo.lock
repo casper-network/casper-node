@@ -3213,6 +3213,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "local-state"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

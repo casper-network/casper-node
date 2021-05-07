@@ -48,6 +48,8 @@ const DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT: u32 = 1_100;
 const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500;
 const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
 
+const DEFAULT_CREATE_LOCAL_COST: u32 = 7_000;
+
 const DEFAULT_READ_VALUE_COST: u32 = 6_000;
 const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500;
 const DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
@@ -186,9 +188,9 @@ where
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
     pub read_value: HostFunction<[Cost; 3]>,
-    pub read_value_local: HostFunction<[Cost; 3]>,
+    pub read_local: HostFunction<[Cost; 5]>,
     pub write: HostFunction<[Cost; 4]>,
-    pub write_local: HostFunction<[Cost; 4]>,
+    pub write_local: HostFunction<[Cost; 6]>,
     pub add: HostFunction<[Cost; 4]>,
     pub new_uref: HostFunction<[Cost; 3]>,
     pub load_named_keys: HostFunction<[Cost; 2]>,
@@ -227,15 +229,22 @@ pub struct HostFunctionCosts {
     pub remove_contract_user_group_urefs: HostFunction<[Cost; 6]>,
     pub print: HostFunction<[Cost; 2]>,
     pub blake2b: HostFunction<[Cost; 4]>,
+    pub create_local: HostFunction<[Cost; 1]>,
 }
 
 impl Default for HostFunctionCosts {
     fn default() -> Self {
         Self {
             read_value: HostFunction::fixed(DEFAULT_READ_VALUE_COST),
-            read_value_local: HostFunction::new(
+            read_local: HostFunction::new(
                 DEFAULT_READ_VALUE_LOCAL_COST,
-                [NOT_USED, DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT, NOT_USED],
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT,
+                    NOT_USED,
+                ],
             ),
             write: HostFunction::new(
                 DEFAULT_WRITE_COST,
@@ -249,6 +258,8 @@ impl Default for HostFunctionCosts {
             write_local: HostFunction::new(
                 DEFAULT_WRITE_LOCAL_COST,
                 [
+                    NOT_USED,
+                    NOT_USED,
                     NOT_USED,
                     DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT,
                     NOT_USED,
@@ -344,6 +355,7 @@ impl Default for HostFunctionCosts {
                 [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
             ),
             blake2b: HostFunction::default(),
+            create_local: HostFunction::fixed(DEFAULT_CREATE_LOCAL_COST),
         }
     }
 }
@@ -352,7 +364,7 @@ impl ToBytes for HostFunctionCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.read_value.to_bytes()?);
-        ret.append(&mut self.read_value_local.to_bytes()?);
+        ret.append(&mut self.read_local.to_bytes()?);
         ret.append(&mut self.write.to_bytes()?);
         ret.append(&mut self.write_local.to_bytes()?);
         ret.append(&mut self.add.to_bytes()?);
@@ -393,12 +405,13 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.remove_contract_user_group_urefs.to_bytes()?);
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.blake2b.to_bytes()?);
+        ret.append(&mut self.create_local.to_bytes()?);
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
         self.read_value.serialized_length()
-            + self.read_value_local.serialized_length()
+            + self.read_local.serialized_length()
             + self.write.serialized_length()
             + self.write_local.serialized_length()
             + self.add.serialized_length()
@@ -439,6 +452,7 @@ impl ToBytes for HostFunctionCosts {
             + self.remove_contract_user_group_urefs.serialized_length()
             + self.print.serialized_length()
             + self.blake2b.serialized_length()
+            + self.create_local.serialized_length()
     }
 }
 
@@ -486,10 +500,11 @@ impl FromBytes for HostFunctionCosts {
         let (remove_contract_user_group_urefs, rem) = FromBytes::from_bytes(rem)?;
         let (print, rem) = FromBytes::from_bytes(rem)?;
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
+        let (create_local, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
-                read_value_local,
+                read_local: read_value_local,
                 write,
                 write_local,
                 add,
@@ -530,6 +545,7 @@ impl FromBytes for HostFunctionCosts {
                 remove_contract_user_group_urefs,
                 print,
                 blake2b,
+                create_local,
             },
             rem,
         ))
@@ -540,7 +556,7 @@ impl Distribution<HostFunctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCosts {
         HostFunctionCosts {
             read_value: rng.gen(),
-            read_value_local: rng.gen(),
+            read_local: rng.gen(),
             write: rng.gen(),
             write_local: rng.gen(),
             add: rng.gen(),
@@ -581,6 +597,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             remove_contract_user_group_urefs: rng.gen(),
             print: rng.gen(),
             blake2b: rng.gen(),
+            create_local: rng.gen(),
         }
     }
 }
@@ -598,7 +615,7 @@ pub mod gens {
     prop_compose! {
         pub fn host_function_costs_arb() (
             read_value in host_function_cost_arb(),
-            read_value_local in host_function_cost_arb(),
+            read_local in host_function_cost_arb(),
             write in host_function_cost_arb(),
             write_local in host_function_cost_arb(),
             add in host_function_cost_arb(),
@@ -639,10 +656,11 @@ pub mod gens {
             remove_contract_user_group_urefs in host_function_cost_arb(),
             print in host_function_cost_arb(),
             blake2b in host_function_cost_arb(),
+            create_local in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
-                read_value_local,
+                read_local,
                 write,
                 write_local,
                 add,
@@ -683,6 +701,7 @@ pub mod gens {
                 remove_contract_user_group_urefs,
                 print,
                 blake2b,
+                create_local,
             }
         }
     }

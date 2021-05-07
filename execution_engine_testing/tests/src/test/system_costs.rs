@@ -788,7 +788,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     // additionally charge for calling mint's "transfer" entrypoint under the hood.
     let new_host_function_costs = HostFunctionCosts {
         read_value: HostFunction::fixed(0),
-        read_value_local: HostFunction::fixed(0),
+        read_local: HostFunction::fixed(0),
         write: HostFunction::fixed(0),
         write_local: HostFunction::fixed(0),
         add: HostFunction::fixed(0),
@@ -829,6 +829,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         remove_contract_user_group_urefs: HostFunction::fixed(0),
         print: HostFunction::fixed(0),
         blake2b: HostFunction::fixed(0),
+        create_local: HostFunction::fixed(0),
     };
 
     let new_wasm_config = WasmConfig::new(

@@ -6,6 +6,7 @@ mod get_blocktime;
 mod get_caller;
 mod get_phase;
 mod list_named_keys;
+mod local_state;
 mod main_purse;
 mod mint_purse;
 mod revert;

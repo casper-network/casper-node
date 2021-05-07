@@ -968,6 +968,74 @@ where
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
+            FunctionIndex::CreateLocalFuncIndex => {
+                let (output_size_ptr,): (u32,) = Args::parse(args)?;
+
+                self.charge_host_function_call(
+                    &host_function_costs.create_local,
+                    [output_size_ptr],
+                )?;
+                let ret = self.create_local(output_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::ReadLocalFuncIndex => {
+                // args(0) = pointer to uref in Wasm memory
+                // args(1) = size of uref in Wasm memory
+                // args(2) = pointer to key bytes pointer in Wasm memory
+                // args(3) = pointer to key bytes size in Wasm memory
+                // args(4) = pointer to output size (output param)
+                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, output_size_ptr): (
+                    _,
+                    u32,
+                    _,
+                    u32,
+                    _,
+                ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.read_local,
+                    [
+                        uref_ptr,
+                        uref_size,
+                        key_bytes_ptr,
+                        key_bytes_size,
+                        output_size_ptr,
+                    ],
+                )?;
+                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
+                let ret = self.read_local(
+                    uref_ptr,
+                    uref_size,
+                    key_bytes_ptr,
+                    key_bytes_size,
+                    output_size_ptr,
+                )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::WriteLocalFuncIndex => {
+                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.write_local,
+                    [
+                        uref_ptr,
+                        uref_size,
+                        key_bytes_ptr,
+                        key_bytes_size,
+                        value_ptr,
+                        value_ptr_size,
+                    ],
+                )?;
+                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
+                scoped_instrumenter.add_property("value_size", value_ptr_size);
+                self.write_local(
+                    uref_ptr,
+                    uref_size,
+                    key_bytes_ptr,
+                    key_bytes_size,
+                    value_ptr,
+                    value_ptr_size,
+                )?;
+                Ok(None)
+            }
         }
     }
 }

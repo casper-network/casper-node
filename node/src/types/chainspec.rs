@@ -227,9 +227,9 @@ mod tests {
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
             read_value: HostFunction::new(127, [0, 1, 0]),
-            read_value_local: HostFunction::new(128, [0, 1, 0]),
+            read_local: HostFunction::new(128, [0, 0, 0, 1, 0]),
             write: HostFunction::new(140, [0, 1, 0, 2]),
-            write_local: HostFunction::new(141, [0, 1, 2, 3]),
+            write_local: HostFunction::new(141, [0, 0, 1, 2, 3, 4]),
             add: HostFunction::new(100, [0, 1, 2, 3]),
             new_uref: HostFunction::new(122, [0, 1, 2]),
             load_named_keys: HostFunction::new(121, [0, 1]),
@@ -268,6 +268,7 @@ mod tests {
             remove_contract_user_group_urefs: HostFunction::new(131, [0, 1, 2, 3, 4, 5]),
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
+            create_local: HostFunction::new(134, [0]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(

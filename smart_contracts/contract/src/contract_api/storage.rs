@@ -335,3 +335,65 @@ pub fn disable_contract_version(
 
     api_error::result_from(result)
 }
+
+/// Extends specified group with a new `URef`.
+pub fn create_local() -> Result<URef, ApiError> {
+    let value_size = {
+        let mut value_size = MaybeUninit::uninit();
+        let ret = unsafe { ext_ffi::casper_create_local(value_size.as_mut_ptr()) };
+        api_error::result_from(ret)?;
+        unsafe { value_size.assume_init() }
+    };
+    let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
+    Ok(bytesrepr::deserialize(value_bytes).unwrap_or_revert())
+}
+
+/// Creates an [`URef`] that will refer to a the context-local partition of global state.
+pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
+    uref: URef,
+    key: K,
+) -> Result<Option<V>, bytesrepr::Error> {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
+    let (key_bytes_ptr, key_bytes_size, _bytes1) = contract_api::to_ptr(key);
+
+    let value_size = {
+        let mut value_size = MaybeUninit::uninit();
+        let ret = unsafe {
+            ext_ffi::casper_read_value_local(
+                uref_ptr,
+                uref_size,
+                key_bytes_ptr,
+                key_bytes_size,
+                value_size.as_mut_ptr(),
+            )
+        };
+        match api_error::result_from(ret) {
+            Ok(_) => unsafe { value_size.assume_init() },
+            Err(ApiError::ValueNotFound) => return Ok(None),
+            Err(e) => runtime::revert(e),
+        }
+    };
+
+    let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
+    Ok(Some(bytesrepr::deserialize(value_bytes)?))
+}
+
+/// Writes `value` under `key` in the context-local partition of global state.
+pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: V) {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
+    let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
+
+    let cl_value = CLValue::from_t(value).unwrap_or_revert();
+    let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
+
+    unsafe {
+        ext_ffi::casper_write_local(
+            uref_ptr,
+            uref_size,
+            key_ptr,
+            key_size,
+            cl_value_ptr,
+            cl_value_size,
+        );
+    }
+}
