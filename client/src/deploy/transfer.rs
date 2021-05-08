@@ -1,4 +1,4 @@
-use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
+use clap::{App, Arg, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
 
@@ -40,7 +40,7 @@ pub(super) mod target_account {
     const ARG_VALUE_NAME: &str = "HEX STRING";
     const ARG_HELP: &str =
         "Hex-encoded public key of the account from which the main purse will be used as the \
-        target.";
+        target";
 
     // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand. Don't
     // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
@@ -48,7 +48,7 @@ pub(super) mod target_account {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
-            .required(false)
+            .required_unless(creation_common::show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferTargetAccount as usize)
@@ -64,13 +64,15 @@ pub(super) mod transfer_id {
     use super::*;
 
     pub(in crate::deploy) const ARG_NAME: &str = "transfer-id";
+    const ARG_SHORT: &str = "i";
     const ARG_VALUE_NAME: &str = "64-BIT INTEGER";
     const ARG_HELP: &str = "User-defined identifier, permanently associated with the transfer";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
-            .required(false)
+            .short(ARG_SHORT)
+            .required_unless(creation_common::show_arg_examples::ARG_NAME)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::TransferId as usize)
@@ -95,14 +97,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(amount::arg())
             .arg(target_account::arg())
-            .arg(transfer_id::arg())
-            // Group the target args to ensure exactly one is required.
-            .group(
-                ArgGroup::with_name("required-target-args")
-                    .arg(target_account::ARG_NAME)
-                    .arg(creation_common::show_arg_examples::ARG_NAME)
-                    .required(true),
-            );
+            .arg(transfer_id::arg());
         let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, true)
     }
