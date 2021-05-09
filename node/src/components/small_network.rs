@@ -144,25 +144,13 @@ where
 {
     /// Initial configuration values.
     cfg: Config,
+    /// Read-only networking information shared across tasks.
     context: Arc<NetworkContext<REv>>,
-    /// Server certificate.
-    certificate: Arc<TlsCert>,
-    /// Server secret key.
-    secret_key: Arc<PKey<Private>>,
-    /// Our public listening address.
-    public_addr: SocketAddr,
-    /// Our node ID,
-    our_id: NodeId,
-    /// Handle to event queue.
-    event_queue: EventQueueHandle<REv>,
 
     /// Outgoing connections manager.
     outgoing_manager: OutgoingManager<OutgoingConnection<P>, Error>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
-
-    /// Information retained from the chainspec required for operating the networking component.
-    chain_info: Arc<ChainInfo>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -253,8 +241,8 @@ where
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id,
-            our_cert: certificate.clone(),
-            secret_key: secret_key.clone(),
+            our_cert: certificate,
+            secret_key: secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info: chain_info.clone(),
             public_addr,
@@ -275,14 +263,8 @@ where
         let mut component = SmallNetwork {
             cfg,
             context,
-            certificate,
-            secret_key,
-            public_addr,
-            our_id,
-            event_queue,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            chain_info,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -341,7 +323,7 @@ where
             // TODO - set this to `warn!` once we are normally testing with networks large enough to
             //        make it a meaningful and infrequent log message.
             trace!(
-                our_id=%self.our_id,
+                our_id=%self.context.our_id,
                 wanted = count,
                 selected = peer_ids.len(),
                 "could not select enough random nodes for gossiping, not enough non-excluded \
@@ -362,13 +344,13 @@ where
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             if let Err(msg) = connection.sender.send(msg) {
                 // We lost the connection, but that fact has not reached us yet.
-                warn!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
+                warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
             } else {
                 self.net_metrics.queued_messages.inc();
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            debug!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, no connection");
+            debug!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, no connection");
         }
     }
 
@@ -493,7 +475,7 @@ where
         transport: Transport,
     ) -> Effects<Event<P>> {
         // If we have connected to ourself, inform the outgoing manager, then drop the connection.
-        if peer_id == self.our_id {
+        if peer_id == self.context.our_id {
             let request = self
                 .outgoing_manager
                 .handle_dial_outcome(DialOutcome::Loopback { addr: peer_addr });
@@ -503,10 +485,10 @@ where
         // The stream is only used to receive a single handshake message and then dropped.
         let (sink, stream) = framed::<P>(
             Arc::downgrade(&self.net_metrics),
-            ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
+            ConnectionId::from_connection(transport.ssl(), self.context.our_id, peer_id),
             transport,
             Role::Dialer,
-            self.chain_info.maximum_net_message_size,
+            self.context.chain_info.maximum_net_message_size,
         )
         .split();
 
@@ -538,7 +520,10 @@ where
         effects.extend(self.process_dial_requests(request));
 
         // Send the handshake and start the reader.
-        let handshake = self.chain_info.create_handshake(self.public_addr);
+        let handshake = self
+            .context
+            .chain_info
+            .create_handshake(self.context.public_addr);
 
         effects.extend(
             tasks::message_sender(
@@ -554,8 +539,14 @@ where
             }),
         );
         effects.extend(
-            tasks::read_handshake(self.event_queue, stream, self.our_id, peer_id, peer_addr)
-                .ignore::<Event<P>>(),
+            tasks::read_handshake(
+                self.context.event_queue,
+                stream,
+                self.context.our_id,
+                peer_id,
+                peer_addr,
+            )
+            .ignore::<Event<P>>(),
         );
 
         effects
@@ -580,7 +571,7 @@ where
 
     /// Gossips our public listening address, and schedules the next such gossip round.
     fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        let our_address = GossipedAddress::new(self.public_addr);
+        let our_address = GossipedAddress::new(self.context.public_addr);
         effect_builder
             .announce_gossip_our_address(our_address)
             .ignore()
@@ -629,8 +620,8 @@ where
                 DialRequest::Dial { addr, span } => effects.extend(
                     tasks::connect_outgoing(
                         addr,
-                        self.certificate.clone(),
-                        self.secret_key.clone(),
+                        self.context.our_cert.clone(),
+                        self.context.secret_key.clone(),
                     )
                     .instrument(span)
                     .result(
@@ -673,13 +664,13 @@ where
                 public_addr,
                 protocol_version,
             } => {
-                let requests = if network_name != self.chain_info.network_name {
+                let requests = if network_name != self.context.chain_info.network_name {
                     info!(
-                        our_id=%self.our_id,
+                        our_id=%self.context.our_id,
                         %peer_id,
-                        our_network=?self.chain_info.network_name,
+                        our_network=?self.context.chain_info.network_name,
                         their_network=?network_name,
-                        our_protocol_version=%self.chain_info.protocol_version,
+                        our_protocol_version=%self.context.chain_info.protocol_version,
                         their_protocol_version=%protocol_version,
                         "dropping connection due to network name mismatch"
                     );
@@ -740,7 +731,7 @@ where
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
+        self.context.our_id
     }
 }
 
@@ -757,9 +748,9 @@ where
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
                 match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
+                    Ok(_) => debug!(our_id=%self.context.our_id, "server exited cleanly"),
                     Err(ref err) => {
-                        error!(%self.our_id, err=display_error(err), "could not join server task cleanly")
+                        error!(%self.context.our_id, err=display_error(err), "could not join server task cleanly")
                     }
                 }
             }
@@ -952,8 +943,8 @@ where
 {
     fn from(small_network: &SmallNetwork<REv, P>) -> Self {
         SmallNetworkIdentity {
-            secret_key: small_network.secret_key.clone(),
-            tls_certificate: small_network.certificate.clone(),
+            secret_key: small_network.context.secret_key.clone(),
+            tls_certificate: small_network.context.our_cert.clone(),
         }
     }
 }
@@ -1011,8 +1002,8 @@ where
         // We output only the most important fields of the component, as it gets unwieldy quite fast
         // otherwise.
         f.debug_struct("SmallNetwork")
-            .field("our_id", &self.our_id)
-            .field("public_addr", &self.public_addr)
+            .field("our_id", &self.context.our_id)
+            .field("public_addr", &self.context.public_addr)
             .finish()
     }
 }
