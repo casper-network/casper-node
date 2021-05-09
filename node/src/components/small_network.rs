@@ -214,12 +214,6 @@ where
         let mut public_addr =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        let our_id = NodeId::from(&small_network_identity);
-        let secret_key = small_network_identity.secret_key;
-        let certificate = small_network_identity.tls_certificate;
-
-        let chain_info = Arc::new(chain_info_source.into());
-
         let net_metrics = Arc::new(NetworkingMetrics::new(&registry)?);
 
         // We can now create a listener.
@@ -240,18 +234,19 @@ where
 
         let context = Arc::new(NetworkContext {
             event_queue,
-            our_id,
-            our_cert: certificate,
-            secret_key: secret_key,
+            our_id: NodeId::from(&small_network_identity),
+            our_cert: small_network_identity.tls_certificate,
+            secret_key: small_network_identity.secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
-            chain_info: chain_info.clone(),
+            chain_info: Arc::new(chain_info_source.into()),
             public_addr,
         });
 
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
-        info!(%local_addr, %public_addr, "{}: starting server background task", our_id);
+        info!(%local_addr, %public_addr, "starting server background task");
+
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
         let server_join_handle = tokio::spawn(tasks::server(
