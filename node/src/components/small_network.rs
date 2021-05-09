@@ -614,23 +614,19 @@ where
             trace!(%request, "processing dial request");
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
-                    tasks::connect_outgoing(
-                        addr,
-                        self.context.our_cert.clone(),
-                        self.context.secret_key.clone(),
-                    )
-                    .instrument(span)
-                    .result(
-                        move |(peer_id, transport)| Event::OutgoingEstablished {
-                            remote_addr: addr,
-                            peer_id: Box::new(peer_id),
-                            transport,
-                        },
-                        move |error| Event::OutgoingDialFailure {
-                            peer_addr: Box::new(addr),
-                            error: Box::new(error),
-                        },
-                    ),
+                    tasks::connect_outgoing(self.context.clone(), addr, span.clone())
+                        .instrument(span)
+                        .result(
+                            move |(peer_id, transport)| Event::OutgoingEstablished {
+                                remote_addr: addr,
+                                peer_id: Box::new(peer_id),
+                                transport,
+                            },
+                            move |error| Event::OutgoingDialFailure {
+                                peer_addr: Box::new(addr),
+                                error: Box::new(error),
+                            },
+                        ),
                 ),
                 DialRequest::Disconnect { handle: _, span } => {
                     // Dropping the `handle` is enough to signal the connection to shutdown.
@@ -650,6 +646,7 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
         msg: Message<P>,
+        span: Span,
     ) -> Effects<Event<P>>
     where
         REv: From<NetworkAnnouncement<NodeId, P>>,
@@ -660,6 +657,7 @@ where
                 public_addr,
                 protocol_version,
             } => {
+                // TODO: REMOVE THIS
                 let requests = if network_name != self.context.chain_info.network_name {
                     info!(
                         our_id=%self.context.our_id,
@@ -776,8 +774,8 @@ where
             Event::IncomingConnection { incoming, span } => {
                 self.handle_incoming_connection(effect_builder, incoming, span)
             }
-            Event::IncomingMessage { peer_id, msg } => {
-                self.handle_message(effect_builder, *peer_id, *msg)
+            Event::IncomingMessage { peer_id, msg, span } => {
+                self.handle_message(effect_builder, *peer_id, *msg, span)
             }
             Event::IncomingClosed {
                 result,

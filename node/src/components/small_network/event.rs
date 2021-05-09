@@ -37,6 +37,8 @@ pub enum Event<P> {
     IncomingMessage {
         peer_id: Box<NodeId>,
         msg: Box<Message<P>>,
+        #[serde(skip)]
+        span: Span,
     },
     /// Incoming connection closed.
     IncomingClosed {
@@ -117,6 +119,7 @@ impl<P: Display> Display for Event<P> {
             Event::IncomingMessage {
                 peer_id: node_id,
                 msg,
+                span: _,
             } => write!(f, "msg from {}: {}", node_id, msg),
             Event::IncomingClosed { peer_addr, .. } => {
                 write!(f, "closed connection from {}", peer_addr)

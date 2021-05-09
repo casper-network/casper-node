@@ -71,6 +71,7 @@ pub(super) async fn read_handshake<REv, P>(
                 Event::IncomingMessage {
                     peer_id: Box::new(peer_id),
                     msg: Box::new(msg),
+                    span: todo!(),
                 },
                 QueueKind::NetworkIncoming,
             )
@@ -90,12 +91,15 @@ pub(super) async fn read_handshake<REv, P>(
 }
 
 /// Initiates a TLS connection to a remote address.
-pub(super) async fn connect_outgoing(
+pub(super) async fn connect_outgoing<REv>(
+    context: Arc<NetworkContext<REv>>,
     peer_addr: SocketAddr,
-    our_certificate: Arc<TlsCert>,
-    secret_key: Arc<PKey<Private>>,
-) -> Result<(NodeId, Transport)> {
-    let ssl = tls::create_tls_connector(&our_certificate.as_x509(), &secret_key)
+    span: Span,
+) -> Result<(NodeId, Transport)>
+where
+    REv: 'static,
+{
+    let ssl = tls::create_tls_connector(&context.our_cert.as_x509(), &context.secret_key)
         .context("could not create TLS connector")?
         .configure()
         .and_then(|mut config| {
@@ -387,6 +391,7 @@ where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
+    // TODO: Setup span.
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
@@ -399,6 +404,7 @@ where
                             Event::IncomingMessage {
                                 peer_id: Box::new(peer_id),
                                 msg: Box::new(msg),
+                                span: todo!(),
                             },
                             QueueKind::NetworkIncoming,
                         )
