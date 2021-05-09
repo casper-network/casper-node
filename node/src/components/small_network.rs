@@ -304,6 +304,13 @@ where
                 .event(|_| Event::GossipOurAddress),
         );
 
+        // Start regular housekeeping of the outgoing connections.
+        effects.extend(
+            effect_builder
+                .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
+                .event(|_| Event::SweepOutgoing),
+        );
+
         Ok((component, effects))
     }
 
