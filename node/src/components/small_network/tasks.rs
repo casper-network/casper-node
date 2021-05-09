@@ -2,7 +2,7 @@
 
 use std::{
     error::Error as StdError,
-    fmt::{self, Debug, Display, Formatter},
+    fmt::Display,
     io,
     net::SocketAddr,
     pin::Pin,
@@ -18,13 +18,11 @@ use futures::{
     Future, SinkExt, StreamExt,
 };
 use openssl::{
-    error::ErrorStack,
     pkey::{PKey, Private},
-    ssl::{self, Ssl},
+    ssl::Ssl,
 };
 use prometheus::IntGauge;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{mpsc::UnboundedReceiver, watch},
@@ -39,13 +37,14 @@ use tracing::{
 use super::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{display_error, Error, Result},
+    error::{display_error, ConnectionError, Error, IoError, Result},
+    event::IncomingConnection,
     framed, Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
     components::networking_metrics::NetworkingMetrics,
     reactor::{EventQueueHandle, QueueKind},
-    tls::{self, TlsCert, ValidationError},
+    tls::{self, TlsCert},
     types::NodeId,
 };
 
@@ -136,112 +135,6 @@ where
     pub(super) net_metrics: Weak<NetworkingMetrics>,
     pub(super) chain_info: Arc<ChainInfo>,
     pub(super) public_addr: SocketAddr,
-}
-
-/// A connection-specific error.
-#[derive(Debug, Error, Serialize)]
-pub enum ConnectionError {
-    /// Failed to create TLS acceptor.
-    #[error("failed to create acceptor")]
-    AcceptorCreation(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
-    /// Handshaking error.
-    #[error("TLS handshake error")]
-    TlsHandshake(
-        #[serde(skip_serializing)]
-        #[source]
-        ssl::Error,
-    ),
-    /// Client failed to present certificate.
-    #[error("no client certificate presented")]
-    NoClientCertificate,
-    /// TLS validation error.
-    #[error("TLS validation error of peer certificate")]
-    PeerCertificateInvalid(#[source] ValidationError),
-    /// Failed to send handshake.
-    #[error("handshake send failed")]
-    HandshakeSend(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
-    /// Failed to receive handshake.
-    #[error("handshake receive failed")]
-    HandshakeRecv(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
-    /// Peer reported a network name that does not match ours.
-    #[error("peer is on different network: {0}")]
-    WrongNetwork(String),
-    /// Peer sent a non-handshake message as its first message.
-    #[error("peer did not send handshake")]
-    DidNotSendHandshake,
-}
-
-/// Outcome of an incoming connection negotiation.
-#[derive(Debug, Serialize)]
-pub enum IncomingConnection<P> {
-    /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
-    FailedEarly {
-        /// Remote port the peer dialed us from.
-        peer_addr: SocketAddr,
-        /// Error causing the failure.
-        error: ConnectionError,
-    },
-    /// Connection failed after TLS was successfully established; thus we have a valid [`NodeId`].
-    Failed {
-        /// Remote port the peer dialed us from.
-        peer_addr: SocketAddr,
-        /// Peer's [`NodeId`].
-        peer_id: NodeId,
-        /// Error causing the failure.
-        error: ConnectionError,
-    },
-    /// Connection turned out to be a loopback connection.
-    Loopback,
-    /// Connection successfully established.
-    Established {
-        /// Remote port the peer dialed us from.
-        peer_addr: SocketAddr,
-        /// Public address advertised by the peer.
-        public_addr: SocketAddr,
-        /// Peer's [`NodeId`].
-        peer_id: NodeId,
-        /// Stream of incoming messages. for incoming connections.
-        #[serde(skip_serializing)]
-        stream: SplitStream<FramedTransport<P>>,
-    },
-}
-
-impl<P> Display for IncomingConnection<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            IncomingConnection::FailedEarly { peer_addr, error } => {
-                write!(f, "early failure from {}: {}", peer_addr, error)
-            }
-            IncomingConnection::Failed {
-                peer_addr,
-                peer_id,
-                error,
-            } => write!(f, "failure from {}/{}: {}", peer_addr, peer_id, error),
-            IncomingConnection::Loopback => f.write_str("loopback"),
-            IncomingConnection::Established {
-                peer_addr,
-                public_addr,
-                peer_id,
-                stream: _,
-            } => write!(
-                f,
-                "connection established from {}/{}; public: {}",
-                peer_addr, peer_id, public_addr
-            ),
-        }
-    }
 }
 
 /// Handles an incoming connection.
@@ -337,23 +230,6 @@ pub(super) async fn server_setup_tls(
         ),
         tls_stream,
     ))
-}
-
-/// IO operation that can time out.
-#[derive(Debug, Error)]
-pub enum IoError<E>
-where
-    E: StdError + 'static,
-{
-    /// IO operation timed out.
-    #[error("io timeout")]
-    Timeout,
-    /// Non-timeout IO error.
-    #[error(transparent)]
-    Error(#[from] E),
-    /// Unexpected close/end-of-file.
-    #[error("closed unexpectedly")]
-    UnexpectedEof,
 }
 
 /// Performs an IO-operation that can time out.

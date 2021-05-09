@@ -168,6 +168,68 @@ where
     }
 }
 
+/// An error related to an incoming or outgoing connection.
+#[derive(Debug, Error, Serialize)]
+pub enum ConnectionError {
+    /// Failed to create TLS acceptor.
+    #[error("failed to create acceptor")]
+    AcceptorCreation(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
+    /// Handshaking error.
+    #[error("TLS handshake error")]
+    TlsHandshake(
+        #[serde(skip_serializing)]
+        #[source]
+        ssl::Error,
+    ),
+    /// Client failed to present certificate.
+    #[error("no client certificate presented")]
+    NoClientCertificate,
+    /// TLS validation error.
+    #[error("TLS validation error of peer certificate")]
+    PeerCertificateInvalid(#[source] ValidationError),
+    /// Failed to send handshake.
+    #[error("handshake send failed")]
+    HandshakeSend(
+        #[serde(skip_serializing)]
+        #[source]
+        IoError<io::Error>,
+    ),
+    /// Failed to receive handshake.
+    #[error("handshake receive failed")]
+    HandshakeRecv(
+        #[serde(skip_serializing)]
+        #[source]
+        IoError<io::Error>,
+    ),
+    /// Peer reported a network name that does not match ours.
+    #[error("peer is on different network: {0}")]
+    WrongNetwork(String),
+    /// Peer sent a non-handshake message as its first message.
+    #[error("peer did not send handshake")]
+    DidNotSendHandshake,
+}
+
+/// IO operation that can time out or close.
+#[derive(Debug, Error)]
+pub enum IoError<E>
+where
+    E: error::Error + 'static,
+{
+    /// IO operation timed out.
+    #[error("io timeout")]
+    Timeout,
+    /// Non-timeout IO error.
+    #[error(transparent)]
+    Error(#[from] E),
+    /// Unexpected close/end-of-file.
+    #[error("closed unexpectedly")]
+    UnexpectedEof,
+}
+
 /// Wraps an error to ensure it gets properly captured by tracing.
 ///
 /// # Note

@@ -33,7 +33,7 @@ mod message;
 mod message_pack_format;
 mod outgoing;
 mod symmetry;
-mod tasks;
+pub(crate) mod tasks;
 #[cfg(test)]
 mod tests;
 
@@ -72,10 +72,11 @@ use tracing::{debug, error, info, trace, warn, Instrument, Span};
 use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::Result,
+    event::IncomingConnection,
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::{IncomingConnection, NetworkContext},
+    tasks::NetworkContext,
 };
 pub(crate) use self::{
     error::display_error,

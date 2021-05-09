@@ -5,11 +5,14 @@ use std::{
 };
 
 use derive_more::From;
+use futures::stream::SplitStream;
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{tasks::IncomingConnection, Error, GossipedAddress, Message, NodeId, Transport};
+use super::{
+    error::ConnectionError, Error, FramedTransport, GossipedAddress, Message, NodeId, Transport,
+};
 use crate::{
     effect::{
         announcements::BlocklistAnnouncement,
@@ -150,6 +153,67 @@ impl<P: Display> Display for Event<P> {
             Event::SweepSymmetries => {
                 write!(f, "sweep connection symmetries")
             }
+        }
+    }
+}
+
+/// Outcome of an incoming connection negotiation.
+#[derive(Debug, Serialize)]
+pub enum IncomingConnection<P> {
+    /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
+    FailedEarly {
+        /// Remote port the peer dialed us from.
+        peer_addr: SocketAddr,
+        /// Error causing the failure.
+        error: ConnectionError,
+    },
+    /// Connection failed after TLS was successfully established; thus we have a valid [`NodeId`].
+    Failed {
+        /// Remote port the peer dialed us from.
+        peer_addr: SocketAddr,
+        /// Peer's [`NodeId`].
+        peer_id: NodeId,
+        /// Error causing the failure.
+        error: ConnectionError,
+    },
+    /// Connection turned out to be a loopback connection.
+    Loopback,
+    /// Connection successfully established.
+    Established {
+        /// Remote port the peer dialed us from.
+        peer_addr: SocketAddr,
+        /// Public address advertised by the peer.
+        public_addr: SocketAddr,
+        /// Peer's [`NodeId`].
+        peer_id: NodeId,
+        /// Stream of incoming messages. for incoming connections.
+        #[serde(skip_serializing)]
+        stream: SplitStream<FramedTransport<P>>,
+    },
+}
+
+impl<P> Display for IncomingConnection<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            IncomingConnection::FailedEarly { peer_addr, error } => {
+                write!(f, "early failure from {}: {}", peer_addr, error)
+            }
+            IncomingConnection::Failed {
+                peer_addr,
+                peer_id,
+                error,
+            } => write!(f, "failure from {}/{}: {}", peer_addr, peer_id, error),
+            IncomingConnection::Loopback => f.write_str("loopback"),
+            IncomingConnection::Established {
+                peer_addr,
+                public_addr,
+                peer_id,
+                stream: _,
+            } => write!(
+                f,
+                "connection established from {}/{}; public: {}",
+                peer_addr, peer_id, public_addr
+            ),
         }
     }
 }
