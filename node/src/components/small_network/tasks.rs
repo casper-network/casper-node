@@ -33,6 +33,17 @@ use super::{
     Event, FramedTransport, Message, Payload, Transport,
 };
 
+/// A `try!`/elvis operator replacement for `Outcome`.
+macro_rules! try_outcome {
+    ($outcome:expr) => {
+        match Outcome::from($outcome) {
+            Outcome::Successful(value) => value,
+            Outcome::Block(err) => return Outcome::Block(err.into()),
+            Outcome::Failed(err) => return Outcome::Failed(err.into()),
+        }
+    };
+}
+
 /// Server-side TLS handshake.
 ///
 /// This function groups the TLS handshake into a convenient function, enabling the `?` operator.
@@ -139,6 +150,44 @@ where
     pub(super) our_id: NodeId,
     pub(super) our_cert: Arc<TlsCert>,
     pub(super) secret_key: Arc<PKey<Private>>,
+
+/// Outcome of an operation that can result in failure, block or success.
+enum Outcome<T, E> {
+    /// Operation completed successfully.
+    Successful(T),
+    /// Operation failed due to a blockable offense.
+    Block(E),
+    /// Operation failed due to regular error.
+    Failed(E),
+}
+
+impl<T, E> From<::core::result::Result<T, E>> for Outcome<T, E> {
+    fn from(result: ::core::result::Result<T, E>) -> Self {
+        match result {
+            Ok(value) => Outcome::Successful(value),
+            Err(err) => Outcome::Failed(err),
+        }
+    }
+}
+
+impl<T, E> From<Error> for Outcome<T, E> {
+    fn from(_: Error) -> Self {
+        todo!()
+    }
+}
+
+impl<T, E> Outcome<T, E> {
+    fn map_err<F, G>(self, f: F) -> Outcome<T, G>
+    where
+        F: FnOnce(E) -> G,
+    {
+        match self {
+            Outcome::Successful(value) => Outcome::Successful(value),
+            Outcome::Block(err) => Outcome::Block(f(err)),
+            Outcome::Failed(err) => Outcome::Failed(f(err)),
+        }
+    }
+}
 }
 
 /// Handles an incoming connection.
