@@ -133,7 +133,7 @@ where
     pub(super) our_cert: Arc<TlsCert>,
     pub(super) secret_key: Arc<PKey<Private>>,
     pub(super) net_metrics: Weak<NetworkingMetrics>,
-    pub(super) chain_info: Arc<ChainInfo>,
+    pub(super) chain_info: ChainInfo,
     pub(super) public_addr: SocketAddr,
 }
 

@@ -238,7 +238,7 @@ where
             our_cert: small_network_identity.tls_certificate,
             secret_key: small_network_identity.secret_key,
             net_metrics: Arc::downgrade(&net_metrics),
-            chain_info: Arc::new(chain_info_source.into()),
+            chain_info: chain_info_source.into(),
             public_addr,
         });
 
