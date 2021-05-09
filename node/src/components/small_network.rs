@@ -349,6 +349,7 @@ where
         }
     }
 
+    #[allow(clippy::redundant_clone)]
     fn handle_incoming_connection(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -436,7 +437,7 @@ where
         result: io::Result<()>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
-        span: Box<Span>,
+        span: Span,
     ) -> Effects<Event<P>> {
         span.in_scope(|| {
             // Log the outcome.
@@ -783,7 +784,7 @@ where
                 peer_id,
                 peer_addr,
                 span,
-            } => self.handle_incoming_closed(result, peer_id, peer_addr, span),
+            } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
             Event::OutgoingEstablished {
                 remote_addr,
