@@ -31,7 +31,7 @@ use tokio_openssl::SslStream;
 use tracing::{
     debug, error_span,
     field::{self, Empty},
-    info, warn, Instrument, Span,
+    info, trace, warn, Instrument, Span,
 };
 
 use super::{
@@ -391,7 +391,7 @@ where
         while let Some(msg_result) = stream.next().await {
             match msg_result {
                 Ok(msg) => {
-                    debug!(%msg, "message received");
+                    trace!(%msg, "message received");
                     // We've received a message, push it to the reactor.
                     context
                         .event_queue
