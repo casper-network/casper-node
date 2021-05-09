@@ -383,7 +383,7 @@ where
                 peer_addr: _,
                 ref error,
             } => {
-                // Failed without much info, little we can do about this.
+                // Failed without much info, there is little we can do about this.
                 debug!(err=%display_error(error), "connection failed early");
                 Effects::new()
             }
@@ -421,6 +421,7 @@ where
                         .learn_addr(public_addr, false, Instant::now());
                 let mut effects = self.process_dial_requests(dial_requests);
 
+                // Update connection symmetries.
                 if self
                     .connection_symmetries
                     .entry(peer_id)
@@ -437,7 +438,6 @@ where
                         self.context.clone(),
                         stream,
                         self.shutdown_receiver.clone(),
-                        self.our_id,
                         peer_id,
                     )
                     .instrument(span)

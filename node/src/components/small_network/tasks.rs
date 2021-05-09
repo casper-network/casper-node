@@ -381,7 +381,6 @@ pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
     mut stream: SplitStream<FramedTransport<P>>,
     mut shutdown_receiver: watch::Receiver<()>,
-    our_id: NodeId,
     peer_id: NodeId,
 ) -> io::Result<()>
 where
@@ -406,7 +405,10 @@ where
                         .await;
                 }
                 Err(err) => {
-                    warn!(%our_id, err=display_error(&err), %peer_id, "receiving message failed, closing connection");
+                    warn!(
+                        err = display_error(&err),
+                        "receiving message failed, closing connection"
+                    );
                     return Err(err);
                 }
             }
@@ -419,11 +421,7 @@ where
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // while loop to terminate.
     match future::select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
-        Either::Left(_) => info!(
-            %our_id,
-            %peer_id,
-            "shutting down incoming connection message reader"
-        ),
+        Either::Left(_) => info!("shutting down incoming connection message reader"),
         Either::Right(_) => (),
     }
 
