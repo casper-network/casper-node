@@ -18,7 +18,7 @@ pub enum Message<P> {
         /// Network we are connected to.
         network_name: String,
         /// The public address of the node connecting.
-        public_address: SocketAddr,
+        public_addr: SocketAddr,
         /// Protocol version the node is speaking.
         #[serde(default = "default_protocol_version")]
         protocol_version: ProtocolVersion,
@@ -42,12 +42,12 @@ impl<P: Display> Display for Message<P> {
         match self {
             Message::Handshake {
                 network_name,
-                public_address,
+                public_addr,
                 protocol_version,
             } => write!(
                 f,
                 "handshake: {}, public addr: {}, protocol_version: {}",
-                network_name, public_address, protocol_version,
+                network_name, public_addr, protocol_version,
             ),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
@@ -209,7 +209,7 @@ mod tests {
     fn v1_0_0_can_decode_current_handshake() {
         let modern_handshake = Message::<protocol::Message>::Handshake {
             network_name: "example-handshake".to_string(),
-            public_address: ([12, 34, 56, 78], 12346).into(),
+            public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
         };
 
@@ -241,11 +241,11 @@ mod tests {
         match modern_handshake {
             Message::Handshake {
                 network_name,
-                public_address,
+                public_addr,
                 protocol_version,
             } => {
                 assert_eq!(network_name, "example-handshake");
-                assert_eq!(public_address, ([12, 34, 56, 78], 12346).into());
+                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
             }
             Message::Payload(_) => {
@@ -261,11 +261,11 @@ mod tests {
         match modern_handshake {
             Message::Handshake {
                 network_name,
-                public_address,
+                public_addr,
                 protocol_version,
             } => {
                 assert_eq!(network_name, "serialization-test");
-                assert_eq!(public_address, ([12, 34, 56, 78], 12346).into());
+                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
             }
             Message::Payload(_) => {

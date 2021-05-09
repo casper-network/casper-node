@@ -7,8 +7,9 @@ use std::{
 use derive_more::From;
 use serde::Serialize;
 use static_assertions::const_assert;
+use tracing::Span;
 
-use super::{Error, GossipedAddress, Message, NodeId, Transport};
+use super::{tasks::IncomingConnection, Error, GossipedAddress, Message, NodeId, Transport};
 use crate::{
     effect::{
         announcements::BlocklistAnnouncement,
@@ -20,13 +21,14 @@ use crate::{
 const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
 const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
+/// A small network event.
 #[derive(Debug, From, Serialize)]
 pub enum Event<P> {
     /// The TLS handshake completed on the incoming connection.
-    IncomingHandshakeCompleted {
-        #[serde(skip_serializing)]
-        result: Box<Result<(NodeId, Transport), Error>>,
-        peer_address: Box<SocketAddr>,
+    IncomingConnection {
+        incoming: Box<IncomingConnection<P>>,
+        #[serde(skip)]
+        span: Span,
     },
     /// Received network message.
     IncomingMessage {
@@ -38,25 +40,27 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         result: io::Result<()>,
         peer_id: Box<NodeId>,
-        peer_address: Box<SocketAddr>,
+        peer_addr: SocketAddr,
+        #[serde(skip_serializing)]
+        span: Box<Span>,
     },
 
     /// A new outgoing connection was successfully established.
     OutgoingEstablished {
-        remote_address: SocketAddr,
+        remote_addr: SocketAddr,
         peer_id: Box<NodeId>,
         #[serde(skip_serializing)]
         transport: Transport,
     },
     /// An outgoing connection failed to complete dialing.
     OutgoingDialFailure {
-        peer_address: Box<SocketAddr>,
+        peer_addr: Box<SocketAddr>,
         error: Box<Error>,
     },
     /// An established connection was terminated.
     OutgoingDropped {
         peer_id: Box<NodeId>,
-        peer_address: Box<SocketAddr>,
+        peer_addr: Box<SocketAddr>,
         error: Box<Option<Error>>,
     },
 
@@ -104,37 +108,28 @@ impl From<NetworkInfoRequest<NodeId>> for Event<ProtocolMessage> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::IncomingHandshakeCompleted {
-                result,
-                peer_address,
-            } => write!(
-                f,
-                "handshake from {}, is_err {}",
-                peer_address,
-                result.is_err()
-            ),
+            Event::IncomingConnection { incoming, span: _ } => {
+                write!(f, "incoming connection: {}", incoming)
+            }
             Event::IncomingMessage {
                 peer_id: node_id,
                 msg,
             } => write!(f, "msg from {}: {}", node_id, msg),
-            Event::IncomingClosed { peer_address, .. } => {
-                write!(f, "closed connection from {}", peer_address)
+            Event::IncomingClosed { peer_addr, .. } => {
+                write!(f, "closed connection from {}", peer_addr)
             }
             Event::OutgoingEstablished {
                 peer_id: node_id, ..
             } => write!(f, "established outgoing to {}", node_id),
-            Event::OutgoingDialFailure {
-                peer_address,
-                error,
-            } => {
-                write!(f, "outgoing dial failure {}: {}", peer_address, error)
+            Event::OutgoingDialFailure { peer_addr, error } => {
+                write!(f, "outgoing dial failure {}: {}", peer_addr, error)
             }
             Event::OutgoingDropped {
                 peer_id,
-                peer_address,
+                peer_addr,
                 error,
             } => {
-                write!(f, "dropped outgoing {} {}", peer_id, peer_address)?;
+                write!(f, "dropped outgoing {} {}", peer_id, peer_addr)?;
                 if let Some(error) = error.as_ref() {
                     write!(f, ": {}", error)?;
                 }

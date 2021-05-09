@@ -23,9 +23,6 @@ pub enum Error {
     /// Server failed to present certificate.
     #[error("no server certificate presented")]
     NoServerCertificate,
-    /// Client failed to present certificate.
-    #[error("no client certificate presented")]
-    NoClientCertificate,
     /// Peer ID presented does not match the expected one.
     #[error("remote node has wrong ID")]
     WrongId,
@@ -38,6 +35,13 @@ pub enum Error {
     /// Our own certificate is not valid.
     #[error("own certificate invalid")]
     OwnCertificateInvalid(#[source] ValidationError),
+    /// Error during TLS connection.
+    #[error("failed to connect using TLS")]
+    SslConnectionFailed(
+        #[serde(skip_serializing)]
+        #[source]
+        ssl::Error,
+    ),
     /// Failed to create a TCP listener.
     #[error("failed to create listener on {1}")]
     ListenerCreation(
@@ -81,13 +85,6 @@ pub enum Error {
         #[source]
         io::Error,
     ),
-    /// Failed to create TLS acceptor.
-    #[error("failed to create acceptor")]
-    AcceptorCreation(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
     /// Failed to create configuration for TLS connector.
     #[error("failed to configure connector")]
     ConnectorConfiguration(
@@ -105,13 +102,6 @@ pub enum Error {
     /// Received a message that was not a handshake during connection setup.
     #[error("handshake expected, but not received")]
     HandshakeExpected,
-    /// Handshaking error.
-    #[error("handshake error: {0}")]
-    Handshake(
-        #[serde(skip_serializing)]
-        #[from]
-        ssl::Error,
-    ),
     /// TLS validation error.
     #[error("TLS validation error: {0}")]
     TlsValidation(#[from] ValidationError),

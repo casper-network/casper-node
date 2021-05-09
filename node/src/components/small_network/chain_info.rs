@@ -37,10 +37,10 @@ impl ChainInfo {
     }
 
     /// Create a handshake based on chain identification data.
-    pub(super) fn create_handshake<P>(&self, public_address: SocketAddr) -> Message<P> {
+    pub(super) fn create_handshake<P>(&self, public_addr: SocketAddr) -> Message<P> {
         Message::Handshake {
             network_name: self.network_name.clone(),
-            public_address,
+            public_addr,
             protocol_version: self.protocol_version,
         }
     }
