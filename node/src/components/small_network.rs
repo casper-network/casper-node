@@ -464,6 +464,7 @@ where
     /// Sets up an established outgoing connection.
     ///
     /// Initiates sending of the handshake as soon as the connection is established.
+    #[allow(clippy::redundant_clone)]
     fn handle_outgoing_connection(
         &mut self,
         effect_builder: EffectBuilder<REv>,

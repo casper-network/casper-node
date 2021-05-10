@@ -459,8 +459,7 @@ pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
     counter: IntGauge,
-) -> ()
-where
+) where
     P: Serialize + Send + Payload,
 {
     while let Some(message) = queue.recv().await {
