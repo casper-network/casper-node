@@ -177,12 +177,18 @@ impl RpcCall {
         amount: U512,
         source_purse: Option<URef>,
         target: TransferTarget,
-        id: Option<u64>,
+        transfer_id: u64,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
-        let deploy =
-            Deploy::new_transfer(amount, source_purse, target, id, deploy_params, payment)?;
+        let deploy = Deploy::new_transfer(
+            amount,
+            source_purse,
+            target,
+            transfer_id,
+            deploy_params,
+            payment,
+        )?;
         let params = PutDeployParams { deploy };
         Transfer::request_with_map_params(self, params)
     }

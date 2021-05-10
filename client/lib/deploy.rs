@@ -125,7 +125,7 @@ pub(super) trait DeployExt {
         amount: U512,
         source_purse: Option<URef>,
         target: TransferTarget,
-        id: Option<u64>,
+        transfer_id: u64,
         params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<Deploy>;
@@ -180,7 +180,7 @@ impl DeployExt for Deploy {
         amount: U512,
         source_purse: Option<URef>,
         target: TransferTarget,
-        id: Option<u64>,
+        transfer_id: u64,
         params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<Deploy> {
@@ -200,7 +200,8 @@ impl DeployExt for Deploy {
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
             }
         }
-        transfer_args.insert(TRANSFER_ARG_ID, id)?;
+        let maybe_transfer_id = Some(transfer_id);
+        transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args,
         };
