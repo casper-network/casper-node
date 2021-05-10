@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use casper_types::{PublicKey, SecretKey};
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -155,13 +156,30 @@ pub(crate) struct NetworkContext<REv>
 where
     REv: 'static,
 {
+    /// Event queue handle.
     pub(super) event_queue: EventQueueHandle<REv>,
+    /// Our own [`NodeId`].
     pub(super) our_id: NodeId,
+    /// TLS certificate associated with this node's identity.
     pub(super) our_cert: Arc<TlsCert>,
+    /// Secrets key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
+    /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     pub(super) net_metrics: Weak<NetworkingMetrics>,
+    /// Chain info extract from chainspec.
     pub(super) chain_info: ChainInfo,
+    /// Our own public listening address.
     pub(super) public_addr: SocketAddr,
+    /// Optional set of consensus keys, to identify as a validator during handshake.
+    pub(super) consensus_keys: Option<ConsensusKeys>,
+}
+
+/// A set of consensus keys.
+pub struct ConsensusKeys {
+    /// Public key.
+    pub(super) public_key: PublicKey,
+    /// Secret key.
+    pub(super) secret_key: SecretKey,
 }
 
 /// Handles an incoming connection.

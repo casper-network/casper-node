@@ -76,7 +76,7 @@ use self::{
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::NetworkContext,
+    tasks::{ConsensusKeys, NetworkContext},
 };
 pub(crate) use self::{
     error::display_error,
@@ -94,11 +94,14 @@ use crate::{
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils, NodeRng,
+    utils::{self, WithDir},
+    NodeRng,
 };
 use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
+
+use super::consensus;
 
 const MAX_ASYMMETRIC_TIME: Duration = Duration::from_secs(60);
 
@@ -180,6 +183,7 @@ where
     pub(crate) fn new<C: Into<ChainInfo>>(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
+        consensus_cfg: Option<WithDir<&consensus::Config>>,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
@@ -201,7 +205,7 @@ where
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
             warn!("no known addresses provided via config or all failed DNS resolution");
-            return Err(Error::InvalidConfig);
+            return Err(Error::EmptyKnownHosts);
         }
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
@@ -232,6 +236,20 @@ where
             public_addr.set_port(local_addr.port());
         }
 
+        // If given consensus key configuration, load it for handshake signing.
+        let consensus_keys = consensus_cfg
+            .map(|cfg| {
+                let root = cfg.dir();
+                cfg.value()
+                    .load_keys(root)
+                    .map(|(secret_key, public_key)| ConsensusKeys {
+                        secret_key,
+                        public_key,
+                    })
+            })
+            .transpose()
+            .map_err(Error::LoadConsensusKeys)?;
+
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
@@ -240,6 +258,7 @@ where
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info: chain_info_source.into(),
             public_addr,
+            consensus_keys,
         });
 
         // Run the server task.
