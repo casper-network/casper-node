@@ -1,15 +1,15 @@
-use std::sync::Arc;
+use std::{sync::Arc, path::Path};
 
 use datasize::DataSize;
 use serde::Deserialize;
 
-use casper_types::{ProtocolVersion, SecretKey};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
     crypto::hash::Digest,
     types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
-    utils::External,
+    utils::{External, LoadError, Loadable},
 };
 
 /// Consensus configuration.
@@ -29,6 +29,18 @@ impl Default for Config {
             secret_key_path: External::Missing,
             highway: HighwayConfig::default(),
         }
+    }
+}
+
+impl Config {
+    /// Loads the secret key from the configuration file and derives the public key.
+    pub(crate) fn load_keys<P: AsRef<Path>>(
+        &self,
+        root: P,
+    ) -> Result<(Arc<SecretKey>, PublicKey), LoadError<<Arc<SecretKey> as Loadable>::Error>> {
+        let secret_signing_key = self.secret_key_path.clone().load(root)?;
+        let public_key = PublicKey::from(secret_signing_key.as_ref());
+        Ok((secret_signing_key, public_key))
     }
 }
 
