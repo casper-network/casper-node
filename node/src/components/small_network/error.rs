@@ -4,7 +4,6 @@ use std::{
     io,
     net::SocketAddr,
     result,
-    time::SystemTimeError,
 };
 
 use datasize::DataSize;
@@ -20,9 +19,6 @@ pub(super) type Result<T> = result::Result<T, Error>;
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
-    /// Peer ID presented does not match the expected one.
-    #[error("remote node has wrong ID")]
-    WrongId,
     /// The config must have both or neither of certificate and secret key, and must have at least
     /// one known address.
     #[error(
@@ -32,13 +28,6 @@ pub enum Error {
     /// Our own certificate is not valid.
     #[error("own certificate invalid")]
     OwnCertificateInvalid(#[source] ValidationError),
-    /// Error during TLS connection.
-    #[error("failed to connect using TLS")]
-    SslConnectionFailed(
-        #[serde(skip_serializing)]
-        #[source]
-        ssl::Error,
-    ),
     /// Failed to create a TCP listener.
     #[error("failed to create listener on {1}")]
     ListenerCreation(
@@ -75,43 +64,6 @@ pub enum Error {
         #[source]
         ResolveAddressError,
     ),
-    /// Failed to send message.
-    #[error("failed to send message")]
-    MessageNotSent(
-        #[serde(skip_serializing)]
-        #[source]
-        io::Error,
-    ),
-    /// Failed to generate node TLS certificate.
-    #[error("failed to generate cert")]
-    CertificateGeneration(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
-    /// Received a message that was not a handshake during connection setup.
-    #[error("handshake expected, but not received")]
-    HandshakeExpected,
-    /// TLS validation error.
-    #[error("TLS validation error: {0}")]
-    TlsValidation(#[from] ValidationError),
-    /// System time error.
-    #[error("system time error: {0}")]
-    SystemTime(
-        #[serde(skip_serializing)]
-        #[from]
-        SystemTimeError,
-    ),
-    /// Other error.
-    #[error(transparent)]
-    Anyhow(
-        #[serde(skip_serializing)]
-        #[from]
-        anyhow::Error,
-    ),
-    /// Server has stopped.
-    #[error("failed to create outgoing connection as server has stopped")]
-    ServerStopped,
 
     /// Instantiating metrics failed.
     #[error(transparent)]
