@@ -929,8 +929,17 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
+    /// Computes the body hash.
+    pub(crate) fn hash(&self, protocol_version: ProtocolVersion) -> Digest {
+        if protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            self.hash_v2()
+        } else {
+            self.hash_v1()
+        }
+    }
+
     /// Computes the body hash by hashing the serialized bytes.
-    pub(crate) fn hash_v1(&self) -> Digest {
+    fn hash_v1(&self) -> Digest {
         let serialized_body = self
             .to_bytes()
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
@@ -946,7 +955,7 @@ impl BlockBody {
     ///                   hash(transfer_hashes)     /             \
     ///                                         hash(proposer)   SENTINEL
     /// ```
-    pub(crate) fn hash_v2(&self) -> Digest {
+    fn hash_v2(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let BlockBody {
             deploy_hashes,
