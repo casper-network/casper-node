@@ -161,19 +161,24 @@ pub trait ItemFetcher<T: Item + 'static> {
         }
     }
 
-    /// Sends result to all responders
-    fn respond_to_all(&mut self, id: T::Id, result: FetchResult<T, NodeId>) -> Effects<Event<T>> {
+    /// Sends fetched data to all responders
+    fn respond_to_all(
+        &mut self,
+        id: T::Id,
+        fetched_data: FetchedData<T, NodeId>,
+    ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
         let all_responders = self.responders().remove(&id).unwrap_or_default();
         for (_peer, responders) in all_responders {
             for responder in responders {
-                effects.extend(responder.respond(result.clone()).ignore());
+                effects.extend(responder.respond(Ok(fetched_data.clone())).ignore());
             }
         }
         effects
     }
 
-    /// Responds to all responders corresponding to an item/peer
+    /// Responds to all responders corresponding to an item/peer with a result. Result could be an
+    /// item or a timeout.
     fn send_response_from_peer(
         &mut self,
         id: T::Id,
@@ -207,23 +212,23 @@ pub trait ItemFetcher<T: Item + 'static> {
         peer: NodeId,
     ) -> Effects<Event<T>> {
         match result {
-            Ok(FetchedData::FromStorage { .. }) => {
+            Ok(fetched_data_from_storage @ FetchedData::FromStorage { .. }) => {
                 debug!(
-                    ?result,
+                    ?fetched_data_from_storage,
                     ?peer,
                     "Got from storage when fetching {:?} from peer",
                     T::TAG,
                 );
                 self.metrics().found_in_storage.inc();
                 // It is always safe to respond to all when we retrieved from storage.
-                self.respond_to_all(id, result)
+                self.respond_to_all(id, fetched_data_from_storage)
             }
-            Ok(FetchedData::FromPeer { .. }) => {
+            Ok(fetched_data_from_peer @ FetchedData::FromPeer { .. }) => {
                 self.metrics().found_on_peer.inc();
                 if Self::SAFE_TO_RESPOND_TO_ALL {
-                    self.respond_to_all(id, result)
+                    self.respond_to_all(id, fetched_data_from_peer)
                 } else {
-                    self.send_response_from_peer(id, result, peer)
+                    self.send_response_from_peer(id, Ok(fetched_data_from_peer), peer)
                 }
             }
             Err(_) => self.send_response_from_peer(id, result, peer),
