@@ -404,12 +404,12 @@ pub(super) async fn message_reader<REv, P>(
     mut stream: SplitStream<FramedTransport<P>>,
     mut shutdown_receiver: watch::Receiver<()>,
     peer_id: NodeId,
+    span: Span,
 ) -> io::Result<()>
 where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>,
 {
-    // TODO: Setup span.
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
@@ -422,7 +422,7 @@ where
                             Event::IncomingMessage {
                                 peer_id: Box::new(peer_id),
                                 msg: Box::new(msg),
-                                span: todo!(),
+                                span: span.clone(),
                             },
                             QueueKind::NetworkIncoming,
                         )

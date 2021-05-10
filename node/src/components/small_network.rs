@@ -417,6 +417,7 @@ where
                         stream,
                         self.shutdown_receiver.clone(),
                         peer_id,
+                        span.clone(),
                     )
                     .instrument(span)
                     .event(move |result| Event::IncomingClosed {
@@ -634,7 +635,7 @@ where
     }
 
     /// Handles a received message.
-    fn handle_message(
+    fn handle_incoming_message(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
@@ -743,7 +744,7 @@ where
                 self.handle_incoming_connection(effect_builder, incoming, span)
             }
             Event::IncomingMessage { peer_id, msg, span } => {
-                self.handle_message(effect_builder, *peer_id, *msg, span)
+                self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
             }
             Event::IncomingClosed {
                 result,
