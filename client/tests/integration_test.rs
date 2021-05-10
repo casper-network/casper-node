@@ -162,7 +162,7 @@ impl MockServerHandle {
             0,
             amount,
             maybe_target_account,
-            "",
+            "2",
             deploy_params,
             payment_params,
         )
