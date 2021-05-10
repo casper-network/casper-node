@@ -10,8 +10,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
-
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -38,7 +36,7 @@ use super::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
     error::{display_error, ConnectionError, Error, IoError, Result},
-    event::IncomingConnection,
+    event::{IncomingConnection, OutgoingConnection},
     framed, Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
@@ -53,78 +51,102 @@ use crate::{
 /// Maximum time allowed to send or receive a handshake.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Network handshake reader for single handshake message received by outgoing connection.
-pub(super) async fn read_handshake<REv, P>(
-    event_queue: EventQueueHandle<REv>,
-    mut stream: SplitStream<FramedTransport<P>>,
-    our_id: NodeId,
-    peer_id: NodeId,
+/// Low-level TLS connection function.
+///
+/// Performs the actual TCP+TLS connection setup.
+async fn tls_connect<REv>(
+    context: &NetworkContext<REv>,
     peer_addr: SocketAddr,
-) where
-    P: DeserializeOwned + Send + Display + Payload,
-    REv: From<Event<P>>,
-{
-    if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
-        debug!(%our_id, %msg, %peer_id, "handshake received");
-        return event_queue
-            .schedule(
-                Event::IncomingMessage {
-                    peer_id: Box::new(peer_id),
-                    msg: Box::new(msg),
-                    span: todo!(),
-                },
-                QueueKind::NetworkIncoming,
-            )
-            .await;
-    }
-    warn!(%our_id, %peer_id, "receiving handshake failed, closing connection");
-    event_queue
-        .schedule(
-            Event::OutgoingDropped {
-                peer_id: Box::new(peer_id),
-                peer_addr: Box::new(peer_addr),
-                error: Box::new(None),
-            },
-            QueueKind::Network,
-        )
-        .await
-}
-
-/// Initiates a TLS connection to a remote address.
-pub(super) async fn connect_outgoing<REv>(
-    context: Arc<NetworkContext<REv>>,
-    peer_addr: SocketAddr,
-    span: Span,
-) -> Result<(NodeId, Transport)>
+) -> ::std::result::Result<(NodeId, Transport), ConnectionError>
 where
     REv: 'static,
 {
-    let ssl = tls::create_tls_connector(&context.our_cert.as_x509(), &context.secret_key)
-        .context("could not create TLS connector")?
-        .configure()
+    let stream = TcpStream::connect(peer_addr)
+        .await
+        .map_err(ConnectionError::TcpConnection)?;
+
+    let mut transport = tls::create_tls_connector(&context.our_cert.as_x509(), &context.secret_key)
+        .and_then(|connector| connector.configure())
         .and_then(|mut config| {
             config.set_verify_hostname(false);
             config.into_ssl("this-will-not-be-checked.example.com")
         })
-        .map_err(Error::ConnectorConfiguration)?;
+        .and_then(|ssl| SslStream::new(ssl, stream))
+        .map_err(ConnectionError::TlsInitialization)?;
 
-    let stream = TcpStream::connect(peer_addr)
+    SslStream::connect(Pin::new(&mut transport))
         .await
-        .context("TCP connection failed")?;
+        .map_err(ConnectionError::TlsHandshake)?;
 
-    let mut tls_stream = SslStream::new(ssl, stream).context("tls handshake failed")?;
-    SslStream::connect(Pin::new(&mut tls_stream))
-        .await
-        .map_err(Error::SslConnectionFailed)?;
-
-    let peer_cert = tls_stream
+    let peer_cert = transport
         .ssl()
         .peer_certificate()
-        .ok_or(Error::NoServerCertificate)?;
+        .ok_or(ConnectionError::NoPeerCertificate)?;
 
-    let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
+    let peer_id = NodeId::from(
+        tls::validate_cert(peer_cert)
+            .map_err(ConnectionError::PeerCertificateInvalid)?
+            .public_key_fingerprint(),
+    );
 
-    Ok((NodeId::from(peer_id), tls_stream))
+    Ok((peer_id, transport))
+}
+
+/// Initiates a TLS connection to a remote address.
+pub(super) async fn connect_outgoing<P, REv>(
+    context: Arc<NetworkContext<REv>>,
+    peer_addr: SocketAddr,
+    span: Span,
+) -> OutgoingConnection<P>
+where
+    REv: 'static,
+    P: Payload,
+{
+    let (peer_id, transport) = match tls_connect(&context, peer_addr).await {
+        Ok(value) => value,
+        Err(error) => return OutgoingConnection::FailedEarly { peer_addr, error },
+    };
+
+    // Register the `peer_id` on the [`Span`].
+    Span::current().record("peer_id", &field::display(peer_id));
+
+    if peer_id == context.our_id {
+        info!("incoming loopback connection");
+        return OutgoingConnection::Loopback { peer_addr };
+    }
+
+    debug!("Outgoing TLS connection established");
+
+    // Setup connection sink and stream.
+    let mut transport = framed::<P>(
+        context.net_metrics.clone(),
+        ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id),
+        transport,
+        Role::Dialer,
+        context.chain_info.maximum_net_message_size,
+    );
+
+    // Negotiate the handshake, concluding the incoming connection process.
+    match negotiate_handshake(&context, &mut transport).await {
+        Ok(public_addr) => {
+            // We don't need the `public_addr`, as we already connected, but check and warn anyway.
+            warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
+
+            // Close the receiving end of the transport.
+            let (sink, _stream) = transport.split();
+
+            OutgoingConnection::Established {
+                peer_addr,
+                peer_id,
+                sink,
+            }
+        }
+        Err(error) => OutgoingConnection::Failed {
+            peer_addr,
+            peer_id,
+            error,
+        },
+    }
 }
 
 /// A context holding all relevant information for networking communication shared across tasks.
@@ -171,7 +193,7 @@ where
         return IncomingConnection::Loopback;
     }
 
-    debug!("TLS connection established");
+    debug!("Incoming TLS connection established");
 
     // Setup connection sink and stream.
     let mut transport = framed::<P>(
@@ -214,7 +236,7 @@ pub(super) async fn server_setup_tls(
     let mut tls_stream = tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
         .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
         .and_then(|ssl| SslStream::new(ssl, stream))
-        .map_err(ConnectionError::AcceptorCreation)?;
+        .map_err(ConnectionError::TlsInitialization)?;
 
     SslStream::accept(Pin::new(&mut tls_stream))
         .await
@@ -224,7 +246,7 @@ pub(super) async fn server_setup_tls(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or(ConnectionError::NoClientCertificate)?;
+        .ok_or(ConnectionError::NoPeerCertificate)?;
 
     Ok((
         NodeId::from(
@@ -437,19 +459,14 @@ where
 /// Network message sender.
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
-///
-/// Initially sends a handshake including the `chainspec_hash` as a final handshake step.  If the
-/// recipient's `chainspec_hash` doesn't match, the connection will be closed.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
     counter: IntGauge,
-    handshake: Message<P>,
 ) -> Result<()>
 where
     P: Serialize + Send + Payload,
 {
-    sink.send(handshake).await.map_err(Error::MessageNotSent)?;
     while let Some(payload) = queue.recv().await {
         counter.dec();
         // We simply error-out if the sink fails, it means that our connection broke.

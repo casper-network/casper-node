@@ -20,9 +20,6 @@ pub(super) type Result<T> = result::Result<T, Error>;
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
-    /// Server failed to present certificate.
-    #[error("no server certificate presented")]
-    NoServerCertificate,
     /// Peer ID presented does not match the expected one.
     #[error("remote node has wrong ID")]
     WrongId,
@@ -85,13 +82,6 @@ pub enum Error {
         #[source]
         io::Error,
     ),
-    /// Failed to create configuration for TLS connector.
-    #[error("failed to configure connector")]
-    ConnectorConfiguration(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
     /// Failed to generate node TLS certificate.
     #[error("failed to generate cert")]
     CertificateGeneration(
@@ -144,6 +134,16 @@ impl DataSize for Error {
     }
 }
 
+impl DataSize for ConnectionError {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
+}
+
 /// An error formatter.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ErrFormatter<'a, T>(pub &'a T);
@@ -172,11 +172,18 @@ where
 #[derive(Debug, Error, Serialize)]
 pub enum ConnectionError {
     /// Failed to create TLS acceptor.
-    #[error("failed to create acceptor")]
-    AcceptorCreation(
+    #[error("failed to create TLS acceptor/connector")]
+    TlsInitialization(
         #[serde(skip_serializing)]
         #[source]
         ErrorStack,
+    ),
+    /// TCP connection failed.
+    #[error("TCP connection failed")]
+    TcpConnection(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
     ),
     /// Handshaking error.
     #[error("TLS handshake error")]
@@ -185,9 +192,9 @@ pub enum ConnectionError {
         #[source]
         ssl::Error,
     ),
-    /// Client failed to present certificate.
+    /// Remote failed to present a client/server certificate.
     #[error("no client certificate presented")]
-    NoClientCertificate,
+    NoPeerCertificate,
     /// TLS validation error.
     #[error("TLS validation error of peer certificate")]
     PeerCertificateInvalid(#[source] ValidationError),

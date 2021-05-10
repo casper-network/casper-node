@@ -49,7 +49,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use futures::{future::BoxFuture, FutureExt, StreamExt};
+use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
@@ -71,8 +71,8 @@ use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
-    error::Result,
-    event::IncomingConnection,
+    error::{ConnectionError, Result},
+    event::{IncomingConnection, OutgoingConnection},
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
@@ -89,7 +89,7 @@ use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
-        EffectBuilder, EffectExt, EffectResultExt, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -124,15 +124,15 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Clone, DataSize, Debug)]
-pub struct OutgoingConnection<P> {
+pub struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_addr: SocketAddr,
 }
 
-impl<P> Display for OutgoingConnection<P> {
+impl<P> Display for OutgoingHandle<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "outgoing connection to {}", self.peer_addr)
+        write!(f, "outgoing handle to {}", self.peer_addr)
     }
 }
 
@@ -148,7 +148,7 @@ where
     context: Arc<NetworkContext<REv>>,
 
     /// Outgoing connections manager.
-    outgoing_manager: OutgoingManager<OutgoingConnection<P>, Error>,
+    outgoing_manager: OutgoingManager<OutgoingHandle<P>, ConnectionError>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
@@ -362,7 +362,7 @@ where
                 ref error,
             } => {
                 // Failed without much info, there is little we can do about this.
-                debug!(err=%display_error(error), "connection failed early");
+                debug!(err=%display_error(error), "incoming connection failed early");
                 Effects::new()
             }
             IncomingConnection::Failed {
@@ -374,7 +374,7 @@ where
                 //       feature is not implemented yet.
                 debug!(
                     err = display_error(error),
-                    "connection failed after TLS setup"
+                    "incoming connection failed after TLS setup"
                 );
                 Effects::new()
             }
@@ -382,7 +382,7 @@ where
                 // Loopback connections are closed immediately, but will be marked as such by the
                 // outgoing manager. We still record that it succeeded in the log, but this should
                 // be the only time per component instantiation that this happens.
-                info!("successful loopback connection, will be dropped");
+                info!("successful incoming loopback connection, will be dropped");
                 Effects::new()
             }
             IncomingConnection::Established {
@@ -463,89 +463,89 @@ where
     /// Sets up an established outgoing connection.
     ///
     /// Initiates sending of the handshake as soon as the connection is established.
-    fn setup_outgoing(
+    fn handle_outgoing_connection(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        peer_addr: SocketAddr,
-        peer_id: NodeId,
-        transport: Transport,
+        outgoing: OutgoingConnection<P>,
+        span: Span,
     ) -> Effects<Event<P>> {
-        // If we have connected to ourself, inform the outgoing manager, then drop the connection.
-        if peer_id == self.context.our_id {
-            let request = self
-                .outgoing_manager
-                .handle_dial_outcome(DialOutcome::Loopback { addr: peer_addr });
-            return self.process_dial_requests(request);
-        }
-
-        // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) = framed::<P>(
-            Arc::downgrade(&self.net_metrics),
-            ConnectionId::from_connection(transport.ssl(), self.context.our_id, peer_id),
-            transport,
-            Role::Dialer,
-            self.context.chain_info.maximum_net_message_size,
-        )
-        .split();
-
-        // Setup the actual connection and inform the outgoing manager and record in symmetry.
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let connection = OutgoingConnection { peer_addr, sender };
-
-        let mut effects = Effects::new();
-
-        // Mark as outgoing in symmetry tracker.
-        if self
-            .connection_symmetries
-            .entry(peer_id)
-            .or_default()
-            .mark_outgoing(Instant::now())
-        {
-            effects.extend(self.connection_completed(effect_builder, peer_id));
-        }
-
-        let request = self
-            .outgoing_manager
-            .handle_dial_outcome(DialOutcome::Successful {
-                addr: peer_addr,
-                handle: connection,
-                node_id: peer_id,
-            });
-
-        // Process resulting effects.
-        effects.extend(self.process_dial_requests(request));
-
-        // Send the handshake and start the reader.
-        let handshake = self
-            .context
-            .chain_info
-            .create_handshake(self.context.public_addr);
-
-        effects.extend(
-            tasks::message_sender(
-                receiver,
-                sink,
-                self.net_metrics.queued_messages.clone(),
-                handshake,
-            )
-            .event(move |result| Event::OutgoingDropped {
-                peer_id: Box::new(peer_id),
-                peer_addr: Box::new(peer_addr),
-                error: Box::new(result.err().map(Into::into)),
-            }),
-        );
-        effects.extend(
-            tasks::read_handshake(
-                self.context.event_queue,
-                stream,
-                self.context.our_id,
-                peer_id,
+        match outgoing {
+            OutgoingConnection::FailedEarly { peer_addr, error } => {
+                debug!(err=%display_error(&error), "outgoing connection failed early");
+                let request = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Failed {
+                        addr: peer_addr,
+                        error,
+                        when: Instant::now(),
+                    });
+                self.process_dial_requests(request)
+            }
+            OutgoingConnection::Failed {
                 peer_addr,
-            )
-            .ignore::<Event<P>>(),
-        );
+                peer_id: _,
+                error,
+            } => {
+                debug!(err=%display_error(&error), "outgoing connection failed");
+                let request = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Failed {
+                        addr: peer_addr,
+                        error,
+                        when: Instant::now(),
+                    });
+                self.process_dial_requests(request)
+            }
+            OutgoingConnection::Loopback { peer_addr } => {
+                // Loopback connections are marked, but closed.
+                info!("successful outgoing loopback connection, will be dropped");
+                let request = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Loopback { addr: peer_addr });
+                self.process_dial_requests(request)
+            }
+            OutgoingConnection::Established {
+                peer_addr,
+                peer_id,
+                sink,
+            } => {
+                info!("new outgoing connection established");
 
-        effects
+                let (sender, receiver) = mpsc::unbounded_channel();
+                let handle = OutgoingHandle { peer_addr, sender };
+
+                let request = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Successful {
+                        addr: peer_addr,
+                        handle,
+                        node_id: peer_id,
+                    });
+
+                let mut effects = self.process_dial_requests(request);
+
+                // Update connection symmetries.
+                if self
+                    .connection_symmetries
+                    .entry(peer_id)
+                    .or_default()
+                    .mark_outgoing(Instant::now())
+                {
+                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                }
+
+                effects.extend(
+                    tasks::message_sender(receiver, sink, self.net_metrics.queued_messages.clone())
+                        .event(move |result| Event::OutgoingDropped {
+                            peer_id: Box::new(peer_id),
+                            peer_addr: Box::new(peer_addr),
+                            error: Box::new(result.err().map(Into::into)),
+                        }),
+                );
+
+                effects
+            }
+        }
     }
 
     fn handle_outgoing_lost(
@@ -606,7 +606,7 @@ where
     /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
     fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
     where
-        T: IntoIterator<Item = DialRequest<OutgoingConnection<P>>>,
+        T: IntoIterator<Item = DialRequest<OutgoingHandle<P>>>,
     {
         let mut effects = Effects::new();
 
@@ -615,18 +615,11 @@ where
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
                     tasks::connect_outgoing(self.context.clone(), addr, span.clone())
-                        .instrument(span)
-                        .result(
-                            move |(peer_id, transport)| Event::OutgoingEstablished {
-                                remote_addr: addr,
-                                peer_id: Box::new(peer_id),
-                                transport,
-                            },
-                            move |error| Event::OutgoingDialFailure {
-                                peer_addr: Box::new(addr),
-                                error: Box::new(error),
-                            },
-                        ),
+                        .instrument(span.clone())
+                        .event(|outgoing| Event::OutgoingConnection {
+                            outgoing: Box::new(outgoing),
+                            span,
+                        }),
                 ),
                 DialRequest::Disconnect { handle: _, span } => {
                     // Dropping the `handle` is enough to signal the connection to shutdown.
@@ -784,22 +777,10 @@ where
                 span,
             } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
-            Event::OutgoingEstablished {
-                remote_addr,
-                peer_id,
-                transport,
-            } => self.setup_outgoing(effect_builder, remote_addr, *peer_id, transport),
-            Event::OutgoingDialFailure { peer_addr, error } => {
-                let requests = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Failed {
-                        addr: *peer_addr,
-                        error: *error,
-                        when: Instant::now(),
-                    });
-
-                self.process_dial_requests(requests)
+            Event::OutgoingConnection { outgoing, span } => {
+                self.handle_outgoing_connection(effect_builder, *outgoing, span)
             }
+
             Event::OutgoingDropped {
                 peer_id,
                 peer_addr,
