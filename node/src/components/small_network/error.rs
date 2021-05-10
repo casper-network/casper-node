@@ -178,6 +178,9 @@ pub enum ConnectionError {
     /// Peer sent a non-handshake message as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// The peer sent a consensus certificate, but it was invalid.
+    #[error("invalid consensus certificate")]
+    InvalidConsensusCertificate,
 }
 
 /// IO operation that can time out or close.

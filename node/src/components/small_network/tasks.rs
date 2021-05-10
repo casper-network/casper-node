@@ -10,7 +10,6 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{PublicKey, SecretKey};
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -41,7 +40,7 @@ use super::{
     framed, Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
-    components::networking_metrics::NetworkingMetrics,
+    components::{consensus::Keypair, networking_metrics::NetworkingMetrics},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -118,16 +117,17 @@ where
     debug!("Outgoing TLS connection established");
 
     // Setup connection sink and stream.
+    let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
     let mut transport = framed::<P>(
         context.net_metrics.clone(),
-        ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id),
+        connection_id,
         transport,
         Role::Dialer,
         context.chain_info.maximum_net_message_size,
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport).await {
+    match negotiate_handshake(&context, &mut transport, connection_id).await {
         Ok(public_addr) => {
             if public_addr != peer_addr {
                 // We don't need the `public_addr`, as we already connected, but warn anyway.
@@ -171,15 +171,7 @@ where
     /// Our own public listening address.
     pub(super) public_addr: SocketAddr,
     /// Optional set of consensus keys, to identify as a validator during handshake.
-    pub(super) consensus_keys: Option<ConsensusKeys>,
-}
-
-/// A set of consensus keys.
-pub struct ConsensusKeys {
-    /// Public key.
-    pub(super) public_key: PublicKey,
-    /// Secret key.
-    pub(super) secret_key: SecretKey,
+    pub(super) consensus_keys: Option<Keypair>,
 }
 
 /// Handles an incoming connection.
@@ -215,16 +207,17 @@ where
     debug!("Incoming TLS connection established");
 
     // Setup connection sink and stream.
+    let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
     let mut transport = framed::<P>(
         context.net_metrics.clone(),
-        ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id),
+        connection_id,
         transport,
         Role::Listener,
         context.chain_info.maximum_net_message_size,
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport).await {
+    match negotiate_handshake(&context, &mut transport, connection_id).await {
         Ok(public_addr) => {
             // Close the receiving end of the transport.
             let (_sink, stream) = transport.split();
@@ -309,12 +302,17 @@ where
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     transport: &mut FramedTransport<P>,
+    connection_id: ConnectionId,
 ) -> Result<SocketAddr, ConnectionError>
 where
     P: Payload,
 {
     // Send down a handshake and expect one in response.
-    let handshake = context.chain_info.create_handshake(context.public_addr);
+    let handshake = context.chain_info.create_handshake(
+        context.public_addr,
+        context.consensus_keys.as_ref(),
+        connection_id,
+    );
 
     io_timeout(HANDSHAKE_TIMEOUT, transport.send(handshake))
         .await
@@ -328,16 +326,24 @@ where
         network_name,
         public_addr,
         protocol_version,
+        consensus_certificate,
     } = remote_handshake
     {
         debug!(%protocol_version, "handshake received");
 
         // The handshake was valid, we can check the network name.
         if network_name != context.chain_info.network_name {
-            Err(ConnectionError::WrongNetwork(network_name))
-        } else {
-            Ok(public_addr)
+            return Err(ConnectionError::WrongNetwork(network_name));
         }
+
+        let _peer_consensus_public_key = consensus_certificate
+            .map(|cert| {
+                cert.validate(connection_id)
+                    .ok_or(ConnectionError::InvalidConsensusCertificate)
+            })
+            .transpose()?;
+
+        Ok(public_addr)
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)

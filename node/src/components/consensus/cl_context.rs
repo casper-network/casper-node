@@ -17,7 +17,7 @@ use crate::{
 #[derive(DataSize)]
 pub struct Keypair {
     secret_key: Arc<SecretKey>,
-    public_key: PublicKey,
+    pub(crate) public_key: PublicKey,
 }
 
 impl Keypair {

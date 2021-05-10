@@ -156,6 +156,13 @@ where
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(super) struct ConnectionId([u8; Digest::LENGTH]);
 
+impl ConnectionId {
+    /// Creates a faux-digest from the connection ID.
+    pub(crate) fn into_digest(self) -> Digest {
+        Digest::from(self.0)
+    }
+}
+
 // Invariant assumed by `ConnectionId`, `Digest` must be <= than `KeyFingerprint`.
 const_assert!(KeyFingerprint::LENGTH >= Digest::LENGTH);
 // We also assume it is at least 12 bytes.

@@ -76,7 +76,7 @@ use self::{
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::{ConsensusKeys, NetworkContext},
+    tasks::NetworkContext,
 };
 pub(crate) use self::{
     error::display_error,
@@ -101,7 +101,7 @@ use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
 
-use super::consensus;
+use super::consensus::{self, Keypair};
 
 const MAX_ASYMMETRIC_TIME: Duration = Duration::from_secs(60);
 
@@ -242,10 +242,7 @@ where
                 let root = cfg.dir();
                 cfg.value()
                     .load_keys(root)
-                    .map(|(secret_key, public_key)| ConsensusKeys {
-                        secret_key,
-                        public_key,
-                    })
+                    .map(|(secret_key, public_key)| Keypair::new(Arc::new(secret_key), public_key))
             })
             .transpose()
             .map_err(Error::LoadConsensusKeys)?;
@@ -493,7 +490,8 @@ where
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
-            | ConnectionError::DidNotSendHandshake => false,
+            | ConnectionError::DidNotSendHandshake
+            | ConnectionError::InvalidConsensusCertificate => false,
 
             // Definitely something we want to avoid.
             ConnectionError::WrongNetwork(_) => true,
