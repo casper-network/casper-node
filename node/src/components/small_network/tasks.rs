@@ -35,7 +35,7 @@ use tracing::{
 use super::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
-    error::{display_error, ConnectionError, Error, IoError, Result},
+    error::{display_error, ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
     framed, Event, FramedTransport, Message, Payload, Transport,
 };
@@ -46,7 +46,7 @@ use crate::{
     types::NodeId,
 };
 
-// TODO: Constants that need to be made configurable.
+// TODO: Constants need to be made configurable.
 
 /// Maximum time allowed to send or receive a handshake.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -57,7 +57,7 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 async fn tls_connect<REv>(
     context: &NetworkContext<REv>,
     peer_addr: SocketAddr,
-) -> ::std::result::Result<(NodeId, Transport), ConnectionError>
+) -> Result<(NodeId, Transport), ConnectionError>
 where
     REv: 'static,
 {
@@ -96,7 +96,6 @@ where
 pub(super) async fn connect_outgoing<P, REv>(
     context: Arc<NetworkContext<REv>>,
     peer_addr: SocketAddr,
-    span: Span,
 ) -> OutgoingConnection<P>
 where
     REv: 'static,
@@ -232,7 +231,7 @@ pub(super) async fn server_setup_tls(
     stream: TcpStream,
     cert: &TlsCert,
     secret_key: &PKey<Private>,
-) -> ::std::result::Result<(NodeId, Transport), ConnectionError> {
+) -> Result<(NodeId, Transport), ConnectionError> {
     let mut tls_stream = tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
         .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
         .and_then(|ssl| SslStream::new(ssl, stream))
@@ -259,9 +258,9 @@ pub(super) async fn server_setup_tls(
 }
 
 /// Performs an IO-operation that can time out.
-async fn io_timeout<F, T, E>(duration: Duration, future: F) -> ::std::result::Result<T, IoError<E>>
+async fn io_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
 where
-    F: Future<Output = ::std::result::Result<T, E>>,
+    F: Future<Output = Result<T, E>>,
     E: StdError + 'static,
 {
     tokio::time::timeout(duration, future)
@@ -271,12 +270,9 @@ where
 }
 
 /// Performs an IO-operation that can time out or result in a closed connection.
-async fn io_opt_timeout<F, T, E>(
-    duration: Duration,
-    future: F,
-) -> ::std::result::Result<T, IoError<E>>
+async fn io_opt_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
 where
-    F: Future<Output = Option<::std::result::Result<T, E>>>,
+    F: Future<Output = Option<Result<T, E>>>,
     E: StdError + 'static,
 {
     let item = tokio::time::timeout(duration, future)
@@ -293,7 +289,7 @@ where
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     transport: &mut FramedTransport<P>,
-) -> std::result::Result<SocketAddr, ConnectionError>
+) -> Result<SocketAddr, ConnectionError>
 where
     P: Payload,
 {
@@ -463,15 +459,19 @@ pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
     counter: IntGauge,
-) -> Result<()>
+) -> ()
 where
     P: Serialize + Send + Payload,
 {
-    while let Some(payload) = queue.recv().await {
+    while let Some(message) = queue.recv().await {
         counter.dec();
         // We simply error-out if the sink fails, it means that our connection broke.
-        sink.send(payload).await.map_err(Error::MessageNotSent)?;
+        if let Err(ref err) = sink.send(message).await {
+            info!(
+                err = display_error(err),
+                "message send failed, closing outgoing connection"
+            );
+            break;
+        };
     }
-
-    Ok(())
 }

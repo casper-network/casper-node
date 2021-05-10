@@ -10,7 +10,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{error::ConnectionError, Error, FramedTransport, GossipedAddress, Message, NodeId};
+use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
         announcements::BlocklistAnnouncement,
@@ -57,8 +57,7 @@ pub enum Event<P> {
     /// An established connection was terminated.
     OutgoingDropped {
         peer_id: Box<NodeId>,
-        peer_addr: Box<SocketAddr>,
-        error: Box<Option<Error>>,
+        peer_addr: SocketAddr,
     },
 
     /// Incoming network request.
@@ -119,16 +118,8 @@ impl<P: Display> Display for Event<P> {
             Event::OutgoingConnection { outgoing, span: _ } => {
                 write!(f, "outgoing connection: {}", outgoing)
             }
-            Event::OutgoingDropped {
-                peer_id,
-                peer_addr,
-                error,
-            } => {
-                write!(f, "dropped outgoing {} {}", peer_id, peer_addr)?;
-                if let Some(error) = error.as_ref() {
-                    write!(f, ": {}", error)?;
-                }
-                Ok(())
+            Event::OutgoingDropped { peer_id, peer_addr } => {
+                write!(f, "dropped outgoing {} {}", peer_id, peer_addr)
             }
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),

@@ -469,7 +469,7 @@ where
         outgoing: OutgoingConnection<P>,
         span: Span,
     ) -> Effects<Event<P>> {
-        match outgoing {
+        span.clone().in_scope(|| match outgoing {
             OutgoingConnection::FailedEarly { peer_addr, error } => {
                 debug!(err=%display_error(&error), "outgoing connection failed early");
                 let request = self
@@ -536,19 +536,19 @@ where
 
                 effects.extend(
                     tasks::message_sender(receiver, sink, self.net_metrics.queued_messages.clone())
-                        .event(move |result| Event::OutgoingDropped {
+                        .instrument(span)
+                        .event(move |_| Event::OutgoingDropped {
                             peer_id: Box::new(peer_id),
-                            peer_addr: Box::new(peer_addr),
-                            error: Box::new(result.err().map(Into::into)),
+                            peer_addr,
                         }),
                 );
 
                 effects
             }
-        }
+        })
     }
 
-    fn handle_outgoing_lost(
+    fn handle_outgoing_dropped(
         &mut self,
         peer_id: NodeId,
         peer_addr: SocketAddr,
@@ -614,7 +614,7 @@ where
             trace!(%request, "processing dial request");
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
-                    tasks::connect_outgoing(self.context.clone(), addr, span.clone())
+                    tasks::connect_outgoing(self.context.clone(), addr)
                         .instrument(span.clone())
                         .event(|outgoing| Event::OutgoingConnection {
                             outgoing: Box::new(outgoing),
@@ -644,7 +644,7 @@ where
     where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
-        match msg {
+        span.in_scope(|| match msg {
             Message::Handshake { .. } => {
                 // We should never receive a handshake message on an established connection. Simply
                 // discard it. This may be too lenient, so we may consider simply dropping the
@@ -655,7 +655,7 @@ where
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
                 .ignore(),
-        }
+        })
     }
 
     /// Emits an announcement that a connection has been completed.
@@ -756,11 +756,9 @@ where
                 self.handle_outgoing_connection(effect_builder, *outgoing, span)
             }
 
-            Event::OutgoingDropped {
-                peer_id,
-                peer_addr,
-                error: _,
-            } => self.handle_outgoing_lost(*peer_id, *peer_addr),
+            Event::OutgoingDropped { peer_id, peer_addr } => {
+                self.handle_outgoing_dropped(*peer_id, peer_addr)
+            }
 
             Event::NetworkRequest { req } => {
                 match *req {
