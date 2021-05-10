@@ -3,10 +3,10 @@ use std::{
     net::SocketAddr,
 };
 
-use casper_types::{ProtocolVersion, PublicKey, Signature};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::components::consensus::{Keypair, ValidatorSecret};
+use crate::crypto;
 
 use super::counting_format::ConnectionId;
 
@@ -44,6 +44,27 @@ impl<P: Payload> Message<P> {
     }
 }
 
+/// A pair of secret keys used by consensus.
+pub(super) struct ConsensusKeyPair {
+    secret_key: SecretKey,
+    public_key: PublicKey,
+}
+
+impl ConsensusKeyPair {
+    /// Creates a new key pair for consensus signing.
+    pub(super) fn new(secret_key: SecretKey, public_key: PublicKey) -> Self {
+        Self {
+            secret_key,
+            public_key,
+        }
+    }
+
+    /// Sign a value using this keypair.
+    fn sign<T: AsRef<[u8]>>(&self, value: T) -> Signature {
+        crypto::sign(value, &self.secret_key, &self.public_key)
+    }
+}
+
 /// Certificate used to indicate that the peer is a validator using the specified public key.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConsensusCertificate {
@@ -52,9 +73,9 @@ pub struct ConsensusCertificate {
 }
 
 impl ConsensusCertificate {
-    /// Creates a new consensus certificate from a connection ID and keypair.
-    pub(super) fn create(connection_id: ConnectionId, key_pair: &Keypair) -> Self {
-        let signature = key_pair.sign(&connection_id.into_digest());
+    /// Creates a new consensus certificate from a connection ID and key pair.
+    pub(super) fn create(connection_id: ConnectionId, key_pair: &ConsensusKeyPair) -> Self {
+        let signature = key_pair.sign(connection_id.as_bytes());
         ConsensusCertificate {
             public_key: key_pair.public_key.clone(),
             signature,
@@ -62,8 +83,9 @@ impl ConsensusCertificate {
     }
 
     /// Validates a certificate, returning a `PublicKey` if valid.
-    pub(super) fn validate(&self, connection_id: ConnectionId) -> Option<PublicKey> {
-        todo!()
+    pub(super) fn validate(self, connection_id: ConnectionId) -> Result<PublicKey, crypto::Error> {
+        crypto::verify(connection_id.as_bytes(), &self.signature, &self.public_key)?;
+        Ok(self.public_key)
     }
 }
 

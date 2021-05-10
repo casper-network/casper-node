@@ -14,6 +14,7 @@ use thiserror::Error;
 use tracing::field;
 
 use crate::{
+    crypto,
     tls::ValidationError,
     utils::{LoadError, Loadable, ResolveAddressError},
 };
@@ -180,7 +181,11 @@ pub enum ConnectionError {
     DidNotSendHandshake,
     /// The peer sent a consensus certificate, but it was invalid.
     #[error("invalid consensus certificate")]
-    InvalidConsensusCertificate,
+    InvalidConsensusCertificate(
+        #[serde(skip_serializing)]
+        #[source]
+        crypto::Error,
+    ),
 }
 
 /// IO operation that can time out or close.

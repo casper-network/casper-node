@@ -37,10 +37,12 @@ use super::{
     counting_format::{ConnectionId, Role},
     error::{display_error, ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
-    framed, Event, FramedTransport, Message, Payload, Transport,
+    framed,
+    message::ConsensusKeyPair,
+    Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
-    components::{consensus::Keypair, networking_metrics::NetworkingMetrics},
+    components::networking_metrics::NetworkingMetrics,
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::NodeId,
@@ -171,7 +173,7 @@ where
     /// Our own public listening address.
     pub(super) public_addr: SocketAddr,
     /// Optional set of consensus keys, to identify as a validator during handshake.
-    pub(super) consensus_keys: Option<Keypair>,
+    pub(super) consensus_keys: Option<ConsensusKeyPair>,
 }
 
 /// Handles an incoming connection.
@@ -339,7 +341,7 @@ where
         let _peer_consensus_public_key = consensus_certificate
             .map(|cert| {
                 cert.validate(connection_id)
-                    .ok_or(ConnectionError::InvalidConsensusCertificate)
+                    .map_err(ConnectionError::InvalidConsensusCertificate)
             })
             .transpose()?;
 

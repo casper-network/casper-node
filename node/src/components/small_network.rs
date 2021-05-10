@@ -73,6 +73,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
@@ -84,6 +85,7 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     message::{Message, MessageKind, Payload},
 };
+use super::consensus;
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
@@ -100,8 +102,6 @@ use crate::{
 use chain_info::ChainInfo;
 pub use config::Config;
 pub use error::Error;
-
-use super::consensus::{self, Keypair};
 
 const MAX_ASYMMETRIC_TIME: Duration = Duration::from_secs(60);
 
@@ -242,7 +242,7 @@ where
                 let root = cfg.dir();
                 cfg.value()
                     .load_keys(root)
-                    .map(|(secret_key, public_key)| Keypair::new(Arc::new(secret_key), public_key))
+                    .map(|(secret_key, public_key)| ConsensusKeyPair::new(secret_key, public_key))
             })
             .transpose()
             .map_err(Error::LoadConsensusKeys)?;
@@ -491,7 +491,7 @@ where
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
             | ConnectionError::DidNotSendHandshake
-            | ConnectionError::InvalidConsensusCertificate => false,
+            | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
             ConnectionError::WrongNetwork(_) => true,

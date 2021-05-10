@@ -8,8 +8,12 @@ use std::net::SocketAddr;
 use casper_types::ProtocolVersion;
 use datasize::DataSize;
 
-use super::{counting_format::ConnectionId, message::ConsensusCertificate, Message};
-use crate::{components::consensus::Keypair, types::Chainspec};
+use super::{
+    counting_format::ConnectionId,
+    message::{ConsensusCertificate, ConsensusKeyPair},
+    Message,
+};
+use crate::types::Chainspec;
 
 /// Data retained from the chainspec by the small networking component.
 ///
@@ -40,7 +44,7 @@ impl ChainInfo {
     pub(super) fn create_handshake<P>(
         &self,
         public_addr: SocketAddr,
-        consensus_keys: Option<&Keypair>,
+        consensus_keys: Option<&ConsensusKeyPair>,
         connection_id: ConnectionId,
     ) -> Message<P> {
         Message::Handshake {
@@ -48,7 +52,7 @@ impl ChainInfo {
             public_addr,
             protocol_version: self.protocol_version,
             consensus_certificate: consensus_keys
-                .map(|keypair| ConsensusCertificate::create(connection_id, keypair)),
+                .map(|key_pair| ConsensusCertificate::create(connection_id, key_pair)),
         }
     }
 }
