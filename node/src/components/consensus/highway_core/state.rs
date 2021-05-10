@@ -419,6 +419,16 @@ impl<C: Context> State<C> {
     /// validators' slots never get reassigned to someone else, even if after the fact someone is
     /// excluded as a leader.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+        // The binary search cannot return None; if it does, it's a programming error. In that case,
+        // we want the tests to panic but production to pick a default.
+        let panic_or_0 = || {
+            if cfg!(test) {
+                panic!("random number out of range");
+            } else {
+                error!("random number out of range");
+                ValidatorIndex(0)
+            }
+        };
         let seed = self.params.seed().wrapping_add(timestamp.millis());
         // We select a random one out of the `total_weight` weight units, starting numbering at 1.
         let r = Weight(leader_prng(self.total_weight().0, seed));
@@ -426,10 +436,10 @@ impl<C: Context> State<C> {
         // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
         // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
         // who owns the randomly selected weight unit.
-        let leader_index = self.cumulative_w.binary_search(&r).unwrap_or_else(|| {
-            error!("random number out of range");
-            ValidatorIndex(0)
-        });
+        let leader_index = self
+            .cumulative_w
+            .binary_search(&r)
+            .unwrap_or_else(panic_or_0);
         if self.can_propose[leader_index] {
             return leader_index;
         }
@@ -439,10 +449,7 @@ impl<C: Context> State<C> {
         let r = Weight(leader_prng(total_w_leaders.0, seed.wrapping_add(1)));
         self.cumulative_w_leaders
             .binary_search(&r)
-            .unwrap_or_else(|| {
-                error!("random number out of range");
-                ValidatorIndex(0)
-            })
+            .unwrap_or_else(panic_or_0)
     }
 
     /// Adds the unit to the protocol state.
