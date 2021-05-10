@@ -133,6 +133,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             validators.set_cannot_propose(vid);
         }
 
+        assert!(
+            validators.ensure_nonzero_proposing_stake(),
+            "cannot start era with total weight 0"
+        );
+
         let highway_config = &protocol_config.highway_config;
 
         let total_weight = u128::from(validators.total_weight());

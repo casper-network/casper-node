@@ -11,6 +11,7 @@ use datasize::DataSize;
 use derive_more::{AsRef, From};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use super::Weight;
 use crate::utils::ds;
@@ -65,14 +66,12 @@ where
 {
     index_by_id: HashMap<VID, ValidatorIndex>,
     validators: Vec<Validator<VID>>,
+    total_weight: Weight,
 }
 
 impl<VID: Eq + Hash> Validators<VID> {
     pub(crate) fn total_weight(&self) -> Weight {
-        self.validators.iter().fold(Weight(0), |sum, v| {
-            sum.checked_add(v.weight())
-                .expect("total weight must be < 2^64")
-        })
+        self.total_weight
     }
 
     pub(crate) fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {
@@ -126,11 +125,36 @@ impl<VID: Eq + Hash> Validators<VID> {
             |(idx, v): (usize, &'a Validator<VID>)| (ValidatorIndex::from(idx as u32), v.id());
         self.iter().enumerate().map(to_idx)
     }
+
+    pub(crate) fn ensure_nonzero_proposing_stake(&mut self) -> bool {
+        if self.total_weight.is_zero() {
+            return false;
+        }
+        if self.iter().all(|v| v.banned || v.weight.is_zero()) {
+            warn!("everyone is banned; admitting banned validators anyway");
+            for validator in &mut self.validators {
+                validator.can_propose = true;
+                validator.banned = false;
+            }
+        } else if self.iter().all(|v| !v.can_propose || v.weight.is_zero()) {
+            warn!("everyone is excluded; allowing proposers who are currently inactive");
+            for validator in &mut self.validators {
+                if !validator.banned {
+                    validator.can_propose = true;
+                }
+            }
+        }
+        true
+    }
 }
 
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
     fn from_iter<I: IntoIterator<Item = (VID, W)>>(ii: I) -> Validators<VID> {
         let mut validators: Vec<_> = ii.into_iter().map(Validator::from).collect();
+        let total_weight = validators.iter().fold(Weight(0), |sum, v| {
+            sum.checked_add(v.weight())
+                .expect("total weight must be < 2^64")
+        });
         validators.sort_by_cached_key(|val| val.id.clone());
         let index_by_id = validators
             .iter()
@@ -140,6 +164,7 @@ impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Valida
         Validators {
             index_by_id,
             validators,
+            total_weight,
         }
     }
 }
