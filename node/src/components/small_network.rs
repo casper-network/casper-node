@@ -461,6 +461,26 @@ where
         })
     }
 
+    /// Determines whether an outgoing peer should be blocked based on the connection error.
+    fn is_blockable_offense_for_outgoing(&self, error: &ConnectionError) -> bool {
+        match error {
+            // Potentially transient failures.
+            ConnectionError::TlsInitialization(_)
+            | ConnectionError::TcpConnection(_)
+            | ConnectionError::TlsHandshake(_)
+            | ConnectionError::HandshakeSend(_)
+            | ConnectionError::HandshakeRecv(_) => false,
+
+            // These could be candidates for blocking, but for now we decided not to.
+            ConnectionError::NoPeerCertificate
+            | ConnectionError::PeerCertificateInvalid(_)
+            | ConnectionError::DidNotSendHandshake => false,
+
+            // Definitely something we want to avoid.
+            ConnectionError::WrongNetwork(_) => true,
+        }
+    }
+
     /// Sets up an established outgoing connection.
     ///
     /// Initiates sending of the handshake as soon as the connection is established.
@@ -471,32 +491,34 @@ where
         outgoing: OutgoingConnection<P>,
         span: Span,
     ) -> Effects<Event<P>> {
+        let now = Instant::now();
         span.clone().in_scope(|| match outgoing {
-            OutgoingConnection::FailedEarly { peer_addr, error } => {
-                debug!(err=%display_error(&error), "outgoing connection failed early");
-                let request = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Failed {
-                        addr: peer_addr,
-                        error,
-                        when: Instant::now(),
-                    });
-                self.process_dial_requests(request)
-            }
-            OutgoingConnection::Failed {
+            OutgoingConnection::FailedEarly { peer_addr, error }
+            | OutgoingConnection::Failed {
                 peer_addr,
                 peer_id: _,
                 error,
             } => {
                 debug!(err=%display_error(&error), "outgoing connection failed");
-                let request = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Failed {
-                        addr: peer_addr,
-                        error,
-                        when: Instant::now(),
-                    });
-                self.process_dial_requests(request)
+                // We perform blocking first, to not trigger a reconnection before blocking.
+                let mut requests = Vec::new();
+
+                if self.is_blockable_offense_for_outgoing(&error) {
+                    requests.extend(self.outgoing_manager.block_addr(peer_addr, now).into_iter());
+                }
+
+                // Now we can proceed with the regular updates.
+                requests.extend(
+                    self.outgoing_manager
+                        .handle_dial_outcome(DialOutcome::Failed {
+                            addr: peer_addr,
+                            error,
+                            when: now,
+                        })
+                        .into_iter(),
+                );
+
+                self.process_dial_requests(requests)
             }
             OutgoingConnection::Loopback { peer_addr } => {
                 // Loopback connections are marked, but closed.
@@ -531,7 +553,7 @@ where
                     .connection_symmetries
                     .entry(peer_id)
                     .or_default()
-                    .mark_outgoing(Instant::now())
+                    .mark_outgoing(now)
                 {
                     effects.extend(self.connection_completed(effect_builder, peer_id));
                 }
