@@ -847,23 +847,25 @@ fn test_log2() {
 
 #[test]
 fn test_leader() {
-    let weights = &[Weight(3), Weight(4), Weight(5)];
+    let weights = &[Weight(3), Weight(4), Weight(5), Weight(4), Weight(5)];
 
-    // All three validators get slots in the leader sequence.
+    // All five validators get slots in the leader sequence. If 1, 2 and 4 are excluded, their slots
+    // get reassigned, but 0 and 3 keep their old slots.
+    let before = vec![0, 2, 4, 3, 3, 1, 2, 1, 0, 0, 0, 2, 0, 2, 3, 2, 3, 3, 1, 2];
+    let after = vec![0, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3];
+    let excluded = vec![ValidatorIndex(1), ValidatorIndex(2), ValidatorIndex(4)];
     let state = State::<TestContext>::new(weights, test_params(0), vec![], vec![]);
     assert_eq!(
-        vec![CAROL, CAROL, CAROL, CAROL, CAROL, ALICE, BOB, ALICE, CAROL, ALICE],
-        (0..10u64)
-            .map(|r_id| state.leader(r_id.into()))
+        before,
+        (0..20u64)
+            .map(|r_id| state.leader(r_id.into()).0)
             .collect_vec()
     );
-
-    // If Carol is excluded, her slots get reassigned, but Alice and Bob keep their old slots.
-    let state = State::<TestContext>::new(weights, test_params(0), vec![], vec![CAROL]);
+    let state = State::<TestContext>::new(weights, test_params(0), vec![], excluded);
     assert_eq!(
-        vec![ALICE, BOB, BOB, BOB, ALICE, ALICE, BOB, ALICE, ALICE, ALICE],
-        (0..10u64)
-            .map(|r_id| state.leader(r_id.into()))
+        after,
+        (0..20u64)
+            .map(|r_id| state.leader(r_id.into()).0)
             .collect_vec()
     );
 }

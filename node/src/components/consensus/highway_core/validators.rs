@@ -234,6 +234,8 @@ impl<T> ValidatorMap<T> {
         T: Ord,
     {
         match self.0.binary_search(x) {
+            // The standard library's binary search returns `Ok(i)` if it found `x` at index `i`,
+            // but `i` is not necessarily the lowest such index.
             Ok(i) => Some(ValidatorIndex(
                 (0..i)
                     .rev()
@@ -241,7 +243,10 @@ impl<T> ValidatorMap<T> {
                     .last()
                     .unwrap_or(i) as u32,
             )),
+            // It returns `Err(i)` if `x` was not found but `i` is the index where `x` would have to
+            // be inserted to keep the list. This is either the lowest index of an entry `>= x`...
             Err(i) if i < self.len() => Some(ValidatorIndex(i as u32)),
+            // ...or the end of the list if `x` is greater than all entries.
             Err(_) => None,
         }
     }
@@ -323,5 +328,22 @@ mod tests {
         assert_eq!(ValidatorIndex(0), validators.index_by_id["Alice"]);
         assert_eq!(ValidatorIndex(1), validators.index_by_id["Bob"]);
         assert_eq!(ValidatorIndex(2), validators.index_by_id["Carol"]);
+    }
+
+    #[test]
+    fn binary_search() {
+        let list = ValidatorMap::from(vec![2, 3, 5, 5, 5, 5, 5, 9]);
+        // Searching for 5 returns the first index, even if the standard library doesn't.
+        assert!(
+            list.0.binary_search(&5).expect("5 is in the list") > 2,
+            "test case where the std's search would return a higher index"
+        );
+        assert_eq!(Some(ValidatorIndex(2)), list.binary_search(&5));
+        // Searching for 4 also returns 2, since that is the first index of a value >= 4.
+        assert_eq!(Some(ValidatorIndex(2)), list.binary_search(&4));
+        // 3 is found again, at index 1.
+        assert_eq!(Some(ValidatorIndex(1)), list.binary_search(&3));
+        // 10 is bigger than all entries.
+        assert_eq!(None, list.binary_search(&10));
     }
 }
