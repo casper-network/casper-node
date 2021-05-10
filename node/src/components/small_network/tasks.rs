@@ -128,8 +128,10 @@ where
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake(&context, &mut transport).await {
         Ok(public_addr) => {
-            // We don't need the `public_addr`, as we already connected, but check and warn anyway.
-            warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
+            if public_addr != peer_addr {
+                // We don't need the `public_addr`, as we already connected, but warn anyway.
+                warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
+            }
 
             // Close the receiving end of the transport.
             let (sink, _stream) = transport.split();
