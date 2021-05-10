@@ -78,6 +78,8 @@ pub trait ItemFetcher<T: Item + 'static> {
     /// node queried may be responded to.
     const SAFE_TO_RESPOND_TO_ALL: bool;
 
+    const CHECK_STORAGE: bool;
+
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
     fn metrics(&mut self) -> &FetcherMetrics;
@@ -104,7 +106,12 @@ pub trait ItemFetcher<T: Item + 'static> {
             .push(responder);
 
         // Get the item from the storage component.
-        self.get_from_storage(effect_builder, id, peer)
+        if Self::CHECK_STORAGE {
+            self.get_from_storage(effect_builder, id, peer)
+        } else {
+            // "failed_to_get_from_storage" could reasonably be renamed "get_from_peer"
+            self.failed_to_get_from_storage(effect_builder, id, peer)
+        }
     }
 
     // Handles attempting to get the item from storage.
@@ -265,6 +272,8 @@ impl<T: Item> Fetcher<T> {
 impl ItemFetcher<Deploy> for Fetcher<Deploy> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
+    const CHECK_STORAGE: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<Deploy>>>> {
@@ -299,6 +308,8 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 impl ItemFetcher<Block> for Fetcher<Block> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
+    const CHECK_STORAGE: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<BlockHash, HashMap<NodeId, Vec<FetchResponder<Block>>>> {
@@ -332,6 +343,10 @@ impl ItemFetcher<Block> for Fetcher<Block> {
 impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
+    // The block executor needs have peer with deploys we can fetch after fetching a block with
+    // metadata, so we never check storage when fetching one.
+    const CHECK_STORAGE: bool = false;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<u64, HashMap<NodeId, Vec<FetchResponder<BlockWithMetadata>>>> {
@@ -364,6 +379,8 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
 
 impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
+
+    const CHECK_STORAGE: bool = true;
 
     fn responders(
         &mut self,
@@ -400,6 +417,8 @@ type GlobalStorageTrie = Trie<Key, StoredValue>;
 impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
+    const CHECK_STORAGE: bool = true;
+
     fn responders(
         &mut self,
     ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
@@ -432,6 +451,8 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
 
 impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
+    const CHECK_STORAGE: bool = true;
 
     fn responders(
         &mut self,
@@ -494,7 +515,7 @@ where
                     self.metrics.found_in_storage.inc();
                     self.got_from_storage(item, peer)
                 }
-                None => self.failed_to_get_from_storage(effect_builder, id, peer),
+                _ => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely { item, source } => {
                 match source {
