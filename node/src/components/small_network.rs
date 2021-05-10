@@ -645,37 +645,12 @@ where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
         match msg {
-            Message::Handshake {
-                network_name,
-                public_addr,
-                protocol_version,
-            } => {
-                // TODO: REMOVE THIS
-                let requests = if network_name != self.context.chain_info.network_name {
-                    info!(
-                        our_id=%self.context.our_id,
-                        %peer_id,
-                        our_network=?self.context.chain_info.network_name,
-                        their_network=?network_name,
-                        our_protocol_version=%self.context.chain_info.protocol_version,
-                        their_protocol_version=%protocol_version,
-                        "dropping connection due to network name mismatch"
-                    );
-
-                    // Node is on the wrong network. As a workaround until the connection logic
-                    // eliminates these cases immediately, we look up the peer's outgoing
-                    // connections and block them.
-                    if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
-                        self.outgoing_manager.block_addr(addr, Instant::now())
-                    } else {
-                        Default::default()
-                    }
-                } else {
-                    // Speed up the connection process by directly learning the peer's address.
-                    self.outgoing_manager
-                        .learn_addr(public_addr, false, Instant::now())
-                };
-                self.process_dial_requests(requests)
+            Message::Handshake { .. } => {
+                // We should never receive a handshake message on an established connection. Simply
+                // discard it. This may be too lenient, so we may consider simply dropping the
+                // connection in the future instead.
+                warn!("received unexpected handshake");
+                Effects::new()
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
