@@ -405,6 +405,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
+                peer_consensus_public_key: _,
                 stream,
             } => {
                 info!("new incoming connection established");
@@ -548,6 +549,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
+                peer_consensus_public_key: _,
                 sink,
             } => {
                 info!("new outgoing connection established");

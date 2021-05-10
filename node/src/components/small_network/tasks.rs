@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use casper_types::PublicKey;
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -130,7 +131,11 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake(&context, &mut transport, connection_id).await {
-        Ok(public_addr) => {
+        Ok((public_addr, peer_consensus_public_key)) => {
+            if let Some(ref public_key) = peer_consensus_public_key {
+                Span::current().record("validator_id", &field::display(public_key));
+            }
+
             if public_addr != peer_addr {
                 // We don't need the `public_addr`, as we already connected, but warn anyway.
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
@@ -142,6 +147,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
+                peer_consensus_public_key,
                 sink,
             }
         }
@@ -220,7 +226,11 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake(&context, &mut transport, connection_id).await {
-        Ok(public_addr) => {
+        Ok((public_addr, peer_consensus_public_key)) => {
+            if let Some(ref public_key) = peer_consensus_public_key {
+                Span::current().record("validator_id", &field::display(public_key));
+            }
+
             // Close the receiving end of the transport.
             let (_sink, stream) = transport.split();
 
@@ -228,6 +238,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
+                peer_consensus_public_key,
                 stream,
             }
         }
@@ -305,7 +316,7 @@ async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     transport: &mut FramedTransport<P>,
     connection_id: ConnectionId,
-) -> Result<SocketAddr, ConnectionError>
+) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
 where
     P: Payload,
 {
@@ -338,14 +349,14 @@ where
             return Err(ConnectionError::WrongNetwork(network_name));
         }
 
-        let _peer_consensus_public_key = consensus_certificate
+        let peer_consensus_public_key = consensus_certificate
             .map(|cert| {
                 cert.validate(connection_id)
                     .map_err(ConnectionError::InvalidConsensusCertificate)
             })
             .transpose()?;
 
-        Ok(public_addr)
+        Ok((public_addr, peer_consensus_public_key))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -374,7 +385,8 @@ pub(super) async fn server<P, REv>(
             match listener.accept().await {
                 Ok((stream, peer_addr)) => {
                     // The span setup here is used throughout the entire lifetime of the connection.
-                    let span = error_span!("incoming", %peer_addr, peer_id=Empty);
+                    let span =
+                        error_span!("incoming", %peer_addr, peer_id=Empty, validator_id=Empty);
 
                     let context = context.clone();
                     let handler_span = span.clone();
