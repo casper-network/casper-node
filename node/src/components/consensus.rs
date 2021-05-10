@@ -18,6 +18,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
+    sync::Arc,
     time::Duration,
 };
 
@@ -78,7 +79,7 @@ pub struct ActionId(pub u8);
 #[derive(DataSize, Debug, From)]
 pub struct NewBlockPayload {
     era_id: EraId,
-    block_payload: BlockPayload,
+    block_payload: Arc<BlockPayload>,
     block_context: BlockContext<ClContext>,
 }
 

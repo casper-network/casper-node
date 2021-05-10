@@ -23,8 +23,6 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
 pub enum Event<P> {
-    /// We were isolated and have waited the appropriate time.
-    IsolationReconnection,
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         #[serde(skip_serializing)]
@@ -52,18 +50,22 @@ pub enum Event<P> {
 
     /// A new outgoing connection was successfully established.
     OutgoingEstablished {
+        remote_address: SocketAddr,
         peer_id: Box<NodeId>,
         #[serde(skip_serializing)]
         transport: Transport,
     },
-    /// An outgoing connection failed to connect or was terminated.
-    OutgoingFailed {
-        peer_id: Box<Option<NodeId>>,
+    /// An outgoing connection failed to complete dialing.
+    OutgoingDialFailure {
+        peer_address: Box<SocketAddr>,
+        error: Box<Error>,
+    },
+    /// An established connection was terminated.
+    OutgoingDropped {
+        peer_id: Box<NodeId>,
         peer_address: Box<SocketAddr>,
         error: Box<Option<Error>>,
     },
-    /// Triggers the sweep of the pending addresses.
-    SweepPending,
 
     /// Incoming network request.
     #[from]
@@ -83,6 +85,11 @@ pub enum Event<P> {
     GossipOurAddress,
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
+
+    /// We are due for a sweep of the connection symmetries.
+    SweepSymmetries,
+    /// Housekeeping for the outgoing manager.
+    SweepOutgoing,
 
     /// Blocklist announcement
     #[from]
@@ -104,7 +111,6 @@ impl From<NetworkInfoRequest<NodeId>> for Event<ProtocolMessage> {
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::IsolationReconnection => write!(f, "perform reconnection after isolation"),
             Event::IncomingNew { peer_address, .. } => {
                 write!(f, "incoming connection from {}", peer_address)
             }
@@ -127,26 +133,23 @@ impl<P: Display> Display for Event<P> {
             Event::OutgoingEstablished {
                 peer_id: node_id, ..
             } => write!(f, "established outgoing to {}", node_id),
-            Event::OutgoingFailed {
+            Event::OutgoingDialFailure {
+                peer_address,
+                error,
+            } => {
+                write!(f, "outgoing dial failure {}: {}", peer_address, error)
+            }
+            Event::OutgoingDropped {
                 peer_id,
                 peer_address,
                 error,
-            } => match &**peer_id {
-                Some(node_id) => write!(
-                    f,
-                    "failed outgoing {} {}: (is_err {})",
-                    node_id,
-                    peer_address,
-                    error.is_some()
-                ),
-                None => write!(
-                    f,
-                    "failed outgoing {}: (is_err {})",
-                    peer_address,
-                    error.is_some()
-                ),
-            },
-            Event::SweepPending => write!(f, "sweep pending"),
+            } => {
+                write!(f, "dropped outgoing {} {}", peer_id, peer_address)?;
+                if let Some(error) = error.as_ref() {
+                    write!(f, ": {}", error)?;
+                }
+                Ok(())
+            }
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
             Event::GossipOurAddress => write!(f, "gossip our address"),
@@ -155,6 +158,12 @@ impl<P: Display> Display for Event<P> {
             }
             Event::BlocklistAnnouncement(ann) => {
                 write!(f, "handling blocklist announcement: {}", ann)
+            }
+            Event::SweepOutgoing => {
+                write!(f, "sweep outgoing connections")
+            }
+            Event::SweepSymmetries => {
+                write!(f, "sweep connection symmetries")
             }
         }
     }

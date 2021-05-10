@@ -23,7 +23,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
+use casper_types::{AsymmetricType, Key, PublicKey, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
@@ -181,27 +181,8 @@ impl RpcCall {
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
-        const TRANSFER_ARG_AMOUNT: &str = "amount";
-        const TRANSFER_ARG_SOURCE: &str = "source";
-        const TRANSFER_ARG_TARGET: &str = "target";
-        const TRANSFER_ARG_ID: &str = "id";
-
-        let mut transfer_args = RuntimeArgs::new();
-        transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
-        if let Some(source_purse) = source_purse {
-            transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
-        }
-        match target {
-            TransferTarget::Account(target_account) => {
-                let target_account_hash = target_account.to_account_hash().value();
-                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
-            }
-        }
-        transfer_args.insert(TRANSFER_ARG_ID, id)?;
-        let session = ExecutableDeployItem::Transfer {
-            args: transfer_args,
-        };
-        let deploy = Deploy::with_payment_and_session(deploy_params, payment, session).unwrap();
+        let deploy =
+            Deploy::new_transfer(amount, source_purse, target, id, deploy_params, payment)?;
         let params = PutDeployParams { deploy };
         Transfer::request_with_map_params(self, params)
     }

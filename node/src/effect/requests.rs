@@ -39,6 +39,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
+        consensus::{BlockContext, ClContext},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         deploy_acceptor::Error,
         fetcher::FetchResult,
@@ -48,7 +49,7 @@ use crate::{
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures,
         Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock,
-        Item, NodeId, StatusFeed, TimeDiff, Timestamp,
+        Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::DisplayIter,
 };
@@ -484,10 +485,8 @@ impl Display for StateStoreRequest {
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
 pub struct BlockPayloadRequest {
-    /// The instant for which the deploy is requested.
-    pub(crate) current_instant: Timestamp,
-    /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
-    pub(crate) past_deploys: HashSet<DeployHash>,
+    /// The context in which the new block will be proposed.
+    pub(crate) context: BlockContext<ClContext>,
     /// The height of the next block to be finalized at the point the request was made.
     /// This is _only_ a way of expressing how many blocks have been finalized at the moment the
     /// request was made. Block Proposer uses this in order to determine if there might be any
@@ -498,7 +497,7 @@ pub struct BlockPayloadRequest {
     /// Random bit with which to construct the `BlockPayload` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<BlockPayload>,
+    pub(crate) responder: Responder<Arc<BlockPayload>>,
 }
 
 /// A `BlockProposer` request.
@@ -513,17 +512,16 @@ impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                current_instant,
-                past_deploys,
+                context,
                 next_finalized,
                 responder: _,
                 accusations: _,
                 random_bit: _,
             }) => write!(
                 formatter,
-                "list for inclusion: instant {} past {} next_finalized {}",
-                current_instant,
-                past_deploys.len(),
+                "list for inclusion: instant {} height {} next_finalized {}",
+                context.timestamp(),
+                context.height(),
                 next_finalized
             ),
         }

@@ -35,7 +35,7 @@ pub(super) mod amount {
 pub(super) mod target_account {
     use super::*;
 
-    pub(super) const ARG_NAME: &str = "target-account";
+    pub(in crate::deploy) const ARG_NAME: &str = "target-account";
     const ARG_SHORT: &str = "t";
     const ARG_VALUE_NAME: &str = "HEX STRING";
     const ARG_HELP: &str =
@@ -44,7 +44,7 @@ pub(super) mod target_account {
 
     // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand. Don't
     // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .short(ARG_SHORT)
@@ -54,7 +54,7 @@ pub(super) mod target_account {
             .display_order(DisplayOrder::TransferTargetAccount as usize)
     }
 
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
@@ -63,11 +63,11 @@ pub(super) mod target_account {
 pub(super) mod transfer_id {
     use super::*;
 
-    pub(super) const ARG_NAME: &str = "transfer-id";
+    pub(in crate::deploy) const ARG_NAME: &str = "transfer-id";
     const ARG_VALUE_NAME: &str = "64-BIT INTEGER";
-    const ARG_HELP: &str = "user-defined transfer id";
+    const ARG_HELP: &str = "User-defined identifier, permanently associated with the transfer";
 
-    pub(super) fn arg() -> Arg<'static, 'static> {
+    pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
             .long(ARG_NAME)
             .required(false)
@@ -76,7 +76,7 @@ pub(super) mod transfer_id {
             .display_order(DisplayOrder::TransferId as usize)
     }
 
-    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }

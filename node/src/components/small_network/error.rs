@@ -7,6 +7,7 @@ use std::{
     time::SystemTimeError,
 };
 
+use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -101,6 +102,9 @@ pub enum Error {
         #[source]
         ErrorStack,
     ),
+    /// Received a message that was not a handshake during connection setup.
+    #[error("handshake expected, but not received")]
+    HandshakeExpected,
     /// Handshaking error.
     #[error("handshake error: {0}")]
     Handshake(
@@ -136,6 +140,18 @@ pub enum Error {
         #[from]
         prometheus::Error,
     ),
+}
+
+// Manual implementation for `DataSize` - the type contains too many FFI variants that are hard to
+// size, so we give up on estimating it altogether.
+impl DataSize for Error {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
 }
 
 /// An error formatter.
