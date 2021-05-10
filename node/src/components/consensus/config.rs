@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use datasize::DataSize;
 use serde::Deserialize;
 
@@ -9,7 +11,6 @@ use crate::{
     types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
     utils::External,
 };
-use std::sync::Arc;
 
 /// Consensus configuration.
 #[derive(DataSize, Debug, Deserialize, Clone)]

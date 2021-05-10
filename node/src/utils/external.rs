@@ -6,6 +6,7 @@
 use std::{
     fmt::{Debug, Display},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -22,7 +23,6 @@ use casper_types::SecretKey;
 
 use super::{read_file, ReadFileError};
 use crate::{crypto, crypto::AsymmetricKeyExt, tls};
-use std::sync::Arc;
 
 /// Path to bundled resources.
 #[cfg(test)]

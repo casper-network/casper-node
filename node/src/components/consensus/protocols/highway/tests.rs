@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use datasize::DataSize;
 use derive_more::Display;
 
-use casper_types::{PublicKey, SecretKey, U512};
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
@@ -21,7 +21,7 @@ use crate::{
             config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX,
             TIMER_ID_STANDSTILL_ALERT,
         },
-        tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, BOB_PUBLIC_KEY},
+        tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
     },
@@ -153,9 +153,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         round_exp: 0,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(
-        SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
-    ));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -207,9 +205,7 @@ fn send_a_valid_wire_unit() {
         round_exp: 14,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(
-        SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
-    ));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -274,9 +270,7 @@ fn detect_doppelganger() {
         round_exp,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(
-        SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
-    ));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));

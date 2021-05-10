@@ -202,7 +202,7 @@ async fn run_equivocator_network() {
 
     let mut rng = crate::new_rng();
 
-    let alice_sk = Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_sk = Arc::new(SecretKey::random(&mut rng));
     let size: usize = 2;
     let mut keys: Vec<Arc<SecretKey>> = (1..size)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
