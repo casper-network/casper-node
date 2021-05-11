@@ -68,6 +68,7 @@ type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
     BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
+    &HashSet<PublicKey>,                          // inactive validators that can't be leaders
     &ProtocolConfig,                              // the network's chainspec
     &Config,                                      // The consensus part of the node config.
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
@@ -289,6 +290,7 @@ where
         validators: BTreeMap<PublicKey, U512>,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
+        inactive: HashSet<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -338,6 +340,7 @@ where
             instance_id,
             validators.clone(),
             &slashed,
+            &inactive,
             &self.protocol_config,
             &self.config,
             prev_era.map(|era| &*era.consensus),
@@ -498,7 +501,7 @@ where
             }
 
             let slashed = self
-                .iter_past(era_id, self.bonded_eras())
+                .iter_past(era_id, self.banning_period())
                 .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
@@ -509,6 +512,13 @@ where
                 validators,
                 newly_slashed,
                 slashed,
+                key_blocks
+                    .get(&era_id)
+                    .and_then(|bhdr| bhdr.era_end())
+                    .into_iter()
+                    .flat_map(|era_end| &era_end.inactive_validators)
+                    .cloned()
+                    .collect(),
                 seed,
                 era_start_time,
                 start_height,
@@ -534,6 +544,14 @@ where
     /// receive blocks that refer to `bonded_eras` before that.
     fn bonded_eras(&self) -> u64 {
         bonded_eras(&self.protocol_config)
+    }
+
+    /// The number of past eras we have to check for faulty validators that will be banned in the
+    /// next era.
+    // TODO: This should just be `auction_delay`, but we need to guarantee we have enough
+    // eras.
+    fn banning_period(&self) -> u64 {
+        self.bonded_eras().min(self.protocol_config.auction_delay)
     }
 
     /// Returns the path to the era's unit hash file.
@@ -858,7 +876,7 @@ where
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let slashed = self
             .era_supervisor
-            .iter_past_other(era_id, self.era_supervisor.bonded_eras())
+            .iter_past_other(era_id, self.era_supervisor.banning_period())
             .flat_map(|e_id| &self.era_supervisor.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
@@ -869,6 +887,7 @@ where
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
             newly_slashed,
+            era_end.inactive_validators.iter().cloned().collect(),
             slashed,
             seed,
             switch_block_header.timestamp(),

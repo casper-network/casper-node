@@ -572,14 +572,10 @@ fn version(value: &str) -> Result<u32> {
         .map_err(|error| Error::FailedToParseInt("version", error))
 }
 
-pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
-    if str::is_empty(value) {
-        return Ok(None);
-    }
-    let value = value
-        .parse::<u64>()
-        .map_err(|error| Error::FailedToParseInt("transfer_id", error))?;
-    Ok(Some(value))
+pub(crate) fn transfer_id(value: &str) -> Result<u64> {
+    value
+        .parse()
+        .map_err(|error| Error::FailedToParseInt("transfer-id", error))
 }
 
 #[cfg(test)]
@@ -1064,7 +1060,6 @@ mod tests {
         ///     ]
         /// ];
         /// ```
-        /// 
         /// This generates the following test module (with the fn name passed), with one test per line in `session_str_params[]`:
         /// ```
         /// #[cfg(test)]

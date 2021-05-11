@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 #[test]
 fn purge_vertices() {
     let params = test_params(0);
-    let mut state = State::new(WEIGHTS, params.clone(), vec![]);
+    let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
 
     // We use round exponent 4u8, so a round is 0x10 ms. With seed 0, Carol is the first leader.
     //
@@ -123,7 +123,7 @@ fn do_not_download_synchronized_dependencies() {
     let params = test_params(0);
     // A Highway and state instances that are used to create PreValidatedVertex instances below.
 
-    let mut state = State::new(WEIGHTS, params.clone(), vec![]);
+    let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
     let util_highway =
         Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
 
@@ -242,7 +242,7 @@ fn transitive_proposal_dependency() {
     let params = test_params(0);
     // A Highway and state instances that are used to create PreValidatedVertex instances below.
 
-    let mut state = State::new(WEIGHTS, params.clone(), vec![]);
+    let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
     let util_highway =
         Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
 

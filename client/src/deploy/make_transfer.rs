@@ -1,4 +1,4 @@
-use clap::{App, ArgGroup, ArgMatches, SubCommand};
+use clap::{App, ArgMatches, SubCommand};
 
 use casper_client::{DeployStrParams, Error};
 
@@ -21,14 +21,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeTransfer {
             .arg(creation_common::output::arg())
             .arg(transfer::amount::arg())
             .arg(transfer::target_account::arg())
-            .arg(transfer::transfer_id::arg())
-            // Group the target args to ensure exactly one is required.
-            .group(
-                ArgGroup::with_name("required-target-args")
-                    .arg(transfer::target_account::ARG_NAME)
-                    .arg(creation_common::show_arg_examples::ARG_NAME)
-                    .required(true),
-            );
+            .arg(transfer::transfer_id::arg());
         let subcommand = creation_common::apply_common_payment_options(subcommand);
         creation_common::apply_common_creation_options(subcommand, false)
     }

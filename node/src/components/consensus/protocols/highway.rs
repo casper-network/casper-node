@@ -103,6 +103,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
+        inactive: &HashSet<C::ValidatorId>,
         protocol_config: &ProtocolConfig,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
@@ -128,6 +129,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         for vid in slashed {
             validators.ban(vid);
         }
+        for vid in inactive {
+            validators.set_cannot_propose(vid);
+        }
+
+        assert!(
+            validators.ensure_nonzero_proposing_stake(),
+            "cannot start era with total weight 0"
+        );
 
         let highway_config = &protocol_config.highway_config;
 
