@@ -174,7 +174,8 @@ impl<C: Context> Highway<C> {
         info!(%validators, instance=%instance_id, "creating Highway instance");
         let weights = validators.iter().map(Validator::weight);
         let banned = validators.iter_banned_idx();
-        let state = State::new(weights, params, banned);
+        let cannot_propose = validators.iter_cannot_propose_idx();
+        let state = State::new(weights, params, banned, cannot_propose);
         Highway {
             instance_id,
             validators,
