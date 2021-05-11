@@ -99,11 +99,6 @@ function _set_fileset()
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
            "$PATH_TO_STAGE/bin/wasm"
     done  
-    for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
-    do
-        cp "$PATH_TO_WASM/$CONTRACT" \
-           "$PATH_TO_BIN/shared"
-    done  
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
@@ -164,7 +159,7 @@ function _set_prerequisites_1()
 
     if [ "$STAGE_SOURCE" != "local" ]; then
         if [ ! -d "$(get_path_to_temp_node)" ]; then
-            mkdir "$(get_path_to_temp_node)"
+            mkdir -p "$(get_path_to_temp_node)"
             git clone "https://github.com/CasperLabs/casper-node.git" "$(get_path_to_temp_node)" > /dev/null 2>&1
         else
             pushd "$(get_path_to_temp_node)" || exit
@@ -208,7 +203,7 @@ function _main()
     local PATH_TO_STAGE
 
     log "staging -> STARTS"
-    log "... id=$STAGE_ID :: version=$STAGE_PROTOCOL_VERSION :: source=$STAGE_SOURCE"
+    log "... stage-id=$STAGE_ID :: version=$STAGE_PROTOCOL_VERSION :: source=$STAGE_SOURCE"
 
     PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
 

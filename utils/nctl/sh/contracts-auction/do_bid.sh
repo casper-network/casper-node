@@ -76,6 +76,7 @@ function main()
 unset AMOUNT
 unset NODE_ID
 unset DELEGATION_RATE
+unset QUIET
 
 for ARGUMENT in "$@"
 do
@@ -85,10 +86,12 @@ do
         amount) AMOUNT=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         rate) DELEGATION_RATE=${VALUE} ;;
+        quiet) QUIET=${VALUE} ;;
         *)
     esac
 done
 
 main "${NODE_ID:-6}" \
      "${AMOUNT:-$(get_node_staking_weight "${NODE_ID:-6}")}" \
-     "${DELEGATION_RATE:-6}"
+     "${DELEGATION_RATE:-6}" \
+     ${QUIET:-"FALSE"}

@@ -60,6 +60,17 @@ function log_error ()
 }
 
 #######################################
+# Step logging helper..
+#######################################
+function log_step() 
+{
+    local STEP_ID=${1}
+    local MSG=${2}
+
+    log "Step $STEP_ID: $MSG"
+}
+
+#######################################
 # Wraps pushd command to suppress stdout.
 #######################################
 function pushd ()

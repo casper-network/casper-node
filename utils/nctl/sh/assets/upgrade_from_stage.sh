@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 source "$NCTL/sh/utils/main.sh"
+source "$NCTL/sh/assets/setup_shared.sh"
 
 # ----------------------------------------------------------------
 # ENTRY POINT
