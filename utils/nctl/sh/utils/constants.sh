@@ -30,6 +30,11 @@ export NCTL_CONTRACTS_CLIENT_AUCTION=(
     "withdraw_bid.wasm"
 )
 
+# Set of client side shared contracts.
+export NCTL_CONTRACTS_CLIENT_SHARED=(
+    "named_purse_payment.wasm"
+)
+
 # Set of client side transfer contracts.
 export NCTL_CONTRACTS_CLIENT_TRANSFERS=(
     "transfer_to_account_u512.wasm"
