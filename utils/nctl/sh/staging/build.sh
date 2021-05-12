@@ -157,7 +157,7 @@ function _set_prerequisites_1()
 {
     local STAGE_SOURCE=${1}
 
-    if [ "$STAGE_SOURCE" != "local" ]; then
+    if [ "$STAGE_SOURCE" != "local" ] && [ "$STAGE_SOURCE" != "remote" ]; then
         if [ ! -d "$(get_path_to_temp_node)" ]; then
             mkdir -p "$(get_path_to_temp_node)"
             git clone "https://github.com/CasperLabs/casper-node.git" "$(get_path_to_temp_node)" > /dev/null 2>&1
@@ -213,7 +213,13 @@ function _main()
     _set_prerequisites_2 "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE" 
 
     # Set stage.
-    _set_assets "$STAGE_PROTOCOL_VERSION" "$STAGE_SOURCE" "$PATH_TO_STAGE"
+    if [ "$STAGE_SOURCE" == "local" ]; then
+        _set_assets_from_local "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE"
+    elif [ "$STAGE_SOURCE" == "remote" ]; then
+        _set_assets_from_remote "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE"
+    else
+        _set_assets_from_hash "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE"
+    fi
 
     log "staging -> COMPLETE"
 }
