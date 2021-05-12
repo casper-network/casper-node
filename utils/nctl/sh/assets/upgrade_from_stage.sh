@@ -4,34 +4,6 @@ source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/assets/setup_shared.sh"
 
 # ----------------------------------------------------------------
-# ENTRY POINT
-# ----------------------------------------------------------------
-
-unset ACTIVATION_POINT
-unset NET_ID
-unset STAGE_ID
-
-for ARGUMENT in "$@"
-do
-    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
-    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
-    case "$KEY" in
-        era) ACTIVATION_POINT=${VALUE} ;;
-        net) NET_ID=${VALUE} ;;
-        stage) STAGE_ID=${VALUE} ;;
-        *)
-    esac
-done
-
-export NET_ID=${NET_ID:-1}
-ACTIVATION_POINT="${ACTIVATION_POINT:-$(get_chain_era)}"
-if [ $ACTIVATION_POINT == "N/A" ]; then
-    ACTIVATION_POINT=0
-fi
-ACTIVATION_POINT=$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))
-STAGE_ID="${STAGE_ID:-1}"
-
-# ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
@@ -122,19 +94,19 @@ function _main()
 
         setup_asset_binaries "$PROTOCOL_VERSION" \
                              "$COUNT_NODES" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/bin/casper-client" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/bin/casper-node" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/bin/casper-node-launcher" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/bin/wasm"                      
+                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-client" \
+                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
+                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
+                             "$PATH_TO_STAGE/$PROTOCOL_VERSION"
 
         setup_asset_chainspec "$COUNT_NODES" \
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
-                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/resources/chainspec.toml"
+                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml"
 
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
-                                 "$PATH_TO_STAGE/$PROTOCOL_VERSION/resources/config.toml"
+                                 "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
 
         log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT : COMPLETE"
     else
@@ -142,4 +114,31 @@ function _main()
     fi
 }
 
-_main "$STAGE_ID" "$ACTIVATION_POINT"
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset ACTIVATION_POINT
+unset NET_ID
+unset STAGE_ID
+
+for ARGUMENT in "$@"
+do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        era) ACTIVATION_POINT=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        stage) STAGE_ID=${VALUE} ;;
+        *)
+    esac
+done
+
+export NET_ID=${NET_ID:-1}
+ACTIVATION_POINT="${ACTIVATION_POINT:-$(get_chain_era)}"
+if [ $ACTIVATION_POINT == "N/A" ]; then
+    ACTIVATION_POINT=0
+fi
+
+_main "${STAGE_ID:-1}" \
+      $((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))

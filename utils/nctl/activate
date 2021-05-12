@@ -29,8 +29,9 @@ source "$NCTL"/sh/utils/main.sh
 alias nctl-assets-dump='source $NCTL/sh/assets/dump.sh'
 alias nctl-assets-ls='source $NCTL/sh/assets/list.sh'
 alias nctl-assets-setup='source $NCTL/sh/assets/setup.sh'
-alias nctl-assets-setup-from-stage='source $NCTL/sh/assets/setup_from_stage.sh'
 alias nctl-assets-teardown='source $NCTL/sh/assets/teardown.sh'
+
+alias nctl-assets-setup-from-stage='source $NCTL/sh/assets/setup_from_stage.sh'
 alias nctl-assets-upgrade-from-stage='source $NCTL/sh/assets/upgrade_from_stage.sh'
 
 # Binaries.

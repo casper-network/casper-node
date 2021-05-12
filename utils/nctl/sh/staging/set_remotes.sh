@@ -29,6 +29,7 @@ function _main()
     pushd "$PATH_TO_REMOTES" || exit
     log "... downloading launcher"
     curl -O "$_LAUNCHER_URL" > /dev/null 2>&1
+    chmod +x ./casper-node-launcher
     popd    
 
     for PROTOCOL_VERSION in "${_PROTOCOL_VERSIONS[@]}"

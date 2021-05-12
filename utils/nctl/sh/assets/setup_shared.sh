@@ -151,8 +151,12 @@ function setup_asset_accounts_from_template()
 #######################################
 # Sets network binaries.
 # Arguments:
+#   Version of protocol being run.
 #   Count of nodes to setup (default=5).
-#   Path to folder containing staged files.
+#   Path to casper-client binary.
+#   Path to casper-node binary.
+#   Path to casper-node-launcher binary.
+#   Path to folder containing wasm binaries.
 #######################################
 function setup_asset_binaries()
 {
@@ -174,30 +178,40 @@ function setup_asset_binaries()
     do
         PATH_TO_BIN="$(get_path_to_node_bin "$IDX")"
         if [ $PROTOCOL_VERSION == "1_0_0" ]; then
-            cp "$PATH_TO_NODE_LAUNCHER" \
-            "$PATH_TO_BIN"
+            cp "$PATH_TO_NODE_LAUNCHER" "$PATH_TO_BIN"
         fi
-        cp "$PATH_TO_NODE" \
-           "$PATH_TO_BIN/$PROTOCOL_VERSION"
+        cp "$PATH_TO_NODE" "$PATH_TO_BIN/$PROTOCOL_VERSION"
     done
 
-    # Set client binaries.
+    # Set client-side binary.
     PATH_TO_BIN="$(get_path_to_net)/bin"
     cp "$PATH_TO_CLIENT" "$PATH_TO_BIN"
+
+    # Set client-side auction contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
     do
-        cp "$PATH_TO_WASM/$CONTRACT" \
-           "$PATH_TO_BIN/auction"
+        if [ -f "$PATH_TO_WASM/$CONTRACT" ]; then
+            cp "$PATH_TO_WASM/$CONTRACT" \
+               "$PATH_TO_BIN/auction"
+        fi
     done  
+
+    # Set client-side shared contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
     do
-        cp "$PATH_TO_WASM/$CONTRACT" \
-           "$PATH_TO_BIN/shared"
+        if [ -f "$PATH_TO_WASM/$CONTRACT" ]; then
+            cp "$PATH_TO_WASM/$CONTRACT" \
+            "$PATH_TO_BIN/shared"
+        fi
     done  
+
+    # Set client-side transfer contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
-        cp "$PATH_TO_WASM/$CONTRACT" \
-           "$PATH_TO_BIN/transfers"
+        if [ -f "$PATH_TO_WASM/$CONTRACT" ]; then
+            cp "$PATH_TO_WASM/$CONTRACT" \
+            "$PATH_TO_BIN/transfers"
+        fi
     done
 }
 

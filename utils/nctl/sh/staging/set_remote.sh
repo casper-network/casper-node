@@ -63,6 +63,8 @@ function _main()
         log "... downloading $PROTOCOL_VERSION :: $REMOTE_FILE"
         curl -O "$_BASE_URL/v$PROTOCOL_VERSION/$REMOTE_FILE" > /dev/null 2>&1
     done
+    chmod +x ./casper-client
+    chmod +x ./casper-node
     popd
 }
 
