@@ -263,9 +263,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let height = block.height();
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
-        if block.header().is_switch_block() {
-            self.state.new_switch_block(&block);
-        }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(
                 era = block.header().era_id().value(),
@@ -314,7 +311,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
-                maybe_switch_block,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
@@ -337,13 +333,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block, maybe_switch_block);
+                self.state = State::sync_descendants(trusted_hash, block);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
-                ref latest_block,
-                ref maybe_switch_block,
-                ..
+                ref latest_block, ..
             } => {
                 if latest_block.as_ref() != &block {
                     error!(
@@ -352,22 +346,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
-                if self.is_recent_block(&block) {
+                if self.is_currently_active_era(latest_block) {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
                         era=block.header().era_id().value(),
-                        "downloaded recent block. finished synchronization"
-                    );
-                    self.mark_done(Some(*latest_block.clone()));
-                    return Effects::new();
-                }
-                if self.is_currently_active_era(&maybe_switch_block) {
-                    info!(
-                        hash=?block.hash(),
-                        height=?block.header().height(),
-                        era=block.header().era_id().value(),
-                        "downloaded switch block of a new era. finished synchronization"
+                        "downloaded a block in the current era. finished synchronization"
                     );
                     self.mark_done(Some(*latest_block.clone()));
                     return Effects::new();
@@ -378,18 +362,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    // Returns whether `block` can be considered the tip of the chain.
-    fn is_recent_block(&self, block: &Block) -> bool {
-        // Check if block was created "recently".
-        block.header().timestamp().elapsed() <= self.acceptable_drift
-    }
-
     // Returns whether we've just downloaded a switch block of a currently active era.
-    fn is_currently_active_era(&self, maybe_switch_block: &Option<Box<Block>>) -> bool {
-        match maybe_switch_block {
-            Some(switch_block) => switch_block.header().timestamp().elapsed() < self.shortest_era,
-            None => false,
-        }
+    fn is_currently_active_era(&self, block: &Block) -> bool {
+        block.header().timestamp().elapsed() < self.shortest_era
     }
 
     /// Returns effects for fetching next block's deploys.
