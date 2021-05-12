@@ -17,6 +17,8 @@ log = "0.4.8"
 rand = "0.8.3"
 serde_json = "1"
 parity-wasm = "0.41.0"
+local-state = { path = "../../smart_contracts/contracts/test/local-state" }
+local-state-call = { path = "../../smart_contracts/contracts/test/local-state-call" }
 
 [dev-dependencies]
 assert_matches = "1.3.0"

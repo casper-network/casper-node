@@ -132,10 +132,21 @@ impl URef {
         URef(self.0, AccessRights::READ)
     }
 
+    /// Returns a new [`URef`] with the same address and [`AccessRights::WRITE`] permission.
+    pub fn into_write(self) -> URef {
+        URef(self.0, AccessRights::WRITE)
+    }
+
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_ADD_WRITE`]
     /// permission.
     pub fn into_read_add_write(self) -> URef {
         URef(self.0, AccessRights::READ_ADD_WRITE)
+    }
+
+    /// Returns a new [`URef`] with the same address and [`AccessRights::READ_WRITE`]
+    /// permission.
+    pub fn into_read_write(self) -> URef {
+        URef(self.0, AccessRights::READ_WRITE)
     }
 
     /// Returns `true` if the access rights are `Some` and

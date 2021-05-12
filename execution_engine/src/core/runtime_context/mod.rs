@@ -1053,6 +1053,9 @@ where
         uref: URef,
         key_bytes: &[u8],
     ) -> Result<Option<CLValue>, Error> {
+        self.validate_readable(&uref.into())?;
+        self.validate_key(&uref.into())?;
+
         let local_key = Key::local(uref, key_bytes);
 
         let maybe_stored_value = self
@@ -1074,10 +1077,16 @@ where
         key_bytes: &[u8],
         cl_value: CLValue,
     ) -> Result<(), Error> {
+        self.validate_writeable(&uref.into())?;
+        self.validate_key(&uref.into())?;
+
+        let stored_value = StoredValue::from(cl_value);
+
+        self.validate_value(&stored_value)?;
         let local_key = Key::local(uref, key_bytes);
         self.tracking_copy
             .borrow_mut()
-            .write(local_key, StoredValue::CLValue(cl_value));
+            .write(local_key, stored_value);
         Ok(())
     }
 }

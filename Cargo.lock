@@ -733,6 +733,8 @@ dependencies = [
  "criterion",
  "crossbeam-channel 0.5.1",
  "env_logger",
+ "local-state",
+ "local-state-call",
  "log 0.4.14",
  "num-rational 0.4.0",
  "num-traits",
@@ -3218,6 +3220,15 @@ version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
+]
+
+[[package]]
+name = "local-state-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "local-state",
 ]
 
 [[package]]
