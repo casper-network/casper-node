@@ -327,7 +327,7 @@ where
             info!(era = era_id.value(), %our_id, "start voting");
             true
         };
-        if era_id > self.current_era {
+        if era_id >= self.current_era {
             self.current_era = era_id;
             self.metrics.current_era.set(era_id.value() as i64);
         }
