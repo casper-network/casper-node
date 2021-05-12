@@ -76,6 +76,7 @@ function _step_02()
 {
     log_step 2 "awaiting genesis era completion"
 
+    sleep 30.0
     await_until_era_n 1
 }
 
@@ -98,7 +99,7 @@ function _step_04()
 {
     log_step 4 "awaiting next era"
 
-    await_n_eras 1 
+    await_n_eras 1
 }
 
 # Step 05: Upgrade network from stage.
@@ -179,12 +180,19 @@ function _step_08()
 {
     log_step 8 "awaiting era rotation"
 
-    await_n_eras 2
+    await_n_eras 3
 }
 
-# Step 09: Assert passive joined & are running upgrade.
+# Step 09: Assert passive joined & all are running upgrade.
 function _step_09() 
 {
+    local NODE_ID
+    local N1_BLOCK_HASH
+    local N1_PROTOCOL_VERSION
+    local N1_STATE_ROOT_HASH
+    local NX_PROTOCOL_VERSION
+    local NX_STATE_ROOT_HASH
+
     log_step 9 "asserting joined nodes are running upgrade"
 
     # Assert all nodes are live.
@@ -195,10 +203,33 @@ function _step_09()
             exit 1            
         fi    
     done
+
+    # Assert nodes are running same protocol version.
+    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
+    for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
+    do
+        NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
+        if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
+            log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
+            exit 1
+        fi
+    done
+
+    # Assert nodes are synced.
+    N1_BLOCK_HASH=$(get_chain_latest_block_hash 1)
+    N1_STATE_ROOT_HASH=$(get_state_root_hash 1 "$N1_BLOCK_HASH")
+    for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
+    do
+        NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
+        if [ "$NX_STATE_ROOT_HASH" != "N1_STATE_ROOT_HASH" ]; then
+            log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
+            exit 1
+        fi
+    done
 }
 
 # Step 10: Terminate.
-function _step_10() 
+function _step_10()
 {
     log_step 10 "test successful - tidying up"
 
