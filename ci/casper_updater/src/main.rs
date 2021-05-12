@@ -32,6 +32,7 @@
     unknown_crate_types
 )]
 
+mod chainspec;
 mod dependent_file;
 mod package;
 mod regex_data;
@@ -46,6 +47,9 @@ use std::{
 use clap::{crate_version, App, Arg};
 use once_cell::sync::Lazy;
 
+use casper_types::SemVer;
+
+use chainspec::Chainspec;
 use package::Package;
 
 const APP_NAME: &str = "Casper Updater";
@@ -60,19 +64,27 @@ const BUMP_ARG_NAME: &str = "bump";
 const BUMP_ARG_SHORT: &str = "b";
 const BUMP_ARG_VALUE_NAME: &str = "VERSION-COMPONENT";
 const BUMP_ARG_HELP: &str =
-    "Increase all crates' versions automatically without asking for user input.  For a crate at \
+    "Increases all crates' versions automatically without asking for user input.  For a crate at \
     version x.y.z, the version will be bumped to (x+1).0.0, x.(y+1).0, or x.y.(z+1) depending on \
-    which version component is specified";
+    which version component is specified.  If this option is specified, --activation-point must \
+    also be specified.";
 const MAJOR: &str = "major";
 const MINOR: &str = "minor";
 const PATCH: &str = "patch";
 
+const ACTIVATION_POINT_ARG_NAME: &str = "activation-point";
+const ACTIVATION_POINT_ARG_SHORT: &str = "a";
+const ACTIVATION_POINT_ARG_VALUE_NAME: &str = "INTEGER";
+const ACTIVATION_POINT_ARG_HELP: &str =
+    "Sets the activation point for the new version.  If this option is specified, --bump must also \
+    be specified.";
+
 const DRY_RUN_ARG_NAME: &str = "dry-run";
 const DRY_RUN_ARG_SHORT: &str = "d";
-const DRY_RUN_ARG_HELP: &str = "Check all regexes get matches in current casper-node repo";
+const DRY_RUN_ARG_HELP: &str = "Checks all regexes get matches in current casper-node repo";
 
 const ALLOW_EARLIER_VERSION_NAME: &str = "allow-earlier-version";
-const ALLOW_EARLIER_VERSION_HELP: &str = "Allow manual setting of version earlier than current";
+const ALLOW_EARLIER_VERSION_HELP: &str = "Allows manual setting of version earlier than current";
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) enum BumpVersion {
@@ -81,9 +93,24 @@ pub(crate) enum BumpVersion {
     Patch,
 }
 
+impl BumpVersion {
+    pub(crate) fn update(self, current_version: SemVer) -> SemVer {
+        match self {
+            BumpVersion::Major => SemVer::new(current_version.major + 1, 0, 0),
+            BumpVersion::Minor => SemVer::new(current_version.major, current_version.minor + 1, 0),
+            BumpVersion::Patch => SemVer::new(
+                current_version.major,
+                current_version.minor,
+                current_version.patch + 1,
+            ),
+        }
+    }
+}
+
 struct Args {
     root_dir: PathBuf,
     bump_version: Option<BumpVersion>,
+    activation_point: Option<u64>,
     dry_run: bool,
     allow_earlier_version: bool,
 }
@@ -96,6 +123,11 @@ pub(crate) fn root_dir() -> &'static Path {
 /// The version component to bump, if any.
 pub(crate) fn bump_version() -> Option<BumpVersion> {
     ARGS.bump_version
+}
+
+/// The new activation point, if any.
+pub(crate) fn new_activation_point() -> Option<u64> {
+    ARGS.activation_point
 }
 
 /// Whether we're doing a dry run or not.
@@ -128,7 +160,23 @@ fn get_args() -> Args {
                 .value_name(BUMP_ARG_VALUE_NAME)
                 .help(BUMP_ARG_HELP)
                 .takes_value(true)
-                .possible_values(&[MAJOR, MINOR, PATCH]),
+                .possible_values(&[MAJOR, MINOR, PATCH])
+                .requires(ACTIVATION_POINT_ARG_NAME),
+        )
+        .arg(
+            Arg::with_name(ACTIVATION_POINT_ARG_NAME)
+                .long(ACTIVATION_POINT_ARG_NAME)
+                .short(ACTIVATION_POINT_ARG_SHORT)
+                .value_name(ACTIVATION_POINT_ARG_VALUE_NAME)
+                .help(ACTIVATION_POINT_ARG_HELP)
+                .takes_value(true)
+                .validator(|value| {
+                    value
+                        .parse::<u64>()
+                        .map(drop)
+                        .map_err(|error| error.to_string())
+                })
+                .requires(BUMP_ARG_NAME),
         )
         .arg(
             Arg::with_name(DRY_RUN_ARG_NAME)
@@ -163,6 +211,13 @@ fn get_args() -> Args {
             _ => unreachable!(),
         });
 
+    let activation_point = arg_matches
+        .value_of(ACTIVATION_POINT_ARG_NAME)
+        .map(|value| {
+            // Safe to unwrap, as the arg is validated as being able to be parsed as a `u64`.
+            value.parse().unwrap()
+        });
+
     let dry_run = arg_matches.is_present(DRY_RUN_ARG_NAME);
 
     let allow_earlier_version = arg_matches.is_present(ALLOW_EARLIER_VERSION_NAME);
@@ -170,6 +225,7 @@ fn get_args() -> Args {
     Args {
         root_dir,
         bump_version,
+        activation_point,
         dry_run,
         allow_earlier_version,
     }
@@ -217,6 +273,9 @@ fn main() {
         &*regex_data::execution_engine_testing_cargo_casper::DEPENDENT_FILES,
     );
     execution_engine_testing_cargo_casper.update();
+
+    let chainspec = Chainspec::new();
+    chainspec.update();
 
     // Update Cargo.lock if this isn't a dry run.
     if !is_dry_run() {

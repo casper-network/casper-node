@@ -699,14 +699,14 @@ where
             }
         }
 
-        // Keeping the old interface intact, we simply override earlier with later addresses.
         for (node_id, sym) in &self.connection_symmetries {
             if let Some(addrs) = sym.incoming_addrs() {
                 for addr in addrs {
-                    ret.insert(*node_id, addr.to_string());
+                    ret.entry(*node_id).or_insert_with(|| addr.to_string());
                 }
             }
         }
+
         ret
     }
 
