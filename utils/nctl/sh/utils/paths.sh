@@ -241,22 +241,6 @@ function get_path_to_stages()
 }
 
 #######################################
-# Returns path to folder hosting set of temporary assets.
-#######################################
-function get_path_to_temp()
-{
-    echo "$NCTL/tmp"
-}
-
-#######################################
-# Returns path to folder mapped to temporary casper-node source code.
-#######################################
-function get_path_to_temp_node()
-{
-    echo "$(get_path_to_temp)/casper-node"
-}
-
-#######################################
 # Returns path to a user's assets.
 # Arguments:
 #   User ordinal identifier.

@@ -3,39 +3,46 @@
 source "$NCTL/sh/utils/main.sh"
 
 # ----------------------------------------------------------------
-# ENTRY POINT
-# ----------------------------------------------------------------
-
-unset STAGE_SOURCE
-unset STAGE_ID
-unset STAGE_PROTOCOL_VERSION
-
-for ARGUMENT in "$@"
-do
-    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
-    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
-    case "$KEY" in
-        source) STAGE_SOURCE=${VALUE} ;;
-        stage) STAGE_ID=${VALUE} ;;
-        version) STAGE_PROTOCOL_VERSION=${VALUE} ;;
-        *)
-    esac
-done
-
-STAGE_ID="${STAGE_ID:-1}"
-STAGE_PROTOCOL_VERSION="${STAGE_PROTOCOL_VERSION:-"all"}"
-STAGE_SOURCE="${STAGE_SOURCE:-"local"}"
-
-# ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
+
+#######################################
+# Builds assets for staging.
+# Arguments:
+#   Stage ordinal identifier.
+#   Stage source (local | remote | commit-hash).
+#   Scenario protocol version.
+#######################################
+function _main()
+{
+    local STAGE_ID=${1}
+    local STAGE_SOURCE=${2}
+    local PROTOCOL_VERSION=${3}
+
+    log "setting stage $STAGE_ID from $STAGE_SOURCE @ $PROTOCOL_VERSION -> STARTS"
+
+    PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION"
+    if [ ! -d "$PATH_TO_STAGE" ]; then
+        mkdir -p "$PATH_TO_STAGE"
+    fi
+
+    if [ "$STAGE_SOURCE" == "local" ]; then
+        source "$NCTL/sh/staging/set_from_local.sh" stage="$STAGE_ID" version="$PROTOCOL_VERSION"
+    elif [ "$STAGE_SOURCE" == "remote" ]; then
+        source "$NCTL/sh/staging/set_from_remote.sh" stage="$STAGE_ID" version="$PROTOCOL_VERSION"
+    else
+        source "$NCTL/sh/staging/set_from_commit.sh" stage="$STAGE_ID" version="$PROTOCOL_VERSION" commit="$STAGE_SOURCE"
+    fi
+
+    log "setting stage $STAGE_ID from $STAGE_SOURCE @ $PROTOCOL_VERSION -> COMPLETE"
+}
 
 #######################################
 # Builds binaries.
 # Arguments:
 #   Stage source code folder.
 #######################################
-function _set_binaries()
+function set_stage_binaries()
 {
     local PATH_TO_SOURCE=${1}
 
@@ -56,12 +63,13 @@ function _set_binaries()
     fi
 
     # Set client-side wasm.
+    make build-contract-rs/activate-bid
     make build-contract-rs/add-bid
     make build-contract-rs/delegate
+    make build-contract-rs/named-purse-payment
     make build-contract-rs/transfer-to-account-u512
     make build-contract-rs/undelegate
     make build-contract-rs/withdraw-bid
-    make build-contract-rs/activate-bid
 
     popd || exit
 }
@@ -69,9 +77,10 @@ function _set_binaries()
 #######################################
 # Stages assets.
 # Arguments:
+#   Path to stage source code folder.
 #   Path to stage folder.
 #######################################
-function _set_fileset()
+function set_stage_files_from_repo()
 {
     local PATH_TO_SOURCE=${1}
     local PATH_TO_STAGE=${2}
@@ -79,149 +88,66 @@ function _set_fileset()
     # Stage binaries.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         cp "$PATH_TO_SOURCE/target/debug/casper-client" \
-           "$PATH_TO_STAGE/bin"
+           "$PATH_TO_STAGE"
         cp "$PATH_TO_SOURCE/target/debug/casper-node" \
-           "$PATH_TO_STAGE/bin"
+           "$PATH_TO_STAGE"
         cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
-           "$PATH_TO_STAGE/bin"
+           "$PATH_TO_STAGE"
     else
         cp "$PATH_TO_SOURCE/target/release/casper-client" \
-           "$PATH_TO_STAGE/bin"
+           "$PATH_TO_STAGE"
         cp "$PATH_TO_SOURCE/target/release/casper-node" \
-           "$PATH_TO_STAGE/bin"
+           "$PATH_TO_STAGE"
         cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
-           "$PATH_TO_STAGE/bin"
+           "$PATH_TO_STAGE"
     fi
 
     # Stage wasm.
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
-           "$PATH_TO_STAGE/bin/wasm"
+           "$PATH_TO_STAGE"
     done  
+    for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
+    do
+        cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
+           "$PATH_TO_STAGE"
+    done     
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
-           "$PATH_TO_STAGE/bin/wasm"
-    done  
+           "$PATH_TO_STAGE"
+    done
 
     # Stage chainspec.
     cp "$PATH_TO_SOURCE/resources/local/chainspec.toml.in" \
-       "$PATH_TO_STAGE/resources/chainspec.toml"
+       "$PATH_TO_STAGE/chainspec.toml"
 
     # Stage node config.
     cp "$PATH_TO_SOURCE/resources/local/config.toml" \
-       "$PATH_TO_STAGE/resources" 
+       "$PATH_TO_STAGE" 
 }
 
-#######################################
-# Prepares & states assets.
-# Arguments:
-#   Path to stage folder.
-#######################################
-function _set_assets()
-{
-    log "... setting assets"
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
 
-    local STAGE_PROTOCOL_VERSION=${1}
-    local STAGE_SOURCE=${2}
-    local PATH_TO_STAGE=${3}
+unset STAGE_ID
+unset STAGE_SOURCE
+unset PROTOCOL_VERSION
 
-    local PATH_TO_SOURCE
-    local PROTOCOL_VERSION
-    local IFS=':'
-    
-    # Set source code folder.
-    if [ "$STAGE_SOURCE" == "local" ]; then
-        PATH_TO_SOURCE="$NCTL_CASPER_HOME"
-    else
-        PATH_TO_SOURCE="$(get_path_to_temp_node)"
-    fi
+for ARGUMENT in "$@"
+do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        stage) STAGE_ID=${VALUE} ;;
+        source) STAGE_SOURCE=${VALUE} ;;        
+        version) PROTOCOL_VERSION=${VALUE} ;;
+        *)
+    esac
+done
 
-    # Set specific commit by hash.
-    if [ "$STAGE_SOURCE" != "local" ]; then
-        pushd "$PATH_TO_SOURCE" || exit
-        git checkout "$STAGE_SOURCE" > /dev/null 2>&1
-        popd || exit
-    fi
-
-    # Set binaries + other files.
-    _set_binaries "$PATH_TO_SOURCE"
-    _set_fileset "$PATH_TO_SOURCE" "$PATH_TO_STAGE/$STAGE_PROTOCOL_VERSION"
-}
-
-#######################################
-# Ensures casper-node source code is ready to build.
-#######################################
-function _set_prerequisites_1()
-{
-    local STAGE_SOURCE=${1}
-
-    if [ "$STAGE_SOURCE" != "local" ] && [ "$STAGE_SOURCE" != "remote" ]; then
-        if [ ! -d "$(get_path_to_temp_node)" ]; then
-            mkdir -p "$(get_path_to_temp_node)"
-            git clone "https://github.com/CasperLabs/casper-node.git" "$(get_path_to_temp_node)" > /dev/null 2>&1
-        else
-            pushd "$(get_path_to_temp_node)" || exit
-            git fetch --all > /dev/null 2>&1
-            git pull > /dev/null 2>&1
-            popd || exit
-        fi
-    fi
-}
-
-#######################################
-# Initialises file system with stage directories.
-# Arguments:
-#   Path to stage folder.
-#######################################
-function _set_prerequisites_2()
-{
-    local PROTOCOL_VERSION=${1}
-    local PATH_TO_STAGE=${2}
-
-    if [ ! -d "$PATH_TO_STAGE/$PROTOCOL_VERSION" ]; then
-        mkdir "$PATH_TO_STAGE/$PROTOCOL_VERSION"
-        mkdir "$PATH_TO_STAGE/$PROTOCOL_VERSION/bin"
-        mkdir "$PATH_TO_STAGE/$PROTOCOL_VERSION/bin/wasm"
-        mkdir "$PATH_TO_STAGE/$PROTOCOL_VERSION/resources"
-    fi            
-}
-
-#######################################
-# Builds assets for staging.
-# Arguments:
-#   Scenario ordinal identifier.
-#   Scenario protocol version.
-#   Scenario node code source.
-#######################################
-function _main()
-{
-    local STAGE_ID=${1}
-    local STAGE_PROTOCOL_VERSION=${2}
-    local STAGE_SOURCE=${3}
-    local PATH_TO_STAGE
-
-    log "staging -> STARTS"
-    log "... stage-id=$STAGE_ID :: version=$STAGE_PROTOCOL_VERSION :: source=$STAGE_SOURCE"
-
-    PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
-
-    # Set prerequisites.
-    log "... setting pre-requisites"
-    _set_prerequisites_1 "$STAGE_SOURCE"
-    _set_prerequisites_2 "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE" 
-
-    # Set stage.
-    if [ "$STAGE_SOURCE" == "local" ]; then
-        _set_assets_from_local "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE"
-    elif [ "$STAGE_SOURCE" == "remote" ]; then
-        _set_assets_from_remote "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE"
-    else
-        _set_assets_from_hash "$STAGE_PROTOCOL_VERSION" "$PATH_TO_STAGE"
-    fi
-
-    log "staging -> COMPLETE"
-}
-
-_main "$STAGE_ID" "$STAGE_PROTOCOL_VERSION" "$STAGE_SOURCE"
+_main "${STAGE_ID:-1}" \
+      "${STAGE_SOURCE:-"local"}" \
+      "${PROTOCOL_VERSION:-"1_0_0"}"

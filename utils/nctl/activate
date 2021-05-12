@@ -40,14 +40,12 @@ alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
 
 # Staging.
-alias nctl-stage-init-settings='source $NCTL/sh/staging/init_settings.sh'
 alias nctl-stage-build='source $NCTL/sh/staging/build.sh'
 alias nctl-stage-build-from-settings='source $NCTL/sh/staging/build_from_settings.sh'
-alias nctl-stage-teardown='source $NCTL/sh/staging/teardown.sh'
-
-alias nctl-stage-set-stage='source $NCTL/sh/staging/set_stage.sh'
+alias nctl-stage-init-settings='source $NCTL/sh/staging/init_settings.sh'
 alias nctl-stage-set-remote='source $NCTL/sh/staging/set_remote.sh'
 alias nctl-stage-set-remotes='source $NCTL/sh/staging/set_remotes.sh'
+alias nctl-stage-teardown='source $NCTL/sh/staging/teardown.sh'
 
 # Node control.
 alias nctl-clean='source $NCTL/sh/node/clean.sh'
