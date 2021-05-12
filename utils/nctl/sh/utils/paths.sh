@@ -177,6 +177,14 @@ function get_path_to_node_secret_key()
 }
 
 #######################################
+# Returns path to folder containing download remotes.
+#######################################
+function get_path_to_remotes()
+{
+    echo "$NCTL/remotes"
+}
+
+#######################################
 # Returns path to a secret key.
 # Globals:
 #   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
