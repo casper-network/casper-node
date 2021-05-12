@@ -50,14 +50,17 @@ function _main()
 
     _step_01 "$STAGE_ID"
     _step_02
+
+    # Set initial protocol version for use later.
+    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
+    
     _step_03
     _step_04
     _step_05 "$STAGE_ID"
     _step_06
     _step_07
-    _step_08
+    _step_08 "$N1_PROTOCOL_VERSION"
     _step_09
-    _step_10
 }
 
 # Step 01: Start network from pre-built stage.
@@ -120,7 +123,7 @@ function _step_06()
     local HEIGHT_2
     local NODE_ID
 
-    log_step 6 "asserting node upgrades"
+    log_step 6 "asserting node liveness"
 
     # Assert no nodes have stopped.
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
@@ -173,19 +176,16 @@ function _step_07()
             do_node_start "$NODE_ID" "$TRUSTED_HASH"
         fi    
     done    
+
+    log "... ... awaiting new nodes to start"
+    await_n_eras 1
+    await_n_blocks 1
 }
 
-# Step 09: Await era-id += 2.
+# Step 08: Assert passive joined & all are running upgrade.
 function _step_08() 
 {
-    log_step 8 "awaiting era rotation"
-
-    await_n_eras 3
-}
-
-# Step 09: Assert passive joined & all are running upgrade.
-function _step_09() 
-{
+    local N1_PROTOCOL_VERSION_INITIAL=${1}
     local NODE_ID
     local N1_BLOCK_HASH
     local N1_PROTOCOL_VERSION
@@ -206,6 +206,10 @@ function _step_09()
 
     # Assert nodes are running same protocol version.
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
+    if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
+        log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
+        exit 1
+    fi
     for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
     do
         NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
@@ -228,8 +232,8 @@ function _step_09()
     done
 }
 
-# Step 10: Terminate.
-function _step_10()
+# Step 09: Terminate.
+function _step_09()
 {
     log_step 10 "test successful - tidying up"
 

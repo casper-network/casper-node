@@ -47,7 +47,7 @@ function set_stage_binaries()
     local PATH_TO_SOURCE=${1}
 
     pushd "$PATH_TO_SOURCE" || exit
-    
+
     # Set node binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         cargo build --package casper-node
@@ -107,12 +107,12 @@ function set_stage_files_from_repo()
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
            "$PATH_TO_STAGE"
-    done  
+    done
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
            "$PATH_TO_STAGE"
-    done     
+    done
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
     do
         cp "$PATH_TO_SOURCE/target/wasm32-unknown-unknown/release/$CONTRACT" \
@@ -125,7 +125,7 @@ function set_stage_files_from_repo()
 
     # Stage node config.
     cp "$PATH_TO_SOURCE/resources/local/config.toml" \
-       "$PATH_TO_STAGE" 
+       "$PATH_TO_STAGE"
 }
 
 # ----------------------------------------------------------------
@@ -142,7 +142,7 @@ do
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         stage) STAGE_ID=${VALUE} ;;
-        source) STAGE_SOURCE=${VALUE} ;;        
+        source) STAGE_SOURCE=${VALUE} ;;
         version) PROTOCOL_VERSION=${VALUE} ;;
         *)
     esac
