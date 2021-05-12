@@ -157,6 +157,7 @@ where
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
+        metrics.current_era.set(current_era.value() as i64);
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
