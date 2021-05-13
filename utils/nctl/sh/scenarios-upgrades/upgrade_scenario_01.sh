@@ -79,7 +79,7 @@ function _step_02()
 {
     log_step 2 "awaiting genesis era completion"
 
-    sleep 30.0
+    sleep 60.0
     await_until_era_n 1
 }
 
@@ -225,7 +225,7 @@ function _step_08()
     for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
     do
         NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
-        if [ "$NX_STATE_ROOT_HASH" != "N1_STATE_ROOT_HASH" ]; then
+        if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
             exit 1
         fi

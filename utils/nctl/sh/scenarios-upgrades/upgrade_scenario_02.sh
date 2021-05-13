@@ -70,7 +70,7 @@ function _spinup_step_02()
 {
     log_step 2 "awaiting genesis era completion" "SPINUP"
 
-    sleep 30.0
+    sleep 60.0
     await_until_era_n 1
 }
 
