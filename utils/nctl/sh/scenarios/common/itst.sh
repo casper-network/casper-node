@@ -4,6 +4,9 @@ source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/views/utils.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 
+# Trapping exit so we can remove the temp file used in ci run
+trap clean_up EXIT
+
 function clean_up() {
     local EXIT_CODE=$?
     local STDOUT

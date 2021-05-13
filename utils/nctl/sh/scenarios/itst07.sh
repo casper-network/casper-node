@@ -5,9 +5,6 @@ source "$NCTL"/sh/scenarios/common/itst.sh
 # Exit if any of the commands fail.
 set -e
 
-# Trapping exit so we can remove the temp file used in ci run
-trap clean_up EXIT 
-
 #######################################
 # Runs an integration tests that tries to simulate
 # wasm being sent to a node that falls over mid-stream.
