@@ -1,0 +1,205 @@
+# ----------------------------------------------------------------
+# Synopsis.
+# ----------------------------------------------------------------
+
+# 1. Start v1.
+# 2. Execute deploys to populate global state.
+# 3. Upgrade to v2
+# 4. Assert v2 nodes run & the chain advances (new blocks are generated)
+# 5. Start passive nodes.  The launcher should cause the v1 node to run, it should exit and the v2 node should then catch up.
+# 6. Assert passive nodes are now running.
+
+# ----------------------------------------------------------------
+# Imports.
+# ----------------------------------------------------------------
+
+source "$NCTL/sh/utils/main.sh"
+source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+_HAS_STARTED=false
+
+# Main entry point.
+function _main()
+{
+    local STAGE_ID=${1}
+    local PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")"
+    local PROTOCOL_VERSION=""
+
+    if [ ! -d $(get_path_to_stage "$STAGE_ID") ]; then
+        log "ERROR :: stage $STAGE_ID has not been built - cannot run scenario"
+        exit 1    
+    fi
+
+    # For each protocol version, either spinup or upgrade network as appropriate.
+    for FHANDLE in "$PATH_TO_STAGE/"*; do        
+        if [ -d "$FHANDLE" ]; then
+            if [ "$PROTOCOL_VERSION" == "" ]; then
+                _spinup "$STAGE_ID" "$PATH_TO_STAGE" "$(basename "$FHANDLE")"
+            else
+                _upgrade "$STAGE_ID" "$PATH_TO_STAGE" "$(basename "$FHANDLE")" "$PROTOCOL_VERSION"
+            fi
+            PROTOCOL_VERSION="$(basename "$FHANDLE")"
+        fi
+    done
+}
+
+# Spinup: start network from pre-built stage.
+function _spinup()
+{
+    local STAGE_ID=${1}
+    local PATH_TO_STAGE=${2}
+    local PROTOCOL_VERSION=${3}
+
+    _spinup_step_01 "$STAGE_ID"
+    _spinup_step_02
+    _spinup_step_03
+    _spinup_step_04
+
+    echo "spinup: state $STAGE_ID @ $PROTOCOL_VERSION"
+}
+
+# Spinup: step 01: Start network from pre-built stage.
+function _spinup_step_01() 
+{
+    local STAGE_ID=${1}
+
+    log_step 1 "spinup :: starting network from stage $STAGE_ID"
+
+    source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
+    source "$NCTL/sh/node/start.sh" node=all
+}
+
+# Spinup: step 02: Await era-id >= 1.
+function _spinup_step_02() 
+{
+    log_step 2 "spinup :: awaiting genesis era completion"
+
+    sleep 30.0
+    await_until_era_n 1
+}
+
+# Spinup: step 03: Populate global state -> native + wasm transfers.
+function _spinup_step_03() 
+{
+    log_step 3 "spinup :: dispatching deploys to populate global state"
+
+    log "... ... 100 native transfers"
+    source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
+        transfers=100 interval=0.0 verbose=false
+
+    log "... ... 100 wasm transfers"
+    source "$NCTL/sh/contracts-transfers/do_dispatch_wasm.sh" \
+        transfers=100 interval=0.0 verbose=false
+}
+
+# Spinup: step 04: Await era-id += 1.
+function _spinup_step_04() 
+{
+    log_step 4 "spinup :: awaiting next era"
+
+    await_n_eras 1
+}
+
+# Upgrade: Progress network to next upgrade from pre-built stage.
+function _upgrade()
+{
+    local STAGE_ID=${1}
+    local PATH_TO_STAGE=${2}
+    local PROTOCOL_VERSION=${3}
+    local PROTOCOL_VERSION_PREVIOUS=${4}
+
+    echo "upgrade: state $STAGE_ID from $PROTOCOL_VERSION_PREVIOUS -> $PROTOCOL_VERSION "
+
+    _upgrade_step_01 "$STAGE_ID"
+    _upgrade_step_02
+    _upgrade_step_03
+    _upgrade_step_04
+    _upgrade_step_05
+}
+
+# Upgrade: step 01: Upgrade network from stage.
+function _upgrade_step_01() 
+{
+    local STAGE_ID=${1}
+
+    log_step 1 "upgrading network from stage ($STAGE_ID)"
+
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID"
+    sleep 10.0
+}
+
+# Upgrade: step 02: Await era-id += 1.
+function _upgrade_step_02() 
+{
+    log_step 2 "upgrade :: awaiting next era"
+
+    await_n_eras 1
+}
+
+# Upgrade: step 05: Populate global state -> native + wasm transfers.
+function _upgrade_step_03() 
+{
+    log_step 3 "spinup :: dispatching deploys to populate global state"
+
+    log "... ... 100 native transfers"
+    source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
+        transfers=100 interval=0.0 verbose=false
+
+    log "... ... 100 wasm transfers"
+    source "$NCTL/sh/contracts-transfers/do_dispatch_wasm.sh" \
+        transfers=100 interval=0.0 verbose=false
+}
+
+# Upgrade: step 04: Assert chain is live.
+function _upgrade_step_04() 
+{
+    log_step 4 "upgrade :: asserting chain liveness"
+
+    if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
+        log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
+        exit 1
+    fi
+}
+
+# Upgrade: step 05 Assert chain is progressing at all nodes.
+function _upgrade_step_05() 
+{
+    local HEIGHT_1
+    local HEIGHT_2
+    local NODE_ID
+
+    log_step 5 "upgrade :: asserting chain progression"
+
+    HEIGHT_1=$(get_chain_height)
+    await_n_blocks 2
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        HEIGHT_2=$(get_chain_height "$NODE_ID")
+        if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
+            log "ERROR :: protocol upgrade failure - >= 1 nodes have stalled"
+            exit 1
+        fi
+    done
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset _STAGE_ID
+
+for ARGUMENT in "$@"
+do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        stage) _STAGE_ID=${VALUE} ;;
+        *)
+    esac
+done
+
+_main "${_STAGE_ID:-1}"
