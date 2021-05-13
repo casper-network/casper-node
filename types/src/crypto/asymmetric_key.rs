@@ -20,13 +20,9 @@ use ed25519_dalek::{
     SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
 };
 use hex_fmt::HexFmt;
-use k256::{
-    ecdsa::{
-        Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
-        VerifyingKey as Secp256k1PublicKey,
-    },
-    elliptic_curve::zeroize::Zeroize,
-    SecretBytes as Secp256k1SecretBytes,
+use k256::ecdsa::{
+    Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
+    VerifyingKey as Secp256k1PublicKey,
 };
 #[cfg(feature = "std")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
@@ -168,24 +164,6 @@ impl SecretKey {
     }
 }
 
-impl Clone for SecretKey {
-    fn clone(&self) -> Self {
-        match self {
-            SecretKey::System => SecretKey::System,
-            SecretKey::Ed25519(secret_key) => {
-                Self::ed25519_from_bytes(*secret_key.as_bytes()).unwrap()
-            }
-            SecretKey::Secp256k1(secret_key) => {
-                // Use `Secp256k1SecretBytes` to ensure the raw bytes are zeroized after use.
-                let mut secret_bytes = Secp256k1SecretBytes::from(secret_key.to_bytes());
-                let secret_key = Self::secp256k1_from_bytes(secret_bytes.as_ref()).unwrap();
-                secret_bytes.zeroize();
-                secret_key
-            }
-        }
-    }
-}
-
 impl Debug for SecretKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "SecretKey::{}", self.variant_name())
@@ -270,12 +248,6 @@ impl From<&SecretKey> for PublicKey {
             SecretKey::Ed25519(secret_key) => PublicKey::Ed25519(secret_key.into()),
             SecretKey::Secp256k1(secret_key) => PublicKey::Secp256k1(secret_key.into()),
         }
-    }
-}
-
-impl From<SecretKey> for PublicKey {
-    fn from(secret_key: SecretKey) -> PublicKey {
-        PublicKey::from(&secret_key)
     }
 }
 
