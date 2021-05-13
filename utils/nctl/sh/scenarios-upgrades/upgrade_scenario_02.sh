@@ -67,7 +67,7 @@ function _spinup_step_01()
 {
     local STAGE_ID=${1}
 
-    log_step 1 "spinup :: starting network from stage $STAGE_ID"
+    log_step 1 "starting network from stage $STAGE_ID" "SPINUP"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
@@ -76,7 +76,7 @@ function _spinup_step_01()
 # Spinup: step 02: Await era-id >= 1.
 function _spinup_step_02() 
 {
-    log_step 2 "spinup :: awaiting genesis era completion"
+    log_step 2 "awaiting genesis era completion" "SPINUP"
 
     sleep 30.0
     await_until_era_n 1
@@ -85,7 +85,7 @@ function _spinup_step_02()
 # Spinup: step 03: Populate global state -> native + wasm transfers.
 function _spinup_step_03() 
 {
-    log_step 3 "spinup :: dispatching deploys to populate global state"
+    log_step 3 "dispatching deploys to populate global state" "SPINUP"
 
     log "... ... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
@@ -99,7 +99,7 @@ function _spinup_step_03()
 # Spinup: step 04: Await era-id += 1.
 function _spinup_step_04() 
 {
-    log_step 4 "spinup :: awaiting next era"
+    log_step 4 "awaiting next era" "SPINUP"
 
     await_n_eras 1
 }
@@ -126,7 +126,7 @@ function _upgrade_step_01()
 {
     local STAGE_ID=${1}
 
-    log_step 1 "upgrading network from stage ($STAGE_ID)"
+    log_step 1 "upgrading network from stage ($STAGE_ID)" "UPGRADE"
 
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID"
     sleep 10.0
@@ -135,7 +135,7 @@ function _upgrade_step_01()
 # Upgrade: step 02: Await era-id += 1.
 function _upgrade_step_02() 
 {
-    log_step 2 "upgrade :: awaiting next era"
+    log_step 2 "awaiting next era" "UPGRADE"
 
     await_n_eras 1
 }
@@ -143,7 +143,7 @@ function _upgrade_step_02()
 # Upgrade: step 05: Populate global state -> native + wasm transfers.
 function _upgrade_step_03() 
 {
-    log_step 3 "spinup :: dispatching deploys to populate global state"
+    log_step 3 "dispatching deploys to populate global state" "UPGRADE"
 
     log "... ... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
@@ -157,7 +157,7 @@ function _upgrade_step_03()
 # Upgrade: step 04: Assert chain is live.
 function _upgrade_step_04() 
 {
-    log_step 4 "upgrade :: asserting chain liveness"
+    log_step 4 "asserting chain liveness" "UPGRADE"
 
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
         log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
@@ -172,7 +172,7 @@ function _upgrade_step_05()
     local HEIGHT_2
     local NODE_ID
 
-    log_step 5 "upgrade :: asserting chain progression"
+    log_step 5 "asserting chain progression" "UPGRADE"
 
     HEIGHT_1=$(get_chain_height)
     await_n_blocks 2
