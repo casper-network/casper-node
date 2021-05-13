@@ -72,11 +72,10 @@ pub(crate) struct LinearChainSync<I> {
     stop_for_upgrade: bool,
     /// Key for storing the linear chain sync state.
     state_key: Vec<u8>,
-    /// Acceptable drift between the block creation and now.
-    /// If less than than this has passed we will consider syncing as finished.
-    acceptable_drift: TimeDiff,
     /// Shortest era that is allowed with the given protocol configuration.
     shortest_era: TimeDiff,
+    /// Minimum round length that is allowed with the given protocol configuration.
+    min_round_length: TimeDiff,
     /// Flag indicating whether we managed to sync at least one block.
     started_syncing: bool,
     /// The protocol version the node is currently running with.
@@ -116,7 +115,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             )?;
             Ok((linear_chain_sync, timeout_event))
         } else {
-            let acceptable_drift = chainspec.highway_config.max_round_length();
             // Shortest era is the maximum of the two.
             let shortest_era: TimeDiff = std::cmp::max(
                 chainspec.highway_config.min_round_length()
@@ -138,8 +136,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 next_upgrade_activation_point,
                 stop_for_upgrade: false,
                 state_key,
-                acceptable_drift,
                 shortest_era,
+                min_round_length: chainspec.highway_config.min_round_length(),
                 started_syncing: false,
                 protocol_version,
             };
@@ -157,7 +155,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     ) -> Result<Self, prometheus::Error> {
         let state_key = create_state_key(chainspec);
         info!(?state, "reusing previous state");
-        let acceptable_drift = chainspec.highway_config.max_round_length();
         // Shortest era is the maximum of the two.
         let shortest_era: TimeDiff = std::cmp::max(
             chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
@@ -170,8 +167,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             next_upgrade_activation_point,
             stop_for_upgrade: false,
             state_key,
-            acceptable_drift,
             shortest_era,
+            min_round_length: chainspec.highway_config.min_round_length(),
             started_syncing: false,
             protocol_version,
         })
@@ -263,6 +260,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let height = block.height();
         let hash = block.hash();
         trace!(%hash, %height, "downloaded linear chain block.");
+        if block.header().is_switch_block() {
+            self.state.set_last_switch_block_height(block.height());
+        }
         if block.header().is_switch_block() && self.should_upgrade(block.header().era_id()) {
             info!(
                 era = block.header().era_id().value(),
@@ -311,6 +311,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
+                last_switch_block_height,
                 ..
             } => {
                 assert_eq!(highest_block_seen, block_height);
@@ -333,7 +334,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block);
+                self.state = State::sync_descendants(trusted_hash, block, last_switch_block_height);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
@@ -364,7 +365,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     // Returns whether we've just downloaded a switch block of a currently active era.
     fn is_currently_active_era(&self, block: &Block) -> bool {
-        block.header().timestamp().elapsed() < self.shortest_era
+        let last_switch_block_height = self.state.last_switch_block_height().unwrap_or(0);
+        let past_blocks_in_this_era = block.height().saturating_sub(last_switch_block_height);
+        block.header().timestamp().elapsed() + self.min_round_length * past_blocks_in_this_era
+            < self.shortest_era
     }
 
     /// Returns effects for fetching next block's deploys.
