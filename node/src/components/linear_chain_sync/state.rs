@@ -128,21 +128,6 @@ impl State {
         matches!(self, State::None)
     }
 
-    /// Returns the height of the last seen switch block.
-    pub(crate) fn last_switch_block_height(&self) -> Option<u64> {
-        match self {
-            State::None | State::Done(_) => None,
-            State::SyncingTrustedHash {
-                last_switch_block_height,
-                ..
-            }
-            | State::SyncingDescendants {
-                last_switch_block_height,
-                ..
-            } => *last_switch_block_height,
-        }
-    }
-
     /// Sets the last seen switch block height.
     pub(crate) fn set_last_switch_block_height(&mut self, height: u64) {
         match self {

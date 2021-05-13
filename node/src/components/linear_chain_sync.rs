@@ -338,7 +338,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
-                ref latest_block, ..
+                ref latest_block,
+                last_switch_block_height,
+                ..
             } => {
                 if latest_block.as_ref() != &block {
                     error!(
@@ -347,7 +349,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     );
                     return fatal!(effect_builder, "unexpected block execution result").ignore();
                 }
-                if self.is_currently_active_era(latest_block) {
+                if self.is_currently_active_era(latest_block, last_switch_block_height) {
                     info!(
                         hash=?block.hash(),
                         height=?block.header().height(),
@@ -363,9 +365,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    // Returns whether we've just downloaded a switch block of a currently active era.
-    fn is_currently_active_era(&self, block: &Block) -> bool {
-        let last_switch_block_height = self.state.last_switch_block_height().unwrap_or(0);
+    // Returns whether we've just downloaded a block in a currently active era.
+    fn is_currently_active_era(
+        &self,
+        block: &Block,
+        last_switch_block_height: Option<u64>,
+    ) -> bool {
+        let last_switch_block_height = last_switch_block_height.unwrap_or(0);
         let past_blocks_in_this_era = block.height().saturating_sub(last_switch_block_height);
         block.header().timestamp().elapsed() + self.min_round_length * past_blocks_in_this_era
             < self.shortest_era
