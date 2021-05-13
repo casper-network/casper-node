@@ -58,8 +58,6 @@ function _spinup()
     _spinup_step_02
     _spinup_step_03
     _spinup_step_04
-
-    echo "spinup: state $STAGE_ID @ $PROTOCOL_VERSION"
 }
 
 # Spinup: step 01: Start network from pre-built stage.
@@ -112,8 +110,6 @@ function _upgrade()
     local PROTOCOL_VERSION=${3}
     local PROTOCOL_VERSION_PREVIOUS=${4}
 
-    echo "upgrade: state $STAGE_ID from $PROTOCOL_VERSION_PREVIOUS -> $PROTOCOL_VERSION "
-
     _upgrade_step_01 "$STAGE_ID"
     _upgrade_step_02
     _upgrade_step_03
@@ -125,8 +121,10 @@ function _upgrade()
 function _upgrade_step_01() 
 {
     local STAGE_ID=${1}
+    local PROTOCOL_VERSION=${1}
+    local PROTOCOL_VERSION_PREVIOUS=${1}
 
-    log_step 1 "upgrading network from stage ($STAGE_ID)" "UPGRADE"
+    log_step 1 "upgrading network from stage ($STAGE_ID) @ $PROTOCOL_VERSION_PREVIOUS -> $PROTOCOL_VERSION" "UPGRADE"
 
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID"
     sleep 10.0

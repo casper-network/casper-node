@@ -68,6 +68,7 @@ function log_step()
     local MSG=${2}
     local PREFIX=${3:-""}
 
+    log "---------------------------------------------------------------------------------"
     if [ "$PREFIX" == "" ]; then
         log "STEP $STEP_ID: $MSG"
     else
