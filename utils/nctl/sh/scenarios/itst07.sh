@@ -66,8 +66,13 @@ function check_wasm_inclusion() {
     local TRANSFER_HASHES=$(cat "$DEPLOY_LOG" | awk -F'::' '{print $4}' | sed 's/^[ \t]*//' | sed '/^[[:space:]]*$/d')
     local TRANSFER_COUNT=$(echo "$TRANSFER_HASHES" | wc -l)
     local HASH
+    log_step "Checking wasm inclusion..."
     for (( i='1'; i<="$TRANSFER_COUNT"; i++ )); do
         HASH=$(echo "$TRANSFER_HASHES" | sed -n "$i"p)
+        if [ -z "$HASH" ]; then
+            log "Error: No Hash found!"
+            exit 1
+        fi
         log "Starting walkback for Transfer $i: $HASH"
         verify_wasm_inclusion "$NODE_ID" "$WALKBACK" "$HASH"
         log ""
