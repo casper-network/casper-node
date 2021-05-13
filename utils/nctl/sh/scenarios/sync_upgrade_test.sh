@@ -244,6 +244,8 @@ done
 NEW_NODE_ID=${NEW_NODE_ID:-"6"}
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 ACTIVATE_ERA=${ACTIVATE_ERA:-"5"}
+# The default protocol version should be at least 1.3.0 because of this test being used to test the
+# compatibility of the new block hashing scheme with upgrades.
 PROTOCOL_VERSION=${PROTOCOL_VERSION:-"2_0_0"}
 
 main
