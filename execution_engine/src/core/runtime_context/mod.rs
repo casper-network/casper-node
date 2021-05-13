@@ -1078,15 +1078,14 @@ where
         cl_value: CLValue,
     ) -> Result<(), Error> {
         self.validate_writeable(&uref.into())?;
-        self.validate_key(&uref.into())?;
+        self.validate_uref(&uref)?;
 
         let stored_value = StoredValue::from(cl_value);
 
         self.validate_value(&stored_value)?;
+
         let local_key = Key::local(uref, key_bytes);
-        self.tracking_copy
-            .borrow_mut()
-            .write(local_key, stored_value);
+        self.metered_write_gs_unsafe(local_key, stored_value)?;
         Ok(())
     }
 }
