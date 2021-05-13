@@ -153,7 +153,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         round_exp: 0,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -205,7 +205,7 @@ fn send_a_valid_wire_unit() {
         round_exp: 14,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -270,7 +270,7 @@ fn detect_doppelganger() {
         round_exp,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));

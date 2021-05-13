@@ -362,7 +362,8 @@ impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
-        let public_key: PublicKey = SecretKey::ed25519_from_bytes(bytes).unwrap().into();
+        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
+        let public_key = PublicKey::from(&secret_key);
         let balance = Motes::new(rng.gen());
         let validator = rng.gen();
 
@@ -1561,7 +1562,8 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
-        let public_key: PublicKey = SecretKey::ed25519_from_bytes(bytes).unwrap().into();
+        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
+        let public_key: PublicKey = PublicKey::from(&secret_key);
 
         let genesis_account_1 =
             GenesisAccount::account(public_key.clone(), Motes::new(U512::from(100)), None);
@@ -1581,12 +1583,11 @@ mod tests {
         let mut delegator_bytes = [0u8; 32];
         rng.fill_bytes(&mut validator_bytes[..]);
         rng.fill_bytes(&mut delegator_bytes[..]);
-        let validator_public_key = SecretKey::ed25519_from_bytes(validator_bytes)
-            .unwrap()
-            .into();
-        let delegator_public_key = SecretKey::ed25519_from_bytes(delegator_bytes)
-            .unwrap()
-            .into();
+        let validator_secret_key = SecretKey::ed25519_from_bytes(validator_bytes).unwrap();
+        let delegator_secret_key = SecretKey::ed25519_from_bytes(delegator_bytes).unwrap();
+
+        let validator_public_key = PublicKey::from(&validator_secret_key);
+        let delegator_public_key = PublicKey::from(&delegator_secret_key);
 
         let genesis_account = GenesisAccount::delegator(
             validator_public_key,

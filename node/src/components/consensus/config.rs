@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use casper_types::{ProtocolVersion, SecretKey};
 
@@ -11,12 +13,12 @@ use crate::{
 };
 
 /// Consensus configuration.
-#[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
+#[derive(DataSize, Debug, Deserialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Path to secret key file.
-    pub secret_key_path: External<SecretKey>,
+    pub secret_key_path: External<Arc<SecretKey>>,
     /// Highway-specific node configuration.
     pub highway: HighwayConfig,
 }
