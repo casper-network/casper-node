@@ -47,19 +47,6 @@ function main() {
     log "------------------------------------------------------------"
 }
 
-# used by trap for clean up of tmp file before exit
-function clean_up() {
-    local EXIT_CODE=$?
-
-    if [ -f "$DEPLOY_LOG" ]; then
-        log "Removing transfer tmp file..."
-        rm -f "$DEPLOY_LOG"
-    fi
-
-    log "Test exited with exit code $EXIT_CODE"
-    exit $EXIT_CODE
-}
-
 # Transfers sent in background so we can mimic a node dying mid-stream.
 function do_background_wasm_transfers() {
     local NODE_ID=${1}
