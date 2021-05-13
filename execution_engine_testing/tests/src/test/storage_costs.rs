@@ -82,9 +82,11 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
 
 static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunctionCosts {
     read_value: HostFunction::fixed(0),
+    read_local: HostFunction::fixed(0),
     write: HostFunction::fixed(0),
     write_local: HostFunction::fixed(0),
     add: HostFunction::fixed(0),
+    add_local: HostFunction::fixed(0),
     new_uref: HostFunction::fixed(0),
     load_named_keys: HostFunction::fixed(0),
     ret: HostFunction::fixed(0),
@@ -123,7 +125,6 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
     create_local: HostFunction::fixed(0),
-    read_local: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(

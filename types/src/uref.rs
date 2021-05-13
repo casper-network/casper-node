@@ -137,6 +137,11 @@ impl URef {
         URef(self.0, AccessRights::WRITE)
     }
 
+    /// Returns a new [`URef`] with the same address and [`AccessRights::ADD`] permission.
+    pub fn into_add(self) -> URef {
+        URef(self.0, AccessRights::ADD)
+    }
+
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_ADD_WRITE`]
     /// permission.
     pub fn into_read_add_write(self) -> URef {

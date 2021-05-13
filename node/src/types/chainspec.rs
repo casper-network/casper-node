@@ -231,6 +231,7 @@ mod tests {
             write: HostFunction::new(140, [0, 1, 0, 2]),
             write_local: HostFunction::new(141, [0, 0, 1, 2, 3, 4]),
             add: HostFunction::new(100, [0, 1, 2, 3]),
+            add_local: HostFunction::new(142, [0, 1, 2, 3, 4, 5]),
             new_uref: HostFunction::new(122, [0, 1, 2]),
             load_named_keys: HostFunction::new(121, [0, 1]),
             ret: HostFunction::new(133, [0, 1]),

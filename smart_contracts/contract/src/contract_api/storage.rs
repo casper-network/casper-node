@@ -397,3 +397,23 @@ pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: 
         );
     }
 }
+
+/// Adds `value` under `key` in the context-local partition of global state.
+pub fn add_local<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: V) {
+    let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
+    let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
+
+    let cl_value = CLValue::from_t(value).unwrap_or_revert();
+    let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
+
+    unsafe {
+        ext_ffi::casper_add_local(
+            uref_ptr,
+            uref_size,
+            key_ptr,
+            key_size,
+            cl_value_ptr,
+            cl_value_size,
+        );
+    }
+}

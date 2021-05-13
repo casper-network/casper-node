@@ -225,6 +225,10 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 1][..], Some(ValueType::I32)),
                 FunctionIndex::CreateLocalFuncIndex.into(),
             ),
+            "casper_add_local" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 6][..], None),
+                FunctionIndex::AddLocalFuncIndex.into(),
+            ),
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",

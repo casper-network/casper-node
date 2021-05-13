@@ -757,4 +757,27 @@ extern "C" {
         value_ptr: *const u8,
         value_size: usize,
     );
+    /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
+    /// will be used together with the passed URef's seed to form a local key.
+    /// This function adds the provided value (read via de-serializing the bytes
+    /// in wasm memory from offset `value_ptr` to `value_ptr + value_size`) under
+    /// that local key in the global state. This function will cause a `Trap` if
+    /// the value fails to de-serialize.
+    ///
+    /// # Arguments
+    ///
+    /// * `uref_ptr` - pointer to bytes representing the user-defined key
+    /// * `uref_size` - size of the key (in bytes)
+    /// * `key_ptr` - pointer to bytes representing the user-defined key to write to
+    /// * `key_size` - size of the key (in bytes)
+    /// * `value_ptr` - pointer to bytes representing the value to write at the key
+    /// * `value_size` - size of the value (in bytes)
+    pub fn casper_add_local(
+        uref_ptr: *const u8,
+        uref_size: usize,
+        key_ptr: *const u8,
+        key_size: usize,
+        value_ptr: *const u8,
+        value_size: usize,
+    );
 }

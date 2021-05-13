@@ -12,7 +12,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{bytesrepr::FromBytes, CLTyped, ContractHash, RuntimeArgs, URef};
-use local_state::{DEFAULT_LOCAL_KEY_NAME, DEFAULT_LOCAL_KEY_VALUE};
+use local_state::{
+    ADD_LOCAL_KEY, ADD_LOCAL_KEY_INCREMENT, DEFAULT_LOCAL_KEY_NAME, DEFAULT_LOCAL_KEY_VALUE,
+};
 use local_state_call::{
     Operation, ARG_CONTRACT_HASH, ARG_FORGED_UREF, ARG_OPERATION, ARG_SHARE_UREF_ENTRYPOINT,
     NEW_LOCAL_KEY_NAME, NEW_LOCAL_KEY_VALUE,
@@ -48,10 +50,19 @@ pub extern "C" fn call() {
             let value: String = maybe_value.unwrap_or_default();
             assert_eq!(value, DEFAULT_LOCAL_KEY_VALUE);
         }
-        Operation::ForgedURef => {
+        Operation::Add => {
+            let entrypoint: String = runtime::get_named_arg(ARG_SHARE_UREF_ENTRYPOINT);
+            let uref = call_local_state_contract(&entrypoint);
+            storage::add_local(uref, ADD_LOCAL_KEY, ADD_LOCAL_KEY_INCREMENT);
+        }
+        Operation::ForgedURefWrite => {
             let uref: URef = runtime::get_named_arg(ARG_FORGED_UREF);
             let value: String = NEW_LOCAL_KEY_VALUE.to_string();
             storage::write_local(uref, NEW_LOCAL_KEY_NAME, value);
+        }
+        Operation::ForgedURefAdd => {
+            let uref: URef = runtime::get_named_arg(ARG_FORGED_UREF);
+            storage::write_local(uref, ADD_LOCAL_KEY, ADD_LOCAL_KEY_INCREMENT);
         }
     }
 }

@@ -792,6 +792,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         write: HostFunction::fixed(0),
         write_local: HostFunction::fixed(0),
         add: HostFunction::fixed(0),
+        add_local: HostFunction::fixed(0),
         new_uref: HostFunction::fixed(0),
         load_named_keys: HostFunction::fixed(0),
         ret: HostFunction::fixed(0),
