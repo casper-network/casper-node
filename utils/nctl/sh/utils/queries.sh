@@ -156,6 +156,7 @@ function get_node_protocol_version()
 function get_node_protocol_version_from_fs()
 {
     local NODE_ID=${1}
+    local SEPARATOR=${2:-"."}
     local PATH_TO_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
     local IFS='_'
 
@@ -163,7 +164,7 @@ function get_node_protocol_version_from_fs()
     read -ra SEMVAR_CURRENT <<< "$(ls -td -- * | head -n 1)"
     popd || exit
 
-    echo "${SEMVAR_CURRENT[0]}.${SEMVAR_CURRENT[1]}.${SEMVAR_CURRENT[2]}"
+    echo "${SEMVAR_CURRENT[0]}$SEPARATOR${SEMVAR_CURRENT[1]}$SEPARATOR${SEMVAR_CURRENT[2]}"
 }
 
 #######################################
@@ -176,6 +177,18 @@ function get_protocol_version_for_chainspec()
     local PROTOCOL_VERSION=${1}
 
     echo "$PROTOCOL_VERSION" | tr "_" "."
+}
+
+#######################################
+# Returns protocol version formatted for filesystem usage.
+# Arguments:
+#   Version of protocol.
+#######################################
+function get_protocol_version_for_fs()
+{
+    local PROTOCOL_VERSION=${1}
+
+    echo "$PROTOCOL_VERSION" | tr "." "_"
 }
 
 #######################################

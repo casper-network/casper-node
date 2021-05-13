@@ -102,11 +102,13 @@ function _main()
         setup_asset_chainspec "$COUNT_NODES" \
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
-                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml"
+                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml" \
+                              false
 
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
-                                 "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
+                                 "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
+                                 false
 
         log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT : COMPLETE"
     else

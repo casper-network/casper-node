@@ -1,24 +1,12 @@
 #!/usr/bin/env bash
 
+#######################################
+# Downloads remote assets for subsequent staging.
+# Arguments:
+#   Protocol version to be downloaded.
+#######################################
+
 source "$NCTL/sh/utils/main.sh"
-
-# ----------------------------------------------------------------
-# ENTRY POINT
-# ----------------------------------------------------------------
-
-unset PROTOCOL_VERSION
-
-for ARGUMENT in "$@"
-do
-    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
-    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
-    case "$KEY" in
-        version) PROTOCOL_VERSION=${VALUE} ;;
-        *)
-    esac
-done
-
-PROTOCOL_VERSION="${PROTOCOL_VERSION:-"1.0.0"}"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -40,11 +28,6 @@ _REMOTE_FILES=(
     "withdraw_bid.wasm"
 )
 
-#######################################
-# Downloads remote assets for subsequent staging.
-# Arguments:
-#   Protocol version to be downloaded.
-#######################################
 function _main()
 {
     local PROTOCOL_VERSION=${1}
@@ -68,4 +51,20 @@ function _main()
     popd
 }
 
-_main "$PROTOCOL_VERSION"
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset _PROTOCOL_VERSION
+
+for ARGUMENT in "$@"
+do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        version) _PROTOCOL_VERSION=${VALUE} ;;
+        *)
+    esac
+done
+
+_main "$_PROTOCOL_VERSION"

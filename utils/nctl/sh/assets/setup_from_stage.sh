@@ -37,9 +37,13 @@ function _main()
     local COUNT_USERS="$COUNT_NODES"
     local PATH_TO_NET
     local PATH_TO_STAGE
+    local PATH_TO_STAGED_ASSETS
+    local PROTOCOL_VERSION_INITIAL
 
     PATH_TO_NET=$(get_path_to_net)
-    PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID/1_0_0"
+    PROTOCOL_VERSION_INITIAL=$(_get_initial_protocol_version "$STAGE_ID")
+    PROTOCOL_VERSION_INITIAL_FS=$(get_protocol_version_for_fs "$PROTOCOL_VERSION_INITIAL")
+    PATH_TO_STAGED_ASSETS="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION_INITIAL"
 
     # Tear down previous.
     if [ -d "$PATH_TO_NET" ]; then
@@ -48,23 +52,24 @@ function _main()
     mkdir -p "$PATH_TO_NET"
 
     # Setup new.
-    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
+    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "$PROTOCOL_VERSION_INITIAL_FS"
 
-    setup_asset_binaries "1_0_0" \
+    setup_asset_binaries "$PROTOCOL_VERSION_INITIAL_FS" \
                          "$COUNT_NODES" \
-                         "$PATH_TO_STAGE/casper-client" \
-                         "$PATH_TO_STAGE/casper-node" \
-                         "$PATH_TO_STAGE/casper-node-launcher" \
-                         "$PATH_TO_STAGE"
+                         "$PATH_TO_STAGED_ASSETS/casper-client" \
+                         "$PATH_TO_STAGED_ASSETS/casper-node" \
+                         "$PATH_TO_STAGED_ASSETS/casper-node-launcher" \
+                         "$PATH_TO_STAGED_ASSETS"
 
     setup_asset_keys "$COUNT_NODES" "$COUNT_USERS"
 
     setup_asset_daemon
     
     setup_asset_chainspec "$COUNT_NODES" \
-                          "1.0.0" \
+                          "$PROTOCOL_VERSION_INITIAL" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \
-                          "$PATH_TO_STAGE/chainspec.toml"
+                          "$PATH_TO_STAGED_ASSETS/chainspec.toml" \
+                          true
 
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" \
@@ -77,10 +82,26 @@ function _main()
     fi
 
     setup_asset_node_configs "$COUNT_NODES" \
-                             "1_0_0" \
-                             "$PATH_TO_STAGE/config.toml"
+                             "$PROTOCOL_VERSION_INITIAL_FS" \
+                             "$PATH_TO_STAGED_ASSETS/config.toml" \
+                             true
 
     log "setup of assets from stage ${1}: COMPLETE"
+}
+
+#######################################
+# Returns initial protocol version from which assets will be setup.
+#######################################
+function _get_initial_protocol_version()
+{
+    local STAGE_ID=${1}
+
+    for FHANDLE in "$(get_path_to_stage "$STAGE_ID")/"*; do        
+        if [ -d "$FHANDLE" ]; then
+            echo "$(basename "$FHANDLE")"
+            break
+        fi
+    done
 }
 
 # ----------------------------------------------------------------

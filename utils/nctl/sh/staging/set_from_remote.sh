@@ -54,4 +54,4 @@ do
     esac
 done
 
-_main "${STAGE_ID:-1}" "${PROTOCOL_VERSION:-"1_0_0"}"
+_main "${STAGE_ID}" "${PROTOCOL_VERSION}"
