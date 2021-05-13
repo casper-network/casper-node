@@ -152,7 +152,7 @@ where
         }
         let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
-        let secret_signing_key = Arc::new(config.secret_key_path.clone().load(root)?);
+        let secret_signing_key = config.clone().secret_key_path.load(root)?;
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)

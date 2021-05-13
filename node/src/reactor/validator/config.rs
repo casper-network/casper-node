@@ -1,5 +1,5 @@
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Root configuration.
-#[derive(DataSize, Debug, Default, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Default, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

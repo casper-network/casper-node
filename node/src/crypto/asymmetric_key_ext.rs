@@ -36,7 +36,7 @@ static ED25519_SECRET_KEY: Lazy<SecretKey> = Lazy::new(|| {
 static ED25519_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
     let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
-    PublicKey::from(secret_key)
+    PublicKey::from(&secret_key)
 });
 
 /// Additional operations an asymmetric key
@@ -66,12 +66,6 @@ pub trait AsymmetricKeyExt: Sized {
 
     /// Decodes a secret key from a PEM-encoded slice.
     fn from_pem<T: AsRef<[u8]>>(input: T) -> Result<Self, Error>;
-
-    /// Duplicates a secret key.
-    ///
-    /// Only available for testing and named other than `clone` to prevent accidental use.
-    #[cfg(test)]
-    fn duplicate(&self) -> Self;
 
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
@@ -264,20 +258,6 @@ impl AsymmetricKeyExt for SecretKey {
     }
 
     #[cfg(test)]
-    fn duplicate(&self) -> Self {
-        match self {
-            SecretKey::System => SecretKey::System,
-            SecretKey::Ed25519(secret_key) => {
-                Self::ed25519_from_bytes(secret_key.as_ref()).expect("could not copy secret key")
-            }
-            SecretKey::Secp256k1(secret_key) => {
-                Self::secp256k1_from_bytes(secret_key.to_bytes().as_slice())
-                    .expect("could not copy secret key")
-            }
-        }
-    }
-
-    #[cfg(test)]
     fn random(rng: &mut TestRng) -> Self {
         if rng.gen() {
             Self::random_ed25519(rng)
@@ -428,20 +408,6 @@ impl AsymmetricKeyExt for PublicKey {
             }
         }
         Ok(public_key)
-    }
-
-    #[cfg(test)]
-    fn duplicate(&self) -> Self {
-        match self {
-            PublicKey::System => PublicKey::System,
-            PublicKey::Ed25519(public_key) => {
-                Self::ed25519_from_bytes(public_key.as_ref()).expect("could not copy public key")
-            }
-            PublicKey::Secp256k1(public_key) => {
-                Self::secp256k1_from_bytes(public_key.to_bytes().as_ref())
-                    .expect("could not copy public key")
-            }
-        }
     }
 
     #[cfg(test)]
