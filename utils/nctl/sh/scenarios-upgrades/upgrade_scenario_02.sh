@@ -2,12 +2,8 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1.
-# 2. Execute deploys to populate global state.
-# 3. Upgrade to v2
-# 4. Assert v2 nodes run & the chain advances (new blocks are generated)
-# 5. Start passive nodes.  The launcher should cause the v1 node to run, it should exit and the v2 node should then catch up.
-# 6. Assert passive nodes are now running.
+# Spins up a network, awaits for it to settle down and then performs a series of 
+# network upgrades.  At each step network behaviour is verified.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -19,8 +15,6 @@ source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
 # ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
-
-_HAS_STARTED=false
 
 # Main entry point.
 function _main()
