@@ -1,4 +1,4 @@
-use std::{sync::Arc, path::Path};
+use std::{path::Path, sync::Arc};
 
 use datasize::DataSize;
 use serde::Deserialize;

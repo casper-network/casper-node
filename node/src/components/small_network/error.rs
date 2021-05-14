@@ -4,6 +4,7 @@ use std::{
     io,
     net::SocketAddr,
     result,
+    sync::Arc,
 };
 
 use casper_types::SecretKey;
@@ -32,7 +33,7 @@ pub enum Error {
     LoadConsensusKeys(
         #[serde(skip_serializing)]
         #[source]
-        LoadError<<SecretKey as Loadable>::Error>,
+        LoadError<<Arc<SecretKey> as Loadable>::Error>,
     ),
     /// Our own certificate is not valid.
     #[error("own certificate invalid")]
