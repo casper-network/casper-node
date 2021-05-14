@@ -58,11 +58,6 @@ impl HighwayConfig {
         true
     }
 
-    /// Returns the length of the longest allowed round.
-    pub fn max_round_length(&self) -> TimeDiff {
-        TimeDiff::from(1 << self.maximum_round_exponent)
-    }
-
     /// Returns the length of the shortest allowed round.
     pub fn min_round_length(&self) -> TimeDiff {
         TimeDiff::from(1 << self.minimum_round_exponent)
