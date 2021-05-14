@@ -17,24 +17,6 @@ source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
 
 # ----------------------------------------------------------------
-# ENTRY POINT
-# ----------------------------------------------------------------
-
-unset _STAGE_ID
-
-for ARGUMENT in "$@"
-do
-    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
-    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
-    case "$KEY" in
-        stage) _STAGE_ID=${VALUE} ;;
-        *)
-    esac
-done
-
-_STAGE_ID="${_STAGE_ID:-1}"
-
-# ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
@@ -266,5 +248,20 @@ function _step_09()
     log_break
 }
 
-# Call entry point.
-_main "$_STAGE_ID"
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset _STAGE_ID
+
+for ARGUMENT in "$@"
+do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        stage) _STAGE_ID=${VALUE} ;;
+        *)
+    esac
+done
+
+_main "${_STAGE_ID:-1}"

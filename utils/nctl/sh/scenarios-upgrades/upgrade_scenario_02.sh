@@ -24,18 +24,20 @@ function _main()
     local PROTOCOL_VERSION=""
     local UPGRADE_ID=0
 
+    # Assert stage exists.
     PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")"
-
     if [ ! -d "$PATH_TO_STAGE" ]; then
         log "ERROR :: stage $STAGE_ID has not been built - cannot run scenario"
         exit 1
     fi
 
-    # For each protocol version, either spinup or upgrade network as appropriate.
+    # Iterate staged protocol versions:
     for FHANDLE in "$PATH_TO_STAGE/"*; do
         if [ -d "$FHANDLE" ]; then
+            # ... spinup
             if [ "$PROTOCOL_VERSION" == "" ]; then
                 _spinup "$STAGE_ID" "$PATH_TO_STAGE" "$(basename "$FHANDLE")"
+            # ... upgrade
             else
                 UPGRADE_ID=$((UPGRADE_ID + 1))
                 _upgrade "$UPGRADE_ID" "$STAGE_ID" "$(basename "$FHANDLE")" "$PROTOCOL_VERSION"
@@ -72,7 +74,7 @@ function _spinup_step_01()
     log_step 1 "starting network from stage $STAGE_ID" "SPINUP"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
-    source "$NCTL/sh/node/start.sh" node=all
+    source "$NCTL/sh/node/start.sh" node="all"
 }
 
 # Spinup: step 02: Await era-id >= 1.
@@ -80,8 +82,8 @@ function _spinup_step_02()
 {
     log_step 2 "awaiting genesis era completion" "SPINUP"
 
-    sleep 60.0
     await_until_era_n 1
+    log " ... chain @ era-$(get_chain_era) :: height-$(get_chain_height)"
 }
 
 # Spinup: step 03: Populate global state -> native + wasm transfers.
@@ -118,9 +120,10 @@ function _upgrade()
     _upgrade_step_02 "$UPGRADE_ID"
     _upgrade_step_03 "$UPGRADE_ID"
     _upgrade_step_04 "$UPGRADE_ID"
+    _upgrade_step_05 "$UPGRADE_ID"
 }
 
-# Upgrade: step 01: Upgrade network from stage.
+# Upgrade: Upgrade network from stage.
 function _upgrade_step_01()
 {
     local UPGRADE_ID=${1}
@@ -133,12 +136,11 @@ function _upgrade_step_01()
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
 
-    log "... awaiting 2 eras + 1 block"
-    await_n_eras 2
-    await_n_blocks 1
+    log "... awaiting upgrade"
+    await_n_eras 4
 }
 
-# Upgrade: step 02: Populate global state -> native + wasm transfers.
+# Upgrade: Populate global state -> native + wasm transfers.
 function _upgrade_step_02()
 {
     local UPGRADE_ID=${1}
@@ -154,8 +156,16 @@ function _upgrade_step_02()
         transfers=100 interval=0.0 verbose=false
 }
 
-# Upgrade: step 03: Assert chain is live.
+# Upgrade: Await era-id += 1.
 function _upgrade_step_03()
+{
+    log_step 4 "awaiting next era" "UPGRADE $UPGRADE_ID:"
+
+    await_n_eras 1
+}
+
+# Upgrade: Assert chain is live.
+function _upgrade_step_04()
 {
     local UPGRADE_ID=${1}
 
@@ -167,8 +177,8 @@ function _upgrade_step_03()
     fi
 }
 
-# Upgrade: step 04: Assert chain is progressing at all nodes.
-function _upgrade_step_04()
+# Upgrade: Assert chain is progressing at all nodes.
+function _upgrade_step_05()
 {
     local UPGRADE_ID=${1}
     local HEIGHT_1

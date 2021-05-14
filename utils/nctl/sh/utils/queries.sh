@@ -25,14 +25,22 @@ function get_activation_point()
 function get_chain_era()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local ERA
 
     if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        $(get_path_to_client) get-block \
-            --node-address "$(get_node_address_rpc "$NODE_ID")" \
-            --block-identifier "" \
-            | jq '.result.block.header.era_id'    
+        ERA=$(
+            $(get_path_to_client) get-block \
+                --node-address "$(get_node_address_rpc "$NODE_ID")" \
+                --block-identifier "" \
+                | jq '.result.block.header.era_id'    
+        )
+        if [ "$ERA" == "null" ]; then
+            echo 0
+        else
+            echo $ERA
+        fi
     else
-        echo "N/A"
+        echo -1
     fi
 }
 
