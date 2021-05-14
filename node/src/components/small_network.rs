@@ -247,8 +247,8 @@ where
                 .map_err(Error::LoadConsensusKeys)?
                 .map(|(secret_key, public_key)| {
                     ConsensusKeyPair::new(Arc::try_unwrap(secret_key).expect(
-                    "did not expect additional references on freshly created secret key Arc",
-                ), public_key)
+                        "did not expect additional references on freshly created secret key Arc",
+                    ), public_key)
                 });
 
         let context = Arc::new(NetworkContext {
