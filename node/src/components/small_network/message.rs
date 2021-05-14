@@ -1,6 +1,7 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
+    sync::Arc,
 };
 
 use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
@@ -46,13 +47,13 @@ impl<P: Payload> Message<P> {
 
 /// A pair of secret keys used by consensus.
 pub(super) struct ConsensusKeyPair {
-    secret_key: SecretKey,
+    secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
 
 impl ConsensusKeyPair {
     /// Creates a new key pair for consensus signing.
-    pub(super) fn new(secret_key: SecretKey, public_key: PublicKey) -> Self {
+    pub(super) fn new(secret_key: Arc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
             public_key,
