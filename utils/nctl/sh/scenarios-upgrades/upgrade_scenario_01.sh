@@ -45,7 +45,7 @@ function _main()
 
     if [ ! -d $(get_path_to_stage "$STAGE_ID") ]; then
         log "ERROR :: stage $STAGE_ID has not been built - cannot run scenario"
-        exit 1    
+        exit 1
     fi
 
     _step_01 "$STAGE_ID"
@@ -53,7 +53,7 @@ function _main()
 
     # Set initial protocol version for use later.
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
-    
+
     _step_03
     _step_04
     _step_05 "$STAGE_ID"
@@ -64,7 +64,7 @@ function _main()
 }
 
 # Step 01: Start network from pre-built stage.
-function _step_01() 
+function _step_01()
 {
     local STAGE_ID=${1}
 
@@ -75,7 +75,7 @@ function _step_01()
 }
 
 # Step 02: Await era-id >= 1.
-function _step_02() 
+function _step_02()
 {
     log_step 2 "awaiting genesis era completion"
 
@@ -84,7 +84,7 @@ function _step_02()
 }
 
 # Step 03: Populate global state -> native + wasm transfers.
-function _step_03() 
+function _step_03()
 {
     log_step 3 "dispatching deploys to populate global state"
 
@@ -98,7 +98,7 @@ function _step_03()
 }
 
 # Step 04: Await era-id += 1.
-function _step_04() 
+function _step_04()
 {
     log_step 4 "awaiting next era"
 
@@ -106,7 +106,7 @@ function _step_04()
 }
 
 # Step 05: Upgrade network from stage.
-function _step_05() 
+function _step_05()
 {
     local STAGE_ID=${1}
 
@@ -121,7 +121,7 @@ function _step_05()
 }
 
 # Step 06: Assert chain is progressing at all nodes.
-function _step_06() 
+function _step_06()
 {
     local N1_PROTOCOL_VERSION_INITIAL=${1}
     local HEIGHT_1
@@ -152,7 +152,7 @@ function _step_06()
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
         log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
-        # exit 1
+        exit 1
     fi
 
     # Assert nodes are running same protocol version.
@@ -161,13 +161,13 @@ function _step_06()
         NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
         if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
-            # exit 1
+            exit 1
         fi
     done
 }
 
 # Step 07: Join passive nodes.
-function _step_07() 
+function _step_07()
 {
     local NODE_ID
     local TRUSTED_HASH
@@ -196,8 +196,8 @@ function _step_07()
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
             do_node_start "$NODE_ID" "$TRUSTED_HASH"
-        fi    
-    done    
+        fi
+    done
 
     log "... ... awaiting new nodes to start"
     await_n_eras 1
@@ -205,7 +205,7 @@ function _step_07()
 }
 
 # Step 08: Assert passive joined & all are running upgrade.
-function _step_08() 
+function _step_08()
 {
     local N1_PROTOCOL_VERSION_INITIAL=${1}
     local NODE_ID
@@ -222,15 +222,15 @@ function _step_08()
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
             log "ERROR :: protocol upgrade failure - >= 1 nodes not live"
-            # exit 1            
-        fi    
+            exit 1
+        fi
     done
 
     # Assert node-1 protocol version incremented.
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
         log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
-        # exit 1
+        exit 1
     fi
 
     # Assert nodes are running same protocol version.
@@ -239,7 +239,7 @@ function _step_08()
         NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
         if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
-            # exit 1
+            exit 1
         fi
     done
 
@@ -251,7 +251,7 @@ function _step_08()
         NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
         if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
-            # exit 1
+            exit 1
         fi
     done
 }
