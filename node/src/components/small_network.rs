@@ -33,6 +33,7 @@ mod message;
 mod message_pack_format;
 mod outgoing;
 mod symmetry;
+pub(crate) mod tasks;
 #[cfg(test)]
 mod tests;
 
@@ -42,32 +43,23 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::{SocketAddr, TcpListener},
-    pin::Pin,
     result,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
 use datasize::DataSize;
-use futures::{
-    future::{self, BoxFuture, Either},
-    stream::{SplitSink, SplitStream},
-    FutureExt, SinkExt, StreamExt,
-};
-use openssl::{error::ErrorStack as OpenSslErrorStack, pkey, ssl::Ssl};
+use futures::{future::BoxFuture, FutureExt};
+use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
-use prometheus::{IntGauge, Registry};
+use prometheus::Registry;
 use rand::seq::IteratorRandom;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        mpsc::{self, UnboundedSender},
         watch,
     },
     task::JoinHandle,
@@ -75,14 +67,16 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_serde::SymmetricallyFramed;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing::{debug, error, info, trace, warn, Instrument};
+use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
-    error::Result,
+    error::{ConnectionError, Result},
+    event::{IncomingConnection, OutgoingConnection},
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
+    tasks::NetworkContext,
 };
 pub(crate) use self::{
     error::display_error,
@@ -95,9 +89,9 @@ use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
-        EffectBuilder, EffectExt, EffectResultExt, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
-    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
+    reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
     utils, NodeRng,
@@ -130,15 +124,15 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 const SYMMETRY_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Clone, DataSize, Debug)]
-pub struct OutgoingConnection<P> {
+pub struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
-    peer_address: SocketAddr,
+    peer_addr: SocketAddr,
 }
 
-impl<P> Display for OutgoingConnection<P> {
+impl<P> Display for OutgoingHandle<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "outgoing connection to {}", self.peer_address)
+        write!(f, "outgoing handle to {}", self.peer_addr)
     }
 }
 
@@ -150,24 +144,13 @@ where
 {
     /// Initial configuration values.
     cfg: Config,
-    /// Server certificate.
-    certificate: Arc<TlsCert>,
-    /// Server secret key.
-    secret_key: Arc<PKey<Private>>,
-    /// Our public listening address.
-    public_address: SocketAddr,
-    /// Our node ID,
-    our_id: NodeId,
-    /// Handle to event queue.
-    event_queue: EventQueueHandle<REv>,
+    /// Read-only networking information shared across tasks.
+    context: Arc<NetworkContext<REv>>,
 
     /// Outgoing connections manager.
-    outgoing_manager: OutgoingManager<OutgoingConnection<P>, Error>,
+    outgoing_manager: OutgoingManager<OutgoingHandle<P>, ConnectionError>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
-
-    /// Information retained from the chainspec required for operating the networking component.
-    chain_info: Arc<ChainInfo>,
 
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
@@ -178,8 +161,6 @@ where
     /// order that they can be gracefully terminated.
     #[data_size(skip)]
     shutdown_receiver: watch::Receiver<()>,
-    /// Flag to indicate the server has stopped running.
-    is_stopped: Arc<AtomicBool>,
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -230,16 +211,10 @@ where
             sweep_timeout: cfg.max_addr_pending_time.into(),
         });
 
-        let mut public_address =
+        let mut public_addr =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        let our_id = NodeId::from(&small_network_identity);
-        let secret_key = small_network_identity.secret_key;
-        let certificate = small_network_identity.tls_certificate;
-
-        let chain_info = Arc::new(chain_info_source.into());
-
-        let net_metrics = NetworkingMetrics::new(&registry)?;
+        let net_metrics = Arc::new(NetworkingMetrics::new(&registry)?);
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -250,41 +225,45 @@ where
             .set_nonblocking(true)
             .map_err(Error::ListenerSetNonBlocking)?;
 
-        let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;
+        let local_addr = listener.local_addr().map_err(Error::ListenerAddr)?;
 
         // Substitute the actually bound port if set to 0.
-        if public_address.port() == 0 {
-            public_address.set_port(local_address.port());
+        if public_addr.port() == 0 {
+            public_addr.set_port(local_addr.port());
         }
+
+        let context = Arc::new(NetworkContext {
+            event_queue,
+            our_id: NodeId::from(&small_network_identity),
+            our_cert: small_network_identity.tls_certificate,
+            secret_key: small_network_identity.secret_key,
+            net_metrics: Arc::downgrade(&net_metrics),
+            chain_info: chain_info_source.into(),
+            public_addr,
+        });
 
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
-        info!(%local_address, %public_address, "{}: starting server background task", our_id);
+        info!(%local_addr, %public_addr, "starting server background task");
+
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
-        let server_join_handle = tokio::spawn(server_task(
-            event_queue,
+        let server_join_handle = tokio::spawn(tasks::server(
+            context.clone(),
             tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
             server_shutdown_receiver,
-            our_id,
         ));
 
         let mut component = SmallNetwork {
             cfg,
-            certificate,
-            secret_key,
-            public_address,
-            our_id,
-            event_queue,
+            context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            chain_info,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
-            is_stopped: Arc::new(AtomicBool::new(false)),
-            net_metrics: Arc::new(net_metrics),
+            net_metrics,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -339,7 +318,7 @@ where
             // TODO - set this to `warn!` once we are normally testing with networks large enough to
             //        make it a meaningful and infrequent log message.
             trace!(
-                our_id=%self.our_id,
+                our_id=%self.context.our_id,
                 wanted = count,
                 selected = peer_ids.len(),
                 "could not select enough random nodes for gossiping, not enough non-excluded \
@@ -360,187 +339,247 @@ where
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             if let Err(msg) = connection.sender.send(msg) {
                 // We lost the connection, but that fact has not reached us yet.
-                warn!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
+                warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
             } else {
                 self.net_metrics.queued_messages.inc();
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            debug!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, no connection");
+            debug!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, no connection");
         }
     }
 
-    fn handle_incoming_tls_handshake_completed(
+    #[allow(clippy::redundant_clone)]
+    fn handle_incoming_connection(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        result: Result<(NodeId, Transport)>,
-        peer_address: SocketAddr,
+        incoming: Box<IncomingConnection<P>>,
+        span: Span,
     ) -> Effects<Event<P>> {
-        match result {
-            Ok((peer_id, transport)) => {
-                // If we have connected to ourself, allow the connection to drop.
-                if peer_id == self.our_id {
-                    debug!(
-                        our_id=%self.our_id,
-                        %peer_address,
-                        local_address=?transport.get_ref().local_addr(),
-                        "connected incoming to ourself - closing connection"
-                    );
-                    return Effects::new();
-                }
+        span.clone().in_scope(|| match *incoming {
+            IncomingConnection::FailedEarly {
+                peer_addr: _,
+                ref error,
+            } => {
+                // Failed without much info, there is little we can do about this.
+                debug!(err=%display_error(error), "incoming connection failed early");
+                Effects::new()
+            }
+            IncomingConnection::Failed {
+                peer_addr: _,
+                peer_id: _,
+                ref error,
+            } => {
+                // TODO: At this point, we could consider blocking peers by [`PeerID`], but this
+                //       feature is not implemented yet.
+                debug!(
+                    err = display_error(error),
+                    "incoming connection failed after TLS setup"
+                );
+                Effects::new()
+            }
+            IncomingConnection::Loopback => {
+                // Loopback connections are closed immediately, but will be marked as such by the
+                // outgoing manager. We still record that it succeeded in the log, but this should
+                // be the only time per component instantiation that this happens.
+                info!("successful incoming loopback connection, will be dropped");
+                Effects::new()
+            }
+            IncomingConnection::Established {
+                peer_addr,
+                public_addr,
+                peer_id,
+                stream,
+            } => {
+                info!("new incoming connection established");
 
-                // If the peer has already disconnected, allow the connection to drop.
-                if let Err(ref err) = transport.get_ref().peer_addr() {
-                    debug!(
-                        our_id=%self.our_id,
-                        %peer_address,
-                        local_address=?transport.get_ref().local_addr(),
-                        err=display_error(err),
-                        "incoming connection dropped",
-                    );
-                    return Effects::new();
-                }
+                // Learn the address the peer gave us.
+                let dial_requests =
+                    self.outgoing_manager
+                        .learn_addr(public_addr, false, Instant::now());
+                let mut effects = self.process_dial_requests(dial_requests);
 
-                info!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
-                // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) = framed::<P>(
-                    Arc::downgrade(&self.net_metrics),
-                    ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
-                    transport,
-                    Role::Listener,
-                    self.chain_info.maximum_net_message_size,
-                )
-                .split();
-                let handshake = self.chain_info.create_handshake(self.public_address);
-                let mut effects = async move {
-                    let _ = sink.send(handshake).await;
-                }
-                .ignore::<Event<P>>();
-
-                // Record the incoming connection.
+                // Update connection symmetries.
                 if self
                     .connection_symmetries
                     .entry(peer_id)
                     .or_default()
-                    .add_incoming(peer_address, Instant::now())
+                    .add_incoming(peer_addr, Instant::now())
                 {
                     effects.extend(self.connection_completed(effect_builder, peer_id));
                 }
 
+                // Now we can start the message reader.
+                let boxed_span = Box::new(span.clone());
                 effects.extend(
-                    message_reader(
-                        self.event_queue,
+                    tasks::message_reader(
+                        self.context.clone(),
                         stream,
                         self.shutdown_receiver.clone(),
-                        self.our_id,
                         peer_id,
+                        span.clone(),
                     )
+                    .instrument(span)
                     .event(move |result| Event::IncomingClosed {
                         result,
                         peer_id: Box::new(peer_id),
-                        peer_address: Box::new(peer_address),
+                        peer_addr,
+                        span: boxed_span,
                     }),
                 );
 
                 effects
             }
-            Err(ref err) => {
-                warn!(our_id=%self.our_id, %peer_address, err=display_error(err), "TLS handshake failed");
-                Effects::new()
+        })
+    }
+
+    fn handle_incoming_closed(
+        &mut self,
+        result: io::Result<()>,
+        peer_id: Box<NodeId>,
+        peer_addr: SocketAddr,
+        span: Span,
+    ) -> Effects<Event<P>> {
+        span.in_scope(|| {
+            // Log the outcome.
+            match result {
+                Ok(()) => {
+                    info!("regular connection closing")
+                }
+                Err(ref err) => {
+                    warn!(err = display_error(err), "connection dropped")
+                }
             }
+
+            // Update the connection symmetries.
+            self.connection_symmetries
+                .entry(*peer_id)
+                .or_default()
+                .remove_incoming(peer_addr, Instant::now());
+
+            Effects::new()
+        })
+    }
+
+    /// Determines whether an outgoing peer should be blocked based on the connection error.
+    fn is_blockable_offense_for_outgoing(&self, error: &ConnectionError) -> bool {
+        match error {
+            // Potentially transient failures.
+            ConnectionError::TlsInitialization(_)
+            | ConnectionError::TcpConnection(_)
+            | ConnectionError::TlsHandshake(_)
+            | ConnectionError::HandshakeSend(_)
+            | ConnectionError::HandshakeRecv(_) => false,
+
+            // These could be candidates for blocking, but for now we decided not to.
+            ConnectionError::NoPeerCertificate
+            | ConnectionError::PeerCertificateInvalid(_)
+            | ConnectionError::DidNotSendHandshake => false,
+
+            // Definitely something we want to avoid.
+            ConnectionError::WrongNetwork(_) => true,
         }
     }
 
     /// Sets up an established outgoing connection.
     ///
     /// Initiates sending of the handshake as soon as the connection is established.
-    fn setup_outgoing(
+    #[allow(clippy::redundant_clone)]
+    fn handle_outgoing_connection(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        peer_address: SocketAddr,
-        peer_id: NodeId,
-        transport: Transport,
+        outgoing: OutgoingConnection<P>,
+        span: Span,
     ) -> Effects<Event<P>> {
-        // If we have connected to ourself, inform the outgoing manager, then drop the connection.
-        if peer_id == self.our_id {
-            let request = self
-                .outgoing_manager
-                .handle_dial_outcome(DialOutcome::Loopback { addr: peer_address });
-            return self.process_dial_requests(request);
-        }
+        let now = Instant::now();
+        span.clone().in_scope(|| match outgoing {
+            OutgoingConnection::FailedEarly { peer_addr, error }
+            | OutgoingConnection::Failed {
+                peer_addr,
+                peer_id: _,
+                error,
+            } => {
+                debug!(err=%display_error(&error), "outgoing connection failed");
+                // We perform blocking first, to not trigger a reconnection before blocking.
+                let mut requests = Vec::new();
 
-        // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) = framed::<P>(
-            Arc::downgrade(&self.net_metrics),
-            ConnectionId::from_connection(transport.ssl(), self.our_id, peer_id),
-            transport,
-            Role::Dialer,
-            self.chain_info.maximum_net_message_size,
-        )
-        .split();
+                if self.is_blockable_offense_for_outgoing(&error) {
+                    requests.extend(self.outgoing_manager.block_addr(peer_addr, now).into_iter());
+                }
 
-        // Setup the actual connection and inform the outgoing manager and record in symmetry.
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let connection = OutgoingConnection {
-            peer_address,
-            sender,
-        };
+                // Now we can proceed with the regular updates.
+                requests.extend(
+                    self.outgoing_manager
+                        .handle_dial_outcome(DialOutcome::Failed {
+                            addr: peer_addr,
+                            error,
+                            when: now,
+                        })
+                        .into_iter(),
+                );
 
-        let mut effects = Effects::new();
-
-        // Mark as outgoing in symmetry tracker.
-        if self
-            .connection_symmetries
-            .entry(peer_id)
-            .or_default()
-            .mark_outgoing(Instant::now())
-        {
-            effects.extend(self.connection_completed(effect_builder, peer_id));
-        }
-
-        let request = self
-            .outgoing_manager
-            .handle_dial_outcome(DialOutcome::Successful {
-                addr: peer_address,
-                handle: connection,
-                node_id: peer_id,
-            });
-
-        // Process resulting effects.
-        effects.extend(self.process_dial_requests(request));
-
-        // Send the handshake and start the reader.
-        let handshake = self.chain_info.create_handshake(self.public_address);
-
-        effects.extend(
-            message_sender(
-                receiver,
+                self.process_dial_requests(requests)
+            }
+            OutgoingConnection::Loopback { peer_addr } => {
+                // Loopback connections are marked, but closed.
+                info!("successful outgoing loopback connection, will be dropped");
+                let request = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Loopback { addr: peer_addr });
+                self.process_dial_requests(request)
+            }
+            OutgoingConnection::Established {
+                peer_addr,
+                peer_id,
                 sink,
-                self.net_metrics.queued_messages.clone(),
-                handshake,
-            )
-            .event(move |result| Event::OutgoingDropped {
-                peer_id: Box::new(peer_id),
-                peer_address: Box::new(peer_address),
-                error: Box::new(result.err().map(Into::into)),
-            }),
-        );
-        effects.extend(
-            handshake_reader(self.event_queue, stream, self.our_id, peer_id, peer_address)
-                .ignore::<Event<P>>(),
-        );
+            } => {
+                info!("new outgoing connection established");
 
-        effects
+                let (sender, receiver) = mpsc::unbounded_channel();
+                let handle = OutgoingHandle { peer_addr, sender };
+
+                let request = self
+                    .outgoing_manager
+                    .handle_dial_outcome(DialOutcome::Successful {
+                        addr: peer_addr,
+                        handle,
+                        node_id: peer_id,
+                    });
+
+                let mut effects = self.process_dial_requests(request);
+
+                // Update connection symmetries.
+                if self
+                    .connection_symmetries
+                    .entry(peer_id)
+                    .or_default()
+                    .mark_outgoing(now)
+                {
+                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                }
+
+                effects.extend(
+                    tasks::message_sender(receiver, sink, self.net_metrics.queued_messages.clone())
+                        .instrument(span)
+                        .event(move |_| Event::OutgoingDropped {
+                            peer_id: Box::new(peer_id),
+                            peer_addr,
+                        }),
+                );
+
+                effects
+            }
+        })
     }
 
-    fn handle_outgoing_lost(
+    fn handle_outgoing_dropped(
         &mut self,
         peer_id: NodeId,
-        peer_address: SocketAddr,
+        peer_addr: SocketAddr,
     ) -> Effects<Event<P>> {
         let requests = self
             .outgoing_manager
-            .handle_connection_drop(peer_address, Instant::now());
+            .handle_connection_drop(peer_addr, Instant::now());
 
         self.connection_symmetries
             .entry(peer_id)
@@ -552,7 +591,7 @@ where
 
     /// Gossips our public listening address, and schedules the next such gossip round.
     fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        let our_address = GossipedAddress::new(self.public_address);
+        let our_address = GossipedAddress::new(self.context.public_addr);
         effect_builder
             .announce_gossip_our_address(our_address)
             .ignore()
@@ -591,7 +630,7 @@ where
     /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
     fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
     where
-        T: IntoIterator<Item = DialRequest<OutgoingConnection<P>>>,
+        T: IntoIterator<Item = DialRequest<OutgoingHandle<P>>>,
     {
         let mut effects = Effects::new();
 
@@ -599,24 +638,12 @@ where
             trace!(%request, "processing dial request");
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
-                    connect_outgoing(
-                        addr,
-                        self.certificate.clone(),
-                        self.secret_key.clone(),
-                        self.is_stopped.clone(),
-                    )
-                    .instrument(span)
-                    .result(
-                        move |(peer_id, transport)| Event::OutgoingEstablished {
-                            remote_address: addr,
-                            peer_id: Box::new(peer_id),
-                            transport,
-                        },
-                        move |error| Event::OutgoingDialFailure {
-                            peer_address: Box::new(addr),
-                            error: Box::new(error),
-                        },
-                    ),
+                    tasks::connect_outgoing(self.context.clone(), addr)
+                        .instrument(span.clone())
+                        .event(|outgoing| Event::OutgoingConnection {
+                            outgoing: Box::new(outgoing),
+                            span,
+                        }),
                 ),
                 DialRequest::Disconnect { handle: _, span } => {
                     // Dropping the `handle` is enough to signal the connection to shutdown.
@@ -631,51 +658,28 @@ where
     }
 
     /// Handles a received message.
-    fn handle_message(
+    fn handle_incoming_message(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
         msg: Message<P>,
+        span: Span,
     ) -> Effects<Event<P>>
     where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
-        match msg {
-            Message::Handshake {
-                network_name,
-                public_address,
-                protocol_version,
-            } => {
-                let requests = if network_name != self.chain_info.network_name {
-                    info!(
-                        our_id=%self.our_id,
-                        %peer_id,
-                        our_network=?self.chain_info.network_name,
-                        their_network=?network_name,
-                        our_protocol_version=%self.chain_info.protocol_version,
-                        their_protocol_version=%protocol_version,
-                        "dropping connection due to network name mismatch"
-                    );
-
-                    // Node is on the wrong network. As a workaround until the connection logic
-                    // eliminates these cases immediately, we look up the peer's outgoing
-                    // connections and block them.
-                    if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
-                        self.outgoing_manager.block_addr(addr, Instant::now())
-                    } else {
-                        Default::default()
-                    }
-                } else {
-                    // Speed up the connection process by directly learning the peer's address.
-                    self.outgoing_manager
-                        .learn_addr(public_address, false, Instant::now())
-                };
-                self.process_dial_requests(requests)
+        span.in_scope(|| match msg {
+            Message::Handshake { .. } => {
+                // We should never receive a handshake message on an established connection. Simply
+                // discard it. This may be too lenient, so we may consider simply dropping the
+                // connection in the future instead.
+                warn!("received unexpected handshake");
+                Effects::new()
             }
             Message::Payload(payload) => effect_builder
                 .announce_message_received(peer_id, payload)
                 .ignore(),
-        }
+        })
     }
 
     /// Emits an announcement that a connection has been completed.
@@ -692,7 +696,7 @@ where
         let mut ret = BTreeMap::new();
         for node_id in self.outgoing_manager.connected_peers() {
             if let Some(connection) = self.outgoing_manager.get_route(node_id) {
-                ret.insert(node_id, connection.peer_address.to_string());
+                ret.insert(node_id, connection.peer_addr.to_string());
             } else {
                 // This should never happen unless the state of `OutgoingManager` is corrupt.
                 warn!(%node_id, "route disappeared unexpectedly")
@@ -713,7 +717,7 @@ where
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
+        self.context.our_id
     }
 }
 
@@ -727,16 +731,12 @@ where
             // Close the shutdown socket, causing the server to exit.
             drop(self.shutdown_sender.take());
 
-            // Set the flag to true, ensuring any ongoing attempts to establish outgoing TLS
-            // connections return errors.
-            self.is_stopped.store(true, Ordering::SeqCst);
-
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
                 match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
+                    Ok(_) => debug!(our_id=%self.context.our_id, "server exited cleanly"),
                     Err(ref err) => {
-                        error!(%self.our_id, err=display_error(err), "could not join server task cleanly")
+                        error!(%self.context.our_id, err=display_error(err), "could not join server task cleanly")
                     }
                 }
             }
@@ -763,82 +763,26 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            // A new TCP connection has arrived (stage 1/3).
-            Event::IncomingNew {
-                stream,
-                peer_address,
-            } => {
-                debug!(our_id=%self.our_id, %peer_address,
-                       "incoming connection, starting TLS handshake");
-
-                setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
-                    .boxed()
-                    .event(move |result| Event::IncomingHandshakeCompleted {
-                        result: Box::new(result),
-                        peer_address,
-                    })
+            Event::IncomingConnection { incoming, span } => {
+                self.handle_incoming_connection(effect_builder, incoming, span)
             }
-            // The TLS connection has been established (stage 2/3).
-            // Stage 3 is implicitly handled.
-            Event::IncomingHandshakeCompleted {
-                result,
-                peer_address,
-            } => {
-                self.handle_incoming_tls_handshake_completed(effect_builder, *result, *peer_address)
-            }
-            Event::IncomingMessage { peer_id, msg } => {
-                self.handle_message(effect_builder, *peer_id, *msg)
+            Event::IncomingMessage { peer_id, msg, span } => {
+                self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
             }
             Event::IncomingClosed {
                 result,
                 peer_id,
-                peer_address,
-            } => {
-                // TODO: Move the logging of these errors into the `async` function that is using
-                //       the correct span passed in from the `OutgoingManager`.
-                match result {
-                    Ok(()) => {
-                        info!(our_id=%self.our_id, %peer_id, %peer_address, "connection closed",)
-                    }
-                    Err(ref err) => {
-                        warn!(our_id=%self.our_id, %peer_id, %peer_address, err=display_error(err),
-                              "connection dropped")
-                    }
-                }
+                peer_addr,
+                span,
+            } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
-                let now = Instant::now();
-                self.connection_symmetries
-                    .entry(*peer_id)
-                    .or_default()
-                    .remove_incoming(*peer_address, now);
-
-                Effects::new()
+            Event::OutgoingConnection { outgoing, span } => {
+                self.handle_outgoing_connection(effect_builder, *outgoing, span)
             }
 
-            Event::OutgoingEstablished {
-                remote_address,
-                peer_id,
-                transport,
-            } => self.setup_outgoing(effect_builder, remote_address, *peer_id, transport),
-            Event::OutgoingDialFailure {
-                peer_address,
-                error,
-            } => {
-                let requests = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Failed {
-                        addr: *peer_address,
-                        error: *error,
-                        when: Instant::now(),
-                    });
-
-                self.process_dial_requests(requests)
+            Event::OutgoingDropped { peer_id, peer_addr } => {
+                self.handle_outgoing_dropped(*peer_id, peer_addr)
             }
-            Event::OutgoingDropped {
-                peer_id,
-                peer_address,
-                error: _,
-            } => self.handle_outgoing_lost(*peer_id, *peer_address),
 
             Event::NetworkRequest { req } => {
                 match *req {
@@ -938,65 +882,6 @@ where
     }
 }
 
-/// Core accept loop for the networking server.
-///
-/// Never terminates.
-async fn server_task<P, REv>(
-    event_queue: EventQueueHandle<REv>,
-    listener: tokio::net::TcpListener,
-    mut shutdown_receiver: watch::Receiver<()>,
-    our_id: NodeId,
-) where
-    REv: From<Event<P>>,
-{
-    // The server task is a bit tricky, since it has to wait on incoming connections while at the
-    // same time shut down if the networking component is dropped, otherwise the TCP socket will
-    // stay open, preventing reuse.
-
-    // We first create a future that never terminates, handling incoming connections:
-    let accept_connections = async move {
-        loop {
-            // We handle accept errors here, since they can be caused by a temporary resource
-            // shortage or the remote side closing the connection while it is waiting in
-            // the queue.
-            match listener.accept().await {
-                Ok((stream, peer_address)) => {
-                    // Move the incoming connection to the event queue for handling.
-                    let event = Event::IncomingNew {
-                        stream,
-                        peer_address: Box::new(peer_address),
-                    };
-                    event_queue
-                        .schedule(event, QueueKind::NetworkIncoming)
-                        .await;
-                }
-                // TODO: Handle resource errors gracefully.
-                //       In general, two kinds of errors occur here: Local resource exhaustion,
-                //       which should be handled by waiting a few milliseconds, or remote connection
-                //       errors, which can be dropped immediately.
-                //
-                //       The code in its current state will consume 100% CPU if local resource
-                //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(ref err) => {
-                    warn!(%our_id, err=display_error(err), "dropping incoming connection during accept")
-                }
-            }
-        }
-    };
-
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
-        Either::Left(_) => info!(
-            %our_id,
-            "shutting down socket, no longer accepting incoming connections"
-        ),
-        Either::Right(_) => unreachable!(),
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum SmallNetworkIdentityError {
     #[error("could not generate TLS certificate: {0}")]
@@ -1030,8 +915,8 @@ where
 {
     fn from(small_network: &SmallNetwork<REv, P>) -> Self {
         SmallNetworkIdentity {
-            secret_key: small_network.secret_key.clone(),
-            tls_certificate: small_network.certificate.clone(),
+            secret_key: small_network.context.secret_key.clone(),
+            tls_certificate: small_network.context.our_cert.clone(),
         }
     }
 }
@@ -1046,156 +931,11 @@ impl From<&SmallNetworkIdentity> for NodeId {
     }
 }
 
-/// Server-side TLS handshake.
-///
-/// This function groups the TLS handshake into a convenient function, enabling the `?` operator.
-async fn setup_tls(
-    stream: TcpStream,
-    cert: Arc<TlsCert>,
-    secret_key: Arc<PKey<Private>>,
-) -> Result<(NodeId, Transport)> {
-    let mut tls_stream = tls::create_tls_acceptor(&cert.as_x509().as_ref(), &secret_key.as_ref())
-        .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
-        .and_then(|ssl| SslStream::new(ssl, stream))
-        .map_err(Error::AcceptorCreation)?;
-
-    SslStream::accept(Pin::new(&mut tls_stream))
-        .await
-        .map_err(Error::Handshake)?;
-
-    // We can now verify the certificate.
-    let peer_cert = tls_stream
-        .ssl()
-        .peer_certificate()
-        .ok_or(Error::NoClientCertificate)?;
-
-    Ok((
-        NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint()),
-        tls_stream,
-    ))
-}
-
-/// Network handshake reader for single handshake message received by outgoing connection.
-async fn handshake_reader<REv, P>(
-    event_queue: EventQueueHandle<REv>,
-    mut stream: SplitStream<FramedTransport<P>>,
-    our_id: NodeId,
-    peer_id: NodeId,
-    peer_address: SocketAddr,
-) where
-    P: DeserializeOwned + Send + Display + Payload,
-    REv: From<Event<P>>,
-{
-    if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
-        debug!(%our_id, %msg, %peer_id, "handshake received");
-        return event_queue
-            .schedule(
-                Event::IncomingMessage {
-                    peer_id: Box::new(peer_id),
-                    msg: Box::new(msg),
-                },
-                QueueKind::NetworkIncoming,
-            )
-            .await;
-    }
-    warn!(%our_id, %peer_id, "receiving handshake failed, closing connection");
-    event_queue
-        .schedule(
-            Event::OutgoingDropped {
-                peer_id: Box::new(peer_id),
-                peer_address: Box::new(peer_address),
-                error: Box::new(None),
-            },
-            QueueKind::Network,
-        )
-        .await
-}
-
-/// Network message reader.
-///
-/// Schedules all received messages until the stream is closed or an error occurs.
-async fn message_reader<REv, P>(
-    event_queue: EventQueueHandle<REv>,
-    mut stream: SplitStream<FramedTransport<P>>,
-    mut shutdown_receiver: watch::Receiver<()>,
-    our_id: NodeId,
-    peer_id: NodeId,
-) -> io::Result<()>
-where
-    P: DeserializeOwned + Send + Display + Payload,
-    REv: From<Event<P>>,
-{
-    let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Ok(msg) => {
-                    debug!(%our_id, %msg, %peer_id, "message received");
-                    // We've received a message, push it to the reactor.
-                    event_queue
-                        .schedule(
-                            Event::IncomingMessage {
-                                peer_id: Box::new(peer_id),
-                                msg: Box::new(msg),
-                            },
-                            QueueKind::NetworkIncoming,
-                        )
-                        .await;
-                }
-                Err(err) => {
-                    warn!(%our_id, err=display_error(&err), %peer_id, "receiving message failed, closing connection");
-                    return Err(err);
-                }
-            }
-        }
-        Ok(())
-    };
-
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // while loop to terminate.
-    match future::select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
-        Either::Left(_) => info!(
-            %our_id,
-            %peer_id,
-            "shutting down incoming connection message reader"
-        ),
-        Either::Right(_) => (),
-    }
-
-    Ok(())
-}
-
-/// Network message sender.
-///
-/// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
-///
-/// Initially sends a handshake including the `chainspec_hash` as a final handshake step.  If the
-/// recipient's `chainspec_hash` doesn't match, the connection will be closed.
-async fn message_sender<P>(
-    mut queue: UnboundedReceiver<Message<P>>,
-    mut sink: SplitSink<FramedTransport<P>, Message<P>>,
-    counter: IntGauge,
-    handshake: Message<P>,
-) -> Result<()>
-where
-    P: Serialize + Send + Payload,
-{
-    sink.send(handshake).await.map_err(Error::MessageNotSent)?;
-    while let Some(payload) = queue.recv().await {
-        counter.dec();
-        // We simply error-out if the sink fails, it means that our connection broke.
-        sink.send(payload).await.map_err(Error::MessageNotSent)?;
-    }
-
-    Ok(())
-}
-
 /// Transport type alias for base encrypted connections.
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-type FramedTransport<P> = SymmetricallyFramed<
+pub type FramedTransport<P> = SymmetricallyFramed<
     Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
     CountingFormat<MessagePackFormat>,
@@ -1226,48 +966,6 @@ where
     )
 }
 
-/// Initiates a TLS connection to a remote address.
-async fn connect_outgoing(
-    peer_address: SocketAddr,
-    our_certificate: Arc<TlsCert>,
-    secret_key: Arc<PKey<Private>>,
-    server_is_stopped: Arc<AtomicBool>,
-) -> Result<(NodeId, Transport)> {
-    let ssl = tls::create_tls_connector(&our_certificate.as_x509(), &secret_key)
-        .context("could not create TLS connector")?
-        .configure()
-        .and_then(|mut config| {
-            config.set_verify_hostname(false);
-            config.into_ssl("this-will-not-be-checked.example.com")
-        })
-        .map_err(Error::ConnectorConfiguration)?;
-
-    let stream = TcpStream::connect(peer_address)
-        .await
-        .context("TCP connection failed")?;
-
-    let mut tls_stream = SslStream::new(ssl, stream).context("tls handshake failed")?;
-    SslStream::connect(Pin::new(&mut tls_stream)).await?;
-
-    let peer_cert = tls_stream
-        .ssl()
-        .peer_certificate()
-        .ok_or(Error::NoServerCertificate)?;
-
-    let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
-
-    if server_is_stopped.load(Ordering::SeqCst) {
-        debug!(
-            our_id=%our_certificate.public_key_fingerprint(),
-            %peer_address,
-            "server stopped - aborting outgoing TLS connection"
-        );
-        Err(Error::ServerStopped)
-    } else {
-        Ok((NodeId::from(peer_id), tls_stream))
-    }
-}
-
 impl<R, P> Debug for SmallNetwork<R, P>
 where
     P: Payload,
@@ -1276,8 +974,8 @@ where
         // We output only the most important fields of the component, as it gets unwieldy quite fast
         // otherwise.
         f.debug_struct("SmallNetwork")
-            .field("our_id", &self.our_id)
-            .field("public_address", &self.public_address)
+            .field("our_id", &self.context.our_id)
+            .field("public_addr", &self.context.public_addr)
             .finish()
     }
 }
