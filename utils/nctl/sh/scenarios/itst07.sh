@@ -5,9 +5,6 @@ source "$NCTL"/sh/scenarios/common/itst.sh
 # Exit if any of the commands fail.
 set -e
 
-# Trapping exit so we can remove the temp file used in ci run
-trap clean_up EXIT 
-
 #######################################
 # Runs an integration tests that tries to simulate
 # wasm being sent to a node that falls over mid-stream.
@@ -47,19 +44,6 @@ function main() {
     log "------------------------------------------------------------"
 }
 
-# used by trap for clean up of tmp file before exit
-function clean_up() {
-    local EXIT_CODE=$?
-
-    if [ -f "$DEPLOY_LOG" ]; then
-        log "Removing transfer tmp file..."
-        rm -f "$DEPLOY_LOG"
-    fi
-
-    log "Test exited with exit code $EXIT_CODE"
-    exit $EXIT_CODE
-}
-
 # Transfers sent in background so we can mimic a node dying mid-stream.
 function do_background_wasm_transfers() {
     local NODE_ID=${1}
@@ -79,8 +63,13 @@ function check_wasm_inclusion() {
     local TRANSFER_HASHES=$(cat "$DEPLOY_LOG" | awk -F'::' '{print $4}' | sed 's/^[ \t]*//' | sed '/^[[:space:]]*$/d')
     local TRANSFER_COUNT=$(echo "$TRANSFER_HASHES" | wc -l)
     local HASH
+    log_step "Checking wasm inclusion..."
     for (( i='1'; i<="$TRANSFER_COUNT"; i++ )); do
         HASH=$(echo "$TRANSFER_HASHES" | sed -n "$i"p)
+        if [ -z "$HASH" ]; then
+            log "Error: No Hash found!"
+            exit 1
+        fi
         log "Starting walkback for Transfer $i: $HASH"
         verify_wasm_inclusion "$NODE_ID" "$WALKBACK" "$HASH"
         log ""
