@@ -8,69 +8,16 @@ use serde::{Deserialize, Serialize};
 use super::BlockHeight;
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, FinalizedBlock},
+    types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
 use casper_execution_engine::shared::motes::Motes;
 
-/// A wrapper over `DeployHeader` to differentiate between wasm-less transfers and wasm headers.
+/// Information about a deploy.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
-pub enum DeployType {
-    /// Represents a wasm-less transfer.
-    Transfer {
-        header: DeployHeader,
-        payment_amount: Motes,
-        size: usize,
-    },
-    /// Represents a wasm deploy.
-    Other {
-        header: DeployHeader,
-        payment_amount: Motes,
-        size: usize,
-    },
-}
-
-impl DeployType {
-    /// Access header in all variants of `DeployType`.
-    pub fn header(&self) -> &DeployHeader {
-        match self {
-            Self::Transfer { header, .. } => header,
-            Self::Other { header, .. } => header,
-        }
-    }
-
-    /// Extract into header and drop `DeployType`.
-    pub fn take_header(self) -> DeployHeader {
-        match self {
-            Self::Transfer { header, .. } => header,
-            Self::Other { header, .. } => header,
-        }
-    }
-
-    /// Access payment_amount from all variants.
-    pub fn payment_amount(&self) -> Motes {
-        match self {
-            Self::Transfer { payment_amount, .. } => *payment_amount,
-            Self::Other { payment_amount, .. } => *payment_amount,
-        }
-    }
-
-    /// Access size from all variants.
-    pub fn size(&self) -> usize {
-        match self {
-            Self::Transfer { size, .. } => *size,
-            Self::Other { size, .. } => *size,
-        }
-    }
-
-    /// Asks if the variant is a Transfer.
-    pub fn is_transfer(&self) -> bool {
-        matches!(self, DeployType::Transfer { .. })
-    }
-
-    /// Asks if the variant is Wasm.
-    pub fn is_wasm(&self) -> bool {
-        matches!(self, DeployType::Other { .. })
-    }
+pub struct DeployInfo {
+    pub header: DeployHeader,
+    pub payment_amount: Motes,
+    pub size: usize,
 }
 
 /// An event for when using the block proposer as a component.
@@ -88,8 +35,8 @@ pub enum Event {
     },
     /// A new deploy should be buffered.
     BufferDeploy {
-        hash: DeployHash,
-        deploy_type: Box<DeployType>,
+        hash: DeployOrTransferHash,
+        deploy_info: Box<DeployInfo>,
     },
     /// The block proposer has been asked to prune stale deploys
     Prune,

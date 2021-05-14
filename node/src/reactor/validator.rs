@@ -906,8 +906,8 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let deploy_type = match deploy.deploy_type() {
-                    Ok(deploy_type) => deploy_type,
+                let deploy_info = match deploy.deploy_info() {
+                    Ok(deploy_info) => deploy_info,
                     Err(error) => {
                         tracing::error!("Invalid deploy: {:?}", error);
                         return Effects::new();
@@ -915,8 +915,8 @@ impl reactor::Reactor for Reactor {
                 };
 
                 let event = block_proposer::Event::BufferDeploy {
-                    hash: *deploy.id(),
-                    deploy_type: Box::new(deploy_type),
+                    hash: deploy.deploy_or_transfer_hash(),
+                    deploy_info: Box::new(deploy_info),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));

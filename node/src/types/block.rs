@@ -46,7 +46,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, JsonBlock},
+    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
     utils::DisplayIter,
 };
 
@@ -232,10 +232,19 @@ impl BlockPayload {
     }
 
     /// Returns an iterator over all deploys and transfers.
-    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploys_and_transfers_iter(
+        &self,
+    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
         self.deploy_hashes()
             .iter()
-            .chain(self.transfer_hashes().iter())
+            .copied()
+            .map(DeployOrTransferHash::Deploy)
+            .chain(
+                self.transfer_hashes()
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Transfer),
+            )
     }
 }
 
@@ -365,8 +374,19 @@ impl FinalizedBlock {
     }
 
     /// Returns an iterator over all deploy and transfer hashes.
-    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes.iter().chain(&self.transfer_hashes)
+    pub(crate) fn deploys_and_transfers_iter(
+        &self,
+    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
+        self.deploy_hashes
+            .iter()
+            .copied()
+            .map(DeployOrTransferHash::Deploy)
+            .chain(
+                self.transfer_hashes
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Transfer),
+            )
     }
 
     /// Generates a random instance using a `TestRng`.
