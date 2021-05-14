@@ -101,7 +101,7 @@ use std::{
 
 use datasize::DataSize;
 
-use tracing::{debug, error_span, info, trace, warn, Span};
+use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
 use super::{display_error, NodeId};
 
@@ -330,7 +330,7 @@ where
             OutgoingState::Connected { peer_id, .. } => {
                 error_span!("outgoing", %addr, state=%outgoing.state, %peer_id)
             }
-            _ => error_span!("outgoing", %addr, state=%outgoing.state),
+            _ => error_span!("outgoing", %addr, state=%outgoing.state, peer_id=Empty),
         }
     } else {
         error_span!("outgoing", %addr, state = "-")

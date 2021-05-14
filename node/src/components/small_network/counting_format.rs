@@ -51,7 +51,7 @@ impl Display for TraceId {
 /// a message is sent or received.
 #[pin_project]
 #[derive(Debug)]
-pub(super) struct CountingFormat<F> {
+pub struct CountingFormat<F> {
     /// The actual serializer performing the work.
     #[pin]
     inner: F,

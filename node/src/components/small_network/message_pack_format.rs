@@ -20,7 +20,7 @@ use super::Message;
 
 /// msgpack encoder/decoder for messages.
 #[derive(Debug)]
-pub(super) struct MessagePackFormat;
+pub struct MessagePackFormat;
 
 impl<P> Serializer<Message<P>> for MessagePackFormat
 where
