@@ -38,12 +38,13 @@ function _main()
     local PATH_TO_NET
     local PATH_TO_STAGE
     local PATH_TO_STAGED_ASSETS
-    local PROTOCOL_VERSION_INITIAL
+    local PROTOCOL_VERSION
+    local PROTOCOL_VERSION_FS
 
     PATH_TO_NET=$(get_path_to_net)
-    PROTOCOL_VERSION_INITIAL=$(_get_initial_protocol_version "$STAGE_ID")
-    PROTOCOL_VERSION_INITIAL_FS=$(get_protocol_version_for_fs "$PROTOCOL_VERSION_INITIAL")
-    PATH_TO_STAGED_ASSETS="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION_INITIAL"
+    PROTOCOL_VERSION=$(_get_initial_protocol_version "$STAGE_ID")
+    PROTOCOL_VERSION_FS=$(get_protocol_version_for_fs "$PROTOCOL_VERSION")
+    PATH_TO_STAGED_ASSETS="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION_FS"
 
     # Tear down previous.
     if [ -d "$PATH_TO_NET" ]; then
@@ -52,25 +53,20 @@ function _main()
     mkdir -p "$PATH_TO_NET"
 
     # Setup new.
-    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "$PROTOCOL_VERSION_INITIAL_FS"
-
-    setup_asset_binaries "$PROTOCOL_VERSION_INITIAL_FS" \
+    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "$PROTOCOL_VERSION_FS"
+    setup_asset_binaries "$PROTOCOL_VERSION_FS" \
                          "$COUNT_NODES" \
                          "$PATH_TO_STAGED_ASSETS/casper-client" \
                          "$PATH_TO_STAGED_ASSETS/casper-node" \
                          "$PATH_TO_STAGED_ASSETS/casper-node-launcher" \
                          "$PATH_TO_STAGED_ASSETS"
-
     setup_asset_keys "$COUNT_NODES" "$COUNT_USERS"
-
     setup_asset_daemon
-    
     setup_asset_chainspec "$COUNT_NODES" \
-                          "$PROTOCOL_VERSION_INITIAL" \
+                          "$PROTOCOL_VERSION" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \
                           "$PATH_TO_STAGED_ASSETS/chainspec.toml" \
                           true
-
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" \
                              "$COUNT_NODES_AT_GENESIS" \
@@ -80,9 +76,8 @@ function _main()
                                            "$COUNT_USERS" \
                                            "$PATH_TO_ACCOUNTS"
     fi
-
     setup_asset_node_configs "$COUNT_NODES" \
-                             "$PROTOCOL_VERSION_INITIAL_FS" \
+                             "$PROTOCOL_VERSION_FS" \
                              "$PATH_TO_STAGED_ASSETS/config.toml" \
                              true
 
@@ -98,7 +93,7 @@ function _get_initial_protocol_version()
 
     for FHANDLE in "$(get_path_to_stage "$STAGE_ID")/"*; do        
         if [ -d "$FHANDLE" ]; then
-            echo "$(basename "$FHANDLE")"
+            echo "$(basename "$FHANDLE")" | tr "_" "."
             break
         fi
     done

@@ -67,17 +67,13 @@ function _get_protocol_version_of_next_upgrade()
 }
 
 #######################################
-# Prepares assets for upgrade scenario start.
-# Arguments:
-#   Network nodeset count.
-#   Delay in seconds pripr to which genesis window will expire.
-#   Path to template accounts.toml.
-#   Scenario ordinal identifier.
+# Moves upgrade assets into location.
 #######################################
 function _main()
 {
     local STAGE_ID=${1}
     local ACTIVATION_POINT=${2}
+    local VERBOSE=${3}
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
     local COUNT_NODES
@@ -87,30 +83,27 @@ function _main()
     PROTOCOL_VERSION=$(_get_protocol_version_of_next_upgrade "$PATH_TO_STAGE")
 
     if [ "$PROTOCOL_VERSION" != "" ]; then
-        log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT : STARTS"
-
+        if [ $VERBOSE == true ]; then
+            log "stage $STAGE_ID :: upgrade assets -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT"
+        fi
         _set_directories "$COUNT_NODES" \
                          "$PROTOCOL_VERSION"
-
         setup_asset_binaries "$PROTOCOL_VERSION" \
                              "$COUNT_NODES" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
-
         setup_asset_chainspec "$COUNT_NODES" \
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
                               "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml" \
                               false
-
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
                                  false
-
-        log "stage $STAGE_ID :: upgrade -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT : COMPLETE"
+        sleep 10.0
     else
         log "ATTENTION :: no more staged upgrades to rollout !!!"
     fi
@@ -123,6 +116,7 @@ function _main()
 unset ACTIVATION_POINT
 unset NET_ID
 unset STAGE_ID
+unset VERBOSE
 
 for ARGUMENT in "$@"
 do
@@ -132,6 +126,7 @@ do
         era) ACTIVATION_POINT=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         stage) STAGE_ID=${VALUE} ;;
+        verbose) VERBOSE=${VALUE} ;;
         *)
     esac
 done
@@ -143,4 +138,5 @@ if [ $ACTIVATION_POINT == "N/A" ]; then
 fi
 
 _main "${STAGE_ID:-1}" \
-      $((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))
+      $((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET)) \
+      "${VERBOSE:-true}"

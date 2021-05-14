@@ -57,9 +57,9 @@ function _main()
     _step_03
     _step_04
     _step_05 "$STAGE_ID"
-    _step_06
-    _step_07
-    _step_08 "$N1_PROTOCOL_VERSION"
+    _step_06 "$N1_PROTOCOL_VERSION"
+    # _step_07
+    # _step_08 "$N1_PROTOCOL_VERSION"
     _step_09
 }
 
@@ -68,7 +68,7 @@ function _step_01()
 {
     local STAGE_ID=${1}
 
-    log_step 1 "starting network from stage $STAGE_ID"
+    log_step 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
@@ -88,11 +88,11 @@ function _step_03()
 {
     log_step 3 "dispatching deploys to populate global state"
 
-    log "... ... 100 native transfers"
+    log "... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
         transfers=100 interval=0.0 verbose=false
 
-    log "... ... 100 wasm transfers"
+    log "... 100 wasm transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_wasm.sh" \
         transfers=100 interval=0.0 verbose=false
 }
@@ -112,18 +112,23 @@ function _step_05()
 
     log_step 5 "upgrading network from stage ($STAGE_ID)"
 
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID"
-    sleep 10.0
+    log "... setting upgrade assets"
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
+
+    log "... awaiting 2 eras + 1 block"
+    await_n_eras 2
+    await_n_blocks 1
 }
 
 # Step 06: Assert chain is progressing at all nodes.
 function _step_06() 
 {
+    local N1_PROTOCOL_VERSION_INITIAL=${1}
     local HEIGHT_1
     local HEIGHT_2
     local NODE_ID
 
-    log_step 6 "asserting node liveness"
+    log_step 6 "asserting node upgrades"
 
     # Assert no nodes have stopped.
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
@@ -142,6 +147,23 @@ function _step_06()
             exit 1
         fi
     done
+
+    # Assert node-1 protocol version incremented.
+    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
+    if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
+        log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
+        # exit 1
+    fi
+
+    # Assert nodes are running same protocol version.
+    for NODE_ID in $(seq 2 "$(get_count_of_genesis_nodes)")
+    do
+        NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
+        if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
+            log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
+            # exit 1
+        fi
+    done
 }
 
 # Step 07: Join passive nodes.
@@ -152,7 +174,7 @@ function _step_07()
 
     log_step 7 "joining passive nodes"
 
-    log "... ... submitting auction bids"
+    log "... submitting auction bids"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
@@ -164,11 +186,11 @@ function _step_07()
         fi
     done
 
-    log "... ... awaiting auction bid acceptance (3 eras + 1 block)"
+    log "... awaiting auction bid acceptance (3 eras + 1 block)"
     await_n_eras 3
     await_n_blocks 1
 
-    log "... ... starting nodes"
+    log "... starting nodes"
     TRUSTED_HASH="$(get_chain_latest_block_hash)"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
     do
@@ -200,22 +222,24 @@ function _step_08()
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
             log "ERROR :: protocol upgrade failure - >= 1 nodes not live"
-            exit 1            
+            # exit 1            
         fi    
     done
 
-    # Assert nodes are running same protocol version.
+    # Assert node-1 protocol version incremented.
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
         log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
-        exit 1
+        # exit 1
     fi
+
+    # Assert nodes are running same protocol version.
     for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
     do
         NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
         if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
-            exit 1
+            # exit 1
         fi
     done
 
@@ -227,7 +251,7 @@ function _step_08()
         NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
         if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
-            exit 1
+            # exit 1
         fi
     done
 }
@@ -235,9 +259,11 @@ function _step_08()
 # Step 09: Terminate.
 function _step_09()
 {
-    log_step 10 "test successful - tidying up"
+    log_step 7 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
+
+    log_break
 }
 
 # Call entry point.

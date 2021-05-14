@@ -47,6 +47,14 @@ function log ()
 }
 
 #######################################
+# Line break logging helper.
+#######################################
+function log_break() 
+{
+    log "---------------------------------------------------------------------------------"
+}
+
+#######################################
 # Wraps standard echo by adding application error prefix.
 #######################################
 function log_error ()
@@ -68,7 +76,7 @@ function log_step()
     local MSG=${2}
     local PREFIX=${3:-""}
 
-    log "---------------------------------------------------------------------------------"
+    log_break
     if [ "$PREFIX" == "" ]; then
         log "STEP $STEP_ID: $MSG"
     else

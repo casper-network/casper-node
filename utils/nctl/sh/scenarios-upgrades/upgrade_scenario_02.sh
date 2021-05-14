@@ -79,11 +79,11 @@ function _spinup_step_03()
 {
     log_step 3 "dispatching deploys to populate global state" "SPINUP"
 
-    log "... ... 100 native transfers"
+    log "... 100 native transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_native.sh" \
         transfers=100 interval=0.0 verbose=false
 
-    log "... ... 100 wasm transfers"
+    log "... 100 wasm transfers"
     source "$NCTL/sh/contracts-transfers/do_dispatch_wasm.sh" \
         transfers=100 interval=0.0 verbose=false
 }
@@ -108,7 +108,6 @@ function _upgrade()
     _upgrade_step_02
     _upgrade_step_03
     _upgrade_step_04
-    _upgrade_step_05
 }
 
 # Upgrade: step 01: Upgrade network from stage.
@@ -121,19 +120,14 @@ function _upgrade_step_01()
     log_step 1 "upgrading network from stage ($STAGE_ID) @ $PROTOCOL_VERSION_PREVIOUS -> $PROTOCOL_VERSION" "UPGRADE"
 
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID"
-    sleep 10.0
+
+    log "... awaiting 2 eras + 1 block"
+    await_n_eras 2
+    await_n_blocks 1
 }
 
-# Upgrade: step 02: Await era-id += 1.
+# Upgrade: step 02: Populate global state -> native + wasm transfers.
 function _upgrade_step_02() 
-{
-    log_step 2 "awaiting next era" "UPGRADE"
-
-    await_n_eras 1
-}
-
-# Upgrade: step 05: Populate global state -> native + wasm transfers.
-function _upgrade_step_03() 
 {
     log_step 3 "dispatching deploys to populate global state" "UPGRADE"
 
@@ -146,8 +140,8 @@ function _upgrade_step_03()
         transfers=100 interval=0.0 verbose=false
 }
 
-# Upgrade: step 04: Assert chain is live.
-function _upgrade_step_04() 
+# Upgrade: step 03: Assert chain is live.
+function _upgrade_step_03() 
 {
     log_step 4 "asserting chain liveness" "UPGRADE"
 
@@ -157,8 +151,8 @@ function _upgrade_step_04()
     fi
 }
 
-# Upgrade: step 05 Assert chain is progressing at all nodes.
-function _upgrade_step_05() 
+# Upgrade: step 04: Assert chain is progressing at all nodes.
+function _upgrade_step_04() 
 {
     local HEIGHT_1
     local HEIGHT_2
