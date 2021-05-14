@@ -326,7 +326,7 @@ where
     }
 }
 
-/// Core accept loop for the networking server.
+/// Runs the server core acceptor loop.
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
     listener: tokio::net::TcpListener,

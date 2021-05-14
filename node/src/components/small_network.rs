@@ -444,7 +444,7 @@ where
             // Log the outcome.
             match result {
                 Ok(()) => {
-                    info!("regular connection close")
+                    info!("regular connection closing")
                 }
                 Err(ref err) => {
                     warn!(err = display_error(err), "connection dropped")
