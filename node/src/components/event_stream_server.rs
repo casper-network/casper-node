@@ -22,10 +22,11 @@
 
 mod config;
 mod event;
+mod event_indexer;
 mod http_server;
 mod sse_server;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, path::PathBuf};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -45,6 +46,7 @@ use crate::{
 };
 pub use config::Config;
 pub(crate) use event::Event;
+use event_indexer::{EventIndex, EventIndexer};
 pub use sse_server::SseData;
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
@@ -68,12 +70,14 @@ pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
     #[data_size(skip)]
-    sse_data_sender: UnboundedSender<SseData>,
+    sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
+    event_indexer: EventIndexer,
 }
 
 impl EventStreamServer {
     pub(crate) fn new(
         config: Config,
+        storage_path: PathBuf,
         api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError> {
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
@@ -85,6 +89,7 @@ impl EventStreamServer {
             ListeningError::ResolveAddress(error)
         })?;
 
+        let event_indexer = EventIndexer::new(storage_path);
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.
@@ -115,12 +120,16 @@ impl EventStreamServer {
             new_subscriber_info_receiver,
         ));
 
-        Ok(EventStreamServer { sse_data_sender })
+        Ok(EventStreamServer {
+            sse_data_sender,
+            event_indexer,
+        })
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
     fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        let _ = self.sse_data_sender.send(sse_data);
+        let event_index = self.event_indexer.next_index();
+        let _ = self.sse_data_sender.send((event_index, sse_data));
         Effects::new()
     }
 }

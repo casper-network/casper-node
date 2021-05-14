@@ -46,7 +46,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     fs, io, mem,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use datasize::DataSize;
@@ -421,6 +421,11 @@ impl Storage {
         }?;
         txn.commit()?;
         Ok(result)
+    }
+
+    /// Returns the path to the storage folder.
+    pub(crate) fn root_path(&self) -> &Path {
+        &self.root
     }
 
     /// Handles a storage request.

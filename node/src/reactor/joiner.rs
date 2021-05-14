@@ -446,8 +446,11 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
         )?;
 
-        let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), *protocol_version)?;
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            storage.root_path().to_path_buf(),
+            *protocol_version,
+        )?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
