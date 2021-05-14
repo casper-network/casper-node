@@ -26,7 +26,7 @@ pub(super) type Result<T> = result::Result<T, Error>;
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
     /// We do not have any known hosts.
-    #[error("could not resolve at least one known hosts (or none provided)")]
+    #[error("could not resolve at least one known host (or none provided)")]
     EmptyKnownHosts,
     /// Consensus signing during handshake was provided, but keys could not be loaded.
     #[error("consensus keys provided, but could not be loaded")]

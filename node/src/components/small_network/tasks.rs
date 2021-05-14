@@ -170,7 +170,7 @@ where
     pub(super) our_id: NodeId,
     /// TLS certificate associated with this node's identity.
     pub(super) our_cert: Arc<TlsCert>,
-    /// Secrets key associated with `our_cert`.
+    /// Secret key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     pub(super) net_metrics: Weak<NetworkingMetrics>,

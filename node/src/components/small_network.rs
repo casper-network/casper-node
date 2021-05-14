@@ -237,15 +237,19 @@ where
         }
 
         // If given consensus key configuration, load it for handshake signing.
-        let consensus_keys = consensus_cfg
-            .map(|cfg| {
-                let root = cfg.dir();
-                cfg.value()
-                    .load_keys(root)
-                    .map(|(secret_key, public_key)| ConsensusKeyPair::new(Arc::try_unwrap(secret_key).expect("did not expect additional references on freshly created secret key Arc"), public_key))
-            })
-            .transpose()
-            .map_err(Error::LoadConsensusKeys)?;
+        let consensus_keys =
+            consensus_cfg
+                .map(|cfg| {
+                    let root = cfg.dir();
+                    cfg.value().load_keys(root)
+                })
+                .transpose()
+                .map_err(Error::LoadConsensusKeys)?
+                .map(|(secret_key, public_key)| {
+                    ConsensusKeyPair::new(Arc::try_unwrap(secret_key).expect(
+                    "did not expect additional references on freshly created secret key Arc",
+                ), public_key)
+                });
 
         let context = Arc::new(NetworkContext {
             event_queue,

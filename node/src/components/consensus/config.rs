@@ -34,6 +34,7 @@ impl Default for Config {
 
 impl Config {
     /// Loads the secret key from the configuration file and derives the public key.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn load_keys<P: AsRef<Path>>(
         &self,
         root: P,
