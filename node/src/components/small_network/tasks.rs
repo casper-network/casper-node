@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use casper_types::PublicKey;
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -37,7 +38,9 @@ use super::{
     counting_format::{ConnectionId, Role},
     error::{display_error, ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
-    framed, Event, FramedTransport, Message, Payload, Transport,
+    framed,
+    message::ConsensusKeyPair,
+    Event, FramedTransport, Message, Payload, Transport,
 };
 use crate::{
     components::networking_metrics::NetworkingMetrics,
@@ -117,17 +120,22 @@ where
     debug!("Outgoing TLS connection established");
 
     // Setup connection sink and stream.
+    let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
     let mut transport = framed::<P>(
         context.net_metrics.clone(),
-        ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id),
+        connection_id,
         transport,
         Role::Dialer,
         context.chain_info.maximum_net_message_size,
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport).await {
-        Ok(public_addr) => {
+    match negotiate_handshake(&context, &mut transport, connection_id).await {
+        Ok((public_addr, peer_consensus_public_key)) => {
+            if let Some(ref public_key) = peer_consensus_public_key {
+                Span::current().record("validator_id", &field::display(public_key));
+            }
+
             if public_addr != peer_addr {
                 // We don't need the `public_addr`, as we already connected, but warn anyway.
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
@@ -139,6 +147,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
+                peer_consensus_public_key,
                 sink,
             }
         }
@@ -155,13 +164,22 @@ pub(crate) struct NetworkContext<REv>
 where
     REv: 'static,
 {
+    /// Event queue handle.
     pub(super) event_queue: EventQueueHandle<REv>,
+    /// Our own [`NodeId`].
     pub(super) our_id: NodeId,
+    /// TLS certificate associated with this node's identity.
     pub(super) our_cert: Arc<TlsCert>,
+    /// Secret key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
+    /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     pub(super) net_metrics: Weak<NetworkingMetrics>,
+    /// Chain info extract from chainspec.
     pub(super) chain_info: ChainInfo,
+    /// Our own public listening address.
     pub(super) public_addr: SocketAddr,
+    /// Optional set of consensus keys, to identify as a validator during handshake.
+    pub(super) consensus_keys: Option<ConsensusKeyPair>,
 }
 
 /// Handles an incoming connection.
@@ -197,17 +215,22 @@ where
     debug!("Incoming TLS connection established");
 
     // Setup connection sink and stream.
+    let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
     let mut transport = framed::<P>(
         context.net_metrics.clone(),
-        ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id),
+        connection_id,
         transport,
         Role::Listener,
         context.chain_info.maximum_net_message_size,
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport).await {
-        Ok(public_addr) => {
+    match negotiate_handshake(&context, &mut transport, connection_id).await {
+        Ok((public_addr, peer_consensus_public_key)) => {
+            if let Some(ref public_key) = peer_consensus_public_key {
+                Span::current().record("validator_id", &field::display(public_key));
+            }
+
             // Close the receiving end of the transport.
             let (_sink, stream) = transport.split();
 
@@ -215,6 +238,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
+                peer_consensus_public_key,
                 stream,
             }
         }
@@ -291,12 +315,17 @@ where
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     transport: &mut FramedTransport<P>,
-) -> Result<SocketAddr, ConnectionError>
+    connection_id: ConnectionId,
+) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
 where
     P: Payload,
 {
     // Send down a handshake and expect one in response.
-    let handshake = context.chain_info.create_handshake(context.public_addr);
+    let handshake = context.chain_info.create_handshake(
+        context.public_addr,
+        context.consensus_keys.as_ref(),
+        connection_id,
+    );
 
     io_timeout(HANDSHAKE_TIMEOUT, transport.send(handshake))
         .await
@@ -310,16 +339,24 @@ where
         network_name,
         public_addr,
         protocol_version,
+        consensus_certificate,
     } = remote_handshake
     {
         debug!(%protocol_version, "handshake received");
 
         // The handshake was valid, we can check the network name.
         if network_name != context.chain_info.network_name {
-            Err(ConnectionError::WrongNetwork(network_name))
-        } else {
-            Ok(public_addr)
+            return Err(ConnectionError::WrongNetwork(network_name));
         }
+
+        let peer_consensus_public_key = consensus_certificate
+            .map(|cert| {
+                cert.validate(connection_id)
+                    .map_err(ConnectionError::InvalidConsensusCertificate)
+            })
+            .transpose()?;
+
+        Ok((public_addr, peer_consensus_public_key))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -348,7 +385,8 @@ pub(super) async fn server<P, REv>(
             match listener.accept().await {
                 Ok((stream, peer_addr)) => {
                     // The span setup here is used throughout the entire lifetime of the connection.
-                    let span = error_span!("incoming", %peer_addr, peer_id=Empty);
+                    let span =
+                        error_span!("incoming", %peer_addr, peer_id=Empty, validator_id=Empty);
 
                     let context = context.clone();
                     let handler_span = span.clone();

@@ -417,6 +417,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
+            Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),

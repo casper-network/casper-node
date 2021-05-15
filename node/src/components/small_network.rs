@@ -73,6 +73,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
@@ -84,6 +85,7 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     message::{Message, MessageKind, Payload},
 };
+use super::consensus;
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
@@ -94,7 +96,8 @@ use crate::{
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils, NodeRng,
+    utils::{self, WithDir},
+    NodeRng,
 };
 use chain_info::ChainInfo;
 pub use config::Config;
@@ -180,6 +183,7 @@ where
     pub(crate) fn new<C: Into<ChainInfo>>(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
+        consensus_cfg: Option<WithDir<&consensus::Config>>,
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
@@ -201,7 +205,7 @@ where
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
             warn!("no known addresses provided via config or all failed DNS resolution");
-            return Err(Error::InvalidConfig);
+            return Err(Error::EmptyKnownHosts);
         }
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
@@ -232,6 +236,16 @@ where
             public_addr.set_port(local_addr.port());
         }
 
+        // If given consensus key configuration, load it for handshake signing.
+        let consensus_keys = consensus_cfg
+            .map(|cfg| {
+                let root = cfg.dir();
+                cfg.value().load_keys(root)
+            })
+            .transpose()
+            .map_err(Error::LoadConsensusKeys)?
+            .map(|(secret_key, public_key)| ConsensusKeyPair::new(secret_key, public_key));
+
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
@@ -240,6 +254,7 @@ where
             net_metrics: Arc::downgrade(&net_metrics),
             chain_info: chain_info_source.into(),
             public_addr,
+            consensus_keys,
         });
 
         // Run the server task.
@@ -389,6 +404,7 @@ where
                 peer_addr,
                 public_addr,
                 peer_id,
+                peer_consensus_public_key: _,
                 stream,
             } => {
                 info!("new incoming connection established");
@@ -474,7 +490,8 @@ where
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
-            | ConnectionError::DidNotSendHandshake => false,
+            | ConnectionError::DidNotSendHandshake
+            | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
             ConnectionError::WrongNetwork(_) => true,
@@ -531,6 +548,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
+                peer_consensus_public_key: _,
                 sink,
             } => {
                 info!("new outgoing connection established");

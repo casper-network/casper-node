@@ -4,27 +4,37 @@ use std::{
     io,
     net::SocketAddr,
     result,
+    sync::Arc,
 };
 
+use casper_types::SecretKey;
 use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::field;
 
-use crate::{tls::ValidationError, utils::ResolveAddressError};
+use crate::{
+    crypto,
+    tls::ValidationError,
+    utils::{LoadError, Loadable, ResolveAddressError},
+};
 
 pub(super) type Result<T> = result::Result<T, Error>;
 
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
-    /// The config must have both or neither of certificate and secret key, and must have at least
-    /// one known address.
-    #[error(
-        "need both or none of cert, secret_key in network config, and at least one known address"
-    )]
-    InvalidConfig,
+    /// We do not have any known hosts.
+    #[error("could not resolve at least one known host (or none provided)")]
+    EmptyKnownHosts,
+    /// Consensus signing during handshake was provided, but keys could not be loaded.
+    #[error("consensus keys provided, but could not be loaded")]
+    LoadConsensusKeys(
+        #[serde(skip_serializing)]
+        #[source]
+        LoadError<<Arc<SecretKey> as Loadable>::Error>,
+    ),
     /// Our own certificate is not valid.
     #[error("own certificate invalid")]
     OwnCertificateInvalid(#[source] ValidationError),
@@ -170,6 +180,13 @@ pub enum ConnectionError {
     /// Peer sent a non-handshake message as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// The peer sent a consensus certificate, but it was invalid.
+    #[error("invalid consensus certificate")]
+    InvalidConsensusCertificate(
+        #[serde(skip_serializing)]
+        #[source]
+        crypto::Error,
+    ),
 }
 
 /// IO operation that can time out or close.
