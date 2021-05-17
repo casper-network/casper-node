@@ -4,6 +4,7 @@ use std::{
     net::SocketAddr,
 };
 
+use casper_types::PublicKey;
 use derive_more::From;
 use futures::stream::{SplitSink, SplitStream};
 use serde::Serialize;
@@ -169,6 +170,8 @@ pub enum IncomingConnection<P> {
         public_addr: SocketAddr,
         /// Peer's [`NodeId`].
         peer_id: NodeId,
+        /// The public key the peer is validating with, if any.
+        peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
         stream: SplitStream<FramedTransport<P>>,
@@ -191,12 +194,21 @@ impl<P> Display for IncomingConnection<P> {
                 peer_addr,
                 public_addr,
                 peer_id,
+                peer_consensus_public_key,
                 stream: _,
-            } => write!(
-                f,
-                "connection established from {}/{}; public: {}",
-                peer_addr, peer_id, public_addr
-            ),
+            } => {
+                write!(
+                    f,
+                    "connection established from {}/{}; public: {}",
+                    peer_addr, peer_id, public_addr,
+                )?;
+
+                if let Some(public_key) = peer_consensus_public_key {
+                    write!(f, " [{}]", public_key)
+                } else {
+                    f.write_str(" [no validator id]")
+                }
+            }
         }
     }
 }
@@ -228,6 +240,8 @@ pub enum OutgoingConnection<P> {
         peer_addr: SocketAddr,
         /// Peer's [`NodeId`].
         peer_id: NodeId,
+        /// The public key the peer is validating with, if any.
+        peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
         sink: SplitSink<FramedTransport<P>, Message<P>>,
@@ -249,8 +263,17 @@ impl<P> Display for OutgoingConnection<P> {
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
+                peer_consensus_public_key,
                 sink: _,
-            } => write!(f, "connection established to {}/{}", peer_addr, peer_id,),
+            } => {
+                write!(f, "connection established to {}/{}", peer_addr, peer_id)?;
+
+                if let Some(public_key) = peer_consensus_public_key {
+                    write!(f, " [{}]", public_key)
+                } else {
+                    f.write_str(" [no validator id]")
+                }
+            }
         }
     }
 }

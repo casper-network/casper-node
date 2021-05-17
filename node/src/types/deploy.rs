@@ -272,6 +272,12 @@ impl From<Digest> for DeployHash {
     }
 }
 
+impl From<DeployHash> for Digest {
+    fn from(deploy_hash: DeployHash) -> Self {
+        deploy_hash.0
+    }
+}
+
 impl AsRef<[u8]> for DeployHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()

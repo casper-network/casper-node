@@ -46,7 +46,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     fs, io, mem,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use datasize::DataSize;
@@ -327,7 +327,7 @@ impl Storage {
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 *block.body_hash(),
-                block_body.hash(),
+                block_body.hash(block.protocol_version()),
                 "found corrupt block body in database"
             );
             insert_to_deploy_index(&mut deploy_hash_index, block.hash(), &block_body)?;
@@ -421,6 +421,11 @@ impl Storage {
         }?;
         txn.commit()?;
         Ok(result)
+    }
+
+    /// Returns the path to the storage folder.
+    pub(crate) fn root_path(&self) -> &Path {
+        &self.root
     }
 
     /// Handles a storage request.
@@ -978,7 +983,7 @@ impl Storage {
                 Some(block_header) => block_header,
                 None => return Ok(None),
             };
-        let found_block_body_hash = block_body.hash();
+        let found_block_body_hash = block_body.hash(block_header.protocol_version());
         if found_block_body_hash != *block_header.body_hash() {
             return Err(LmdbExtError::BlockBodyNotStoredUnderItsHash {
                 queried_block_body_hash: *block_header.body_hash(),
@@ -1290,18 +1295,11 @@ fn initialize_block_body_db(
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_body_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
+    for (raw_key, _raw_val) in cursor.iter() {
         if deleted_block_hashes.contains(raw_key) {
             cursor.del(WriteFlags::empty())?;
             continue;
         }
-
-        let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
-        assert_eq!(
-            raw_key,
-            body.hash().as_ref(),
-            "found corrupt block body in database"
-        );
     }
 
     drop(cursor);

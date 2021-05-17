@@ -278,6 +278,12 @@ impl ConnectionId {
         TraceId(truncated)
     }
 
+    #[inline]
+    /// Returns a reference to the raw bytes of the connection ID.
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
     /// Creates a new connection ID from an existing SSL connection.
     #[inline]
     pub(crate) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> Self {

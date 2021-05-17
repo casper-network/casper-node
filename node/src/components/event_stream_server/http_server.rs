@@ -11,7 +11,7 @@ use casper_types::ProtocolVersion;
 
 use super::{
     sse_server::{BroadcastChannelMessage, NewSubscriberInfo, ServerSentEvent},
-    Config, SseData,
+    Config, EventIndex, SseData,
 };
 
 /// Run the HTTP server.
@@ -30,14 +30,13 @@ pub(super) async fn run(
     api_version: ProtocolVersion,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
     server_shutdown_sender: oneshot::Sender<()>,
-    mut data_receiver: mpsc::UnboundedReceiver<SseData>,
+    mut data_receiver: mpsc::UnboundedReceiver<(EventIndex, SseData)>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
 ) {
     let server_joiner = task::spawn(server_with_shutdown);
 
     // Initialize the index and buffer for the SSEs.
-    let mut event_index = 0_u32;
     let mut buffer = WheelBuf::new(vec![
         ServerSentEvent::initial_event(api_version);
         config.event_stream_buffer_length as usize
@@ -71,7 +70,7 @@ pub(super) async fn run(
 
                 maybe_data = data_receiver.recv() => {
                     match maybe_data {
-                        Some(data) => {
+                        Some((event_index, data)) => {
                             // Buffer the data and broadcast it to subscribed clients.
                             trace!("Event stream server received {:?}", data);
                             let event = ServerSentEvent { id: Some(event_index), data };
@@ -80,7 +79,6 @@ pub(super) async fn run(
                             // This can validly fail if there are no connected clients, so don't log
                             // the error.
                             let _ = broadcaster.send(message);
-                            event_index = event_index.wrapping_add(1);
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.

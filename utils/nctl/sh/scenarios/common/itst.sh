@@ -4,6 +4,44 @@ source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/views/utils.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 
+# Trapping exit so we can remove the temp file used in ci run
+trap clean_up EXIT
+
+function clean_up() {
+    local EXIT_CODE=$?
+    local STDOUT
+    local STDERR
+
+    # Removes DEPLOY_LOG for ITST06/07
+    if [ -f "$DEPLOY_LOG" ]; then
+        log "Removing transfer tmp file..."
+        rm -f "$DEPLOY_LOG"
+    fi
+
+    # Prints stderr of nodes on failures
+    for i in $(seq 1 $(get_count_of_nodes)); do
+        STDOUT=$(tail "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null) || true
+        STDERR=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stderr.log 2>/dev/null) || true
+        if [ ! -z "$STDERR" ]; then
+            echo ""
+            log "##############################################"
+            log " Node-$i Error Outputs "
+            log "##############################################"
+            # true to ignore "No such file" error from cat
+            echo ""
+            log "STDERR:"
+            echo "$STDERR"
+            echo ""
+            log "Tailed STDOUT:"
+            echo "$STDOUT"
+            echo ""
+        fi
+    done
+
+    log "Test exited with exit code $EXIT_CODE"
+    exit $EXIT_CODE
+}
+
 function log_step() {
     local COMMENT=${1}
     log "------------------------------------------------------------"
@@ -32,7 +70,8 @@ function do_start_node() {
     sleep 1
     if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then
         log "ERROR: node-${NODE_ID} is not running"
-    exit 1
+        nctl-status
+        exit 1
     else
         log "node-${NODE_ID} is running"
     fi

@@ -391,6 +391,7 @@ impl reactor::Reactor for Reactor {
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
+            Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
@@ -446,8 +447,11 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
         )?;
 
-        let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), *protocol_version)?;
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            storage.root_path().to_path_buf(),
+            *protocol_version,
+        )?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
