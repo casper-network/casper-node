@@ -30,6 +30,7 @@ use crate::{
     error::{Error, Result},
     validation,
 };
+use casper_node::rpcs::state::GetAuctionInfoParams;
 
 /// Target for a given transfer.
 pub(crate) enum TransferTarget {
@@ -164,8 +165,15 @@ impl RpcCall {
         Ok(response)
     }
 
-    pub(crate) fn get_auction_info(self) -> Result<JsonRpc> {
-        GetAuctionInfo::request(self)
+    pub(crate) fn get_auction_info(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        let response = match Self::block_identifier(maybe_block_identifier)? {
+            None => GetAuctionInfo::request(self),
+            Some(block_identifier) => {
+                let params = GetAuctionInfoParams { block_identifier };
+                GetAuctionInfo::request_with_map_params(self, params)
+            }
+        }?;
+        Ok(response)
     }
 
     pub(crate) fn list_rpcs(self) -> Result<JsonRpc> {
@@ -378,3 +386,4 @@ impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}
 impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}
+impl IntoJsonMap for GetAuctionInfoParams {}

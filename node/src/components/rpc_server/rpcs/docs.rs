@@ -83,7 +83,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
         "returns an EraInfo from the network",
     );
-    schema.push_without_params::<GetAuctionInfo>(
+    schema.push_with_optional_params::<GetAuctionInfo>(
         "returns the bids and validators as of the most recently added Block",
     );
 

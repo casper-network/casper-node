@@ -12,6 +12,7 @@ enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
+    BlockIdentifier,
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetAuctionInfo {
@@ -28,14 +29,18 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetAuctionInfo {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
+            .arg(common::block_identifier::arg(
+                DisplayOrder::BlockIdentifier as usize,
+            ))
     }
 
     fn run(matches: &ArgMatches<'_>) -> Result<Success, Error> {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
+        let maybe_block_id = common::block_identifier::get(matches);
 
-        casper_client::get_auction_info(maybe_rpc_id, node_address, verbosity_level)
+        casper_client::get_auction_info(maybe_rpc_id, node_address, verbosity_level, maybe_block_id)
             .map(Success::from)
     }
 }
