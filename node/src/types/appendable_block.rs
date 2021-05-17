@@ -63,6 +63,9 @@ impl AppendableBlock {
 
     /// Attempts to add a transfer to the block; returns an error if that would violate a validity
     /// condition.
+    ///
+    /// This _must_ be called with a transfer - the function cannot check whether the argument is
+    /// actually a transfer.
     pub(crate) fn add_transfer(
         &mut self,
         hash: DeployHash,
@@ -87,6 +90,9 @@ impl AppendableBlock {
 
     /// Attempts to add a deploy to the block; returns an error if that would violate a validity
     /// condition.
+    ///
+    /// This _must not_ be called with a transfer - the function cannot check whether the argument
+    /// is actually not a transfer.
     pub(crate) fn add_deploy(
         &mut self,
         hash: DeployHash,
