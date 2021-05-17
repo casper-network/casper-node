@@ -23,6 +23,7 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
+mod bandwidth_limiter;
 mod chain_info;
 mod config;
 mod counting_format;
