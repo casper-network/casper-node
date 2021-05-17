@@ -72,6 +72,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
+    bandwidth_limiter::BandwidthLimiter,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
@@ -182,6 +183,10 @@ where
     /// The era supervisor currently does not allow for easy access to the concept of the "current"
     /// era, so we treat the highest era we have seen as the active era.
     highest_era_seen: EraId,
+
+    /// The active bandwidth limiter.
+    #[data_size(skip)]
+    limiter: Box<dyn BandwidthLimiter>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -223,6 +228,14 @@ where
             warn!("no known addresses provided via config or all failed DNS resolution");
             return Err(Error::EmptyKnownHosts);
         }
+
+        let limiter: Box<dyn BandwidthLimiter> = if cfg.max_non_validating_peer_bps == 0 {
+            Box::new(bandwidth_limiter::Unlimited)
+        } else {
+            Box::new(bandwidth_limiter::ClassBasedLimiter::new(
+                cfg.max_non_validating_peer_bps,
+            ))
+        };
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -296,6 +309,7 @@ where
             server_join_handle: Some(server_join_handle),
             net_metrics,
             highest_era_seen: EraId::new(0),
+            limiter,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -1000,7 +1014,9 @@ where
                 active_validators,
                 upcoming_validators,
             } => {
-                todo!()
+                self.limiter
+                    .update_validators(*active_validators, *upcoming_validators);
+                Effects::new()
             }
         }
     }

@@ -22,17 +22,26 @@ const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
 ///
 /// Any sender for a specific connection is expected to call `create_handle` for a connection, and
 /// using that handle to request a bandwidth allowance.
-pub(crate) trait BandwidthLimiter {
-    /// Handle type used by the limiter.
-    type Handle: BandwidthLimiterHandle;
-
+pub(crate) trait BandwidthLimiter: Send + Sync {
     /// Create a handle for a connection using the given peer and optional validator id.
-    fn create_handle(&self, peer_id: NodeId, validator_id: Option<PublicKey>) -> Self::Handle;
+    fn create_handle(
+        &self,
+        peer_id: NodeId,
+        validator_id: Option<PublicKey>,
+    ) -> Box<dyn BandwidthLimiterHandle>;
+
+    /// Update the validator sets.
+    fn update_validators(
+        &self,
+        active_validators: HashSet<PublicKey>,
+        upcoming_validators: HashSet<PublicKey>,
+    ) {
+    }
 }
 
 /// A handle for connections that are bandwidth limited.
 #[async_trait]
-pub(crate) trait BandwidthLimiterHandle {
+pub(crate) trait BandwidthLimiterHandle: Send + Sync {
     /// Waits until the sender is clear to send `num_bytes` additional bytes.
     async fn get_allowance(&self, num_bytes: u32);
 }
@@ -41,16 +50,18 @@ pub(crate) trait BandwidthLimiterHandle {
 ///
 /// Does not restrict outgoing bandwidth in any way (`create_handle` returns immediately).
 #[derive(Debug)]
-struct Unlimited;
+pub(super) struct Unlimited;
 
 /// Handle for `Unlimited`.
 struct UnlimitedHandle;
 
 impl BandwidthLimiter for Unlimited {
-    type Handle = UnlimitedHandle;
-
-    fn create_handle(&self, _peer_id: NodeId, _validator_id: Option<PublicKey>) -> Self::Handle {
-        UnlimitedHandle
+    fn create_handle(
+        &self,
+        _peer_id: NodeId,
+        _validator_id: Option<PublicKey>,
+    ) -> Box<dyn BandwidthLimiterHandle> {
+        Box::new(UnlimitedHandle)
     }
 }
 
@@ -65,7 +76,7 @@ impl BandwidthLimiterHandle for UnlimitedHandle {
 ///
 /// Imposes a limit on non-validator traffic while not limiting active validator traffic at all.
 #[derive(Debug)]
-struct ClassBasedLimiter {
+pub(super) struct ClassBasedLimiter {
     /// Sender for commands to the limiter.
     sender: mpsc::UnboundedSender<ClassBasedCommand>,
 }
@@ -135,9 +146,24 @@ impl ClassBasedLimiter {
 
         ClassBasedLimiter { sender }
     }
+}
 
-    /// Update the validator sets.
-    pub(crate) fn update_validators(
+impl BandwidthLimiter for ClassBasedLimiter {
+    fn create_handle(
+        &self,
+        peer_id: NodeId,
+        validator_id: Option<PublicKey>,
+    ) -> Box<dyn BandwidthLimiterHandle> {
+        Box::new(ClassBasedHandle {
+            sender: self.sender.clone(),
+            consumer_id: Arc::new(BandwidthConsumerId {
+                peer_id,
+                validator_id,
+            }),
+        })
+    }
+
+    fn update_validators(
         &self,
         active_validators: HashSet<PublicKey>,
         upcoming_validators: HashSet<PublicKey>,
@@ -151,20 +177,6 @@ impl ClassBasedLimiter {
             .is_err()
         {
             debug!("could not update validator data set of limiter, channel closed");
-        }
-    }
-}
-
-impl BandwidthLimiter for ClassBasedLimiter {
-    type Handle = ClassBasedHandle;
-
-    fn create_handle(&self, peer_id: NodeId, validator_id: Option<PublicKey>) -> Self::Handle {
-        ClassBasedHandle {
-            sender: self.sender.clone(),
-            consumer_id: Arc::new(BandwidthConsumerId {
-                peer_id,
-                validator_id,
-            }),
         }
     }
 }
