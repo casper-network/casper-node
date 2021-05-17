@@ -47,7 +47,7 @@ pub(crate) trait BandwidthLimiterHandle: Send + Sync {
 
 /// An unlimited bandwidth "limiter".
 ///
-/// Does not restrict outgoing bandwidth in any way (`create_handle` returns immediately).
+/// Does not restrict outgoing bandwidth in any way (`request_allowance` returns immediately).
 #[derive(Debug)]
 pub(super) struct Unlimited;
 
