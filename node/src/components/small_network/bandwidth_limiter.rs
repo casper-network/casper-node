@@ -43,7 +43,7 @@ pub(crate) trait BandwidthLimiter: Send + Sync {
 #[async_trait]
 pub(crate) trait BandwidthLimiterHandle: Send + Sync {
     /// Waits until the sender is clear to send `num_bytes` additional bytes.
-    async fn get_allowance(&self, num_bytes: u32);
+    async fn request_allowance(&self, num_bytes: u32);
 }
 
 /// An unlimited bandwidth "limiter".
@@ -67,7 +67,7 @@ impl BandwidthLimiter for Unlimited {
 
 #[async_trait]
 impl BandwidthLimiterHandle for UnlimitedHandle {
-    async fn get_allowance(&self, _num_bytes: u32) {
+    async fn request_allowance(&self, _num_bytes: u32) {
         // No limit.
     }
 }
@@ -183,7 +183,7 @@ impl BandwidthLimiter for ClassBasedLimiter {
 
 #[async_trait]
 impl BandwidthLimiterHandle for ClassBasedHandle {
-    async fn get_allowance(&self, num_bytes: u32) {
+    async fn request_allowance(&self, num_bytes: u32) {
         let (responder, waiter) = oneshot::channel();
 
         // Send a request to the limiter and await a response. If we do not receive one due to
@@ -313,9 +313,7 @@ mod tests {
 
     use tokio::time::Instant;
 
-    use super::{
-        BandwidthLimiter, BandwidthLimiterHandle, ClassBasedLimiter, NodeId, PublicKey, Unlimited,
-    };
+    use super::{BandwidthLimiter, ClassBasedLimiter, NodeId, PublicKey, Unlimited};
     use crate::crypto::AsymmetricKeyExt;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
@@ -330,9 +328,9 @@ mod tests {
         let handle = unlimited.create_handle(NodeId::random(&mut rng), None);
 
         let start = Instant::now();
-        handle.get_allowance(0).await;
-        handle.get_allowance(u32::MAX).await;
-        handle.get_allowance(1).await;
+        handle.request_allowance(0).await;
+        handle.request_allowance(u32::MAX).await;
+        handle.request_allowance(1).await;
         let end = Instant::now();
 
         assert!(end - start < SHORT_TIME);
@@ -352,9 +350,9 @@ mod tests {
         let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
 
         let start = Instant::now();
-        handle.get_allowance(0).await;
-        handle.get_allowance(u32::MAX).await;
-        handle.get_allowance(1).await;
+        handle.request_allowance(0).await;
+        handle.request_allowance(u32::MAX).await;
+        handle.request_allowance(1).await;
         let end = Instant::now();
 
         assert!(end - start < SHORT_TIME);
@@ -379,12 +377,12 @@ mod tests {
             let start = Instant::now();
 
             // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
-            handle.get_allowance(1000).await;
-            handle.get_allowance(1000).await;
-            handle.get_allowance(1000).await;
-            handle.get_allowance(2000).await;
-            handle.get_allowance(4000).await;
-            handle.get_allowance(1).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(2000).await;
+            handle.request_allowance(4000).await;
+            handle.request_allowance(1).await;
             let end = Instant::now();
 
             let diff = end - start;
@@ -408,10 +406,10 @@ mod tests {
             .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(validator_id.clone())))
             .map(|handle| {
                 tokio::spawn(async move {
-                    handle.get_allowance(500).await;
-                    handle.get_allowance(150).await;
-                    handle.get_allowance(350).await;
-                    handle.get_allowance(1).await;
+                    handle.request_allowance(500).await;
+                    handle.request_allowance(150).await;
+                    handle.request_allowance(350).await;
+                    handle.request_allowance(1).await;
                 })
             });
 

@@ -579,7 +579,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
-                peer_consensus_public_key: _,
+                peer_consensus_public_key,
                 sink,
             } => {
                 info!("new outgoing connection established");
@@ -608,12 +608,18 @@ where
                 }
 
                 effects.extend(
-                    tasks::message_sender(receiver, sink, self.net_metrics.queued_messages.clone())
-                        .instrument(span)
-                        .event(move |_| Event::OutgoingDropped {
-                            peer_id: Box::new(peer_id),
-                            peer_addr,
-                        }),
+                    tasks::message_sender(
+                        receiver,
+                        sink,
+                        self.limiter
+                            .create_handle(peer_id, peer_consensus_public_key),
+                        self.net_metrics.queued_messages.clone(),
+                    )
+                    .instrument(span)
+                    .event(move |_| Event::OutgoingDropped {
+                        peer_id: Box::new(peer_id),
+                        peer_addr,
+                    }),
                 );
 
                 effects
