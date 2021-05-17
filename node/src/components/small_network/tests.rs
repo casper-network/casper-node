@@ -28,7 +28,9 @@ use crate::{
     },
     effect::{
         announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
-        requests::{NetworkRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     protocol,
@@ -92,6 +94,18 @@ impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
 
 impl From<StorageRequest> for Event {
     fn from(_request: StorageRequest) -> Self {
+        unreachable!()
+    }
+}
+
+impl From<ChainspecLoaderRequest> for Event {
+    fn from(_request: ChainspecLoaderRequest) -> Self {
+        unreachable!()
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(_request: ContractRuntimeRequest) -> Self {
         unreachable!()
     }
 }

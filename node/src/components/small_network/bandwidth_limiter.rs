@@ -299,13 +299,12 @@ async fn worker(
 mod tests {
     use std::{collections::HashSet, time::Duration};
 
-    use rand::Rng;
     use tokio::time::Instant;
 
     use super::{
         BandwidthLimiter, BandwidthLimiterHandle, ClassBasedLimiter, NodeId, PublicKey, Unlimited,
     };
-    use crate::crypto::asymmetric_key_ext::AsymmetricKeyExt;
+    use crate::crypto::AsymmetricKeyExt;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
@@ -335,7 +334,7 @@ mod tests {
         let limiter = ClassBasedLimiter::new(1_000);
 
         let mut active_validators = HashSet::new();
-        active_validators.insert(validator_id);
+        active_validators.insert(validator_id.clone());
         limiter.update_validators(active_validators, HashSet::new());
 
         let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
@@ -351,7 +350,7 @@ mod tests {
 
     #[tokio::test]
     async fn inactive_validator_limited() {
-        let mut rng = rand::thread_rng();
+        let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
@@ -384,7 +383,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonvalidators_parallel_limited() {
-        let mut rng = rand::thread_rng();
+        let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
@@ -394,7 +393,7 @@ mod tests {
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
-            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(validator_id)))
+            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(validator_id.clone())))
             .map(|handle| {
                 tokio::spawn(async move {
                     handle.get_allowance(500).await;

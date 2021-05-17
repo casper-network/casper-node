@@ -1038,7 +1038,7 @@ impl reactor::Reactor for Reactor {
                     Box::new(block.header().clone()),
                 ));
                 let reactor_event_es =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
                 effects.extend(self.dispatch_event(

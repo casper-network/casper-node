@@ -49,7 +49,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::EraId;
+use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -92,7 +92,10 @@ use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
         announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
-        requests::{NetworkInfoRequest, NetworkRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
@@ -184,7 +187,12 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<NetworkAnnouncement<NodeId, P>>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ChainspecLoaderRequest>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -714,7 +722,10 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block: Box<Block>,
-    ) -> Effects<Event<P>> {
+    ) -> Effects<Event<P>>
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
+    {
         // The current era is `block.era`, but it will only proceed for another block.
         //
         // `current`: Era that is just about to end, `block.era`.
@@ -722,43 +733,45 @@ where
         // `upcoming`: Era after `next`.
 
         let era_id = block.header().era_id();
-        let mut next: HashSet<_> = block
+        let mut next: HashSet<PublicKey> = block
             .header()
             .next_era_validator_weights()
-            .map(|validators| validators.keys().collect())
+            .map(|validators| validators.keys().map(Clone::clone).collect())
             .unwrap_or_else(|| {
                 error!("did not expect switch block to not contain validators");
                 Default::default()
             });
 
         async move {
-            let current: HashSet<_> = effect_builder
+            let current: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id)
                 .await
-                .map(|validators| validators.keys().collect())
+                .map(|validators| validators.into_iter().map(|(k, v)| k).collect())
                 .unwrap_or_else(|| {
                     warn!("could not determine current era validators");
                     Default::default()
                 });
-            let upcoming_validators: HashSet<_> = effect_builder
-                .get_era_validators(era_id.saturating_add(2))
+            let upcoming_validators: HashSet<PublicKey> = effect_builder
+                .get_era_validators(era_id.successor().successor())
                 .await
-                .map(|validators| validators.keys().collect())
+                .map(|validators| validators.into_iter().map(|(k, v)| k).collect())
                 .unwrap_or_else(|| {
                     warn!("could not determine upcoming (current+2) era validators");
                     Default::default()
                 });
 
-            let mut active_validators = HashSet::new();
+            let mut active_validators: HashSet<PublicKey> = HashSet::new();
             active_validators.extend(current.into_iter());
             active_validators.extend(next.into_iter());
 
-            Event::ValidatorsChanged {
+            (active_validators, upcoming_validators)
+        }
+        .event(
+            |(active_validators, upcoming_validators)| Event::ValidatorsChanged {
                 active_validators,
                 upcoming_validators,
-            }
-        }
-        .boxed()
+            },
+        )
     }
 
     /// Emits an announcement that a connection has been completed.
@@ -829,7 +842,12 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<NetworkAnnouncement<NodeId, P>>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ChainspecLoaderRequest>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -959,7 +977,7 @@ where
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
                 // On switch blocks, we need to update our validator sets.
-                if block.is_switch_block() {
+                if block.header().is_switch_block() {
                     let era_id = block.header().era_id();
 
                     if era_id > self.highest_era_seen {
@@ -970,6 +988,9 @@ where
                                "ignoring era, as it is not the highest seen");
                         Effects::new()
                     }
+                } else {
+                    trace!("ignoring non-switch block");
+                    Effects::new()
                 }
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(_)) => {
