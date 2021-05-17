@@ -427,6 +427,7 @@ impl BlockProposerReady {
             .iter()
             .flat_map(|block_payload| block_payload.deploys_and_transfers_iter())
             .map(DeployOrTransferHash::into)
+            .take_while(|hash| !self.contains_finalized(hash))
             .collect();
         let block_timestamp = context.timestamp();
         let mut appendable_block = AppendableBlock::new(deploy_config, block_timestamp);
