@@ -6,16 +6,14 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use casper_types::PublicKey;
 use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
 use tracing::{debug, warn};
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub struct NodeId(u32);
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ValidatorId(u32);
+use crate::types::NodeId;
 
 /// Amount of allowed bandwidth to buffer in `ClassBasedLimiter`.
 const STORED_BUFFER_SECS: Duration = Duration::from_secs(2);
@@ -29,7 +27,7 @@ pub(crate) trait BandwidthLimiter {
     type Handle: BandwidthLimiterHandle;
 
     /// Create a handle for a connection using the given peer and optional validator id.
-    fn create_handle(&self, peer_id: NodeId, validator_id: Option<ValidatorId>) -> Self::Handle;
+    fn create_handle(&self, peer_id: NodeId, validator_id: Option<PublicKey>) -> Self::Handle;
 }
 
 /// A handle for connections that are bandwidth limited.
@@ -51,7 +49,7 @@ struct UnlimitedHandle;
 impl BandwidthLimiter for Unlimited {
     type Handle = UnlimitedHandle;
 
-    fn create_handle(&self, _peer_id: NodeId, _validator_id: Option<ValidatorId>) -> Self::Handle {
+    fn create_handle(&self, _peer_id: NodeId, _validator_id: Option<PublicKey>) -> Self::Handle {
         UnlimitedHandle
     }
 }
@@ -87,9 +85,9 @@ enum ClassBasedCommand {
     /// Updates the set of active/upcoming validators.
     UpdateValidators {
         /// The new set of validators active in the current era.
-        active_validators: HashSet<ValidatorId>,
+        active_validators: HashSet<PublicKey>,
         /// The new set of validators in future eras.
-        upcoming_validators: HashSet<ValidatorId>,
+        upcoming_validators: HashSet<PublicKey>,
     },
     /// Requests a certain amount of bandwidth.
     RequestBandwidth {
@@ -119,7 +117,7 @@ struct BandwidthConsumerId {
     /// The node ID data is sent to/from.
     peer_id: NodeId,
     /// The remote node's `validator_id`.
-    validator_id: Option<ValidatorId>,
+    validator_id: Option<PublicKey>,
 }
 
 impl ClassBasedLimiter {
@@ -141,8 +139,8 @@ impl ClassBasedLimiter {
     /// Update the validator sets.
     pub(crate) fn update_validators(
         &self,
-        active_validators: HashSet<ValidatorId>,
-        upcoming_validators: HashSet<ValidatorId>,
+        active_validators: HashSet<PublicKey>,
+        upcoming_validators: HashSet<PublicKey>,
     ) {
         if self
             .sender
@@ -160,7 +158,7 @@ impl ClassBasedLimiter {
 impl BandwidthLimiter for ClassBasedLimiter {
     type Handle = ClassBasedHandle;
 
-    fn create_handle(&self, peer_id: NodeId, validator_id: Option<ValidatorId>) -> Self::Handle {
+    fn create_handle(&self, peer_id: NodeId, validator_id: Option<PublicKey>) -> Self::Handle {
         ClassBasedHandle {
             sender: self.sender.clone(),
             consumer_id: Arc::new(BandwidthConsumerId {
@@ -240,10 +238,10 @@ async fn worker(
                 id,
                 responder,
             } => {
-                let bandwidth_class = if let Some(validator_id) = id.validator_id {
-                    if active_validators.contains(&validator_id) {
+                let bandwidth_class = if let Some(ref validator_id) = id.validator_id {
+                    if active_validators.contains(validator_id) {
                         BandwidthClass::ActiveValidator
-                    } else if upcoming_validators.contains(&validator_id) {
+                    } else if upcoming_validators.contains(validator_id) {
                         BandwidthClass::UpcomingValidator
                     } else {
                         BandwidthClass::Bulk
@@ -306,26 +304,14 @@ mod tests {
 
     use crate::ClassBasedLimiter;
 
-    use super::{BandwidthLimiter, BandwidthLimiterHandle, NodeId, Unlimited, ValidatorId};
+    use super::{BandwidthLimiter, BandwidthLimiterHandle, NodeId, PublicKey, Unlimited};
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
 
-    impl NodeId {
-        fn random<R: Rng>(rng: &mut R) -> Self {
-            NodeId(rng.gen())
-        }
-    }
-
-    impl ValidatorId {
-        fn random<R: Rng>(rng: &mut R) -> Self {
-            ValidatorId(rng.gen())
-        }
-    }
-
     #[tokio::test]
     async fn unlimited_limiter_is_unlimited() {
-        let mut rng = rand::thread_rng();
+        let mut rng = crate::new_rng();
 
         let unlimited = Unlimited;
 
@@ -342,9 +328,9 @@ mod tests {
 
     #[tokio::test]
     async fn active_validator_is_unlimited() {
-        let mut rng = rand::thread_rng();
+        let mut rng = crate::new_rng();
 
-        let validator_id = ValidatorId::random(&mut rng);
+        let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
 
         let mut active_validators = HashSet::new();
@@ -366,7 +352,7 @@ mod tests {
     async fn inactive_validator_limited() {
         let mut rng = rand::thread_rng();
 
-        let validator_id = ValidatorId::random(&mut rng);
+        let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
 
         limiter.update_validators(HashSet::new(), HashSet::new());
@@ -399,7 +385,7 @@ mod tests {
     async fn nonvalidators_parallel_limited() {
         let mut rng = rand::thread_rng();
 
-        let validator_id = ValidatorId::random(&mut rng);
+        let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
 
         let start = Instant::now();
