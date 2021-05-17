@@ -416,14 +416,17 @@ where
     I: Clone + Send + PartialEq + Eq + 'static,
 {
     let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
-        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => deploy
-            .deploy_info()
-            .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_info| {
-                Event::DeployFound {
-                    dt_hash,
-                    deploy_info: Box::new(deploy_info),
-                }
-            }),
+        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
+            (deploy.deploy_or_transfer_hash() == dt_hash)
+                .then(|| deploy)
+                .and_then(|deploy| deploy.deploy_info().ok())
+                .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_info| {
+                    Event::DeployFound {
+                        dt_hash,
+                        deploy_info: Box::new(deploy_info),
+                    }
+                })
+        }
     };
 
     effect_builder
