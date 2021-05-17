@@ -302,9 +302,10 @@ mod tests {
     use rand::Rng;
     use tokio::time::Instant;
 
-    use crate::ClassBasedLimiter;
-
-    use super::{BandwidthLimiter, BandwidthLimiterHandle, NodeId, PublicKey, Unlimited};
+    use super::{
+        BandwidthLimiter, BandwidthLimiterHandle, ClassBasedLimiter, NodeId, PublicKey, Unlimited,
+    };
+    use crate::crypto::asymmetric_key_ext::AsymmetricKeyExt;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);

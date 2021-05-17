@@ -88,6 +88,19 @@ pub enum Event<P> {
     /// Blocklist announcement
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+
+    /// Announcement from the linear chain.
+    ///
+    /// Used to track validator sets.
+    #[from]
+    LinearChainAnnouncement(LinearChainAnnouncement),
+    /// The set of active and upcoming validators changed.
+    ValidatorsChanged {
+        /// Active validators (current and upcoming era).
+        active_validators: HashSet<PublicKey>,
+        /// Upcoming validators (for era + 2).
+        upcoming_validators: HashSet<PublicKey>,
+    },
 }
 
 impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {

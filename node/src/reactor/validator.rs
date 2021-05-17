@@ -1041,6 +1041,11 @@ impl reactor::Reactor for Reactor {
                     Event::EventStreamServer(event_stream_server::Event::BlockAdded(block));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
+                ));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {

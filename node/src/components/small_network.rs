@@ -49,6 +49,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_types::EraId;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -90,13 +91,13 @@ use super::consensus;
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, NetworkAnnouncement},
+        announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
-    types::NodeId,
+    types::{Block, NodeId},
     utils::{self, WithDir},
     NodeRng,
 };
@@ -172,6 +173,12 @@ where
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<NetworkingMetrics>,
+
+    /// The highest era seen so far.
+    ///
+    /// The era supervisor currently does not allow for easy access to the concept of the "current"
+    /// era, so we treat the highest era we have seen as the active era.
+    highest_era_seen: EraId,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -280,6 +287,7 @@ where
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             net_metrics,
+            highest_era_seen: EraId::new(0),
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -701,6 +709,58 @@ where
         })
     }
 
+    /// Handle the change of the active era.
+    fn handle_active_era_change(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block: Box<Block>,
+    ) -> Effects<Event<P>> {
+        // The current era is `block.era`, but it will only proceed for another block.
+        //
+        // `current`: Era that is just about to end, `block.era`.
+        // `next`: Era that will begin shortly.
+        // `upcoming`: Era after `next`.
+
+        let era_id = block.header().era_id();
+        let mut next: HashSet<_> = block
+            .header()
+            .next_era_validator_weights()
+            .map(|validators| validators.keys().collect())
+            .unwrap_or_else(|| {
+                error!("did not expect switch block to not contain validators");
+                Default::default()
+            });
+
+        async move {
+            let current: HashSet<_> = effect_builder
+                .get_era_validators(era_id)
+                .await
+                .map(|validators| validators.keys().collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine current era validators");
+                    Default::default()
+                });
+            let upcoming_validators: HashSet<_> = effect_builder
+                .get_era_validators(era_id.saturating_add(2))
+                .await
+                .map(|validators| validators.keys().collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine upcoming (current+2) era validators");
+                    Default::default()
+                });
+
+            let mut active_validators = HashSet::new();
+            active_validators.extend(current.into_iter());
+            active_validators.extend(next.into_iter());
+
+            Event::ValidatorsChanged {
+                active_validators,
+                upcoming_validators,
+            }
+        }
+        .boxed()
+    }
+
     /// Emits an announcement that a connection has been completed.
     fn connection_completed(
         &self,
@@ -896,6 +956,30 @@ where
                 );
 
                 effects
+            }
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                // On switch blocks, we need to update our validator sets.
+                if block.is_switch_block() {
+                    let era_id = block.header().era_id();
+
+                    if era_id > self.highest_era_seen {
+                        self.highest_era_seen = era_id;
+                        self.handle_active_era_change(effect_builder, block)
+                    } else {
+                        debug!(highest_era_seen=%self.highest_era_seen, %era_id,
+                               "ignoring era, as it is not the highest seen");
+                        Effects::new()
+                    }
+                }
+            }
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(_)) => {
+                Effects::new()
+            }
+            Event::ValidatorsChanged {
+                active_validators,
+                upcoming_validators,
+            } => {
+                todo!()
             }
         }
     }
