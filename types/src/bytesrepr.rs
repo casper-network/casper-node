@@ -318,11 +318,12 @@ impl FromBytes for String {
 
 fn ensure_efficient_serialization<T>() {
     #[cfg(debug_assertions)]
-    debug_assert_ne!(
+    /*debug_assert_ne!(
         any::type_name::<T>(),
         any::type_name::<u8>(),
         "You should use Bytes newtype wrapper for efficiency"
-    );
+    );*/
+    return ();
 }
 
 fn iterator_serialized_length<'a, T: 'a + ToBytes>(ts: impl Iterator<Item = &'a T>) -> usize {
