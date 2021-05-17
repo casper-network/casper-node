@@ -23,6 +23,7 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
+mod bandwidth_limiter;
 mod chain_info;
 mod config;
 mod counting_format;
@@ -48,6 +49,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -70,6 +72,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
+    bandwidth_limiter::BandwidthLimiter,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
@@ -89,13 +92,16 @@ use super::consensus;
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, NetworkAnnouncement},
-        requests::{NetworkInfoRequest, NetworkRequest},
+        announcements::{BlocklistAnnouncement, LinearChainAnnouncement, NetworkAnnouncement},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
-    types::NodeId,
+    types::{Block, NodeId},
     utils::{self, WithDir},
     NodeRng,
 };
@@ -171,12 +177,27 @@ where
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<NetworkingMetrics>,
+
+    /// The highest era seen so far.
+    ///
+    /// The era supervisor currently does not allow for easy access to the concept of the "current"
+    /// era, so we treat the highest era we have seen as the active era.
+    highest_era_seen: EraId,
+
+    /// The active bandwidth limiter.
+    #[data_size(skip)]
+    limiter: Box<dyn BandwidthLimiter>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<NetworkAnnouncement<NodeId, P>>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ChainspecLoaderRequest>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -207,6 +228,14 @@ where
             warn!("no known addresses provided via config or all failed DNS resolution");
             return Err(Error::EmptyKnownHosts);
         }
+
+        let limiter: Box<dyn BandwidthLimiter> = if cfg.max_non_validating_peer_bps == 0 {
+            Box::new(bandwidth_limiter::Unlimited)
+        } else {
+            Box::new(bandwidth_limiter::ClassBasedLimiter::new(
+                cfg.max_non_validating_peer_bps,
+            ))
+        };
 
         let outgoing_manager = OutgoingManager::new(OutgoingConfig {
             retry_attempts: RECONNECTION_ATTEMPTS,
@@ -279,6 +308,8 @@ where
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
             net_metrics,
+            highest_era_seen: EraId::new(0),
+            limiter,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -548,7 +579,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
-                peer_consensus_public_key: _,
+                peer_consensus_public_key,
                 sink,
             } => {
                 info!("new outgoing connection established");
@@ -577,12 +608,18 @@ where
                 }
 
                 effects.extend(
-                    tasks::message_sender(receiver, sink, self.net_metrics.queued_messages.clone())
-                        .instrument(span)
-                        .event(move |_| Event::OutgoingDropped {
-                            peer_id: Box::new(peer_id),
-                            peer_addr,
-                        }),
+                    tasks::message_sender(
+                        receiver,
+                        sink,
+                        self.limiter
+                            .create_handle(peer_id, peer_consensus_public_key),
+                        self.net_metrics.queued_messages.clone(),
+                    )
+                    .instrument(span)
+                    .event(move |_| Event::OutgoingDropped {
+                        peer_id: Box::new(peer_id),
+                        peer_addr,
+                    }),
                 );
 
                 effects
@@ -700,6 +737,63 @@ where
         })
     }
 
+    /// Handle the change of the active era.
+    fn handle_active_era_change(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block: Box<Block>,
+    ) -> Effects<Event<P>>
+    where
+        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
+    {
+        // The current era is `block.era`, but it will only proceed for another block.
+        //
+        // `current`: Era that is just about to end, `block.era`.
+        // `next`: Era that will begin shortly.
+        // `upcoming`: Era after `next`.
+
+        let era_id = block.header().era_id();
+        let next: HashSet<PublicKey> = block
+            .header()
+            .next_era_validator_weights()
+            .map(|validators| validators.keys().map(Clone::clone).collect())
+            .unwrap_or_else(|| {
+                error!("did not expect switch block to not contain validators");
+                Default::default()
+            });
+
+        async move {
+            let current: HashSet<PublicKey> = effect_builder
+                .get_era_validators(era_id)
+                .await
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine current era validators");
+                    Default::default()
+                });
+            let upcoming_validators: HashSet<PublicKey> = effect_builder
+                .get_era_validators(era_id.successor().successor())
+                .await
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine upcoming (current+2) era validators");
+                    Default::default()
+                });
+
+            let mut active_validators: HashSet<PublicKey> = HashSet::new();
+            active_validators.extend(current.into_iter());
+            active_validators.extend(next.into_iter());
+
+            (Box::new(active_validators), Box::new(upcoming_validators))
+        }
+        .event(
+            |(active_validators, upcoming_validators)| Event::ValidatorsChanged {
+                active_validators,
+                upcoming_validators,
+            },
+        )
+    }
+
     /// Emits an announcement that a connection has been completed.
     fn connection_completed(
         &self,
@@ -768,7 +862,12 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<NetworkAnnouncement<NodeId, P>>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ChainspecLoaderRequest>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -895,6 +994,35 @@ where
                 );
 
                 effects
+            }
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
+                // On switch blocks, we need to update our validator sets.
+                if block.header().is_switch_block() {
+                    let era_id = block.header().era_id();
+
+                    if era_id > self.highest_era_seen {
+                        self.highest_era_seen = era_id;
+                        self.handle_active_era_change(effect_builder, block)
+                    } else {
+                        debug!(highest_era_seen=%self.highest_era_seen, %era_id,
+                               "ignoring era, as it is not the highest seen");
+                        Effects::new()
+                    }
+                } else {
+                    trace!("ignoring non-switch block");
+                    Effects::new()
+                }
+            }
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(_)) => {
+                Effects::new()
+            }
+            Event::ValidatorsChanged {
+                active_validators,
+                upcoming_validators,
+            } => {
+                self.limiter
+                    .update_validators(*active_validators, *upcoming_validators);
+                Effects::new()
             }
         }
     }

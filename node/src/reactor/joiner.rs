@@ -814,8 +814,13 @@ impl reactor::Reactor for Reactor {
                     ),
                 );
                 let reactor_event =
-                    Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
+                    Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
+                ));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {

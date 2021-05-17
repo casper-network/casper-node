@@ -34,6 +34,7 @@ use tracing::{
 };
 
 use super::{
+    bandwidth_limiter::BandwidthLimiterHandle,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, Role},
     error::{display_error, ConnectionError, IoError},
@@ -498,12 +499,22 @@ where
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
+    limiter: Box<dyn BandwidthLimiterHandle>,
     counter: IntGauge,
 ) where
     P: Serialize + Send + Payload,
 {
     while let Some(message) = queue.recv().await {
         counter.dec();
+
+        // TODO: Refactor message sending to not use `tokio_serde` anymore to avoid duplicate
+        //       serialization.
+        let estimated_wire_size = rmp_serde::to_vec(&message)
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0) as u32;
+        limiter.request_allowance(estimated_wire_size).await;
+
         // We simply error-out if the sink fails, it means that our connection broke.
         if let Err(ref err) = sink.send(message).await {
             info!(
