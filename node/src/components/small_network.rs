@@ -764,7 +764,7 @@ where
             active_validators.extend(current.into_iter());
             active_validators.extend(next.into_iter());
 
-            (active_validators, upcoming_validators)
+            (Box::new(active_validators), Box::new(upcoming_validators))
         }
         .event(
             |(active_validators, upcoming_validators)| Event::ValidatorsChanged {

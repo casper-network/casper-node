@@ -22,7 +22,7 @@ use crate::{
 };
 
 const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-const_assert!(_SMALL_NETWORK_EVENT_SIZE < 110);
+const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 /// A small network event.
 #[derive(Debug, From, Serialize)]
@@ -98,9 +98,9 @@ pub enum Event<P> {
     /// The set of active and upcoming validators changed.
     ValidatorsChanged {
         /// Active validators (current and upcoming era).
-        active_validators: HashSet<PublicKey>,
+        active_validators: Box<HashSet<PublicKey>>,
         /// Upcoming validators (for era + 2).
-        upcoming_validators: HashSet<PublicKey>,
+        upcoming_validators: Box<HashSet<PublicKey>>,
     },
 }
 
