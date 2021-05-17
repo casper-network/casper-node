@@ -753,7 +753,7 @@ where
         // `upcoming`: Era after `next`.
 
         let era_id = block.header().era_id();
-        let mut next: HashSet<PublicKey> = block
+        let next: HashSet<PublicKey> = block
             .header()
             .next_era_validator_weights()
             .map(|validators| validators.keys().map(Clone::clone).collect())
@@ -766,7 +766,7 @@ where
             let current: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id)
                 .await
-                .map(|validators| validators.into_iter().map(|(k, v)| k).collect())
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
                 .unwrap_or_else(|| {
                     warn!("could not determine current era validators");
                     Default::default()
@@ -774,7 +774,7 @@ where
             let upcoming_validators: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id.successor().successor())
                 .await
-                .map(|validators| validators.into_iter().map(|(k, v)| k).collect())
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
                 .unwrap_or_else(|| {
                     warn!("could not determine upcoming (current+2) era validators");
                     Default::default()

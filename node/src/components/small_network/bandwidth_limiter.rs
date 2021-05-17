@@ -35,8 +35,7 @@ pub(crate) trait BandwidthLimiter: Send + Sync {
         &self,
         active_validators: HashSet<PublicKey>,
         upcoming_validators: HashSet<PublicKey>,
-    ) {
-    }
+    );
 }
 
 /// A handle for connections that are bandwidth limited.
@@ -62,6 +61,13 @@ impl BandwidthLimiter for Unlimited {
         _validator_id: Option<PublicKey>,
     ) -> Box<dyn BandwidthLimiterHandle> {
         Box::new(UnlimitedHandle)
+    }
+
+    fn update_validators(
+        &self,
+        _active_validators: HashSet<PublicKey>,
+        _upcoming_validators: HashSet<PublicKey>,
+    ) {
     }
 }
 
@@ -202,10 +208,8 @@ impl BandwidthLimiterHandle for ClassBasedHandle {
             .is_err()
         {
             debug!("worker was shutdown, sending is unlimited");
-        } else {
-            if waiter.await.is_err() {
-                debug!("failed to await bandwidth allowance, sending unlimited");
-            }
+        } else if waiter.await.is_err() {
+            debug!("failed to await bandwidth allowance, sending unlimited");
         }
     }
 }
