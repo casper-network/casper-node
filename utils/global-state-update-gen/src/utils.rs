@@ -3,12 +3,22 @@ use std::{
     convert::TryInto,
 };
 
-use casper_execution_engine::shared::newtypes::Blake2bHash;
-use casper_types::{system::auction::SeigniorageRecipientsSnapshot, PublicKey};
+use casper_execution_engine::shared::{newtypes::Blake2bHash, stored_value::StoredValue};
+use casper_types::{
+    bytesrepr::ToBytes, system::auction::SeigniorageRecipientsSnapshot, Key, PublicKey,
+};
 
 /// Parses a Blake2bHash from a string. Panics if parsing fails.
 pub fn hash_from_str(hex_str: &str) -> Blake2bHash {
     (&base16::decode(hex_str).unwrap()[..]).try_into().unwrap()
+}
+
+/// Prints a global state update entry in a format ready for inclusion in a TOML file.
+pub(crate) fn print_entry(key: &Key, value: &StoredValue) {
+    println!("[[entries]]");
+    println!("key = \"{}\"", key.to_formatted_string());
+    println!("value = \"{}\"", base64::encode(value.to_bytes().unwrap()));
+    println!();
 }
 
 pub struct ValidatorsDiff {
