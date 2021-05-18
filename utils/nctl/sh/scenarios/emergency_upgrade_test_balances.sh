@@ -107,9 +107,9 @@ function do_prepare_upgrade() {
     log_step "preparing the network emergency upgrade to version ${PROTOCOL_VERSION} at era ${ACTIVATE_ERA}"
 
     local ACCOUNT_KEY=$(get_account_key "user" 1)
-    local SRC_ACC=$(get_account_hash ${ACCOUNT_KEY})
+    local SRC_ACC="account-hash-$(get_account_hash ${ACCOUNT_KEY})"
     local TGT_KEY="010101010101010101010101010101010101010101010101010101010101010101"
-    local TGT_ACC=$(get_account_hash ${TGT_KEY})
+    local TGT_ACC="account-hash-$(get_account_hash ${TGT_KEY})"
     local PROPOSER=$(get_account_key "node" 1)
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
         _emergency_upgrade_node_balances "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$SRC_ACC" "$TGT_ACC" "$TRANSFER_AMOUNT" "$PROPOSER"

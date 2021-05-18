@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use clap::ArgMatches;
 
 use casper_engine_test_support::internal::{
@@ -7,25 +5,18 @@ use casper_engine_test_support::internal::{
 };
 use casper_execution_engine::shared::transform::Transform;
 use casper_types::{
-    account::{AccountHash, AccountHashBytes},
-    runtime_args,
-    system::mint,
-    AsymmetricType, Key, PublicKey, RuntimeArgs, U512,
+    account::AccountHash, runtime_args, system::mint, AsymmetricType, Key, PublicKey, RuntimeArgs,
+    U512,
 };
 
 use crate::utils::{hash_from_str, print_entry};
-
-fn str_to_account_hash(s: &str) -> AccountHash {
-    let bytes = AccountHashBytes::try_from(base16::decode(s).unwrap().as_ref()).unwrap();
-    AccountHash::new(bytes)
-}
 
 pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
     let data_dir = matches.value_of("data_dir").unwrap_or(".");
     let state_hash = matches.value_of("hash").unwrap();
 
-    let from_account = str_to_account_hash(&matches.value_of("from").unwrap());
-    let to_account = str_to_account_hash(&matches.value_of("to").unwrap());
+    let from_account = AccountHash::from_formatted_str(&matches.value_of("from").unwrap()).unwrap();
+    let to_account = AccountHash::from_formatted_str(&matches.value_of("to").unwrap()).unwrap();
     let amount = U512::from_str_radix(&matches.value_of("amount").unwrap(), 10).unwrap();
     let proposer = PublicKey::from_hex(matches.value_of("proposer").unwrap().as_bytes()).unwrap();
 

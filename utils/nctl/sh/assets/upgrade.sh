@@ -147,12 +147,15 @@ function _emergency_upgrade_node() {
 }
 
 #######################################
-# Generates a global state update for an emergency upgrade
+# Generates a global state update for an emergency upgrade performing a balance adjustment
 # Arguments:
 #   Protocol version
 #   Pre-upgrade global state root hash
 #   ID of the node to use as the source of the pre-upgrade global state
-#   Number of the nodes in the network
+#   Account hash of the source account
+#   Account hash of the target account
+#   The amount of motes to be transferred
+#   The public key of the proposer
 #######################################
 function _generate_global_state_update_balances() {
     local PROTOCOL_VERSION=${1}
@@ -193,7 +196,10 @@ function _generate_global_state_update_balances() {
 #   ID of the node to upgrade
 #   Pre-upgrade global state root hash
 #   ID of a node to be used as the source of the pre-upgrade global state
-#   The number of nodes in the network
+#   Account hash of the source account
+#   Account hash of the target account
+#   The amount of motes to be transferred
+#   The public key of the proposer
 #######################################
 function _emergency_upgrade_node_balances() {
     local PROTOCOL_VERSION=${1}

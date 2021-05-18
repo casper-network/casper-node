@@ -70,7 +70,7 @@ fn main() {
                         .short("f")
                         .long("from")
                         .value_name("ACCOUNT_HASH")
-                        .help("Source account hash")
+                        .help("Source account hash (with the account-hash- prefix)")
                         .takes_value(true)
                         .required(true),
                 )
@@ -79,7 +79,7 @@ fn main() {
                         .short("t")
                         .long("to")
                         .value_name("ACCOUNT_HASH")
-                        .help("Target account hash")
+                        .help("Target account hash (with the account-hash- prefix)")
                         .takes_value(true)
                         .required(true),
                 )
@@ -96,8 +96,8 @@ fn main() {
                     Arg::with_name("proposer")
                         .short("p")
                         .long("proposer")
-                        .value_name("PUBLIC_KEY")
-                        .help("Public key of the proposer")
+                        .value_name("PUBLIC_KEY_STRING")
+                        .help("Hex-encoded public key of the proposer")
                         .takes_value(true)
                         .required(true),
                 ),
