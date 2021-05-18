@@ -18,7 +18,10 @@ use casper_node::{
         },
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
-        state::{GetAuctionInfo, GetBalance, GetBalanceParams, GetItem, GetItemParams},
+        state::{
+            GetAuctionInfo, GetAuctionInfoParams, GetBalance, GetBalanceParams, GetItem,
+            GetItemParams,
+        },
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
     types::{BlockHash, Deploy, DeployHash},
@@ -30,7 +33,6 @@ use crate::{
     error::{Error, Result},
     validation,
 };
-use casper_node::rpcs::state::GetAuctionInfoParams;
 
 /// Target for a given transfer.
 pub(crate) enum TransferTarget {
