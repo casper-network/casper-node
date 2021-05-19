@@ -18,7 +18,7 @@ enum DisplayOrder {
 impl<'a, 'b> ClientCommand<'a, 'b> for GetAuctionInfo {
     const NAME: &'static str = "get-auction-info";
     const ABOUT: &'static str =
-        "Retrieves the bids and validators as of a block added to the linear chain";
+        "Returns the bids and validators as of either a specific block (by height or hash), or the most recently added block";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
