@@ -350,8 +350,11 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
 
                 match maybe_block {
                     None => {
-                        let error_msg =
-                            "get-auction-info failed to get last added block".to_string();
+                        let error_msg = if maybe_id.is_none() {
+                            "get-auction-info failed to get last added block".to_string()
+                        } else {
+                            "get-auction-info failed to get specified block".to_string()
+                        };
                         info!("{}", error_msg);
                         return Ok(response_builder.error(warp_json_rpc::Error::custom(
                             ErrorCode::NoSuchBlock as i64,
