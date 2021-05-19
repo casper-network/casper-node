@@ -6,6 +6,7 @@
 #define ERROR_LEN 255
 #define NODE_ADDRESS "http://localhost:50101"
 #define RPC_ID "1"
+#define BLOCK_ID ""
 #define VERBOSE 0
 
 int main(int argc, char **argv) {
@@ -13,7 +14,7 @@ int main(int argc, char **argv) {
 
     unsigned char response_buffer[RESPONSE_BUFFER_LEN] = {0};
     casper_error_t success = casper_get_auction_info(
-        RPC_ID, NODE_ADDRESS, VERBOSE, response_buffer, RESPONSE_BUFFER_LEN);
+        RPC_ID, NODE_ADDRESS, VERBOSE, BLOCK_ID, response_buffer, RESPONSE_BUFFER_LEN);
     if (success == CASPER_SUCCESS) {
         printf("Got successful response:\n%s\n", response_buffer);
     } else {

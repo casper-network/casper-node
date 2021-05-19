@@ -634,6 +634,7 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
 pub extern "C" fn casper_get_auction_info(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
+    maybe_block_id: *const c_char,
     verbosity_level: u64,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -642,8 +643,10 @@ pub extern "C" fn casper_get_auction_info(
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
     let node_address = try_unsafe_arg!(node_address);
+    let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
-        let result = super::get_auction_info(maybe_rpc_id, node_address, verbosity_level);
+        let result =
+            super::get_auction_info(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
