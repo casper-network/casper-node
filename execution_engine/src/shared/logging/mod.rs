@@ -64,6 +64,30 @@ pub fn log_details(
 }
 
 /// Logs the metrics associated with the specified host function.
-pub fn log_host_function_metrics(_host_function: &str, _properties: BTreeMap<&str, String>) {
-    // TODO: Metrics story https://casperlabs.atlassian.net/browse/NDRS-120
+pub fn log_host_function_metrics(_host_function: &str, mut _properties: BTreeMap<&str, String>) {
+    let logger = log::logger();
+    let metadata = log::Metadata::builder()
+        .target(METRIC_METADATA_TARGET)
+        .level(Level::Info)
+        .build();
+
+    if !logger.enabled(&metadata) {
+        return;
+    }
+
+    let default_message = format!("{} {:?}", _host_function, _properties);
+
+    _properties.insert(DEFAULT_MESSAGE_KEY, default_message);
+
+    let properties: BTreeMap<_, _> = _properties
+        .iter()
+        .map(|(&key, value)| (key, value.as_str()))
+        .collect();
+
+    let record = log::Record::builder()
+        .metadata(metadata)
+        .key_values(&properties)
+        .build();
+
+    logger.log(&record);
 }

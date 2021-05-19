@@ -26,7 +26,7 @@ use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},
 };
-use casper_types::{runtime_args, ApiError, RuntimeArgs};
+use casper_types::{runtime_args, ApiError, RuntimeArgs, U512};
 
 use casper_engine_tests::profiling;
 use casper_execution_engine::shared::newtypes::Blake2bHash;
@@ -58,7 +58,7 @@ const OUTPUT_DIR_ARG_HELP: &str =
 
 const HOST_FUNCTION_METRICS_CONTRACT: &str = "host_function_metrics.wasm";
 const PAYMENT_AMOUNT: u64 = profiling::ACCOUNT_1_INITIAL_AMOUNT - 1_000_000_000;
-const EXPECTED_REVERT_VALUE: u16 = 10;
+const EXPECTED_REVERT_VALUE: u16 = 9;
 const CSV_HEADER: &str = "args,n_exec,total_elapsed_time";
 const ARG_AMOUNT: &str = "amount";
 const ARG_SEED: &str = "seed";
@@ -159,7 +159,11 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
 
     let mut rng = rand::thread_rng();
 
-    for _ in 0..repetitions {
+    let payment_amount_converted: U512 = PAYMENT_AMOUNT.into();
+
+    for n in 0..repetitions {
+        //println!("Repetition {}", n);
+
         let seed: u64 = rng.gen();
         let random_bytes_length: usize = rng.gen_range(0, 10_000);
         let mut random_bytes = vec![0_u8; random_bytes_length];
@@ -175,7 +179,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
                     ARG_OTHERS => (random_bytes, account_1_account_hash, account_2_account_hash),
                 },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => PAYMENT_AMOUNT })
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_amount_converted })//PAYMENT_AMOUNT })
             .with_authorization_keys(&[account_1_account_hash])
             .build();
         let exec_request = ExecuteRequestBuilder::new()
