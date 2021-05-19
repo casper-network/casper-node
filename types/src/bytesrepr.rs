@@ -1115,7 +1115,7 @@ pub(crate) fn vec_u8_to_bytes(vec: &Vec<u8>) -> Result<Vec<u8>, Error> {
 
 /// Returns serialized length of serialized slice of bytes.
 ///
-/// This function adds a length prefix in the beggining.
+/// This function adds a length prefix in the beginning.
 #[inline(always)]
 fn u8_slice_serialized_length(bytes: &[u8]) -> usize {
     U32_SERIALIZED_LENGTH + bytes.len()

@@ -36,19 +36,19 @@ export const enum SystemContract {
   /**
    * Mint contract.
    */
-  Mint = 1,
-  /**
-   * Auction contract.
-   */
-  Auction = 2,
+  Mint = 0,
   /**
    * Handle Payment contract.
    */
-  HandlePayment = 3,
+  HandlePayment = 1,
   /**
    * Standard Payment contract.
    */
-  StandardPayment = 4,
+  StandardPayment = 2,
+  /**
+   * Auction contract.
+   */
+  Auction = 3,
 }
 
 /**

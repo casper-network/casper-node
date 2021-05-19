@@ -23,13 +23,15 @@
 //! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
 //! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey};
 //!
+//!
 //! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
 //! const MY_ADDR: [u8; 32] = [8u8; 32];
 //! const KEY: &str = "special_value";
 //! const VALUE: &str = "hello world";
 //! const ARG_MESSAGE: &str = "message";
 //!
-//! let public_key: PublicKey = SecretKey::ed25519(MY_ACCOUNT).into();
+//! let secret_key = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap();
+//! let public_key = PublicKey::from(&secret_key);
 //! let account_addr = AccountHash::new(MY_ADDR);
 //!
 //! let mut context = TestContextBuilder::new()
@@ -56,7 +58,7 @@
 //! assert_eq!(expected_value, returned_value);
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/0.9.3")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/1.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",

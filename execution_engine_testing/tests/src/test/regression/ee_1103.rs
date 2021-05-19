@@ -27,20 +27,34 @@ const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-static FAUCET: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]).into());
-static VALIDATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
-static VALIDATOR_2: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
-static VALIDATOR_3: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([7; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([203; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_2: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([205; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_3: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([207; SecretKey::ED25519_LENGTH]).into());
+static FAUCET: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static VALIDATOR_3: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([203; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([205; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static DELEGATOR_3: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([207; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 
 // These values were chosen to correspond to the values in accounts.toml
 // at the time of their introduction.
@@ -67,9 +81,9 @@ static DELEGATOR_3_STAKE: Lazy<U512> = Lazy::new(|| U512::from(300_000_000_000_0
 #[test]
 fn validator_scores_should_reflect_delegates() {
     let accounts = {
-        let faucet = GenesisAccount::account(*FAUCET, Motes::new(*FAUCET_BALANCE), None);
+        let faucet = GenesisAccount::account(FAUCET.clone(), Motes::new(*FAUCET_BALANCE), None);
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(*VALIDATOR_1_BALANCE),
             Some(GenesisValidator::new(
                 Motes::new(*VALIDATOR_1_STAKE),
@@ -77,7 +91,7 @@ fn validator_scores_should_reflect_delegates() {
             )),
         );
         let validator_2 = GenesisAccount::account(
-            *VALIDATOR_2,
+            VALIDATOR_2.clone(),
             Motes::new(*VALIDATOR_2_BALANCE),
             Some(GenesisValidator::new(
                 Motes::new(*VALIDATOR_2_STAKE),
@@ -85,7 +99,7 @@ fn validator_scores_should_reflect_delegates() {
             )),
         );
         let validator_3 = GenesisAccount::account(
-            *VALIDATOR_3,
+            VALIDATOR_3.clone(),
             Motes::new(*VALIDATOR_3_BALANCE),
             Some(GenesisValidator::new(
                 Motes::new(*VALIDATOR_3_STAKE),
@@ -199,8 +213,8 @@ fn validator_scores_should_reflect_delegates() {
             CONTRACT_DELEGATE,
             runtime_args! {
                 ARG_AMOUNT => *DELEGATOR_1_STAKE,
-                ARG_VALIDATOR => *VALIDATOR_1,
-                ARG_DELEGATOR => *DELEGATOR_1,
+                ARG_VALIDATOR => VALIDATOR_1.clone(),
+                ARG_DELEGATOR => DELEGATOR_1.clone(),
             },
         )
         .build();
@@ -249,8 +263,8 @@ fn validator_scores_should_reflect_delegates() {
             CONTRACT_DELEGATE,
             runtime_args! {
                 ARG_AMOUNT => *DELEGATOR_2_STAKE,
-                ARG_VALIDATOR => *VALIDATOR_1,
-                ARG_DELEGATOR => *DELEGATOR_2,
+                ARG_VALIDATOR => VALIDATOR_1.clone(),
+                ARG_DELEGATOR => DELEGATOR_2.clone(),
             },
         )
         .build();
@@ -300,8 +314,8 @@ fn validator_scores_should_reflect_delegates() {
             CONTRACT_DELEGATE,
             runtime_args! {
                 ARG_AMOUNT => *DELEGATOR_3_STAKE,
-                ARG_VALIDATOR => *VALIDATOR_2,
-                ARG_DELEGATOR => *DELEGATOR_3,
+                ARG_VALIDATOR => VALIDATOR_2.clone(),
+                ARG_DELEGATOR => DELEGATOR_3.clone(),
             },
         )
         .build();

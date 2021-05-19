@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use num::Zero;
 use once_cell::sync::Lazy;
 
@@ -12,12 +14,12 @@ use crate::{
     utils::Loadable,
 };
 
-pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]));
-pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY));
+pub static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> =
+    Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap()));
+pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**ALICE_SECRET_KEY));
 
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]));
+    Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
@@ -27,7 +29,7 @@ where
     I: IntoIterator<Item = (PublicKey, T)>,
     T: Into<U512>,
 {
-    let mut chainspec = Chainspec::from_resources("test/valid/0_9_0");
+    let mut chainspec = Chainspec::from_resources("local");
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {

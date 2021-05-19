@@ -464,7 +464,7 @@ fn hash_key_addable_invalid() {
 
 #[test]
 fn manage_associated_keys() {
-    // Testing a valid case only - successfuly added a key, and successfuly removed,
+    // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let access_rights = HashMap::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
@@ -531,7 +531,7 @@ fn manage_associated_keys() {
 
 #[test]
 fn action_thresholds_management() {
-    // Testing a valid case only - successfuly added a key, and successfuly removed,
+    // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let access_rights = HashMap::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
@@ -572,7 +572,7 @@ fn action_thresholds_management() {
 
 #[test]
 fn should_verify_ownership_before_adding_key() {
-    // Testing a valid case only - successfuly added a key, and successfuly removed,
+    // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let access_rights = HashMap::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
@@ -596,7 +596,7 @@ fn should_verify_ownership_before_adding_key() {
 
 #[test]
 fn should_verify_ownership_before_removing_a_key() {
-    // Testing a valid case only - successfuly added a key, and successfuly removed,
+    // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let access_rights = HashMap::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
@@ -620,7 +620,7 @@ fn should_verify_ownership_before_removing_a_key() {
 
 #[test]
 fn should_verify_ownership_before_setting_action_threshold() {
-    // Testing a valid case only - successfuly added a key, and successfuly removed,
+    // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let access_rights = HashMap::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {

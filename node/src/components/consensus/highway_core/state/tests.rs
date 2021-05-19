@@ -62,20 +62,6 @@ impl ConsensusValueT for u32 {
     fn needs_validation(&self) -> bool {
         false
     }
-
-    type Hash = u32;
-
-    fn hash(&self) -> Self::Hash {
-        *self
-    }
-
-    fn timestamp(&self) -> Timestamp {
-        0.into() // Not relevant for highway_core tests.
-    }
-
-    fn parent(&self) -> Option<&Self::Hash> {
-        None // Not relevant for highway_core tests.
-    }
 }
 
 impl Context for TestContext {
@@ -151,7 +137,7 @@ pub(crate) fn test_params(seed: u64) -> Params {
 impl State<TestContext> {
     /// Returns a new `State` with `TestContext` parameters suitable for tests.
     pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-        State::new(weights, test_params(seed), vec![])
+        State::new(weights, test_params(seed), vec![], vec![])
     }
 
     /// Adds the unit to the protocol state, or returns an error if it is invalid.
@@ -265,7 +251,7 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     // Everyone already knows Alice is faulty, so she is banned.
-    let mut state = State::new(WEIGHTS, params, vec![ALICE]);
+    let mut state = State::new(WEIGHTS, params, vec![ALICE], vec![]);
 
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.maybe_fault(ALICE));
@@ -573,7 +559,7 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 
 #[test]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
-    // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
+    // a0 cites a descendant b1 of an equivocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
     //
     // Alice                  a0<----+
@@ -857,6 +843,31 @@ fn test_log2() {
     assert_eq!(63, log2(u64::MAX));
     assert_eq!(63, log2(1 << 63));
     assert_eq!(62, log2((1 << 63) - 1));
+}
+
+#[test]
+fn test_leader() {
+    let weights = &[Weight(3), Weight(4), Weight(5), Weight(4), Weight(5)];
+
+    // All five validators get slots in the leader sequence. If 1, 2 and 4 are excluded, their slots
+    // get reassigned, but 0 and 3 keep their old slots.
+    let before = vec![0, 2, 4, 3, 3, 1, 2, 1, 0, 0, 0, 2, 0, 2, 3, 2, 3, 3, 1, 2];
+    let after = vec![0, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3];
+    let excluded = vec![ValidatorIndex(1), ValidatorIndex(2), ValidatorIndex(4)];
+    let state = State::<TestContext>::new(weights, test_params(0), vec![], vec![]);
+    assert_eq!(
+        before,
+        (0..20u64)
+            .map(|r_id| state.leader(r_id.into()).0)
+            .collect_vec()
+    );
+    let state = State::<TestContext>::new(weights, test_params(0), vec![], excluded);
+    assert_eq!(
+        after,
+        (0..20u64)
+            .map(|r_id| state.leader(r_id.into()).0)
+            .collect_vec()
+    );
 }
 
 #[test]

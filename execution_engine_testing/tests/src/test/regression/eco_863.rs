@@ -23,10 +23,14 @@ const ARG_AMOUNT: &str = "amount";
 
 const FAUCET_REQUEST_AMOUNT: u64 = 333_333_333;
 
-static FAUCET: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]).into());
-static ALICE: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([2; SecretKey::ED25519_LENGTH]).into());
+static FAUCET: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static ALICE: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
@@ -36,7 +40,7 @@ static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 fn faucet_should_create_account() {
     let accounts = {
         let faucet_account = GenesisAccount::account(
-            *FAUCET,
+            FAUCET.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             None,
         );
@@ -127,12 +131,12 @@ fn faucet_should_create_account() {
 fn faucet_should_transfer_to_existing_account() {
     let accounts = {
         let faucet_account = GenesisAccount::account(
-            *FAUCET,
+            FAUCET.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             None,
         );
         let alice_account = GenesisAccount::account(
-            *ALICE,
+            ALICE.clone(),
             Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE.into()),
             None,
         );

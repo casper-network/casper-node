@@ -34,7 +34,7 @@ pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
         name: "CasperLabs".to_string(),
         url: "https://casperlabs.io".to_string(),
@@ -101,9 +101,10 @@ pub trait DocExample {
     fn doc_example() -> &'static Self;
 }
 
-/// The main schema for the casper node's RPC server, compliant with https://spec.open-rpc.org.
+/// The main schema for the casper node's RPC server, compliant with
+/// [the OpenRPC Specification](https://spec.open-rpc.org).
 #[derive(Clone, Serialize, Deserialize, Debug)]
-struct OpenRpcSchema {
+pub struct OpenRpcSchema {
     openrpc: String,
     info: OpenRpcInfoField,
     servers: Vec<OpenRpcServerEntry>,

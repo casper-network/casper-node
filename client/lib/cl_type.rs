@@ -327,7 +327,7 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
             let parse = || {
                 Key::from_formatted_str(trimmed_value).map_err(|error| {
                     Error::InvalidCLValue(format!(
-                        "can't parse {} as Key: {:?}",
+                        "can't parse {} as Key: {}",
                         trimmed_value, error
                     ))
                 })

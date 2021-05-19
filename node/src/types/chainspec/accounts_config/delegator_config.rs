@@ -14,7 +14,7 @@ use casper_types::{SecretKey, U512};
 #[cfg(test)]
 use crate::testing::TestRng;
 
-#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
+#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct DelegatorConfig {
     pub(super) validator_public_key: PublicKey,
     delegator_public_key: PublicKey,
@@ -37,12 +37,12 @@ impl DelegatorConfig {
         }
     }
 
-    pub fn validator_public_key(&self) -> PublicKey {
-        self.validator_public_key
+    pub fn validator_public_key(&self) -> &PublicKey {
+        &self.validator_public_key
     }
 
-    pub fn delegator_public_key(&self) -> PublicKey {
-        self.delegator_public_key
+    pub fn delegator_public_key(&self) -> &PublicKey {
+        &self.delegator_public_key
     }
 
     pub fn balance(&self) -> Motes {
@@ -56,8 +56,10 @@ impl DelegatorConfig {
     #[cfg(test)]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let validator_public_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
-        let delegator_public_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
+        let validator_public_key =
+            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
+        let delegator_public_key =
+            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
         let balance = Motes::new(U512::from(rng.gen::<u64>()));
         let delegated_amount = Motes::new(U512::from(rng.gen::<u64>()));
 
@@ -73,8 +75,11 @@ impl DelegatorConfig {
 #[cfg(test)]
 impl Distribution<DelegatorConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DelegatorConfig {
-        let validator_public_key = SecretKey::ed25519(rng.gen()).into();
-        let delegator_public_key = SecretKey::ed25519(rng.gen()).into();
+        let validator_secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
+        let delegator_secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
+
+        let validator_public_key = PublicKey::from(&validator_secret_key);
+        let delegator_public_key = PublicKey::from(&delegator_secret_key);
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());

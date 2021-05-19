@@ -18,14 +18,6 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
-#[cfg(not(feature = "fast-sync"))]
-use crate::components::linear_chain_sync::{self, LinearChainSync};
-#[cfg(feature = "fast-sync")]
-use crate::components::{
-    linear_chain_fast_sync as linear_chain_sync,
-    linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
-};
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -39,6 +31,7 @@ use crate::{
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
+        linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
         network::{self, Network, NetworkIdentity, ENABLE_LIBP2P_NET_ENV_VAR},
         rest_server::{self, RestServer},
@@ -68,8 +61,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId,
-        ProtoBlock, Tag, Timestamp,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId, Tag,
+        Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -135,7 +128,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -168,17 +161,11 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
 
     /// Block proposer request.
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
-
-    /// Proto block validator request.
-    #[from]
-    ProtoBlockValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
-    ),
 
     /// Request for state storage.
     #[from]
@@ -303,7 +290,6 @@ impl Display for Event {
             Event::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
-            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
@@ -340,9 +326,9 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     linear_chain_fetcher: Fetcher<Block>,
     linear_chain_sync: LinearChainSync<NodeId>,
-    block_validator: BlockValidator<Block, NodeId>,
+    block_validator: BlockValidator<NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
-    linear_chain: linear_chain::LinearChain<NodeId>,
+    linear_chain: linear_chain::LinearChainComponent<NodeId>,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -401,16 +387,14 @@ impl reactor::Reactor for Reactor {
             registry,
             network_identity,
             chainspec_loader.chainspec(),
-            false,
         )?;
-        let network_name = chainspec_loader.chainspec().network_config.name.clone();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
+            Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
-            network_name,
-            false,
+            chainspec_loader.chainspec().as_ref(),
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
@@ -463,8 +447,11 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
         )?;
 
-        let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), *protocol_version)?;
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            storage.root_path().to_path_buf(),
+            *protocol_version,
+        )?;
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
 
@@ -491,17 +478,11 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_block_header(),
         );
 
-        let linear_chain = linear_chain::LinearChain::new(
+        let linear_chain = linear_chain::LinearChainComponent::new(
             &registry,
             *protocol_version,
-            chainspec_loader.initial_state_root_hash(),
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.unbonding_delay,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id(),
         )?;
 
         let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
@@ -789,6 +770,17 @@ impl reactor::Reactor for Reactor {
                 rng,
                 Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(*block))),
             ),
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
+                era_id,
+                execution_effect,
+            }) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::EventStreamServer(event_stream_server::Event::Step {
+                    era_id,
+                    effect: execution_effect,
+                }),
+            ),
             Event::LinearChain(event) => reactor::wrap_effects(
                 Event::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
@@ -797,12 +789,6 @@ impl reactor::Reactor for Reactor {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
                 error!("ignoring block proposer request {}", request);
-                Effects::new()
-            }
-            Event::ProtoBlockValidatorRequest(request) => {
-                // During joining phase, consensus component should not be requesting
-                // validation of the proto block.
-                error!("ignoring proto block validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(
@@ -914,7 +900,7 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> Result<ValidatorInitConfig, Error> {
-        let latest_block = self.linear_chain_sync.latest_block().cloned();
+        let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
         // Clean the state of the linear_chain_sync before shutting it down.
         #[cfg(not(feature = "fast-sync"))]
         linear_chain_sync::clean_linear_chain_state(
@@ -927,7 +913,7 @@ impl Reactor {
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage: self.storage,
-            latest_block,
+            maybe_latest_block_header,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             network_identity: NetworkIdentity::from(&self.network),

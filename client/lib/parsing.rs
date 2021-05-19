@@ -535,22 +535,14 @@ pub(super) fn parse_payment_info(
 }
 
 pub(crate) fn get_transfer_target(target_account: &str) -> Result<TransferTarget> {
-    if !target_account.is_empty() {
-        let account = account(target_account)?;
-        Ok(TransferTarget::Account(account))
-    } else {
-        Err(Error::InvalidArgument(
+    let account = PublicKey::from_hex(target_account).map_err(|error| {
+        Error::InvalidArgument(
             "target_account",
-            format!(
-                "Invalid arguments to get_transfer_target - must provide either a target account. account={}",
-                target_account
-            ),
-        ))
-    }
-}
+            format!("failed to parse as a public key: {}", error),
+        )
+    })?;
 
-pub(crate) fn output(value: &str) -> Option<&str> {
-    none_if_empty(value)
+    Ok(TransferTarget::Account(account))
 }
 
 fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
@@ -580,21 +572,10 @@ fn version(value: &str) -> Result<u32> {
         .map_err(|error| Error::FailedToParseInt("version", error))
 }
 
-fn account(value: &str) -> Result<PublicKey> {
-    PublicKey::from_hex(value).map_err(|error| Error::CryptoError {
-        context: "account",
-        error: error.into(),
-    })
-}
-
-pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
-    if str::is_empty(value) {
-        return Ok(None);
-    }
-    let value = value
-        .parse::<u64>()
-        .map_err(|error| Error::FailedToParseInt("transfer_id", error))?;
-    Ok(Some(value))
+pub(crate) fn transfer_id(value: &str) -> Result<u64> {
+    value
+        .parse()
+        .map_err(|error| Error::FailedToParseInt("transfer-id", error))
 }
 
 #[cfg(test)]
@@ -856,7 +837,7 @@ mod tests {
     fn should_parse_public_key_via_args_simple() {
         let hex_value = "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1";
         let value = PublicKey::from_hex(hex_value).unwrap();
-        valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value);
+        valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value.clone());
         valid_simple_args_test(&format!("x:opt_public_key='{}'", hex_value), Some(value));
         valid_simple_args_test::<Option<PublicKey>>("x:opt_public_key=null", None);
     }
@@ -1079,7 +1060,6 @@ mod tests {
         ///     ]
         /// ];
         /// ```
-        /// 
         /// This generates the following test module (with the fn name passed), with one test per line in `session_str_params[]`:
         /// ```
         /// #[cfg(test)]

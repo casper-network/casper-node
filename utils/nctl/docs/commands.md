@@ -26,6 +26,10 @@ Upon successful setup, NCTL commands are made available via aliases for executio
 
 - For dispatching ERC-20 deploys see [here](commands-deploy-erc20.md).
 
+## Staging Commands
+
+- For setting up a network from a stage see [here](commands-staging.md).
+
 ## Notes
 
 - NOTE 1: all ordinal identifiers are 1 based.

@@ -38,12 +38,18 @@ const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 const ARG_AMOUNT: &str = "amount";
 
-static VALIDATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
-static VALIDATOR_2: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([4; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
@@ -57,7 +63,7 @@ const VALIDATOR_2_STAKE: u64 = 350_000;
 fn should_run_ee_1120_slash_delegators() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -65,7 +71,7 @@ fn should_run_ee_1120_slash_delegators() {
             )),
         );
         let validator_2 = GenesisAccount::account(
-            *VALIDATOR_2,
+            VALIDATOR_2.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_2_STAKE.into()),
@@ -116,8 +122,8 @@ fn should_run_ee_1120_slash_delegators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *VALIDATOR_2,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_2.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -127,8 +133,8 @@ fn should_run_ee_1120_slash_delegators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -138,8 +144,8 @@ fn should_run_ee_1120_slash_delegators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_3),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *VALIDATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -162,8 +168,8 @@ fn should_run_ee_1120_slash_delegators() {
     // Ensure that initial bid entries exist for validator 1 and validator 2
     let initial_bids: Bids = builder.get_bids();
     assert_eq!(
-        initial_bids.keys().copied().collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(vec![*VALIDATOR_2, *VALIDATOR_1])
+        initial_bids.keys().cloned().collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(vec![VALIDATOR_2.clone(), VALIDATOR_1.clone()])
     );
 
     let initial_unbond_purses: UnbondingPurses = builder.get_withdraws();
@@ -175,8 +181,8 @@ fn should_run_ee_1120_slash_delegators() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -187,8 +193,8 @@ fn should_run_ee_1120_slash_delegators() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_2),
-            ARG_VALIDATOR => *VALIDATOR_2,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_2.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -199,8 +205,8 @@ fn should_run_ee_1120_slash_delegators() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_3),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *VALIDATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => VALIDATOR_2.clone(),
         },
     )
     .build();
@@ -280,7 +286,7 @@ fn should_run_ee_1120_slash_delegators() {
         auction,
         METHOD_SLASH,
         runtime_args! {
-            ARG_VALIDATOR_PUBLIC_KEYS => vec![*VALIDATOR_2]
+            ARG_VALIDATOR_PUBLIC_KEYS => vec![VALIDATOR_2.clone()]
         },
     )
     .build();
@@ -337,7 +343,7 @@ fn should_run_ee_1120_slash_delegators() {
         auction,
         METHOD_SLASH,
         runtime_args! {
-            ARG_VALIDATOR_PUBLIC_KEYS => vec![*VALIDATOR_1]
+            ARG_VALIDATOR_PUBLIC_KEYS => vec![VALIDATOR_1.clone()]
         },
     )
     .build();

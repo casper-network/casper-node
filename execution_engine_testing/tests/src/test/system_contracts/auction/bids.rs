@@ -65,44 +65,62 @@ const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
 
-static NON_FOUNDER_VALIDATOR_1_PK: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static NON_FOUNDER_VALIDATOR_1_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static NON_FOUNDER_VALIDATOR_1_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*NON_FOUNDER_VALIDATOR_1_PK));
 
-static NON_FOUNDER_VALIDATOR_2_PK: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([4; SecretKey::ED25519_LENGTH]).into());
+static NON_FOUNDER_VALIDATOR_2_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static NON_FOUNDER_VALIDATOR_2_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*NON_FOUNDER_VALIDATOR_2_PK));
 
-static ACCOUNT_1_PK: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([200; SecretKey::ED25519_LENGTH]).into());
+static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 
-static ACCOUNT_2_PK: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([202; SecretKey::ED25519_LENGTH]).into());
+static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PK));
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
-static BID_ACCOUNT_1_PK: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([204; SecretKey::ED25519_LENGTH]).into());
+static BID_ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static BID_ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_1_PK));
 const BID_ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-static BID_ACCOUNT_2_PK: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
+static BID_ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static BID_ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_2_PK));
 const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-static VALIDATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_1: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([205; SecretKey::ED25519_LENGTH]).into());
-static DELEGATOR_2: Lazy<PublicKey> =
-    Lazy::new(|| SecretKey::ed25519([206; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([205; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
@@ -140,7 +158,7 @@ fn should_run_add_bid() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *BID_ACCOUNT_1_PK,
+            BID_ACCOUNT_1_PK.clone(),
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             None,
         );
@@ -158,7 +176,7 @@ fn should_run_add_bid() {
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *BID_ACCOUNT_1_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -183,7 +201,7 @@ fn should_run_add_bid() {
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *BID_ACCOUNT_1_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
         },
@@ -208,7 +226,7 @@ fn should_run_add_bid() {
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *BID_ACCOUNT_1_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(WITHDRAW_BID_AMOUNT_2),
         },
     )
@@ -245,7 +263,7 @@ fn should_run_delegate_and_undelegate() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *BID_ACCOUNT_1_PK,
+            BID_ACCOUNT_1_PK.clone(),
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             None,
         );
@@ -284,7 +302,7 @@ fn should_run_delegate_and_undelegate() {
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *NON_FOUNDER_VALIDATOR_1_PK,
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -319,8 +337,8 @@ fn should_run_delegate_and_undelegate() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -340,8 +358,8 @@ fn should_run_delegate_and_undelegate() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -363,8 +381,8 @@ fn should_run_delegate_and_undelegate() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -407,7 +425,7 @@ fn should_calculate_era_validators() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -415,7 +433,7 @@ fn should_calculate_era_validators() {
             )),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -423,7 +441,7 @@ fn should_calculate_era_validators() {
             )),
         );
         let account_3 = GenesisAccount::account(
-            *BID_ACCOUNT_1_PK,
+            BID_ACCOUNT_1_PK.clone(),
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             None,
         );
@@ -469,9 +487,9 @@ fn should_calculate_era_validators() {
     assert_eq!(
         first_validator_weights
             .keys()
-            .copied()
+            .cloned()
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK])
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone()])
     );
 
     builder.exec(transfer_request_1).commit().expect_success();
@@ -482,7 +500,7 @@ fn should_calculate_era_validators() {
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *BID_ACCOUNT_1_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -508,7 +526,7 @@ fn should_calculate_era_validators() {
     // elements are
     let eras: Vec<_> = era_validators.keys().copied().collect();
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
+    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definitely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = {
@@ -522,7 +540,6 @@ fn should_calculate_era_validators() {
     let consensus_next_era_id: EraId = post_era_id + DEFAULT_AUCTION_DELAY + 1;
 
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
-
     assert_eq!(
         era_validators.len(),
         snapshot_size,
@@ -571,7 +588,7 @@ fn should_get_first_seigniorage_recipients() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -579,7 +596,7 @@ fn should_get_first_seigniorage_recipients() {
             )),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -689,7 +706,7 @@ fn should_release_founder_stake() {
             *ACCOUNT_1_ADDR,
             CONTRACT_WITHDRAW_BID,
             runtime_args! {
-                ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
+                ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
                 ARG_AMOUNT => U512::from(amount),
             },
         )
@@ -703,7 +720,7 @@ fn should_release_founder_stake() {
             *ACCOUNT_1_ADDR,
             CONTRACT_WITHDRAW_BID,
             runtime_args! {
-                ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
+                ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
                 ARG_AMOUNT => U512::from(amount),
             },
         )
@@ -728,7 +745,7 @@ fn should_release_founder_stake() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -858,7 +875,7 @@ fn should_fail_to_get_era_validators() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -886,7 +903,7 @@ fn should_fail_to_get_era_validators() {
 #[test]
 fn should_use_era_validators_endpoint_for_first_era() {
     let extra_accounts = vec![GenesisAccount::account(
-        *ACCOUNT_1_PK,
+        ACCOUNT_1_PK.clone(),
         Motes::new(ACCOUNT_1_BALANCE.into()),
         Some(GenesisValidator::new(
             Motes::new(ACCOUNT_1_BOND.into()),
@@ -926,7 +943,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -934,7 +951,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
             )),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -942,12 +959,12 @@ fn should_calculate_era_validators_multiple_new_bids() {
             )),
         );
         let account_3 = GenesisAccount::account(
-            *BID_ACCOUNT_1_PK,
+            BID_ACCOUNT_1_PK.clone(),
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             None,
         );
         let account_4 = GenesisAccount::account(
-            *BID_ACCOUNT_2_PK,
+            BID_ACCOUNT_2_PK.clone(),
             Motes::new(BID_ACCOUNT_2_BALANCE.into()),
             None,
         );
@@ -979,9 +996,9 @@ fn should_calculate_era_validators_multiple_new_bids() {
     assert_eq!(
         genesis_validator_weights
             .keys()
-            .copied()
+            .cloned()
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK])
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone()])
     );
 
     // Fund additional accounts
@@ -1007,7 +1024,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *BID_ACCOUNT_1_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -1017,7 +1034,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
         *BID_ACCOUNT_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *BID_ACCOUNT_2_PK,
+            ARG_PUBLIC_KEY => BID_ACCOUNT_2_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
         },
@@ -1040,26 +1057,26 @@ fn should_calculate_era_validators_multiple_new_bids() {
     // check that the new computed era has exactly the state we expect
     let lhs = new_validator_weights
         .keys()
-        .copied()
+        .cloned()
         .collect::<BTreeSet<_>>();
 
     let rhs = BTreeSet::from_iter(vec![
-        *ACCOUNT_1_PK,
-        *ACCOUNT_2_PK,
-        *BID_ACCOUNT_1_PK,
-        *BID_ACCOUNT_2_PK,
+        ACCOUNT_1_PK.clone(),
+        ACCOUNT_2_PK.clone(),
+        BID_ACCOUNT_1_PK.clone(),
+        BID_ACCOUNT_2_PK.clone(),
     ]);
 
     assert_eq!(lhs, rhs);
 
     // make sure that new validators are exactly those that were part of add_bid requests
     let new_validators: BTreeSet<_> = rhs
-        .difference(&genesis_validator_weights.keys().copied().collect())
-        .copied()
+        .difference(&genesis_validator_weights.keys().cloned().collect())
+        .cloned()
         .collect();
     assert_eq!(
         new_validators,
-        BTreeSet::from_iter(vec![*BID_ACCOUNT_1_PK, *BID_ACCOUNT_2_PK,])
+        BTreeSet::from_iter(vec![BID_ACCOUNT_1_PK.clone(), BID_ACCOUNT_2_PK.clone(),])
     );
 }
 
@@ -1100,7 +1117,7 @@ fn undelegated_funds_should_be_released() {
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *NON_FOUNDER_VALIDATOR_1_PK,
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -1112,8 +1129,8 @@ fn undelegated_funds_should_be_released() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -1152,8 +1169,8 @@ fn undelegated_funds_should_be_released() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -1224,7 +1241,7 @@ fn fully_undelegated_funds_should_be_released() {
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *NON_FOUNDER_VALIDATOR_1_PK,
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -1236,8 +1253,8 @@ fn fully_undelegated_funds_should_be_released() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -1276,8 +1293,8 @@ fn fully_undelegated_funds_should_be_released() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -1361,7 +1378,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -1371,8 +1388,8 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -1382,8 +1399,8 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -1392,7 +1409,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         *VALIDATOR_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(VALIDATOR_1_WITHDRAW_AMOUNT),
         },
     )
@@ -1433,9 +1450,9 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         validator_1_bid
             .delegators()
             .keys()
-            .copied()
+            .cloned()
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(vec![*DELEGATOR_1, *DELEGATOR_2])
+        BTreeSet::from_iter(vec![DELEGATOR_1.clone(), DELEGATOR_2.clone()])
     );
 
     // Validator partially unbonds and only one entry is present
@@ -1450,7 +1467,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         *VALIDATOR_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(VALIDATOR_1_REMAINING_BID),
         },
     )
@@ -1609,7 +1626,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
     .build();
@@ -1619,8 +1636,8 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_1,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
     .build();
@@ -1630,8 +1647,8 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
-            ARG_VALIDATOR => *VALIDATOR_1,
-            ARG_DELEGATOR => *DELEGATOR_2,
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
     .build();
@@ -1662,7 +1679,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         *VALIDATOR_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *VALIDATOR_1,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
         },
     )
@@ -1713,7 +1730,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         &U512::from(DELEGATOR_2_STAKE)
     );
 
-    // Process unbonding requests to verify delegators recevied their stakes
+    // Process unbonding requests to verify delegators received their stakes
     let validator_1 = builder
         .get_account(*VALIDATOR_1_ADDR)
         .expect("should have validator 1 account");
@@ -1782,7 +1799,7 @@ fn should_handle_evictions() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -1790,7 +1807,7 @@ fn should_handle_evictions() {
             )),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -1798,7 +1815,7 @@ fn should_handle_evictions() {
             )),
         );
         let account_3 = GenesisAccount::account(
-            *BID_ACCOUNT_1_PK,
+            BID_ACCOUNT_1_PK.clone(),
             Motes::new(BID_ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(300_000.into()),
@@ -1806,7 +1823,7 @@ fn should_handle_evictions() {
             )),
         );
         let account_4 = GenesisAccount::account(
-            *BID_ACCOUNT_2_PK,
+            BID_ACCOUNT_2_PK.clone(),
             Motes::new(BID_ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(400_000.into()),
@@ -1847,44 +1864,51 @@ fn should_handle_evictions() {
     assert_eq!(
         latest_validators(&mut builder),
         BTreeSet::from_iter(vec![
-            *ACCOUNT_1_PK,
-            *ACCOUNT_2_PK,
-            *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_2_PK
+            ACCOUNT_1_PK.clone(),
+            ACCOUNT_2_PK.clone(),
+            BID_ACCOUNT_1_PK.clone(),
+            BID_ACCOUNT_2_PK.clone()
         ])
     );
 
     // Evict BID_ACCOUNT_1_PK and BID_ACCOUNT_2_PK
-    builder.run_auction(timestamp, vec![*BID_ACCOUNT_1_PK, *BID_ACCOUNT_2_PK]);
+    builder.run_auction(
+        timestamp,
+        vec![BID_ACCOUNT_1_PK.clone(), BID_ACCOUNT_2_PK.clone()],
+    );
     timestamp += WEEK_MILLIS;
 
     assert_eq!(
         latest_validators(&mut builder),
-        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK,])
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone(),])
     );
 
     // Activate BID_ACCOUNT_1_PK
-    activate_bid(&mut builder, *BID_ACCOUNT_1_PK);
-    builder.run_auction(timestamp, Vec::new());
-    timestamp += WEEK_MILLIS;
-
-    assert_eq!(
-        latest_validators(&mut builder),
-        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK, *BID_ACCOUNT_1_PK])
-    );
-
-    // Activate BID_ACCOUNT_2_PK
-    activate_bid(&mut builder, *BID_ACCOUNT_2_PK);
+    activate_bid(&mut builder, BID_ACCOUNT_1_PK.clone());
     builder.run_auction(timestamp, Vec::new());
     timestamp += WEEK_MILLIS;
 
     assert_eq!(
         latest_validators(&mut builder),
         BTreeSet::from_iter(vec![
-            *ACCOUNT_1_PK,
-            *ACCOUNT_2_PK,
-            *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_2_PK
+            ACCOUNT_1_PK.clone(),
+            ACCOUNT_2_PK.clone(),
+            BID_ACCOUNT_1_PK.clone()
+        ])
+    );
+
+    // Activate BID_ACCOUNT_2_PK
+    activate_bid(&mut builder, BID_ACCOUNT_2_PK.clone());
+    builder.run_auction(timestamp, Vec::new());
+    timestamp += WEEK_MILLIS;
+
+    assert_eq!(
+        latest_validators(&mut builder),
+        BTreeSet::from_iter(vec![
+            ACCOUNT_1_PK.clone(),
+            ACCOUNT_2_PK.clone(),
+            BID_ACCOUNT_1_PK.clone(),
+            BID_ACCOUNT_2_PK.clone()
         ])
     );
 
@@ -1892,10 +1916,10 @@ fn should_handle_evictions() {
     builder.run_auction(
         timestamp,
         vec![
-            *ACCOUNT_1_PK,
-            *ACCOUNT_2_PK,
-            *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_2_PK,
+            ACCOUNT_1_PK.clone(),
+            ACCOUNT_2_PK.clone(),
+            BID_ACCOUNT_1_PK.clone(),
+            BID_ACCOUNT_2_PK.clone(),
         ],
     );
     timestamp += WEEK_MILLIS;
@@ -1904,22 +1928,22 @@ fn should_handle_evictions() {
 
     // Activate all validators
     for validator in &[
-        *ACCOUNT_1_PK,
-        *ACCOUNT_2_PK,
-        *BID_ACCOUNT_1_PK,
-        *BID_ACCOUNT_2_PK,
+        ACCOUNT_1_PK.clone(),
+        ACCOUNT_2_PK.clone(),
+        BID_ACCOUNT_1_PK.clone(),
+        BID_ACCOUNT_2_PK.clone(),
     ] {
-        activate_bid(&mut builder, *validator);
+        activate_bid(&mut builder, validator.clone());
     }
     builder.run_auction(timestamp, Vec::new());
 
     assert_eq!(
         latest_validators(&mut builder),
         BTreeSet::from_iter(vec![
-            *ACCOUNT_1_PK,
-            *ACCOUNT_2_PK,
-            *BID_ACCOUNT_1_PK,
-            *BID_ACCOUNT_2_PK
+            ACCOUNT_1_PK.clone(),
+            ACCOUNT_2_PK.clone(),
+            BID_ACCOUNT_1_PK.clone(),
+            BID_ACCOUNT_2_PK.clone()
         ])
     );
 }
@@ -1928,12 +1952,13 @@ fn should_handle_evictions() {
 #[ignore]
 #[test]
 fn should_validate_orphaned_genesis_delegators() {
-    let missing_validator = SecretKey::ed25519([123; 32]).into();
+    let missing_validator_secret_key = SecretKey::ed25519_from_bytes([123; 32]).unwrap();
+    let missing_validator = PublicKey::from(&missing_validator_secret_key);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -1941,7 +1966,7 @@ fn should_validate_orphaned_genesis_delegators() {
             )),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -1949,14 +1974,14 @@ fn should_validate_orphaned_genesis_delegators() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_1,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
         let orphaned_delegator = GenesisAccount::delegator(
             missing_validator,
-            *DELEGATOR_1,
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
@@ -1981,7 +2006,7 @@ fn should_validate_duplicated_genesis_delegators() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -1989,7 +2014,7 @@ fn should_validate_duplicated_genesis_delegators() {
             )),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -1997,20 +2022,20 @@ fn should_validate_duplicated_genesis_delegators() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_1,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
         let duplicated_delegator_1 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_1,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
         let duplicated_delegator_2 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_2,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_2.clone(),
             Motes::new(DELEGATOR_2_BALANCE.into()),
             Motes::new(DELEGATOR_2_STAKE.into()),
         );
@@ -2036,7 +2061,7 @@ fn should_validate_delegation_rate_of_genesis_validator() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -2061,7 +2086,7 @@ fn should_validate_bond_amount_of_genesis_validator() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(Motes::zero(), DelegationRate::zero())),
         );
@@ -2082,12 +2107,12 @@ fn should_setup_genesis_delegators() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(Motes::new(ACCOUNT_1_BOND.into()), 80)),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -2095,8 +2120,8 @@ fn should_setup_genesis_delegators() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_1,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
@@ -2130,7 +2155,7 @@ fn should_setup_genesis_delegators() {
     let bids: Bids = builder.get_bids();
     assert_eq!(
         bids.keys().cloned().collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(vec![*ACCOUNT_1_PK, *ACCOUNT_2_PK,])
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone(),])
     );
 
     let account_1_bid_entry = bids.get(&*ACCOUNT_1_PK).expect("should have account 1 bid");
@@ -2153,7 +2178,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(VALIDATOR_1_STAKE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -2161,8 +2186,8 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *VALIDATOR_1,
-            *DELEGATOR_1,
+            VALIDATOR_1.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
@@ -2195,8 +2220,8 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
         *DELEGATOR_1_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
-            auction::ARG_VALIDATOR => *VALIDATOR_1,
-            auction::ARG_DELEGATOR => *DELEGATOR_1,
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
         },
     )
@@ -2225,7 +2250,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(VALIDATOR_1_STAKE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -2233,8 +2258,8 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *VALIDATOR_1,
-            *DELEGATOR_1,
+            VALIDATOR_1.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
@@ -2267,8 +2292,8 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
         *DELEGATOR_1_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
-            auction::ARG_VALIDATOR => *VALIDATOR_1,
-            auction::ARG_DELEGATOR => *DELEGATOR_1,
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
         },
     )
@@ -2297,7 +2322,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let validator_1 = GenesisAccount::account(
-            *VALIDATOR_1,
+            VALIDATOR_1.clone(),
             Motes::new(VALIDATOR_1_STAKE.into()),
             Some(GenesisValidator::new(
                 Motes::new(VALIDATOR_1_STAKE.into()),
@@ -2305,8 +2330,8 @@ fn should_not_undelegate_vfta_holder_stake() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *VALIDATOR_1,
-            *DELEGATOR_1,
+            VALIDATOR_1.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
@@ -2369,8 +2394,8 @@ fn should_not_undelegate_vfta_holder_stake() {
         *DELEGATOR_1_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
-            auction::ARG_VALIDATOR => *VALIDATOR_1,
-            auction::ARG_DELEGATOR => *DELEGATOR_1,
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
         },
     )
@@ -2430,8 +2455,8 @@ fn should_release_vfta_holder_stake() {
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
             runtime_args! {
-                auction::ARG_VALIDATOR => *ACCOUNT_1_PK,
-                auction::ARG_DELEGATOR => *DELEGATOR_1,
+                auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
+                auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
                 ARG_AMOUNT => U512::from(amount),
             },
         )
@@ -2445,8 +2470,8 @@ fn should_release_vfta_holder_stake() {
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
             runtime_args! {
-                auction::ARG_VALIDATOR => *ACCOUNT_1_PK,
-                auction::ARG_DELEGATOR => *DELEGATOR_1,
+                auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
+                auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
                 ARG_AMOUNT => U512::from(amount),
             },
         )
@@ -2477,7 +2502,7 @@ fn should_release_vfta_holder_stake() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -2485,8 +2510,8 @@ fn should_release_vfta_holder_stake() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_1,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(DELEGATOR_1_STAKE.into()),
         );
@@ -2692,7 +2717,7 @@ fn should_reset_delegators_stake_after_slashing() {
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *NON_FOUNDER_VALIDATOR_1_PK,
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
@@ -2703,7 +2728,7 @@ fn should_reset_delegators_stake_after_slashing() {
         *NON_FOUNDER_VALIDATOR_2_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            ARG_PUBLIC_KEY => *NON_FOUNDER_VALIDATOR_2_PK,
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
         },
@@ -2715,8 +2740,8 @@ fn should_reset_delegators_stake_after_slashing() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -2726,8 +2751,8 @@ fn should_reset_delegators_stake_after_slashing() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_2_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
     .build();
@@ -2737,8 +2762,8 @@ fn should_reset_delegators_stake_after_slashing() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_2_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
         },
     )
     .build();
@@ -2748,8 +2773,8 @@ fn should_reset_delegators_stake_after_slashing() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
-            ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_2_PK,
-            ARG_DELEGATOR => *BID_ACCOUNT_2_PK,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
         },
     )
     .build();
@@ -2806,7 +2831,7 @@ fn should_reset_delegators_stake_after_slashing() {
         auction::METHOD_SLASH,
         runtime_args! {
             auction::ARG_VALIDATOR_PUBLIC_KEYS => vec![
-                *NON_FOUNDER_VALIDATOR_2_PK,
+               NON_FOUNDER_VALIDATOR_2_PK.clone(),
             ]
         },
     )
@@ -2853,7 +2878,7 @@ fn should_reset_delegators_stake_after_slashing() {
         auction::METHOD_SLASH,
         runtime_args! {
             auction::ARG_VALIDATOR_PUBLIC_KEYS => vec![
-                *NON_FOUNDER_VALIDATOR_1_PK,
+                NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ]
         },
     )
@@ -2895,12 +2920,12 @@ fn should_validate_genesis_delegators_bond_amount() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            *ACCOUNT_1_PK,
+            ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(Motes::new(ACCOUNT_1_BOND.into()), 80)),
         );
         let account_2 = GenesisAccount::account(
-            *ACCOUNT_2_PK,
+            ACCOUNT_2_PK.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -2908,8 +2933,8 @@ fn should_validate_genesis_delegators_bond_amount() {
             )),
         );
         let delegator_1 = GenesisAccount::delegator(
-            *ACCOUNT_1_PK,
-            *DELEGATOR_1,
+            ACCOUNT_1_PK.clone(),
+            DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
             Motes::new(U512::zero()),
         );

@@ -10,6 +10,7 @@ source "$NCTL"/sh/utils/main.sh
 #   Count of transfers to be dispatched.
 #   Transfer dispatch interval.
 #   Node ordinal identifier.
+#   Verbosity flag.
 #######################################
 function main()
 {
@@ -18,6 +19,8 @@ function main()
     local TRANSFERS=${3}
     local INTERVAL=${4}
     local NODE_ID=${5}
+    local VERBOSE=${6}
+    
     local CHAIN_NAME
     local GAS_PRICE
     local GAS_PAYMENT
@@ -48,15 +51,17 @@ function main()
         NODE_ADDRESS=$(get_node_address_rpc "$NODE_ID")
     fi
 
-    log "dispatching $TRANSFERS wasm transfers"
-    log "... chain=$CHAIN_NAME"
-    log "... transfer amount=$AMOUNT"
-    log "... transfer contract=$PATH_TO_CONTRACT"
-    log "... transfer interval=$INTERVAL (s)"
-    log "... counter-party 1 public key=$CP1_ACCOUNT_KEY"
-    log "... counter-party 2 public key=$CP2_ACCOUNT_KEY"
-    log "... counter-party 2 account hash=$CP2_ACCOUNT_HASH"
-    log "... dispatched deploys:"
+    if [ $VERBOSE == true ]; then
+        log "dispatching $TRANSFERS wasm transfers"
+        log "... chain=$CHAIN_NAME"
+        log "... transfer amount=$AMOUNT"
+        log "... transfer contract=$PATH_TO_CONTRACT"
+        log "... transfer interval=$INTERVAL (s)"
+        log "... counter-party 1 public key=$CP1_ACCOUNT_KEY"
+        log "... counter-party 2 public key=$CP2_ACCOUNT_KEY"
+        log "... counter-party 2 account hash=$CP2_ACCOUNT_HASH"
+        log "... dispatched deploys:"
+    fi
 
     DISPATCHED=0
     while [ $DISPATCHED -lt "$TRANSFERS" ];
@@ -77,11 +82,15 @@ function main()
                 | sed -e 's/^"//' -e 's/"$//'
             )
         DISPATCHED=$((DISPATCHED + 1))
-        log "... #$DISPATCHED :: $DISPATCH_NODE_ADDRESS :: $DEPLOY_HASH"
+        if [ $VERBOSE == true ]; then
+            log "... #$DISPATCHED :: $DISPATCH_NODE_ADDRESS :: $DEPLOY_HASH"
+        fi        
         sleep "$INTERVAL"
     done
 
-    log "dispatched $TRANSFERS wasm transfers"
+    if [ $VERBOSE == true ]; then
+        log "dispatched $TRANSFERS wasm transfers"
+    fi
 }
 
 # ----------------------------------------------------------------
@@ -93,6 +102,7 @@ unset INTERVAL
 unset NODE_ID
 unset TRANSFERS
 unset USER_ID
+unset VERBOSE
 
 for ARGUMENT in "$@"
 do
@@ -104,6 +114,7 @@ do
         node) NODE_ID=${VALUE} ;;        
         transfers) TRANSFERS=${VALUE} ;;
         user) USER_ID=${VALUE} ;;
+        verbose) VERBOSE=${VALUE} ;;
         *)
     esac
 done
@@ -112,4 +123,5 @@ main "${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT}" \
      "${USER_ID:-1}" \
      "${TRANSFERS:-100}" \
      "${INTERVAL:-0.01}" \
-     "${NODE_ID:-"random"}"
+     "${NODE_ID:-"random"}" \
+     ${VERBOSE:-true}

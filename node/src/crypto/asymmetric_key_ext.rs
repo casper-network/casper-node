@@ -30,13 +30,13 @@ const EC_PUBLIC_KEY_OBJECT_IDENTIFIER: [u8; 7] = [42, 134, 72, 206, 61, 2, 1];
 
 static ED25519_SECRET_KEY: Lazy<SecretKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
-    SecretKey::ed25519(bytes)
+    SecretKey::ed25519_from_bytes(bytes).unwrap()
 });
 
 static ED25519_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
-    let secret_key = SecretKey::ed25519(bytes);
-    PublicKey::from(secret_key)
+    let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
+    PublicKey::from(&secret_key)
 });
 
 /// Additional operations an asymmetric key
@@ -67,12 +67,6 @@ pub trait AsymmetricKeyExt: Sized {
     /// Decodes a secret key from a PEM-encoded slice.
     fn from_pem<T: AsRef<[u8]>>(input: T) -> Result<Self, Error>;
 
-    /// Duplicates a secret key.
-    ///
-    /// Only available for testing and named other than `clone` to prevent accidental use.
-    #[cfg(test)]
-    fn duplicate(&self) -> Self;
-
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     fn random(rng: &mut TestRng) -> Self;
@@ -92,14 +86,14 @@ pub trait AsymmetricKeyExt: Sized {
 impl AsymmetricKeyExt for SecretKey {
     fn generate_ed25519() -> Result<Self, Error> {
         let mut bytes = [0u8; Self::ED25519_LENGTH];
-        getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        Ok(SecretKey::ed25519(bytes))
+        getrandom::getrandom(&mut bytes[..])?;
+        Ok(SecretKey::ed25519_from_bytes(bytes)?)
     }
 
     fn generate_secp256k1() -> Result<Self, Error> {
         let mut bytes = [0u8; Self::SECP256K1_LENGTH];
-        getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        Ok(SecretKey::secp256k1(bytes))
+        getrandom::getrandom(&mut bytes[..])?;
+        Ok(SecretKey::secp256k1_from_bytes(bytes)?)
     }
 
     fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), Error> {
@@ -139,7 +133,7 @@ impl AsymmetricKeyExt for SecretKey {
                 der = Der::new(&mut encoded);
                 der.sequence(|der| {
                     der.integer(&[1])?;
-                    der.octet_string(secret_key)?;
+                    der.octet_string(secret_key.to_bytes().as_slice())?;
                     der.element(Tag::ContextSpecificConstructed0, &oid_bytes)
                 })?;
                 Ok(encoded)
@@ -264,19 +258,6 @@ impl AsymmetricKeyExt for SecretKey {
     }
 
     #[cfg(test)]
-    fn duplicate(&self) -> Self {
-        match self {
-            SecretKey::System => SecretKey::System,
-            SecretKey::Ed25519(secret_key) => {
-                Self::ed25519_from_bytes(secret_key.as_ref()).expect("could not copy secret key")
-            }
-            SecretKey::Secp256k1(secret_key) => {
-                Self::secp256k1_from_bytes(secret_key).expect("could not copy secret key")
-            }
-        }
-    }
-
-    #[cfg(test)]
     fn random(rng: &mut TestRng) -> Self {
         if rng.gen() {
             Self::random_ed25519(rng)
@@ -289,14 +270,14 @@ impl AsymmetricKeyExt for SecretKey {
     fn random_ed25519(rng: &mut TestRng) -> Self {
         let mut bytes = [0u8; Self::ED25519_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
-        SecretKey::ed25519(bytes)
+        SecretKey::ed25519_from_bytes(bytes).unwrap()
     }
 
     #[cfg(test)]
     fn random_secp256k1(rng: &mut TestRng) -> Self {
         let mut bytes = [0u8; Self::SECP256K1_LENGTH];
         rng.fill_bytes(&mut bytes[..]);
-        SecretKey::secp256k1(bytes)
+        SecretKey::secp256k1_from_bytes(bytes).unwrap()
     }
 
     fn doc_example() -> &'static Self {
@@ -308,13 +289,13 @@ impl AsymmetricKeyExt for PublicKey {
     fn generate_ed25519() -> Result<Self, Error> {
         let mut bytes = [0u8; Self::ED25519_LENGTH];
         getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        PublicKey::ed25519(bytes).map_err(Into::into)
+        PublicKey::ed25519_from_bytes(bytes).map_err(Into::into)
     }
 
     fn generate_secp256k1() -> Result<Self, Error> {
         let mut bytes = [0u8; Self::SECP256K1_LENGTH];
         getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        PublicKey::secp256k1(bytes).map_err(Into::into)
+        PublicKey::secp256k1_from_bytes(bytes).map_err(Into::into)
     }
 
     fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), Error> {
@@ -348,7 +329,7 @@ impl AsymmetricKeyExt for PublicKey {
                         der.oid(&EC_PUBLIC_KEY_OBJECT_IDENTIFIER)?;
                         der.oid(&SECP256K1_OBJECT_IDENTIFIER)
                     })?;
-                    der.bit_string(0, public_key.as_ref())
+                    der.bit_string(0, &public_key.to_bytes())
                 })?;
                 Ok(encoded)
             }
@@ -427,19 +408,6 @@ impl AsymmetricKeyExt for PublicKey {
             }
         }
         Ok(public_key)
-    }
-
-    #[cfg(test)]
-    fn duplicate(&self) -> Self {
-        match self {
-            PublicKey::System => PublicKey::System,
-            PublicKey::Ed25519(public_key) => {
-                Self::ed25519_from_bytes(public_key.as_ref()).expect("could not copy public key")
-            }
-            PublicKey::Secp256k1(public_key) => {
-                Self::secp256k1_from_bytes(public_key.as_ref()).expect("could not copy public key")
-            }
-        }
     }
 
     #[cfg(test)]

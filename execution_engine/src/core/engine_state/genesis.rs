@@ -27,7 +27,7 @@ use casper_types::{
             INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ACTIVATE_BID, METHOD_ADD_BID,
             METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
             METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{
             self, ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
@@ -40,7 +40,6 @@ use casper_types::{
             TOTAL_SUPPLY_KEY,
         },
         standard_payment::METHOD_PAY,
-        SystemContractType,
     },
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
@@ -183,7 +182,7 @@ impl Distribution<GenesisValidator> for Standard {
     }
 }
 
-#[derive(DataSize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GenesisAccount {
     System,
     Account {
@@ -237,11 +236,11 @@ impl GenesisAccount {
     pub fn public_key(&self) -> PublicKey {
         match self {
             GenesisAccount::System => PublicKey::System,
-            GenesisAccount::Account { public_key, .. } => *public_key,
+            GenesisAccount::Account { public_key, .. } => public_key.clone(),
             GenesisAccount::Delegator {
                 delegator_public_key,
                 ..
-            } => *delegator_public_key,
+            } => delegator_public_key.clone(),
         }
     }
 
@@ -361,7 +360,10 @@ impl GenesisAccount {
 
 impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let public_key = SecretKey::ed25519(rng.gen()).into();
+        let mut bytes = [0u8; 32];
+        rng.fill_bytes(&mut bytes[..]);
+        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
+        let public_key = PublicKey::from(&secret_key);
         let balance = Motes::new(rng.gen());
         let validator = rng.gen();
 
@@ -840,16 +842,11 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = self.store_system_contract(
-            SystemContractType::Mint,
-            access_key,
-            named_keys,
-            entry_points,
-        );
+        let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        self.protocol_data = ProtocolData::partial_with_mint(contract_hash);
+        self.protocol_data = ProtocolData::partial_with_mint(mint_hash);
 
-        Ok(contract_hash)
+        Ok(mint_hash)
     }
 
     pub fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
@@ -872,14 +869,9 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = self.store_system_contract(
-            SystemContractType::HandlePayment,
-            access_key,
-            named_keys,
-            entry_points,
-        );
+        let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        Ok(handle_payment_hash)
     }
 
     pub(crate) fn create_auction(&self) -> Result<ContractHash, GenesisError> {
@@ -894,23 +886,23 @@ where
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
         // Make sure all delegators have corresponding genesis validator entries
-        for (&validator_public_key, &delegator_public_key, _balance, delegated_amount) in
-            &genesis_delegators
+        for (validator_public_key, delegator_public_key, _balance, delegated_amount) in
+            genesis_delegators.iter()
         {
             if delegated_amount.is_zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
-                    public_key: delegator_public_key,
+                    public_key: (*delegator_public_key).clone(),
                 });
             }
 
-            if genesis_validators
-                .iter()
-                .find(|genesis_validator| genesis_validator.public_key() == validator_public_key)
-                .is_none()
-            {
+            let orphan_condition = genesis_validators.iter().find(|genesis_validator| {
+                genesis_validator.public_key() == (*validator_public_key).clone()
+            });
+
+            if orphan_condition.is_none() {
                 return Err(GenesisError::OrphanedDelegator {
-                    validator_public_key,
-                    delegator_public_key,
+                    validator_public_key: (*validator_public_key).clone(),
+                    delegator_public_key: (*delegator_public_key).clone(),
                 });
             }
         }
@@ -943,7 +935,7 @@ where
                     genesis_timestamp_millis + locked_funds_period_millis;
                 let founding_validator = {
                     let mut bid = Bid::locked(
-                        public_key,
+                        public_key.clone(),
                         purse_uref,
                         staked_amount.value(),
                         delegation_rate,
@@ -952,34 +944,34 @@ where
 
                     // Set up delegator entries attached to genesis validators
                     for (
-                        &validator_public_key,
-                        &delegator_public_key,
+                        validator_public_key,
+                        delegator_public_key,
                         _delegator_balance,
                         &delegator_delegated_amount,
-                    ) in &genesis_delegators
+                    ) in genesis_delegators.iter()
                     {
-                        if validator_public_key == public_key {
+                        if (*validator_public_key).clone() == public_key.clone() {
                             let purse_uref = self.create_purse(
                                 delegator_delegated_amount.value(),
                                 DeployHash::new(delegator_public_key.to_account_hash().value()),
                             )?;
 
                             let delegator = Delegator::locked(
-                                delegator_public_key,
+                                (*delegator_public_key).clone(),
                                 delegator_delegated_amount.value(),
                                 purse_uref,
-                                validator_public_key,
+                                (*validator_public_key).clone(),
                                 release_timestamp_millis,
                             );
 
                             if bid
                                 .delegators_mut()
-                                .insert(delegator_public_key, delegator)
+                                .insert((*delegator_public_key).clone(), delegator)
                                 .is_some()
                             {
                                 return Err(GenesisError::DuplicatedDelegatorEntry {
-                                    validator_public_key,
-                                    delegator_public_key,
+                                    validator_public_key: (*validator_public_key).clone(),
+                                    delegator_public_key: (*delegator_public_key).clone(),
                                 });
                             }
                         }
@@ -995,13 +987,6 @@ where
 
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&validators, auction_delay);
-
-        for (era_id, recipients) in initial_seigniorage_recipients.into_iter() {
-            self.tracking_copy.borrow_mut().write(
-                Key::EraValidators(era_id),
-                StoredValue::EraValidators(recipients),
-            )
-        }
 
         let era_id_uref = self
             .uref_address_generator
@@ -1030,6 +1015,21 @@ where
         named_keys.insert(
             ERA_END_TIMESTAMP_MILLIS_KEY.into(),
             era_end_timestamp_millis_uref.into(),
+        );
+
+        let initial_seigniorage_recipients_uref = self
+            .uref_address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        self.tracking_copy.borrow_mut().write(
+            initial_seigniorage_recipients_uref.into(),
+            StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
+                |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
+            )?),
+        );
+        named_keys.insert(
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
+            initial_seigniorage_recipients_uref.into(),
         );
 
         for (validator_public_key, bid) in validators.into_iter() {
@@ -1104,14 +1104,9 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = self.store_system_contract(
-            SystemContractType::Auction,
-            access_key,
-            named_keys,
-            entry_points,
-        );
+        let (_, auction_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        Ok(auction_hash)
     }
 
     pub(crate) fn create_standard_payment(&self) -> ContractHash {
@@ -1124,12 +1119,9 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        self.store_system_contract(
-            SystemContractType::StandardPayment,
-            access_key,
-            named_keys,
-            entry_points,
-        )
+        let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
+
+        standard_payment_hash
     }
 
     pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
@@ -1171,7 +1163,7 @@ where
         let mut seigniorage_recipients = SeigniorageRecipients::new();
         for (era_validator, founding_validator) in validators {
             seigniorage_recipients.insert(
-                *era_validator,
+                era_validator.clone(),
                 SeigniorageRecipient::from(founding_validator),
             );
         }
@@ -1240,18 +1232,17 @@ where
         Ok(purse_uref)
     }
 
-    fn store_system_contract(
+    fn store_contract(
         &self,
-        contract_type: SystemContractType,
         access_key: URef,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
-    ) -> ContractHash {
+    ) -> (ContractPackageHash, ContractHash) {
         let protocol_version = self.protocol_version;
-
-        let contract_hash = contract_type.into_contract_hash();
         let contract_wasm_hash =
             ContractWasmHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+        let contract_hash =
+            ContractHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
         let contract_package_hash =
             ContractPackageHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
 
@@ -1289,7 +1280,7 @@ where
             StoredValue::ContractPackage(contract_package),
         );
 
-        contract_hash
+        (contract_package_hash, contract_hash)
     }
 
     fn mint_entry_points(&self) -> EntryPoints {
@@ -1550,6 +1541,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::RngCore;
 
     #[test]
     fn bytesrepr_roundtrip() {
@@ -1568,10 +1560,13 @@ mod tests {
     #[test]
     fn account_bytesrepr_roundtrip() {
         let mut rng = rand::thread_rng();
-        let public_key = SecretKey::ed25519(rng.gen()).into();
+        let mut bytes = [0u8; 32];
+        rng.fill_bytes(&mut bytes[..]);
+        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
+        let public_key: PublicKey = PublicKey::from(&secret_key);
 
         let genesis_account_1 =
-            GenesisAccount::account(public_key, Motes::new(U512::from(100)), None);
+            GenesisAccount::account(public_key.clone(), Motes::new(U512::from(100)), None);
 
         bytesrepr::test_serialization_roundtrip(&genesis_account_1);
 
@@ -1584,8 +1579,15 @@ mod tests {
     #[test]
     fn delegator_bytesrepr_roundtrip() {
         let mut rng = rand::thread_rng();
-        let validator_public_key = SecretKey::ed25519(rng.gen()).into();
-        let delegator_public_key = SecretKey::ed25519(rng.gen()).into();
+        let mut validator_bytes = [0u8; 32];
+        let mut delegator_bytes = [0u8; 32];
+        rng.fill_bytes(&mut validator_bytes[..]);
+        rng.fill_bytes(&mut delegator_bytes[..]);
+        let validator_secret_key = SecretKey::ed25519_from_bytes(validator_bytes).unwrap();
+        let delegator_secret_key = SecretKey::ed25519_from_bytes(delegator_bytes).unwrap();
+
+        let validator_public_key = PublicKey::from(&validator_secret_key);
+        let delegator_public_key = PublicKey::from(&delegator_secret_key);
 
         let genesis_account = GenesisAccount::delegator(
             validator_public_key,

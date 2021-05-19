@@ -36,7 +36,6 @@ do
     PATH_TO_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
     PATH_TO_NODE_CFG=$(get_path_to_node_config "$NODE_ID")
 
-    cp "$PATH_TO_NODE_CFG"/1_0_0/config.toml "$PATH_TO_DUMP"/node-"$NODE_ID"-config.toml
     cp "$PATH_TO_NODE_KEYS"/public_key_hex "$PATH_TO_DUMP"/node-"$NODE_ID"-public_key_hex
     cp "$PATH_TO_NODE_KEYS"/public_key.pem "$PATH_TO_DUMP"/node-"$NODE_ID"-public_key.pem
     cp "$PATH_TO_NODE_KEYS"/secret_key.pem "$PATH_TO_DUMP"/node-"$NODE_ID"-secret_key.pem

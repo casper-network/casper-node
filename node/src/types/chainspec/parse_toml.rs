@@ -11,7 +11,7 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-use casper_types::ProtocolVersion;
+use casper_types::{EraId, ProtocolVersion};
 
 use super::{
     accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
@@ -25,6 +25,7 @@ use crate::utils::{self, Loadable};
 #[serde(deny_unknown_fields)]
 struct TomlNetwork {
     name: String,
+    maximum_net_message_size: u32,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -34,6 +35,7 @@ struct TomlProtocol {
     version: ProtocolVersion,
     hard_reset: bool,
     activation_point: ActivationPoint,
+    last_emergency_restart: Option<EraId>,
 }
 
 /// A chainspec configuration as laid out in the TOML-encoded configuration file.
@@ -56,9 +58,11 @@ impl From<&Chainspec> for TomlChainspec {
             version: chainspec.protocol_config.version,
             hard_reset: chainspec.protocol_config.hard_reset,
             activation_point: chainspec.protocol_config.activation_point,
+            last_emergency_restart: chainspec.protocol_config.last_emergency_restart,
         };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
+            maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
         };
         let core = chainspec.core_config;
         let deploys = chainspec.deploy_config;
@@ -93,6 +97,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
     let network_config = NetworkConfig {
         name: toml_chainspec.network.name,
         accounts_config,
+        maximum_net_message_size: toml_chainspec.network.maximum_net_message_size,
     };
 
     let global_state_update = Option::<GlobalStateUpdateConfig>::from_path(root)?
@@ -104,6 +109,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
         hard_reset: toml_chainspec.protocol.hard_reset,
         activation_point: toml_chainspec.protocol.activation_point,
         global_state_update,
+        last_emergency_restart: toml_chainspec.protocol.last_emergency_restart,
     };
 
     Ok(Chainspec {

@@ -38,6 +38,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -72,6 +73,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -97,7 +99,6 @@ steps:
   - make setup
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
-  - make test-fast-sync CARGO_FLAGS=--release
 
 - name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
@@ -119,6 +120,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -148,19 +150,23 @@ steps:
     - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
 
 - name: put-drone-s3-cache
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+  image: plugins/s3-sync:latest
+  settings:
+    bucket:
+      from_secret: put-drone-s3-bucket
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: target/debian/
+    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
   when:
     branch:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -178,6 +184,7 @@ steps:
     - master
     - dev
     - "release-*"
+    - "feat-*"
     event:
     - push
 
@@ -208,8 +215,27 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
+
+- name: s3-genesis-rel-pr
+  image: plugins/s3
+  settings:
+    bucket: 'genesis.casperlabs.io'
+    region: 'us-east-2'
+    access_key:
+      from_secret: drone_genesis_key_id
+    secret_key:
+      from_secret: drone_genesis_secret
+    source: "target/upgrade_build/**/*"
+    strip_prefix: 'target/upgrade_build/'
+    target: "/drone/${DRONE_COMMIT}/"
+  when:
+    branch:
+      - "release-*"
+    event:
+      - pull_request
 
 depends_on:
   - pre-checks
@@ -221,6 +247,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -236,38 +263,22 @@ steps:
 - name: get-and-del-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
-    - ./ci/drone_s3_storage.sh del
+    - s3cmd sync "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/" "./target/debian/"
+    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+    AWS_DEFAULT_REGION: "us-east-2"
+    AWS_BUCKET:
+      from_secret: put-drone-s3-bucket
   when:
     branch:
       - master
       - dev
       - "release-*"
-    event:
-      - push
-
-  # we want to publish to the test repo, only when code is pushed to master or release-* branch.
-  # bors should make sure, that it has passed on staging or trying branches
-- name: publish-test-bintray
-  image: casperlabs/node-build-u1804
-  # Keeping casper-node from int test publish to allow networks stood up without casper-node-launcher for now.
-  commands:
-    - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -299,6 +310,7 @@ steps:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -313,6 +325,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -330,17 +343,21 @@ steps:
 - name: del-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
-    - ./ci/drone_s3_storage.sh del
+    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+    AWS_DEFAULT_REGION: "us-east-2"
+    AWS_BUCKET:
+      from_secret: put-drone-s3-bucket
   when:
     branch:
       - master
       - dev
       - "release-*"
+      - "feat-*"
     event:
       - push
 
@@ -382,6 +399,7 @@ trigger:
     - staging
     - dev
     - "release-*"
+    - "feat-*"
   event:
     exclude:
       - tag
@@ -406,15 +424,29 @@ steps:
   commands:
     - "make deb"
 
-- name: publish-prod-bintray
-  image: casperlabs/node-build-u1804
-  commands:
-  - "./upload.sh --repo-name debian --package-name casper-client --package-tag true"
+- name: publish-repo-prod
+  image: casperlabs/aptly:latest
+  failure: ignore
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: aptly_prod_secret_key
+    AWS_ACCESS_KEY_ID:
+      from_secret: aptly_prod_key_id
+  settings:
+    repo_name:
+      from_secret: aptly_prod_repo
+    region:
+      from_secret: aptly_prod_region
+    gpg_key:
+      from_secret: aptly_prod_gpg_key
+    gpg_pass:
+      from_secret: aptly_prod_gpg_pass
+    distribution_id:
+      from_secret: aptly_prod_dist_id
+    acl: 'public-read'
+    prefix: 'releases'
+    deb_path: './target/debian'
+    deb_name: '*.deb'
 
 - name: build-upgrade-package
   image: casperlabs/node-build-u1804

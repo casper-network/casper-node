@@ -162,7 +162,7 @@ impl Account {
         action_type: ActionType,
         weight: Weight,
     ) -> Result<(), SetThresholdFailure> {
-        // Verify if new threshold weight exceeds total weight of allassociated
+        // Verify if new threshold weight exceeds total weight of all associated
         // keys.
         self.can_set_threshold(weight)?;
         // Set new weight for given action

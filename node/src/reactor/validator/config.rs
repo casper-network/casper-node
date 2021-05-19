@@ -1,14 +1,14 @@
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, ConsensusConfig, ContractRuntimeConfig,
-    DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig,
-    RpcServerConfig, SmallNetworkConfig, StorageConfig,
+    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
+    ContractRuntimeConfig, DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig,
+    GossipConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig, StorageConfig,
 };
 
 /// Root configuration.
-#[derive(DataSize, Debug, Default, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Default, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -36,4 +36,7 @@ pub struct Config {
     pub contract_runtime: ContractRuntimeConfig,
     /// Deploy acceptor configuration.
     pub deploy_acceptor: DeployAcceptorConfig,
+    /// Block proposer configuration.
+    #[serde(default)]
+    pub block_proposer: BlockProposerConfig,
 }

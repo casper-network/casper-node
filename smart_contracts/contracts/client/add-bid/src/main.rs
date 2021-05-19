@@ -26,7 +26,7 @@ fn add_bid(public_key: PublicKey, bond_amount: U512, delegation_rate: Delegation
 
 // Bidding contract.
 //
-// Accepts a public key, amount and a delgation rate.
+// Accepts a public key, amount and a delegation rate.
 // Issues an add bid request to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {

@@ -137,8 +137,12 @@ mod tests {
 
     #[test]
     fn list_of_public_keys_to_json_value() {
-        let a = PublicKey::from(SecretKey::secp256k1([3; SecretKey::SECP256K1_LENGTH]));
-        let b = PublicKey::from(SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]));
+        let a = PublicKey::from(
+            &SecretKey::secp256k1_from_bytes([3; SecretKey::SECP256K1_LENGTH]).unwrap(),
+        );
+        let b = PublicKey::from(
+            &SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap(),
+        );
         let a_hex = a.to_hex();
         let b_hex = b.to_hex();
         let cl_value = CLValue::from_t(vec![a, b]).unwrap();
@@ -149,9 +153,15 @@ mod tests {
 
     #[test]
     fn list_of_list_of_public_keys_to_json_value() {
-        let a = PublicKey::from(SecretKey::secp256k1([3; SecretKey::SECP256K1_LENGTH]));
-        let b = PublicKey::from(SecretKey::ed25519([3; PublicKey::ED25519_LENGTH]));
-        let c = PublicKey::from(SecretKey::ed25519([6; PublicKey::ED25519_LENGTH]));
+        let a = PublicKey::from(
+            &SecretKey::secp256k1_from_bytes([3; SecretKey::SECP256K1_LENGTH]).unwrap(),
+        );
+        let b = PublicKey::from(
+            &SecretKey::ed25519_from_bytes([3; PublicKey::ED25519_LENGTH]).unwrap(),
+        );
+        let c = PublicKey::from(
+            &SecretKey::ed25519_from_bytes([6; PublicKey::ED25519_LENGTH]).unwrap(),
+        );
         let a_hex = a.to_hex();
         let b_hex = b.to_hex();
         let c_hex = c.to_hex();

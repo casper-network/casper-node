@@ -4,16 +4,16 @@ use std::{
 };
 
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
 
 use super::{event::DeployType, BlockHeight, FinalizationQueue};
-use crate::types::{Chainspec, DeployHash, DeployHeader, Timestamp};
+use crate::types::{DeployHash, DeployHeader, Timestamp};
 
 /// Stores the internal state of the BlockProposer.
-#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
-pub struct BlockProposerDeploySets {
-    /// The collection of deploys pending for inclusion in a block.
-    pub(super) pending: HashMap<DeployHash, DeployType>,
+#[derive(Clone, DataSize, Debug)]
+pub(super) struct BlockProposerDeploySets {
+    /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
+    /// received them.
+    pub(super) pending: HashMap<DeployHash, (DeployType, Timestamp)>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -67,18 +67,6 @@ impl Display for BlockProposerDeploySets {
     }
 }
 
-/// Create a state storage key for block proposer deploy sets based on a chainspec.
-///
-/// We namespace based on a chainspec to prevent validators from loading data for a different chain
-/// if they forget to clear their state.
-pub fn create_storage_key(chainspec: &Chainspec) -> Vec<u8> {
-    format!(
-        "block_proposer_deploy_sets:version={},chain_name={}",
-        chainspec.protocol_config.version, chainspec.network_config.name
-    )
-    .into()
-}
-
 impl BlockProposerDeploySets {
     /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
     /// pruned
@@ -103,10 +91,10 @@ pub(super) fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// total deploys pruned
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, DeployType>,
+    deploys: &mut HashMap<DeployHash, (DeployType, Timestamp)>,
     current_instant: Timestamp,
 ) -> usize {
     let initial_len = deploys.len();
-    deploys.retain(|_hash, wrapper| !wrapper.header().expired(current_instant));
+    deploys.retain(|_hash, (deploy_type, _)| !deploy_type.header().expired(current_instant));
     initial_len - deploys.len()
 }
