@@ -51,8 +51,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock,
-        TimeDiff, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, DeployHash, DeployOrTransferHash,
+        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -1287,7 +1287,7 @@ where
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
         let block_header = match effect_builder
-            .get_block_header_for_deploy_from_storage(*deploy_hash)
+            .get_block_header_for_deploy_from_storage(deploy_hash.into())
             .await
         {
             None => continue,
@@ -1326,13 +1326,14 @@ where
 impl ProposedBlock<ClContext> {
     /// If this block contains a deploy that's also present in an ancestor, this returns the deploy
     /// hash, otherwise `None`.
-    fn contains_replay(&self) -> Option<&DeployHash> {
-        let block_deploys_set: BTreeSet<DeployHash> =
-            self.value().deploys_and_transfers_iter().cloned().collect();
+    fn contains_replay(&self) -> Option<DeployHash> {
+        let block_deploys_set: BTreeSet<DeployOrTransferHash> =
+            self.value().deploys_and_transfers_iter().collect();
         self.context()
             .ancestor_values()
             .iter()
             .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
             .find(|deploy| block_deploys_set.contains(deploy))
+            .map(DeployOrTransferHash::into)
     }
 }

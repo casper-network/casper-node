@@ -27,7 +27,7 @@ use tracing::info;
 
 use crate::{
     components::{
-        block_proposer::DeployType,
+        block_proposer::DeployInfo,
         consensus::{ClContext, ProposedBlock},
         Component,
     },
@@ -35,35 +35,15 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash, Timestamp},
+    types::{
+        appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash,
+        DeployOrTransferHash, Timestamp,
+    },
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
 
 use super::fetcher::FetchResult;
-
-#[derive(DataSize, Debug, Display, Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq)]
-pub enum DeployOrTransferHash {
-    #[display(fmt = "deploy {}", _0)]
-    Deploy(DeployHash),
-    #[display(fmt = "transfer {}", _0)]
-    Transfer(DeployHash),
-}
-
-impl From<DeployOrTransferHash> for DeployHash {
-    fn from(dt_hash: DeployOrTransferHash) -> DeployHash {
-        match dt_hash {
-            DeployOrTransferHash::Deploy(hash) => hash,
-            DeployOrTransferHash::Transfer(hash) => hash,
-        }
-    }
-}
-
-impl DeployOrTransferHash {
-    fn is_transfer(&self) -> bool {
-        matches!(self, DeployOrTransferHash::Transfer(_))
-    }
-}
 
 #[derive(DataSize, Debug, Display, Clone, Hash, Eq, PartialEq)]
 pub enum ValidatingBlock {
@@ -131,7 +111,7 @@ pub enum Event<I> {
     #[display(fmt = "{} found", dt_hash)]
     DeployFound {
         dt_hash: DeployOrTransferHash,
-        deploy_type: Box<DeployType>,
+        deploy_info: Box<DeployInfo>,
     },
 
     /// A request to find a specific deploy, potentially from a peer, failed.
@@ -306,7 +286,7 @@ where
             }
             Event::DeployFound {
                 dt_hash,
-                deploy_type,
+                deploy_info,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
                 self.in_flight.dec(&dt_hash.into());
@@ -320,13 +300,16 @@ where
                     if state.missing_deploys.remove(&dt_hash) {
                         // If the deploy is of the wrong type or would be invalid for this block,
                         // notify everyone still waiting on it that all is lost.
-                        if deploy_type.is_transfer() != dt_hash.is_transfer() {
-                            info!(block = ?key, %dt_hash, ?deploy_type, "wrong deploy type");
-                            invalid.push(key.clone());
-                        } else if let Err(err) =
-                            state.appendable_block.add(dt_hash.into(), &*deploy_type)
-                        {
-                            info!(block = ?key, %dt_hash, ?deploy_type, ?err, "block invalid");
+                        let add_result = match dt_hash {
+                            DeployOrTransferHash::Deploy(hash) => {
+                                state.appendable_block.add_deploy(hash, &*deploy_info)
+                            }
+                            DeployOrTransferHash::Transfer(hash) => {
+                                state.appendable_block.add_transfer(hash, &*deploy_info)
+                            }
+                        };
+                        if let Err(err) = add_result {
+                            info!(block = ?key, %dt_hash, ?deploy_info, ?err, "block invalid");
                             invalid.push(key.clone());
                         }
                     }
@@ -433,14 +416,17 @@ where
     I: Clone + Send + PartialEq + Eq + 'static,
 {
     let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
-        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => deploy
-            .deploy_type()
-            .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_type| {
-                Event::DeployFound {
-                    dt_hash,
-                    deploy_type: Box::new(deploy_type),
-                }
-            }),
+        FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
+            (deploy.deploy_or_transfer_hash() == dt_hash)
+                .then(|| deploy)
+                .and_then(|deploy| deploy.deploy_info().ok())
+                .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_info| {
+                    Event::DeployFound {
+                        dt_hash,
+                        deploy_info: Box::new(deploy_info),
+                    }
+                })
+        }
     };
 
     effect_builder
