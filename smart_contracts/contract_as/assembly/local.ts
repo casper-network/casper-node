@@ -12,7 +12,7 @@ import {readHostBuffer} from "./index";
  */
 export function readLocal(local: Uint8Array): Uint8Array | null {
     let valueSize = new Uint8Array(1);
-    const ret = externals.read_value_local(local.dataStart, local.length, valueSize.dataStart);
+    const ret = externals.read_local(local.dataStart, local.length, valueSize.dataStart);
     if (ret == ErrorCode.ValueNotFound){
         return null;
     }

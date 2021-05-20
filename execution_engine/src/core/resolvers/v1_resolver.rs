@@ -213,7 +213,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::PrintIndex.into(),
             ),
-            "casper_read_value_local" => FuncInstance::alloc_host(
+            "casper_read_local" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
                 FunctionIndex::ReadLocalFuncIndex.into(),
             ),

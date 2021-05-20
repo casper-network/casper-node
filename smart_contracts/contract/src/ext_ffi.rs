@@ -727,7 +727,7 @@ extern "C" {
     /// * `key_bytes_ptr` - pointer to bytes representing the user-defined key
     /// * `key_bytes_size` - size of the user-defined key
     /// * `output_size` - pointer to a value where host will write size of bytes read from given key
-    pub fn casper_read_value_local(
+    pub fn casper_read_local(
         uref_ptr: *const u8,
         uref_size: usize,
         key_bytes_ptr: *const u8,

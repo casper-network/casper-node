@@ -2,8 +2,8 @@
 @external("env", "casper_read_value")
 export declare function read_value(key_ptr: usize, key_size: usize, value_size: usize): i32;
 /** @hidden */
-@external("env", "casper_read_value_local")
-export declare function read_value_local(key_ptr: usize, key_size: usize, output_size: usize): i32;
+@external("env", "casper_read_local")
+export declare function read_local(key_ptr: usize, key_size: usize, output_size: usize): i32;
 /** @hidden */
 @external("env", "casper_write")
 export declare function write(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;

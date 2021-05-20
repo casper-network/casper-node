@@ -51,8 +51,8 @@ const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
 const DEFAULT_CREATE_LOCAL_COST: u32 = 7_000;
 
 const DEFAULT_READ_VALUE_COST: u32 = 6_000;
-const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500;
-const DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
+const DEFAULT_READ_LOCAL_COST: u32 = 5_500;
+const DEFAULT_READ_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
 
 const DEFAULT_REMOVE_ASSOCIATED_KEY_COST: u32 = 4_200;
 
@@ -237,12 +237,12 @@ impl Default for HostFunctionCosts {
         Self {
             read_value: HostFunction::fixed(DEFAULT_READ_VALUE_COST),
             read_local: HostFunction::new(
-                DEFAULT_READ_VALUE_LOCAL_COST,
+                DEFAULT_READ_LOCAL_COST,
                 [
                     NOT_USED,
                     NOT_USED,
                     NOT_USED,
-                    DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT,
+                    DEFAULT_READ_LOCAL_KEY_SIZE_WEIGHT,
                     NOT_USED,
                 ],
             ),

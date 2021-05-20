@@ -359,7 +359,7 @@ pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::casper_read_value_local(
+            ext_ffi::casper_read_local(
                 uref_ptr,
                 uref_size,
                 key_bytes_ptr,
