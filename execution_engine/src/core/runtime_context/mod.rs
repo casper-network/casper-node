@@ -24,6 +24,7 @@ use crate::{
     core::{
         engine_state::execution_effect::ExecutionEffect,
         execution::{AddressGenerator, Error},
+        runtime_context::local_key::LocalKeyValue,
         tracking_copy::{AddResult, TrackingCopy},
         Address,
     },
@@ -31,6 +32,7 @@ use crate::{
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
+pub(crate) mod local_key;
 #[cfg(test)]
 mod tests;
 
@@ -530,44 +532,48 @@ where
         &mut self.transfers
     }
 
+    fn validate_cl_value(&self, cl_value: &CLValue) -> Result<(), Error> {
+        match cl_value.cl_type() {
+            CLType::Bool
+            | CLType::I32
+            | CLType::I64
+            | CLType::U8
+            | CLType::U32
+            | CLType::U64
+            | CLType::U128
+            | CLType::U256
+            | CLType::U512
+            | CLType::Unit
+            | CLType::String
+            | CLType::Option(_)
+            | CLType::List(_)
+            | CLType::ByteArray(..)
+            | CLType::Result { .. }
+            | CLType::Map { .. }
+            | CLType::Tuple1(_)
+            | CLType::Tuple3(_)
+            | CLType::Any
+            | CLType::PublicKey => Ok(()),
+            CLType::Key => {
+                let key: Key = cl_value.to_owned().into_t()?; // TODO: optimize?
+                self.validate_key(&key)
+            }
+            CLType::URef => {
+                let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
+                self.validate_uref(&uref)
+            }
+            tuple @ CLType::Tuple2(_) if *tuple == casper_types::named_key_type() => {
+                let (_name, key): (String, Key) = cl_value.to_owned().into_t()?; // TODO: optimize?
+                self.validate_key(&key)
+            }
+            CLType::Tuple2(_) => Ok(()),
+        }
+    }
+
     /// Validates whether keys used in the `value` are not forged.
     fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
         match value {
-            StoredValue::CLValue(cl_value) => match cl_value.cl_type() {
-                CLType::Bool
-                | CLType::I32
-                | CLType::I64
-                | CLType::U8
-                | CLType::U32
-                | CLType::U64
-                | CLType::U128
-                | CLType::U256
-                | CLType::U512
-                | CLType::Unit
-                | CLType::String
-                | CLType::Option(_)
-                | CLType::List(_)
-                | CLType::ByteArray(..)
-                | CLType::Result { .. }
-                | CLType::Map { .. }
-                | CLType::Tuple1(_)
-                | CLType::Tuple3(_)
-                | CLType::Any
-                | CLType::PublicKey => Ok(()),
-                CLType::Key => {
-                    let key: Key = cl_value.to_owned().into_t()?; // TODO: optimize?
-                    self.validate_key(&key)
-                }
-                CLType::URef => {
-                    let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
-                    self.validate_uref(&uref)
-                }
-                tuple @ CLType::Tuple2(_) if *tuple == casper_types::named_key_type() => {
-                    let (_name, key): (String, Key) = cl_value.to_owned().into_t()?; // TODO: optimize?
-                    self.validate_key(&key)
-                }
-                CLType::Tuple2(_) => Ok(()),
-            },
+            StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(account) => {
                 // This should never happen as accounts can't be created by contracts.
                 // I am putting this here for the sake of completeness.
@@ -1065,7 +1071,11 @@ where
             .map_err(Into::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
-            Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?))
+            let cl_value_indirect: CLValue =
+                stored_value.try_into().map_err(Error::TypeMismatch)?;
+            let local_key_value: LocalKeyValue = cl_value_indirect.into_t().map_err(Error::from)?;
+            let cl_value = local_key_value.into_cl_value();
+            Ok(Some(cl_value))
         } else {
             Ok(None)
         }
@@ -1080,12 +1090,14 @@ where
         self.validate_writeable(&uref.into())?;
         self.validate_uref(&uref)?;
 
-        let stored_value = StoredValue::from(cl_value);
+        self.validate_cl_value(&cl_value)?;
 
-        self.validate_value(&stored_value)?;
+        let wrapped_cl_value =
+            LocalKeyValue::new(cl_value, key_bytes.to_vec(), uref.addr().to_vec());
+        let wrapped_cl_value = CLValue::from_t(wrapped_cl_value).map_err(Error::from)?;
 
         let local_key = Key::local(uref, key_bytes);
-        self.metered_write_gs_unsafe(local_key, stored_value)?;
+        self.metered_write_gs_unsafe(local_key, wrapped_cl_value)?;
         Ok(())
     }
 }

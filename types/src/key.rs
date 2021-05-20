@@ -341,6 +341,15 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner [`LocalAddr`] if `self` is of type [`Key::Local`],
+    /// otherwise returns `None`.
+    pub fn as_local(&self) -> Option<&LocalAddr> {
+        match self {
+            Key::Local(v) => Some(v),
+            _ => None,
+        }
+    }
+
     /// Casts a [`Key::URef`] to a [`Key::Hash`]
     pub fn uref_to_hash(&self) -> Option<Key> {
         let uref = self.as_uref()?;
