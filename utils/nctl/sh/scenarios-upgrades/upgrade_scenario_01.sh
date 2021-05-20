@@ -40,8 +40,8 @@ function _main()
     _step_04
     _step_05 "$STAGE_ID"
     _step_06 "$N1_PROTOCOL_VERSION"
-    # _step_07
-    # _step_08 "$N1_PROTOCOL_VERSION"
+    _step_07
+    _step_08 "$N1_PROTOCOL_VERSION"
     _step_09
 }
 
