@@ -610,7 +610,7 @@ where
 
         if exec_result.is_failure() {
             panic!(
-                "Expected successful execution result, but instead got: {:?}",
+                "Expected successful execution result, but instead got: {:#?}",
                 exec_results,
             );
         }

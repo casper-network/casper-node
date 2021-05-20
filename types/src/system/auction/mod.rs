@@ -14,7 +14,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, EraId, PublicKey, U512};
+use crate::{account::AccountHash, system::CallStackElement, EraId, PublicKey, U512};
 
 pub use bid::Bid;
 pub use constants::*;
@@ -98,9 +98,9 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512, Error> {
         let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        if self.get_immediate_caller() != Some(&CallStackElement::Session { account_hash }) {
+            return Err(Error::InvalidCaller);
+        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -151,9 +151,9 @@ pub trait Auction:
     /// does not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
         let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        if self.get_immediate_caller() != Some(&CallStackElement::Session { account_hash }) {
+            return Err(Error::InvalidCaller);
+        };
 
         let mut bid = self
             .read_bid(&account_hash)?
@@ -207,9 +207,9 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512, Error> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        if self.get_immediate_caller() != Some(&CallStackElement::Session { account_hash }) {
+            return Err(Error::InvalidCaller);
+        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -269,9 +269,9 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512, Error> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller() != account_hash {
-            return Err(Error::InvalidPublicKey);
-        }
+        if self.get_immediate_caller() != Some(&CallStackElement::Session { account_hash }) {
+            return Err(Error::InvalidCaller);
+        };
 
         let validator_account_hash = AccountHash::from(&validator_public_key);
         let mut bid = match self.read_bid(&validator_account_hash)? {

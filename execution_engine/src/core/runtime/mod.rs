@@ -30,7 +30,7 @@ use casper_types::{
         handle_payment::{self, HandlePayment},
         mint::{self, Mint},
         standard_payment::{self, StandardPayment},
-        SystemContractType,
+        CallStackElement, SystemContractType,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, Phase,
@@ -64,6 +64,7 @@ pub struct Runtime<'a, R> {
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
+    call_stack: Vec<CallStackElement>,
 }
 
 pub fn instance_and_memory(
@@ -972,6 +973,7 @@ where
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
+        call_stack: Vec<CallStackElement>,
     ) -> Self {
         Runtime {
             config,
@@ -980,6 +982,7 @@ where
             module,
             host_buffer: None,
             context,
+            call_stack,
         }
     }
 
@@ -1016,6 +1019,10 @@ where
         T: Into<Gas>,
     {
         self.context.charge_system_contract_call(amount)
+    }
+
+    pub fn call_stack(&self) -> &Vec<CallStackElement> {
+        &self.call_stack
     }
 
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
@@ -1355,6 +1362,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             mint_context,
+            self.call_stack().to_owned(),
         );
 
         let system_config = protocol_data.system_config();
@@ -1500,6 +1508,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
+            self.call_stack().to_owned(),
         );
 
         let system_config = protocol_data.system_config();
@@ -1627,6 +1636,7 @@ where
             self.memory.clone(),
             self.module.clone(),
             runtime_context,
+            self.call_stack().to_owned(),
         );
 
         let system_config = protocol_data.system_config();
@@ -1801,6 +1811,12 @@ where
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
         let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+
+        let call_stack_element = CallStackElement::contract(
+            contract.contract_package_hash(),
+            contract.contract_wasm_hash(),
+        );
+        self.call_stack.push(call_stack_element);
 
         self.execute_contract(
             key,
@@ -2054,6 +2070,8 @@ where
             self.context.transfers().to_owned(),
         );
 
+        let call_stack = self.call_stack.to_owned();
+
         let mut runtime = Runtime {
             system_contract_cache,
             config,
@@ -2061,6 +2079,7 @@ where
             module,
             host_buffer,
             context,
+            call_stack,
         };
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);

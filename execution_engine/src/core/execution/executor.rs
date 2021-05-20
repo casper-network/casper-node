@@ -8,7 +8,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    system::{auction, handle_payment, mint},
+    system::{auction, handle_payment, mint, CallStackElement},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
     Phase, ProtocolVersion, RuntimeArgs,
 };
@@ -104,6 +104,7 @@ impl Executor {
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
         contract_package: &ContractPackage,
+        call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -166,7 +167,14 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(self.config, system_contract_cache, memory, module, context);
+        let mut runtime = Runtime::new(
+            self.config,
+            system_contract_cache,
+            memory,
+            module,
+            context,
+            call_stack,
+        );
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -283,6 +291,7 @@ impl Executor {
         phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
+        call_stack: Vec<CallStackElement>,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -323,6 +332,7 @@ impl Executor {
             phase,
             protocol_data,
             system_contract_cache,
+            call_stack,
         ) {
             Ok((_instance, runtime)) => runtime,
             Err(error) => {
@@ -371,6 +381,7 @@ impl Executor {
         phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
+        call_stack: Vec<CallStackElement>,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -456,6 +467,7 @@ impl Executor {
             phase,
             protocol_data,
             system_contract_cache,
+            call_stack,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
@@ -503,6 +515,7 @@ impl Executor {
         phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
+        call_stack: Vec<CallStackElement>,
     ) -> Result<T, Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -533,6 +546,7 @@ impl Executor {
             phase,
             protocol_data,
             system_contract_cache,
+            call_stack,
         )?;
 
         let error: wasmi::Error = match instance.invoke_export(entry_point_name, &[], &mut runtime)
@@ -590,6 +604,7 @@ impl Executor {
         phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
+        call_stack: Vec<CallStackElement>,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -639,6 +654,7 @@ impl Executor {
             memory,
             module,
             runtime_context,
+            call_stack,
         );
 
         Ok((instance, runtime))

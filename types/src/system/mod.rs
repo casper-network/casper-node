@@ -4,6 +4,7 @@ pub mod handle_payment;
 pub mod mint;
 pub mod standard_payment;
 
+use crate::{account::AccountHash, ContractPackageHash, ContractWasmHash};
 pub use error::Error;
 pub use system_contract_type::{
     SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
@@ -191,6 +192,41 @@ mod system_contract_type {
             assert!(SystemContractType::try_from(5).is_err());
             assert!(SystemContractType::try_from(10).is_err());
             assert!(SystemContractType::try_from(u32::max_value()).is_err());
+        }
+    }
+}
+
+/// Represents the origin of a sub-call.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CallStackElement {
+    /// Session
+    Session {
+        /// The account hash of the caller
+        account_hash: AccountHash,
+    },
+    /// Contract
+    Contract {
+        /// The contract package hash
+        contract_package_hash: ContractPackageHash,
+        /// The contract Wasm hash
+        contract_wasm_hash: ContractWasmHash,
+    },
+}
+
+impl CallStackElement {
+    /// Creates a [`CallStackElement::Session`]
+    pub fn session(account_hash: AccountHash) -> Self {
+        CallStackElement::Session { account_hash }
+    }
+
+    /// Creates a [`'CallStackElement::Contract`]
+    pub fn contract(
+        contract_package_hash: ContractPackageHash,
+        contract_wasm_hash: ContractWasmHash,
+    ) -> Self {
+        CallStackElement::Contract {
+            contract_package_hash,
+            contract_wasm_hash,
         }
     }
 }

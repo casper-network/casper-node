@@ -4,9 +4,12 @@ use casper_types::{
     account,
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::{
-        AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-        StorageProvider, SystemProvider, UnbondingPurse,
+    system::{
+        auction::{
+            AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
+            StorageProvider, SystemProvider, UnbondingPurse,
+        },
+        CallStackElement,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
@@ -146,6 +149,13 @@ where
 {
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
+    }
+
+    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+        let call_stack = self.call_stack();
+        let mut call_stack_iter = call_stack.iter().rev();
+        call_stack_iter.next();
+        call_stack_iter.next()
     }
 
     fn named_keys_get(&self, name: &str) -> Option<Key> {
