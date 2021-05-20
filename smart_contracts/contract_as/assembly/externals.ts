@@ -3,13 +3,13 @@
 export declare function read_value(key_ptr: usize, key_size: usize, value_size: usize): i32;
 /** @hidden */
 @external("env", "casper_read_local")
-export declare function read_local(key_ptr: usize, key_size: usize, output_size: usize): i32;
+export declare function read_local(uref_ptr: usize, uref_ptr_size: usize, key_ptr: usize, key_size: usize, output_size: usize): i32;
 /** @hidden */
 @external("env", "casper_write")
 export declare function write(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
 /** @hidden */
 @external("env", "casper_write_local")
-export declare function write_local(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
+export declare function write_local(uref_ptr: usize, uref_ptr_size: usize, key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
 /** @hidden */
 @external("env", "casper_add")
 export declare function add(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
@@ -210,3 +210,5 @@ export declare function disable_contract_version(
     contract_hash_ptr: usize,
     contract_hash_size: usize,
 ): i32;
+@external("env", "casper_create_local")
+export declare function create_local(output_size_ptr: usize): i32;

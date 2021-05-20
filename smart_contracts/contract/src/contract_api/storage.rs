@@ -336,7 +336,7 @@ pub fn disable_contract_version(
     api_error::result_from(result)
 }
 
-/// Extends specified group with a new `URef`.
+/// Creates new [`URef`] that points to a context-local partition of global state.
 pub fn create_local() -> Result<URef, ApiError> {
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
