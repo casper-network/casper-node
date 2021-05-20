@@ -146,7 +146,6 @@ impl Drop for ScopedInstrumenter {
             FunctionIndex::CreateLocalFuncIndex => "host_create_local",
             FunctionIndex::ReadLocalFuncIndex => "host_read_local",
             FunctionIndex::WriteLocalFuncIndex => "host_write_local",
-            FunctionIndex::AddLocalFuncIndex => "host_add_local",
         };
 
         let mut properties = mem::take(&mut self.properties);

@@ -668,6 +668,7 @@ mod serde_helpers {
         Balance(URefAddr),
         Bid(AccountHash),
         Withdraw(AccountHash),
+        Local(LocalAddr),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -682,6 +683,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
+                BinaryDeserHelper::Local(local_addr) => Key::Local(local_addr),
             }
         }
     }

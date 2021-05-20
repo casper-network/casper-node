@@ -3425,26 +3425,6 @@ where
             .write_ls(uref, &key_bytes, cl_value)
             .map_err(Into::into)
     }
-
-    /// Adds `value` under a key derived from `key` in the "local cluster" of
-    /// GlobalState
-    fn add_local(
-        &mut self,
-        uref_ptr: u32,
-        uref_size: u32,
-        key_ptr: u32,
-        key_size: u32,
-        value_ptr: u32,
-        value_size: u32,
-    ) -> Result<(), Trap> {
-        let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-
-        self.context
-            .add_ls(uref, &key_bytes, cl_value)
-            .map_err(Into::into)
-    }
 }
 
 #[cfg(test)]

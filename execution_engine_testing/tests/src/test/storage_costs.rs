@@ -86,7 +86,6 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     write: HostFunction::fixed(0),
     write_local: HostFunction::fixed(0),
     add: HostFunction::fixed(0),
-    add_local: HostFunction::fixed(0),
     new_uref: HostFunction::fixed(0),
     load_named_keys: HostFunction::fixed(0),
     ret: HostFunction::fixed(0),

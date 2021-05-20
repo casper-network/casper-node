@@ -18,16 +18,11 @@ use casper_types::{
 
 pub const LOCAL_KEY_NAME: &str = "local";
 pub const WRITE_LOCAL_KEY: [u8; 32] = [66u8; 32];
-pub const ADD_LOCAL_KEY: [u8; 32] = [67u8; 32];
-pub const ADD_LOCAL_KEY_DEFAULT_VALUE: u64 = 0;
-pub const ADD_LOCAL_KEY_INCREMENT: u64 = 1;
 pub const HELLO_PREFIX: &str = " Hello, ";
 pub const WORLD_SUFFIX: &str = "world!";
 pub const MODIFY_WRITE_ENTRYPOINT: &str = "modify_write";
-pub const MODIFY_ADD_ENTRYPOINT: &str = "modify_add";
 pub const SHARE_RO_ENTRYPOINT: &str = "share_ro";
 pub const SHARE_W_ENTRYPOINT: &str = "share_w";
-pub const SHARE_A_ENTRYPOINT: &str = "share_a";
 pub const CONTRACT_HASH_NAME: &str = "contract_hash";
 const CONTRACT_PACKAGE_HASH_NAME: &str = "package_hash_name";
 pub const DEFAULT_LOCAL_KEY_NAME: &str = "Default Key";
@@ -62,17 +57,6 @@ fn modify_write() {
     storage::write_local(local, WRITE_LOCAL_KEY, res.trim().to_string());
 }
 
-#[no_mangle]
-fn modify_add() {
-    // Preserve for further modifications
-    let local = match runtime::get_key(LOCAL_KEY_NAME) {
-        Some(key) => key.into_uref().unwrap_or_revert(),
-        None => runtime::revert(ApiError::GetKey),
-    };
-
-    storage::add_local(local, ADD_LOCAL_KEY, ADD_LOCAL_KEY_INCREMENT);
-}
-
 fn get_local_key_uref() -> URef {
     let key = runtime::get_key(LOCAL_KEY_NAME).unwrap_or_revert();
     key.into_uref().unwrap_or_revert()
@@ -90,23 +74,10 @@ fn share_w() {
     runtime::ret(CLValue::from_t(uref_w).unwrap_or_revert())
 }
 
-#[no_mangle]
-fn share_a() {
-    let uref_a = get_local_key_uref().into_add();
-    runtime::ret(CLValue::from_t(uref_a).unwrap_or_revert())
-}
-
 pub fn delegate() {
     let mut entry_points = EntryPoints::new();
     entry_points.add_entry_point(EntryPoint::new(
         MODIFY_WRITE_ENTRYPOINT,
-        Vec::new(),
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    ));
-    entry_points.add_entry_point(EntryPoint::new(
-        MODIFY_ADD_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
@@ -126,13 +97,6 @@ pub fn delegate() {
         EntryPointAccess::Public,
         EntryPointType::Contract,
     ));
-    entry_points.add_entry_point(EntryPoint::new(
-        SHARE_A_ENTRYPOINT,
-        Vec::new(),
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Contract,
-    ));
     let named_keys = {
         let uref = {
             let local_uref = storage::create_local().unwrap_or_revert();
@@ -142,7 +106,6 @@ pub fn delegate() {
             );
 
             storage::write_local(local_uref, DEFAULT_LOCAL_KEY_NAME, DEFAULT_LOCAL_KEY_VALUE);
-            storage::write_local(local_uref, ADD_LOCAL_KEY, ADD_LOCAL_KEY_DEFAULT_VALUE);
             local_uref
         };
         let mut named_keys = NamedKeys::new();

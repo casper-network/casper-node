@@ -53,7 +53,6 @@ pub enum FunctionIndex {
     CreateLocalFuncIndex,
     ReadLocalFuncIndex,
     WriteLocalFuncIndex,
-    AddLocalFuncIndex,
 }
 
 impl Into<usize> for FunctionIndex {

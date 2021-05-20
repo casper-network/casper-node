@@ -76,10 +76,6 @@ const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500;
 const DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
 
-const DEFAULT_ADD_LOCAL_COST: u32 = 9_500;
-const DEFAULT_ADD_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
-const DEFAULT_ADD_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
-
 /// Representation of a host function cost
 ///
 /// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
@@ -196,7 +192,6 @@ pub struct HostFunctionCosts {
     pub write: HostFunction<[Cost; 4]>,
     pub write_local: HostFunction<[Cost; 6]>,
     pub add: HostFunction<[Cost; 4]>,
-    pub add_local: HostFunction<[Cost; 6]>,
     pub new_uref: HostFunction<[Cost; 3]>,
     pub load_named_keys: HostFunction<[Cost; 2]>,
     pub ret: HostFunction<[Cost; 2]>,
@@ -272,17 +267,6 @@ impl Default for HostFunctionCosts {
                 ],
             ),
             add: HostFunction::fixed(DEFAULT_ADD_COST),
-            add_local: HostFunction::new(
-                DEFAULT_ADD_LOCAL_COST,
-                [
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                    DEFAULT_ADD_LOCAL_KEY_BYTES_SIZE_WEIGHT,
-                    NOT_USED,
-                    DEFAULT_ADD_LOCAL_VALUE_SIZE_WEIGHT,
-                ],
-            ),
             new_uref: HostFunction::new(
                 DEFAULT_NEW_UREF_COST,
                 [NOT_USED, NOT_USED, DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT],
@@ -422,7 +406,6 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.blake2b.to_bytes()?);
         ret.append(&mut self.create_local.to_bytes()?);
-        ret.append(&mut self.add_local.to_bytes()?);
         Ok(ret)
     }
 
@@ -470,7 +453,6 @@ impl ToBytes for HostFunctionCosts {
             + self.print.serialized_length()
             + self.blake2b.serialized_length()
             + self.create_local.serialized_length()
-            + self.add_local.serialized_length()
     }
 }
 
@@ -519,7 +501,6 @@ impl FromBytes for HostFunctionCosts {
         let (print, rem) = FromBytes::from_bytes(rem)?;
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         let (create_local, rem) = FromBytes::from_bytes(rem)?;
-        let (add_local, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -527,7 +508,6 @@ impl FromBytes for HostFunctionCosts {
                 write,
                 write_local,
                 add,
-                add_local,
                 new_uref,
                 load_named_keys,
                 ret,
@@ -580,7 +560,6 @@ impl Distribution<HostFunctionCosts> for Standard {
             write: rng.gen(),
             write_local: rng.gen(),
             add: rng.gen(),
-            add_local: rng.gen(),
             new_uref: rng.gen(),
             load_named_keys: rng.gen(),
             ret: rng.gen(),
@@ -640,7 +619,6 @@ pub mod gens {
             write in host_function_cost_arb(),
             write_local in host_function_cost_arb(),
             add in host_function_cost_arb(),
-            add_local in host_function_cost_arb(),
             new_uref in host_function_cost_arb(),
             load_named_keys in host_function_cost_arb(),
             ret in host_function_cost_arb(),
@@ -686,7 +664,6 @@ pub mod gens {
                 write,
                 write_local,
                 add,
-                add_local,
                 new_uref,
                 load_named_keys,
                 ret,

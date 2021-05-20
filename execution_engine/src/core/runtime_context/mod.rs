@@ -1088,17 +1088,4 @@ where
         self.metered_write_gs_unsafe(local_key, stored_value)?;
         Ok(())
     }
-
-    pub fn add_ls(&mut self, uref: URef, key_bytes: &[u8], cl_value: CLValue) -> Result<(), Error> {
-        self.validate_addable(&uref.into())?;
-        self.validate_uref(&uref)?;
-
-        let stored_value = StoredValue::from(cl_value);
-
-        self.validate_value(&stored_value)?;
-
-        let local_key = Key::local(uref, key_bytes);
-        self.metered_add_gs_unsafe(local_key, stored_value)?;
-        Ok(())
-    }
 }

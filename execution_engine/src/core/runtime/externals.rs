@@ -1036,31 +1036,6 @@ where
                 )?;
                 Ok(None)
             }
-            FunctionIndex::AddLocalFuncIndex => {
-                let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.add_local,
-                    [
-                        uref_ptr,
-                        uref_size,
-                        key_bytes_ptr,
-                        key_bytes_size,
-                        value_ptr,
-                        value_ptr_size,
-                    ],
-                )?;
-                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
-                scoped_instrumenter.add_property("value_size", value_ptr_size);
-                self.add_local(
-                    uref_ptr,
-                    uref_size,
-                    key_bytes_ptr,
-                    key_bytes_size,
-                    value_ptr,
-                    value_ptr_size,
-                )?;
-                Ok(None)
-            }
         }
     }
 }
