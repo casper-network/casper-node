@@ -34,14 +34,13 @@ function _main()
     _step_02
 
     # Set initial protocol version for use later.
-    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
-
+    INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     _step_03
     _step_04
     _step_05 "$STAGE_ID"
-    _step_06 "$N1_PROTOCOL_VERSION"
+    _step_06 "$INITIAL_PROTOCOL_VERSION"
     _step_07
-    _step_08 "$N1_PROTOCOL_VERSION"
+    _step_08 "$INITIAL_PROTOCOL_VERSION"
     _step_09
 }
 
@@ -182,6 +181,7 @@ function _step_07()
     done
 
     log "... ... awaiting new nodes to start"
+    sleep 60
     await_n_eras 1
     await_n_blocks 1
 }
@@ -212,6 +212,8 @@ function _step_08()
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
         log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
+        log "ERROR :: Initial Proto Version: $N1_PROTOCOL_VERSION_INITIAL"
+        log "ERROR :: Current Proto Version: $N1_PROTOCOL_VERSION"
         exit 1
     fi
 
@@ -253,6 +255,7 @@ function _step_09()
 # ----------------------------------------------------------------
 
 unset _STAGE_ID
+unset INITIAL_PROTOCOL_VERSION
 
 for ARGUMENT in "$@"
 do
