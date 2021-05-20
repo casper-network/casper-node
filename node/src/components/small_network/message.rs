@@ -46,6 +46,7 @@ impl<P: Payload> Message<P> {
 }
 
 /// A pair of secret keys used by consensus.
+#[derive(Debug)]
 pub(super) struct ConsensusKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,

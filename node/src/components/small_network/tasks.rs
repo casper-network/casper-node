@@ -130,7 +130,7 @@ where
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
+    match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -182,6 +182,21 @@ where
     pub(super) consensus_keys: Option<ConsensusKeyPair>,
 }
 
+impl<REv> NetworkContext<REv>
+where
+    REv: 'static,
+{
+    /// Generates a set of handshake parameters from the context and given connection ID.
+    fn handshake_parameters(&self, connection_id: ConnectionId) -> HandshakeParameters<'_> {
+        HandshakeParameters {
+            chain_info: &self.chain_info,
+            public_addr: self.public_addr,
+            consensus_keys: self.consensus_keys.as_ref(),
+            connection_id: connection_id,
+        }
+    }
+}
+
 /// Handles an incoming connection.
 ///
 /// Sets up a TLS stream and performs the protocol handshake.
@@ -225,7 +240,7 @@ where
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
+    match negotiate_handshake(context.handshake_parameters(connection_id), &mut transport).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -312,19 +327,32 @@ where
     }
 }
 
-async fn negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
-    transport: &mut FramedTransport<P>,
+/// Parameters required to negotiate a handshake.
+#[derive(Debug)]
+struct HandshakeParameters<'a> {
+    /// Chain spec information.
+    chain_info: &'a ChainInfo,
+    /// Listening address of our node.
+    public_addr: SocketAddr,
+    /// Optional consensus/validator keys.
+    consensus_keys: Option<&'a ConsensusKeyPair>,
+    /// The connection ID.
     connection_id: ConnectionId,
+}
+
+/// Negotiates a connection handshake over the given transport.
+async fn negotiate_handshake<'a, P>(
+    parameters: HandshakeParameters<'a>,
+    transport: &mut FramedTransport<P>,
 ) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
 where
     P: Payload,
 {
     // Send down a handshake and expect one in response.
-    let handshake = context.chain_info.create_handshake(
-        context.public_addr,
-        context.consensus_keys.as_ref(),
-        connection_id,
+    let handshake = parameters.chain_info.create_handshake(
+        parameters.public_addr,
+        parameters.consensus_keys,
+        parameters.connection_id,
     );
 
     io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
@@ -345,13 +373,13 @@ where
         debug!(%protocol_version, "handshake received");
 
         // The handshake was valid, we can check the network name.
-        if network_name != context.chain_info.network_name {
+        if network_name != parameters.chain_info.network_name {
             return Err(ConnectionError::WrongNetwork(network_name));
         }
 
         let peer_consensus_public_key = consensus_certificate
             .map(|cert| {
-                cert.validate(connection_id)
+                cert.validate(parameters.connection_id)
                     .map_err(ConnectionError::InvalidConsensusCertificate)
             })
             .transpose()?;
