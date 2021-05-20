@@ -58,18 +58,16 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Low-level TLS connection function.
 ///
 /// Performs the actual TCP+TLS connection setup.
-async fn tls_connect<REv>(
-    context: &NetworkContext<REv>,
+async fn tls_connect(
+    our_cert: &TlsCert,
+    secret_key: &PKey<Private>,
     peer_addr: SocketAddr,
-) -> Result<(NodeId, Transport), ConnectionError>
-where
-    REv: 'static,
-{
+) -> Result<(NodeId, Transport), ConnectionError> {
     let stream = TcpStream::connect(peer_addr)
         .await
         .map_err(ConnectionError::TcpConnection)?;
 
-    let mut transport = tls::create_tls_connector(&context.our_cert.as_x509(), &context.secret_key)
+    let mut transport = tls::create_tls_connector(&our_cert.as_x509(), &secret_key)
         .and_then(|connector| connector.configure())
         .and_then(|mut config| {
             config.set_verify_hostname(false);
@@ -105,10 +103,11 @@ where
     REv: 'static,
     P: Payload,
 {
-    let (peer_id, transport) = match tls_connect(&context, peer_addr).await {
-        Ok(value) => value,
-        Err(error) => return OutgoingConnection::FailedEarly { peer_addr, error },
-    };
+    let (peer_id, transport) =
+        match tls_connect(&context.our_cert, &context.secret_key, peer_addr).await {
+            Ok(value) => value,
+            Err(error) => return OutgoingConnection::FailedEarly { peer_addr, error },
+        };
 
     // Register the `peer_id` on the [`Span`].
     Span::current().record("peer_id", &field::display(peer_id));
@@ -523,5 +522,119 @@ pub(super) async fn message_sender<P>(
             );
             break;
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    use crate::{
+        components::small_network::{SmallNetworkIdentity, Transport},
+        testing::init_logging,
+        types::NodeId,
+    };
+
+    use super::{server_setup_tls, tls_connect};
+
+    /// An established TLS connection pair.
+    struct TlsConnectionPair {
+        /// Server end of the connection.
+        server_transport: Transport,
+        /// Client end of the connection.
+        client_transport: Transport,
+    }
+
+    /// Creates a established TLS connection pair using the same TLS setup that the node itself
+    /// would use.
+    ///
+    /// Also initializes logging.
+    async fn create_tls_connection_pair() -> TlsConnectionPair {
+        // We always want logging with TLS connection pair tests.
+        init_logging();
+
+        // Setup TLS keys.
+        let server_identity =
+            SmallNetworkIdentity::new().expect("could not generate server identity");
+        let server_id = NodeId::from(&server_identity);
+        let client_identity =
+            SmallNetworkIdentity::new().expect("could not generate client identity");
+        let client_id = NodeId::from(&client_identity);
+
+        // Setup the TCP/IP listener.
+        let tcp_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("could not bind testing tcp listener");
+        let listen_addr = tcp_listener
+            .local_addr()
+            .expect("could not get listening address");
+
+        // As as separate task, begin the connection process (the port is already bound).
+        let connect_handle = tokio::spawn(async move {
+            tls_connect(
+                &client_identity.tls_certificate,
+                &client_identity.secret_key,
+                listen_addr,
+            )
+            .await
+        });
+
+        let (stream, _peer_addr) = tcp_listener
+            .accept()
+            .await
+            .expect("could not accept incoming connection");
+
+        let (peer_id_from_server_pov, server_transport) = server_setup_tls(
+            stream,
+            &server_identity.tls_certificate,
+            &server_identity.secret_key,
+        )
+        .await
+        .expect("could not setup TLS on server side");
+
+        assert_eq!(peer_id_from_server_pov, client_id);
+
+        // Join the client task.
+        let (peer_id_from_client_pov, client_transport) = connect_handle
+            .await
+            .expect("could not join client task")
+            .expect("connection failed");
+
+        assert_eq!(peer_id_from_client_pov, server_id);
+
+        TlsConnectionPair {
+            server_transport,
+            client_transport,
+        }
+    }
+
+    #[tokio::test]
+    async fn can_establish_working_tls_connection() {
+        let mut connection_pair = create_tls_connection_pair().await;
+
+        const SHORT_MESSAGE: [u8; 8] = [0, 1, 2, 3, 99, 100, 101, 102];
+
+        // Note: We're counting on buffering making the send essentially non-blocking here. It is
+        // important to send very small amount, one that is guaranteed to be immediately accepted
+        // and buffered by the kernel.
+
+        connection_pair
+            .server_transport
+            .write_all(&SHORT_MESSAGE)
+            .await
+            .expect("write failed");
+
+        let mut recv_buffer = [0u8; 8];
+
+        connection_pair
+            .client_transport
+            .read(&mut recv_buffer)
+            .await
+            .expect("read failed");
+
+        assert_eq!(recv_buffer, SHORT_MESSAGE);
     }
 }
