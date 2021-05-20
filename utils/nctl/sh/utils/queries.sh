@@ -169,7 +169,7 @@ function get_node_protocol_version_from_fs()
     local IFS='_'
 
     pushd "$PATH_TO_NODE_BIN" || exit
-    read -ra SEMVAR_CURRENT <<< "$(ls -td -- * | head -n 1)"
+    read -ra SEMVAR_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
     popd || exit
 
     echo "${SEMVAR_CURRENT[0]}$SEPARATOR${SEMVAR_CURRENT[1]}$SEPARATOR${SEMVAR_CURRENT[2]}"
