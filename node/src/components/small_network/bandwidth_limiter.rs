@@ -248,6 +248,11 @@ async fn worker(
             } => {
                 active_validators = new_active_validators;
                 upcoming_validators = new_upcoming_validators;
+                debug!(
+                    ?active_validators,
+                    ?upcoming_validators,
+                    "bandwidth classes updated"
+                );
             }
             ClassBasedCommand::RequestBandwidth {
                 num_bytes,
