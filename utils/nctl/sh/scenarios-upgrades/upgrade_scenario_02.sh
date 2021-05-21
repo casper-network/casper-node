@@ -46,6 +46,10 @@ function _main()
         fi
     done
 
+    # Lastly sync new Nodes
+    _sync_new_nodes
+    _sync_new_nodes_test
+
     # Tidy up.
     log_break
     log "test successful - tidying up"
@@ -121,6 +125,7 @@ function _upgrade()
     _upgrade_step_03 "$UPGRADE_ID"
     _upgrade_step_04 "$UPGRADE_ID"
     _upgrade_step_05 "$UPGRADE_ID"
+    _upgrade_step_06 "$UPGRADE_ID" "$PROTOCOL_VERSION_PREVIOUS"
 }
 
 # Upgrade: Upgrade network from stage.
@@ -173,6 +178,7 @@ function _upgrade_step_04()
 
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
         log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
+        nctl-status
         exit 1
     fi
 }
@@ -185,7 +191,7 @@ function _upgrade_step_05()
     local HEIGHT_2
     local NODE_ID
 
-    log_step 4 "asserting chain progression" "UPGRADE $UPGRADE_ID:"
+    log_step 5 "asserting chain progression" "UPGRADE $UPGRADE_ID:"
 
     HEIGHT_1=$(get_chain_height)
     await_n_blocks 2
@@ -195,6 +201,128 @@ function _upgrade_step_05()
         HEIGHT_2=$(get_chain_height "$NODE_ID")
         if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
             log "ERROR :: protocol upgrade failure - >= 1 nodes have stalled"
+            exit 1
+        fi
+    done
+}
+
+function _upgrade_step_06()
+{
+    local UPGRADE_ID=${1}
+    local PROTOCOL_VERSION_PREVIOUS=${2}
+    local N1_PROTOCOL_VERSION
+    local NX_PROTOCOL_VERSION
+
+    log_step 6 "asserting node upgrades" "UPGRADE $UPGRADE_ID:"
+
+    # Assert node-1 protocol version incremented.
+    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1 | sed 's/\./\_/g')
+    if [ "$N1_PROTOCOL_VERSION" == "$PROTOCOL_VERSION_PREVIOUS" ]; then
+        log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
+        exit 1
+    else
+        log "Node 1 upgraded successfully: $PROTOCOL_VERSION_PREVIOUS -> $N1_PROTOCOL_VERSION"
+    fi
+
+    # Assert nodes are running same protocol version.
+    for NODE_ID in $(seq 2 "$(get_count_of_genesis_nodes)")
+    do
+        NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID" | sed 's/\./\_/g')
+        if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
+            log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
+            exit 1
+        else
+            log "Node $NODE_ID upgraded successfully: $PROTOCOL_VERSION_PREVIOUS -> $NX_PROTOCOL_VERSION"
+        fi
+    done
+}
+
+function _sync_new_nodes()
+{
+    local NODE_ID
+    local TRUSTED_HASH
+
+    log_step 'sync' "joining passive nodes"
+
+    log "... submitting auction bids"
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        if [ $(get_node_is_up "$NODE_ID") == false ]; then
+            source "$NCTL/sh/contracts-auction/do_bid.sh" \
+                node="$NODE_ID" \
+                amount="$(get_node_staking_weight "$NODE_ID")" \
+                rate="2" \
+                quiet="TRUE"
+        fi
+    done
+
+    log "... awaiting auction bid acceptance (3 eras + 1 block)"
+    await_n_eras 3
+    await_n_blocks 1
+
+    log "... starting nodes"
+    TRUSTED_HASH="$(get_chain_latest_block_hash)"
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        if [ $(get_node_is_up "$NODE_ID") == false ]; then
+            do_node_start "$NODE_ID" "$TRUSTED_HASH"
+        fi
+    done
+
+    log "... ... awaiting new nodes to start"
+    sleep 90
+    await_n_eras 1
+    await_n_blocks 1
+
+}
+
+function _sync_new_nodes_test()
+{
+    local NODE_ID
+    local N1_BLOCK_HASH
+    local N1_PROTOCOL_VERSION
+    local N1_STATE_ROOT_HASH
+    local NX_PROTOCOL_VERSION
+    local NX_STATE_ROOT_HASH
+
+    log_step 'SYNC' "asserting joined nodes are running upgrade"
+
+    # Assert all nodes are live.
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        if [ $(get_node_is_up "$NODE_ID") == false ]; then
+            log "ERROR :: sync failure - >= 1 nodes not live"
+            log "$(nctl-status)"
+            exit 1
+        fi
+    done
+
+    # Get node 1 proto version.
+    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1 | sed 's/\./\_/g')
+    log "Node 1 running proto version: $N1_PROTOCOL_VERSION"
+
+    # Assert nodes are running same protocol version.
+    for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
+    do
+        NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID" | sed 's/\./\_/g')
+        if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
+            log "ERROR :: protocol upgrade failure - >= node $NODE_ID is not running same protocol version"
+            log "node 1 protocol version: $N1_PROTOCOL_VERSION"
+            log "node $NODE_ID protocol version: $NX_PROTOCOL_VERSION"
+            exit 1
+        else
+            log "Node $NODE_ID running correct proto version: $NX_PROTOCOL_VERSION"
+        fi
+    done
+
+    # Assert nodes are synced.
+    N1_BLOCK_HASH=$(get_chain_latest_block_hash 1)
+    N1_STATE_ROOT_HASH=$(get_state_root_hash 1 "$N1_BLOCK_HASH")
+    for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
+    do
+        NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
+        if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
+            log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
             exit 1
         fi
     done
