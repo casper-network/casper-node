@@ -240,6 +240,9 @@ async fn worker(
     let mut bytes_available: i64 = 0;
     let mut last_refill: Instant = Instant::now();
 
+    // Whether or not we emitted a warning that the limiter is currently implicitly disabled.
+    let mut logged_uninitialized = false;
+
     while let Some(msg) = receiver.recv().await {
         match msg {
             ClassBasedCommand::UpdateValidators {
@@ -259,6 +262,16 @@ async fn worker(
                 id,
                 responder,
             } => {
+                if active_validators.is_empty() && upcoming_validators.is_empty() {
+                    // It is likely that we have not been initialized, thus no node is getting the
+                    // reserved bandwidth. In this case, do not limit at all.
+                    if !logged_uninitialized {
+                        logged_uninitialized = true;
+                        warn!("empty set of validators, not limiting bandwidth at all");
+                        continue;
+                    }
+                }
+
                 let bandwidth_class = if let Some(ref validator_id) = id.validator_id {
                     if active_validators.contains(validator_id) {
                         BandwidthClass::ActiveValidator
