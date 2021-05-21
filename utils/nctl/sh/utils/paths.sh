@@ -125,13 +125,29 @@ function get_path_to_node_bin()
 }
 
 #######################################
-# Returns path to a node's config file.
+# Returns path to a node's config folder.
 # Arguments:
 #   Node ordinal identifier.
 #######################################
 function get_path_to_node_config()
 {
     echo "$(get_path_to_node "$1")"/config
+}
+
+#######################################
+# Returns path to a node's active config file.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_config_file()
+{
+    local NODE_ID=${1:-1}
+    local NODE_PROTOCOL_VERSION
+    local PATH_TO_NODE
+
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+
+    echo "$(get_path_to_node "$NODE_ID")/config/$NODE_PROTOCOL_VERSION/config.toml"
 }
 
 #######################################
@@ -174,6 +190,14 @@ function get_path_to_node_secret_key()
     local NODE_ID=${1} 
 
     get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
+}
+
+#######################################
+# Returns path to folder containing download remotes.
+#######################################
+function get_path_to_remotes()
+{
+    echo "$NCTL/remotes"
 }
 
 #######################################
@@ -230,22 +254,6 @@ function get_path_to_stage_settings()
 function get_path_to_stages()
 {
     echo "$NCTL/stages"
-}
-
-#######################################
-# Returns path to folder hosting set of temporary assets.
-#######################################
-function get_path_to_temp()
-{
-    echo "$NCTL/tmp"
-}
-
-#######################################
-# Returns path to folder mapped to temporary casper-node source code.
-#######################################
-function get_path_to_temp_node()
-{
-    echo "$(get_path_to_temp)/casper-node"
 }
 
 #######################################

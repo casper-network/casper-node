@@ -54,7 +54,7 @@ function _upgrade_node() {
     cp "$PATH_TO_UPGRADED_CHAINSPEC_FILE" "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Copy config file.
-    cp "$PATH_TO_NODE"/config/1_0_0/config.toml "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
+    cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Clean up.
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"

@@ -25,14 +25,22 @@ function get_activation_point()
 function get_chain_era()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local ERA
 
     if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        $(get_path_to_client) get-block \
-            --node-address "$(get_node_address_rpc "$NODE_ID")" \
-            --block-identifier "" \
-            | jq '.result.block.header.era_id'    
+        ERA=$(
+            $(get_path_to_client) get-block \
+                --node-address "$(get_node_address_rpc "$NODE_ID")" \
+                --block-identifier "" \
+                | jq '.result.block.header.era_id'    
+        )
+        if [ "$ERA" == "null" ]; then
+            echo 0
+        else
+            echo $ERA
+        fi
     else
-        echo "N/A"
+        echo -1
     fi
 }
 
@@ -86,10 +94,11 @@ function get_chain_latest_block_hash()
 #######################################
 function get_chain_latest_block()
 {
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
+
     $(get_path_to_client) get-block \
-        --node-address "$(get_node_address_rpc)" \
-        | jq '.result.block' \
-        | sed -e 's/^"//' -e 's/"$//'
+        --node-address "$(get_node_address_rpc $NODE_ID)" \
+        | jq '.result.block'
 }
 
 #######################################
@@ -113,11 +122,81 @@ function get_genesis_timestamp()
 # Arguments:
 #   Version of protocol.
 #######################################
+function get_node_status()
+{
+    local NODE_ID=${1}
+    local NODE_ADDRESS_CURL
+    local NODE_API_RESPONSE
+    
+    NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
+    NODE_API_RESPONSE=$(
+        curl -s --header 'Content-Type: application/json' \
+            --request POST "$NODE_ADDRESS_CURL" \
+            --data-raw '{
+                "id": 1,
+                "jsonrpc": "2.0",
+                "method": "info_get_status"
+            }'
+    )
+
+    echo $NODE_API_RESPONSE | jq '.result'
+}
+
+#######################################
+# Returns protocol version being run by a node.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_protocol_version()
+{
+    local NODE_ID=${1}
+
+    echo $(get_node_status "$NODE_ID") | \
+         jq '.api_version' | \
+         sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
+# Returns protocol version being run by a node by inspecting it's bin folder.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_protocol_version_from_fs()
+{
+    local NODE_ID=${1}
+    local SEPARATOR=${2:-"."}
+    local PATH_TO_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
+    local IFS='_'
+
+    pushd "$PATH_TO_NODE_BIN" || exit
+    read -ra SEMVAR_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
+    popd || exit
+
+    echo "${SEMVAR_CURRENT[0]}$SEPARATOR${SEMVAR_CURRENT[1]}$SEPARATOR${SEMVAR_CURRENT[2]}"
+}
+
+#######################################
+# Returns protocol version formatted for inclusion in chainspec.
+# Arguments:
+#   Version of protocol.
+#######################################
 function get_protocol_version_for_chainspec()
 {
     local PROTOCOL_VERSION=${1}
 
     echo "$PROTOCOL_VERSION" | tr "_" "."
+}
+
+#######################################
+# Returns protocol version formatted for filesystem usage.
+# Arguments:
+#   Version of protocol.
+#######################################
+function get_protocol_version_for_fs()
+{
+    local PROTOCOL_VERSION=${1}
+
+    echo "$PROTOCOL_VERSION" | tr "." "_"
 }
 
 #######################################
@@ -131,11 +210,11 @@ function get_protocol_version_for_chainspec()
 function get_state_root_hash()
 {
     local NODE_ID=${1} 
-    local BLOCK_HASH=${2}
+    local BLOCK_ID=${2:-""}
 
     $(get_path_to_client) get-state-root-hash \
         --node-address "$(get_node_address_rpc "$NODE_ID")" \
-        --block-identifier "${BLOCK_HASH:-""}" \
+        --block-identifier "$BLOCK_ID" \
         | jq '.result.state_root_hash' \
         | sed -e 's/^"//' -e 's/"$//'
 }

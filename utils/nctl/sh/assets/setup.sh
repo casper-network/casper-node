@@ -119,7 +119,7 @@ function _main()
     log "asset setup begins ... please wait"
 
     # Setup new.
-    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS"
+    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "1_0_0"
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         setup_asset_binaries "1_0_0" \
@@ -144,7 +144,8 @@ function _main()
     setup_asset_chainspec "$COUNT_NODES" \
                           "1.0.0" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \
-                          "$PATH_TO_CHAINSPEC"
+                          "$PATH_TO_CHAINSPEC" \
+                          true
 
     if [ "$PATH_TO_ACCOUNTS" = "" ]; then
         setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
@@ -154,7 +155,8 @@ function _main()
 
     setup_asset_node_configs "$COUNT_NODES" \
                              "1_0_0" \
-                             "$NCTL_CASPER_HOME/resources/local/config.toml"
+                             "$NCTL_CASPER_HOME/resources/local/config.toml" \
+                             true
 
     log "asset setup complete"
 }
