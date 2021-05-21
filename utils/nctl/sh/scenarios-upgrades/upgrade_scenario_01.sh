@@ -34,14 +34,13 @@ function _main()
     _step_02
 
     # Set initial protocol version for use later.
-    N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
-
+    INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     _step_03
     _step_04
     _step_05 "$STAGE_ID"
-    _step_06 "$N1_PROTOCOL_VERSION"
-    # _step_07
-    # _step_08 "$N1_PROTOCOL_VERSION"
+    _step_06 "$INITIAL_PROTOCOL_VERSION"
+    _step_07
+    _step_08 "$INITIAL_PROTOCOL_VERSION"
     _step_09
 }
 
@@ -135,6 +134,8 @@ function _step_06()
     if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
         log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
         exit 1
+    else
+        log "Node 1 upgraded successfully: $N1_PROTOCOL_VERSION_INITIAL -> $N1_PROTOCOL_VERSION"
     fi
 
     # Assert nodes are running same protocol version.
@@ -144,6 +145,8 @@ function _step_06()
         if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
             exit 1
+        else
+            log "Node $NODE_ID upgraded successfully: $N1_PROTOCOL_VERSION_INITIAL -> $NX_PROTOCOL_VERSION"
         fi
     done
 }
@@ -182,6 +185,7 @@ function _step_07()
     done
 
     log "... ... awaiting new nodes to start"
+    sleep 60
     await_n_eras 1
     await_n_blocks 1
 }
@@ -197,7 +201,7 @@ function _step_08()
     local NX_PROTOCOL_VERSION
     local NX_STATE_ROOT_HASH
 
-    log_step 9 "asserting joined nodes are running upgrade"
+    log_step 8 "asserting joined nodes are running upgrade"
 
     # Assert all nodes are live.
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
@@ -212,7 +216,11 @@ function _step_08()
     N1_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     if [ "$N1_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
         log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
+        log "ERROR :: Initial Proto Version: $N1_PROTOCOL_VERSION_INITIAL"
+        log "ERROR :: Current Proto Version: $N1_PROTOCOL_VERSION"
         exit 1
+    else
+        log "Node 1 upgraded successfully: $N1_PROTOCOL_VERSION_INITIAL -> $N1_PROTOCOL_VERSION"
     fi
 
     # Assert nodes are running same protocol version.
@@ -222,6 +230,8 @@ function _step_08()
         if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all running same protocol version"
             exit 1
+        else
+            log "Node $NODE_ID upgraded successfully: $N1_PROTOCOL_VERSION_INITIAL -> $NX_PROTOCOL_VERSION"
         fi
     done
 
@@ -253,6 +263,7 @@ function _step_09()
 # ----------------------------------------------------------------
 
 unset _STAGE_ID
+unset INITIAL_PROTOCOL_VERSION
 
 for ARGUMENT in "$@"
 do

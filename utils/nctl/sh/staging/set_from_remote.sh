@@ -29,7 +29,14 @@ function _main()
         exit 1
     fi
 
-    PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION"
+    if [ "$PROTOCOL_VERSION" = "1_1_1" ]; then
+        log "... NOTE: Setting up 1_1_1 in 1_1_0 due to known caveat."
+        PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/1_1_0"
+        mkdir -p "$PATH_TO_STAGE"
+        rmdir "$(get_path_to_stage "$STAGE_ID")/1_1_1"
+    else
+        PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION"
+    fi
 
     cp "$PATH_TO_REMOTE"/* "$PATH_TO_STAGE"
     cp "$(get_path_to_remotes)/casper-node-launcher" "$PATH_TO_STAGE"
