@@ -62,7 +62,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Block, BlockHash, Deploy, ExitCode, NodeId, Tag},
+    types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -311,7 +311,7 @@ pub struct ValidatorInitConfig {
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
-    pub(super) latest_block: Option<Block>,
+    pub(super) maybe_latest_block_header: Option<BlockHeader>,
     pub(super) event_stream_server: EventStreamServer,
     pub(super) small_network_identity: SmallNetworkIdentity,
     pub(super) network_identity: NetworkIdentity,
@@ -393,7 +393,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader,
             storage,
             mut contract_runtime,
-            latest_block,
+            maybe_latest_block_header,
             event_stream_server,
             small_network_identity,
             network_identity,
@@ -413,15 +413,14 @@ impl reactor::Reactor for Reactor {
             registry,
             network_identity,
             chainspec_loader.chainspec(),
-            true,
         )?;
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network,
+            Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
-            true,
         )?;
 
         let address_gossiper =
@@ -448,17 +447,17 @@ impl reactor::Reactor for Reactor {
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
-            latest_block
+            maybe_latest_block_header
                 .as_ref()
-                .map(|block| block.height() + 1)
+                .map(|block_header| block_header.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
             config.block_proposer,
         )?;
 
-        let initial_era = latest_block.as_ref().map_or_else(
+        let initial_era = maybe_latest_block_header.as_ref().map_or_else(
             || chainspec_loader.initial_era(),
-            |block| block.header().next_block_era_id(),
+            |block_header| block_header.next_block_era_id(),
         );
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
 
@@ -470,7 +469,7 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
-            latest_block.as_ref().map(Block::header),
+            maybe_latest_block_header.as_ref(),
             maybe_next_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
@@ -483,7 +482,7 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.initial_state_root_hash(),
             chainspec_loader.initial_block_header(),
         );
-        contract_runtime.set_parent_map_from_block(latest_block);
+        contract_runtime.set_parent_map_from_block(maybe_latest_block_header);
 
         let block_validator = BlockValidator::new(Arc::clone(&chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -908,8 +907,8 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let deploy_type = match deploy.deploy_type() {
-                    Ok(deploy_type) => deploy_type,
+                let deploy_info = match deploy.deploy_info() {
+                    Ok(deploy_info) => deploy_info,
                     Err(error) => {
                         tracing::error!("Invalid deploy: {:?}", error);
                         return Effects::new();
@@ -917,8 +916,8 @@ impl reactor::Reactor for Reactor {
                 };
 
                 let event = block_proposer::Event::BufferDeploy {
-                    hash: *deploy.id(),
-                    deploy_type: Box::new(deploy_type),
+                    hash: deploy.deploy_or_transfer_hash(),
+                    deploy_info: Box::new(deploy_info),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
@@ -1014,6 +1013,16 @@ impl reactor::Reactor for Reactor {
                 debug!("Ignoring `BlockAlreadyExecuted` announcement in `validator` reactor.");
                 Effects::new()
             }
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
+                era_id,
+                execution_effect,
+            }) => {
+                let reactor_event = Event::EventStreamServer(event_stream_server::Event::Step {
+                    era_id,
+                    effect: execution_effect,
+                });
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
             }
@@ -1025,11 +1034,18 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let reactor_event =
+                let reactor_event_consensus = Event::Consensus(consensus::Event::BlockAdded(
+                    Box::new(block.header().clone()),
+                ));
+                let reactor_event_es =
                     Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
-                let reactor_event = Event::Consensus(consensus::Event::BlockAdded(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
+                ));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {

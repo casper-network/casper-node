@@ -50,7 +50,7 @@ where
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
-    state::State::new(weights, params, vec![])
+    state::State::new(weights, params, vec![], vec![])
 }
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
@@ -73,13 +73,11 @@ where
     let config = Config {
         secret_key_path: Default::default(),
         highway: HighwayConfig {
-            unit_hashes_folder: Default::default(),
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
             log_participation_interval: "10sec".parse().unwrap(),
             max_execution_delay: 3,
-            round_success_meter: Default::default(),
-            request_latest_state_timeout: "10sec".parse().unwrap(),
+            ..HighwayConfig::default()
         },
     };
     // Timestamp of the genesis era start and test start.
@@ -88,6 +86,7 @@ where
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_slashed.into_iter().collect(),
+        &None.into_iter().collect(),
         &(&chainspec).into(),
         &config,
         None,
@@ -154,7 +153,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         round_exp: 0,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -200,13 +199,13 @@ fn send_a_valid_wire_unit() {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: Some(BlockPayload::new(vec![], vec![], vec![], false)),
+        value: Some(Arc::new(BlockPayload::new(vec![], vec![], vec![], false))),
         seq_number,
         timestamp: now,
         round_exp: 14,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
@@ -260,7 +259,7 @@ fn detect_doppelganger() {
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
     let now = Timestamp::zero();
-    let value = BlockPayload::new(vec![], vec![], vec![], false);
+    let value = Arc::new(BlockPayload::new(vec![], vec![], vec![], false));
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
@@ -271,7 +270,7 @@ fn detect_doppelganger() {
         round_exp,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair = Keypair::from(Arc::new(ALICE_SECRET_KEY.clone()));
+    let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use datasize::DataSize;
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     components::consensus::{
@@ -29,6 +29,9 @@ use super::{
     endorsement::{Endorsement, EndorsementError},
     evidence::Evidence,
 };
+
+/// If a lot of rounds were skipped between two blocks, log at most this many.
+const MAX_SKIPPED_PROPOSAL_LOGS: u64 = 10;
 
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
@@ -102,8 +105,8 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 ///
 /// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
 /// or inconsistent state otherwise.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
-pub(crate) struct ValidVertex<C>(pub(super) Vertex<C>)
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct ValidVertex<C>(pub(crate) Vertex<C>)
 where
     C: Context;
 
@@ -171,7 +174,8 @@ impl<C: Context> Highway<C> {
         info!(%validators, instance=%instance_id, "creating Highway instance");
         let weights = validators.iter().map(Validator::weight);
         let banned = validators.iter_banned_idx();
-        let state = State::new(weights, params, banned);
+        let cannot_propose = validators.iter_cannot_propose_idx();
+        let state = State::new(weights, params, banned, cannot_propose);
         Highway {
             instance_id,
             validators,
@@ -220,15 +224,7 @@ impl<C: Context> Highway<C> {
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
-        if let Some(av) = self.active_validator.take() {
-            match av.cleanup() {
-                Ok(_) => {}
-                Err(err) => warn!(
-                    ?err,
-                    "error occurred when cleaning up active validator state"
-                ),
-            }
-        }
+        self.active_validator = None;
     }
 
     /// Switches the active validator to a new round exponent.
@@ -382,7 +378,7 @@ impl<C: Context> Highway<C> {
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
         // This is because proposal units, i.e. new blocks, are
-        // supposed to thave the exact timestamp that matches the
+        // supposed to have the exact timestamp that matches the
         // beginning of the round (which we use as the "round ID").
         //
         // But at least any discrepancy here can only come from event
@@ -588,6 +584,7 @@ impl<C: Context> Highway<C> {
         let creator = swunit.wire_unit().creator;
         let was_honest = !self.state.is_faulty(creator);
         self.state.add_valid_unit(swunit);
+        self.log_if_missing_proposal(&unit_hash);
         let mut evidence_effects = self
             .state
             .maybe_evidence(creator)
@@ -666,6 +663,62 @@ impl<C: Context> Highway<C> {
         self.active_validator
             .as_ref()
             .map(|av| av.next_round_length())
+    }
+
+    /// Logs a message if this is a block and any previous blocks were skipped.
+    fn log_if_missing_proposal(&self, unit_hash: &C::Hash) {
+        let state = &self.state;
+        let unit = state.unit(unit_hash);
+        let r_id = unit.round_id();
+        if unit.timestamp != r_id
+            || unit.block != *unit_hash
+            || state.leader(r_id) != unit.creator
+            || state.is_faulty(unit.creator)
+        {
+            return; // Not a block by an honest validator. (Don't let faulty validators spam logs.)
+        }
+
+        // Iterate over all rounds since the parent — or since the start time, if there is none.
+        let parent_timestamp = if let Some(parent_hash) = state.block(unit_hash).parent() {
+            state.unit(parent_hash).timestamp
+        } else {
+            state.params().start_timestamp()
+        };
+        for skipped_r_id in (1..=MAX_SKIPPED_PROPOSAL_LOGS)
+            .map(|i| r_id.saturating_sub(state.params().min_round_length() * i))
+            .take_while(|skipped_r_id| *skipped_r_id > parent_timestamp)
+        {
+            let leader_index = state.leader(skipped_r_id);
+            let leader_id = match self.validators.id(leader_index) {
+                None => {
+                    error!(?leader_index, "missing leader validator ID");
+                    return;
+                }
+                Some(leader_id) => leader_id,
+            };
+            if state.is_faulty(leader_index) {
+                trace!(
+                    ?leader_index, %leader_id, round_id = %skipped_r_id,
+                    "missing proposal: faulty leader was skipped",
+                );
+            } else {
+                let reason = state.panorama()[leader_index]
+                    .correct()
+                    .and_then(|leader_hash| {
+                        state
+                            .swimlane(leader_hash)
+                            .find(|(_, unit)| unit.timestamp <= skipped_r_id)
+                            .filter(|(_, unit)| unit.timestamp == skipped_r_id)
+                    })
+                    .map_or("the leader missed their turn", |_| {
+                        "the leader's proposal got orphaned"
+                    });
+                info!(
+                    ?leader_index, %leader_id, round_id = %skipped_r_id,
+                    "missing proposal: {}", reason,
+                );
+            }
+        }
     }
 }
 

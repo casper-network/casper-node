@@ -6,13 +6,13 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{
     components::consensus::{
-        consensus_protocol::ProtocolOutcome,
+        consensus_protocol::{ProposedBlock, ProtocolOutcome},
         highway_core::{
-            highway::{Dependency, Highway, PreValidatedVertex, Vertex},
+            highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
             validators::ValidatorMap,
         },
         traits::{Context, NodeIdT},
@@ -20,7 +20,7 @@ use crate::{
     types::{TimeDiff, Timestamp},
 };
 
-use super::{HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
+use super::{HighwayConfig, HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
 
 #[cfg(test)]
 mod tests;
@@ -76,7 +76,7 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
         Some(PendingVertex::new(sender, pvv, timestamp))
     }
 
-    /// Returns whether depedency exists in the pending vertices collection.
+    /// Returns whether dependency exists in the pending vertices collection.
     fn contains_dependency(&self, d: &Dependency<C>) -> bool {
         self.0.keys().any(|pvv| &pvv.inner().id() == d)
     }
@@ -163,15 +163,16 @@ where
     /// Vertices that might be ready to add to the protocol state: We are not currently waiting for
     /// a requested dependency.
     vertices_no_deps: PendingVertices<I, C>,
-    /// The duration for which incoming vertices with missing dependencies are kept in a queue.
-    pending_vertex_timeout: TimeDiff,
-    /// The duration between two consecutive requests of the latest state.
-    request_latest_state_timeout: TimeDiff,
+    /// This node's local Highway protocol configuration.
+    config: HighwayConfig,
     /// Instance ID of an era for which this synchronizer is constructed.
     instance_id: C::InstanceId,
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
     /// Used only for logging.
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
+    /// Keeps track of the requests we've sent so far and the recipients.
+    /// Used to decide whether we should ask more nodes for a particular dependency.
+    requests_sent: BTreeMap<Dependency<C>, HashSet<I>>,
     /// Boolean flag indicating whether we're synchronizing current era.
     pub(crate) current_era: bool,
 }
@@ -179,8 +180,7 @@ where
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
     pub(crate) fn new(
-        pending_vertex_timeout: TimeDiff,
-        request_latest_state_timeout: TimeDiff,
+        config: HighwayConfig,
         validator_len: usize,
         instance_id: C::InstanceId,
     ) -> Self {
@@ -188,23 +188,25 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             vertices_awaiting_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_no_deps: Default::default(),
-            pending_vertex_timeout,
-            request_latest_state_timeout,
+            config,
             oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
             instance_id,
+            requests_sent: BTreeMap::new(),
             current_era: true,
         }
     }
 
     /// Removes expired pending vertices from the queues, and schedules the next purge.
     pub(crate) fn purge_vertices(&mut self, now: Timestamp) {
-        let oldest = now.saturating_sub(self.pending_vertex_timeout);
+        info!("purging synchronizer queues");
+        let oldest = now.saturating_sub(self.config.pending_vertex_timeout);
         self.vertices_no_deps.remove_expired(oldest);
+        self.requests_sent.clear();
         Self::remove_expired(&mut self.vertices_to_be_added_later, oldest);
         Self::remove_expired(&mut self.vertices_awaiting_deps, oldest);
     }
 
-    // Returns number of elements in the `verties_to_be_added_later` queue.
+    // Returns number of elements in the `vertices_to_be_added_later` queue.
     // Every pending vertex is counted once, even if it has multiple senders.
     fn vertices_to_be_added_later_len(&self) -> u64 {
         self.vertices_to_be_added_later
@@ -317,7 +319,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
         let pvs = satisfied_deps
             .into_iter()
-            .flat_map(|dep| self.vertices_awaiting_deps.remove(&dep).unwrap())
+            .flat_map(|dep| {
+                self.requests_sent.remove(&dep);
+                self.vertices_awaiting_deps.remove(&dep).unwrap()
+            })
             .collect_vec();
         self.schedule_add_vertices(pvs)
     }
@@ -328,9 +333,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn pop_vertex_to_add(
         &mut self,
         highway: &Highway<C>,
+        pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
     ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
         let mut outcomes = Vec::new();
-        let mut requested_dependencies: HashSet<(I, Dependency<C>)> = Default::default();
         // Get the next vertex to be added; skip the ones that are already in the protocol state,
         // and the ones that are still missing dependencies.
         loop {
@@ -358,16 +363,54 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 // We are still missing a dependency. Store the vertex in the map and request
                 // the dependency from the sender.
                 let sender = pv.sender().clone();
+                let time_received = pv.time_received;
                 // Make `pv` depend on the direct dependency `dep` and not `transitive_dependency`
                 // since there's a higher chance of adding `pv` to the protocol
                 // state after `dep` is added, rather than `transitive_dependency`.
                 self.add_missing_dependency(dep.clone(), pv);
-                if requested_dependencies.contains(&(sender.clone(), transitive_dependency.clone()))
+                // If we already have the dependency and it is a proposal that is currently being
+                // handled by the block validator, and this sender is already known as a source,
+                // do nothing.
+                if pending_values
+                    .values()
+                    .flatten()
+                    .any(|(vv, s)| vv.inner().id() == transitive_dependency && s == &sender)
                 {
-                    // If we've already requested the same dependency from the same peer, ignore.
                     continue;
                 }
-                requested_dependencies.insert((sender.clone(), transitive_dependency.clone()));
+                // If we already have the dependency and it is a proposal that is currently being
+                // handled by the block validator, and this sender is not yet known as a source,
+                // we return the proposal as if this sender had sent it to us, so they get added.
+                if let Some((vv, _)) = pending_values
+                    .values()
+                    .flatten()
+                    .find(|(vv, _)| vv.inner().id() == transitive_dependency)
+                {
+                    info!(
+                        dependency = ?transitive_dependency, %sender,
+                        "adding sender as a source for proposal"
+                    );
+                    let dep_pv = PendingVertex::new(sender, vv.clone().into(), time_received);
+                    // We found the next vertex to add.
+                    if !self.vertices_no_deps.is_empty() {
+                        // There are still vertices in the queue: schedule next call.
+                        outcomes.push(ProtocolOutcome::QueueAction(ACTION_ID_VERTEX));
+                    }
+                    return (Some(dep_pv), outcomes);
+                }
+                // If we have already requested the dependency from this peer, or from the maximum
+                // number of peers, do nothing.
+                let entry = self
+                    .requests_sent
+                    .entry(transitive_dependency.clone())
+                    .or_default();
+                if entry.len() >= self.config.max_requests_for_vertex
+                    || !entry.insert(sender.clone())
+                {
+                    continue;
+                }
+                // Otherwise request the missing dependency from the sender.
+                info!(dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let ser_msg = HighwayMessage::RequestDependency(transitive_dependency).serialize();
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
                 continue;
@@ -427,12 +470,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
     pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
-        self.pending_vertex_timeout
-    }
-
-    /// Returns the duration between two consecutive requests of the latest state.
-    pub(crate) fn request_latest_state_timeout(&self) -> TimeDiff {
-        self.request_latest_state_timeout
+        self.config.pending_vertex_timeout
     }
 
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and
@@ -453,6 +491,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.vertices_awaiting_deps.clear();
         self.vertices_to_be_added_later.clear();
         self.vertices_no_deps.retain_evidence_only();
+        self.requests_sent.clear();
     }
 
     /// Schedules vertices to be added to the protocol state.

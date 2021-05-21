@@ -16,24 +16,25 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::{
-        auction::{Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD},
+        auction::{
+            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
         mint::TOTAL_SUPPLY_KEY,
     },
     CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 const ACCOUNT_1_BALANCE: u64 = 100_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000_000;
 
 static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
@@ -96,8 +97,10 @@ fn should_step() {
         .with_next_era_id(EraId::from(1))
         .build();
 
+    let auction_hash = builder.get_auction_contract_hash();
+
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_seigniorage_recipients_snapshot();
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
     let bids_before_slashing: Bids = builder.get_bids();
     assert!(
@@ -128,11 +131,13 @@ fn should_step() {
 
     // seigniorage snapshot should have changed after auction
     let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_seigniorage_recipients_snapshot();
-
-    assert!(before_auction_seigniorage
-        .keys()
-        .ne(after_auction_seigniorage.keys()))
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    assert!(
+        !before_auction_seigniorage
+            .keys()
+            .all(|key| after_auction_seigniorage.contains_key(key)),
+        "run auction should have changed seigniorage keys"
+    );
 }
 
 /// Should be able to step slashing, rewards, and run auction.

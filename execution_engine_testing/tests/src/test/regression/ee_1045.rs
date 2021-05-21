@@ -27,33 +27,29 @@ const ARG_AMOUNT: &str = "amount";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 
 static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 static ACCOUNT_3_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 const ACCOUNT_3_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_3_BOND: u64 = 200_000;
 
 static ACCOUNT_4_PK: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 const ACCOUNT_4_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_4_BOND: u64 = 200_000;

@@ -68,6 +68,7 @@ function main()
                 --secret-key "$CP1_SECRET_KEY" \
                 --amount "$AMOUNT" \
                 --target-account "$CP2_ACCOUNT_KEY" \
+                --transfer-id $((DISPATCHED + 1)) \
                 | jq '.result.deploy_hash' \
                 | sed -e 's/^"//' -e 's/"$//'
             )

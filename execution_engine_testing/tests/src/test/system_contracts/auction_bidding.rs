@@ -201,10 +201,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 #[ignore]
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
-    let account_1_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+    let account_1_secret_key =
+        SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap();
+    let account_1_public_key = PublicKey::from(&account_1_secret_key);
     let account_1_hash = AccountHash::from(&account_1_public_key);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -251,10 +250,9 @@ fn should_fail_bonding_with_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_fail_unbonding_validator_with_locked_funds() {
-    let account_1_public_key: PublicKey =
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-            .unwrap()
-            .into();
+    let account_1_secret_key =
+        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    let account_1_public_key = PublicKey::from(&account_1_secret_key);
     let account_1_hash = AccountHash::from(&account_1_public_key);
     let account_1_balance = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
 

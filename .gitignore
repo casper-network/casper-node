@@ -142,6 +142,7 @@ cmake-build-debug/
 
 # NCTL transient assets
 /utils/nctl/assets
+/utils/nctl/stages
 /utils/nctl/dumps
 /utils/nctl/tmp
 

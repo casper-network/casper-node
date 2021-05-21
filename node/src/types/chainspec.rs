@@ -68,9 +68,8 @@ pub struct Chainspec {
 }
 
 impl Chainspec {
-    /// Checks whether the values set in the config make sense and prints warnings or panics if
-    /// they don't.
-    pub(crate) fn validate_config(&self) {
+    /// Returns `false` and logs errors if the values set in the config don't make sense.
+    pub(crate) fn is_valid(&self) -> bool {
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
@@ -81,7 +80,7 @@ impl Chainspec {
             warn!("era duration is less than minimum era height * round length!");
         }
 
-        self.highway_config.validate_config();
+        self.protocol_config.is_valid() && self.highway_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -269,7 +268,6 @@ mod tests {
             remove_contract_user_group_urefs: HostFunction::new(131, [0, 1, 2, 3, 4, 5]),
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
-            delete: HostFunction::new(140, [0, 1]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(

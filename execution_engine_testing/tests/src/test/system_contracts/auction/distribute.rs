@@ -34,34 +34,28 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static VALIDATOR_3: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static DELEGATOR_3: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([208; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([208; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
@@ -1438,7 +1432,7 @@ fn should_distribute_delegation_rate_half() {
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
 
-    const VALIDATOR_1_DELGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
     // Validator share
     let validator_share = Ratio::new(U512::from(2), U512::from(3));
@@ -1493,7 +1487,7 @@ fn should_distribute_delegation_rate_half() {
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
-            ARG_DELEGATION_RATE => VALIDATOR_1_DELGATION_RATE,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )

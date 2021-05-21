@@ -75,12 +75,11 @@ impl DelegatorConfig {
 #[cfg(test)]
 impl Distribution<DelegatorConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DelegatorConfig {
-        let validator_public_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>())
-            .unwrap()
-            .into();
-        let delegator_public_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>())
-            .unwrap()
-            .into();
+        let validator_secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
+        let delegator_secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
+
+        let validator_public_key = PublicKey::from(&validator_secret_key);
+        let delegator_public_key = PublicKey::from(&delegator_secret_key);
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());

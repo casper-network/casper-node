@@ -30,6 +30,11 @@ export NCTL_CONTRACTS_CLIENT_AUCTION=(
     "withdraw_bid.wasm"
 )
 
+# Set of client side shared contracts.
+export NCTL_CONTRACTS_CLIENT_SHARED=(
+    "named_purse_payment.wasm"
+)
+
 # Set of client side transfer contracts.
 export NCTL_CONTRACTS_CLIENT_TRANSFERS=(
     "transfer_to_account_u512.wasm"
@@ -37,6 +42,9 @@ export NCTL_CONTRACTS_CLIENT_TRANSFERS=(
 
 # Default amount used when delegating.
 export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
+
+# Default era offset to apply when activating an upgrade.
+export NCTL_DEFAULT_ERA_ACTIVATION_OFFSET=2
 
 # Default motes to pay for consumed gas.
 export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)
