@@ -86,6 +86,6 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GenerateAccountHash {
             Error::FailedToParseKey
         })?;
         let account_hash = public_key.to_account_hash();
-        Ok(Success::Output(account_hash.to_string()))
+        Ok(Success::Output(account_hash.to_formatted_string()))
     }
 }

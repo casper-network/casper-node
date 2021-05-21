@@ -194,8 +194,8 @@ impl MockServerHandle {
             .map_err(ErrWrapper)
     }
 
-    fn get_auction_info(&self) -> Result<(), ErrWrapper> {
-        casper_client::get_auction_info("1", &self.url(), 0)
+    fn get_auction_info(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_auction_info("1", &self.url(), 0, maybe_block_id)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
@@ -522,12 +522,12 @@ mod get_deploy {
 mod get_auction_info {
     use super::*;
 
-    use casper_node::rpcs::{state::GetAuctionInfo, RpcWithoutParams};
+    use casper_node::rpcs::state::GetAuctionInfo;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn should_succeed() {
         let server_handle = MockServerHandle::spawn_without_params(GetAuctionInfo::METHOD);
-        assert_eq!(server_handle.get_auction_info(), Ok(()));
+        assert_eq!(server_handle.get_auction_info(""), Ok(()));
     }
 }
 

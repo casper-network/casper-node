@@ -452,12 +452,16 @@ pub fn get_era_info_by_switch_block(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
+///   `Block` height or empty. If empty, era information from the latest block will be returned if
+///   available.
 pub fn get_auction_info(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
+    maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info()
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info(maybe_block_id)
 }
 
 /// Retrieves information and examples for all currently supported RPCs.

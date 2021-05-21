@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::{self, Debug, Display, Formatter},
     io, mem,
     net::SocketAddr,
@@ -14,7 +15,7 @@ use tracing::Span;
 use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::{BlocklistAnnouncement, LinearChainAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -88,6 +89,19 @@ pub enum Event<P> {
     /// Blocklist announcement
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+
+    /// Announcement from the linear chain.
+    ///
+    /// Used to track validator sets.
+    #[from]
+    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+    /// The set of active and upcoming validators changed.
+    ValidatorsChanged {
+        /// Active validators (current and upcoming era).
+        active_validators: Box<HashSet<PublicKey>>,
+        /// Upcoming validators (for era + 2).
+        upcoming_validators: Box<HashSet<PublicKey>>,
+    },
 }
 
 impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {
@@ -136,6 +150,20 @@ impl<P: Display> Display for Event<P> {
             }
             Event::SweepSymmetries => {
                 write!(f, "sweep connection symmetries")
+            }
+            Event::LinearChainAnnouncement(ann) => {
+                write!(f, "linear chain announcement: {}", ann)
+            }
+            Event::ValidatorsChanged {
+                active_validators,
+                upcoming_validators,
+            } => {
+                write!(
+                    f,
+                    "validators changed (active {}, upcoming {})",
+                    active_validators.len(),
+                    upcoming_validators.len()
+                )
             }
         }
     }
