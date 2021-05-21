@@ -1602,9 +1602,27 @@ impl<REv> EffectBuilder<REv> {
                 .and_then(|era_validators| era_validators.get(&era_id).cloned())
         } else {
             // in other eras, we just use the validators from the key block
-            self.get_key_block_header_for_era_id_from_storage(era_id)
+            let key_block_result = self
+                .get_key_block_header_for_era_id_from_storage(era_id)
                 .await
-                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned())
+                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned());
+            if key_block_result.is_some() {
+                // if the key block read was successful, just return it
+                key_block_result
+            } else {
+                // if there was no key block, we might be looking at a future era - in such a case,
+                // read the state root hash from the highest block and check with the contract
+                // runtime
+                let highest_block = self.get_highest_block_from_storage().await?;
+                let req = EraValidatorsRequest::new(
+                    (*highest_block.header().state_root_hash()).into(),
+                    protocol_version,
+                );
+                self.get_era_validators_from_contract_runtime(req)
+                    .await
+                    .ok()
+                    .and_then(|era_validators| era_validators.get(&era_id).cloned())
+            }
         }
     }
 
