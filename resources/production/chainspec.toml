@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 500
+activation_point = 694
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
 
