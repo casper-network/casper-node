@@ -796,12 +796,17 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
                     gossiped_address,
                 ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We don't care about completion of gossiping an address.
+                Effects::new()
             }
 
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {

@@ -180,16 +180,24 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         source: Source<NodeId>,
     ) -> Effects<Event<T>> {
         debug!(item=%item_id, %source, "received new gossip item");
-        if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
-            self.metrics.items_received.inc();
-            self.gossip(
-                effect_builder,
-                item_id,
-                should_gossip.count,
-                should_gossip.exclude_peers,
-            )
-        } else {
-            Effects::new()
+        match self.table.new_complete_data(&item_id, source.node_id()) {
+            GossipAction::ShouldGossip(should_gossip) => {
+                self.metrics.items_received.inc();
+                self.gossip(
+                    effect_builder,
+                    item_id,
+                    should_gossip.count,
+                    should_gossip.exclude_peers,
+                )
+            }
+            GossipAction::Noop => Effects::new(),
+            GossipAction::AnnounceFinished => {
+                effect_builder.announce_finished_gossiping(item_id).ignore()
+            }
+            GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
+                error!("can't be waiting for remainder since we hold the complete data");
+                Effects::new()
+            }
         }
     }
 
@@ -260,6 +268,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 should_gossip.exclude_peers,
             ),
             GossipAction::Noop => Effects::new(),
+            GossipAction::AnnounceFinished => {
+                effect_builder.announce_finished_gossiping(item_id).ignore()
+            }
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
                 warn!(
                     "can't have gossiped if we don't hold the complete data - likely the timeout \
@@ -311,6 +322,10 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 effects
             }
 
+            GossipAction::AnnounceFinished => {
+                effect_builder.announce_finished_gossiping(item_id).ignore()
+            }
+
             GossipAction::Noop | GossipAction::AwaitingRemainder => Effects::new(),
         }
     }
@@ -323,9 +338,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         sender: NodeId,
     ) -> Effects<Event<T>> {
         let action = if T::ID_IS_COMPLETE_ITEM {
-            self.table
-                .new_complete_data(&item_id, Some(sender))
-                .map_or_else(|| GossipAction::Noop, GossipAction::ShouldGossip)
+            self.table.new_complete_data(&item_id, Some(sender))
         } else {
             self.table.new_partial_data(&item_id, sender)
         };
@@ -380,13 +393,21 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 );
                 effects
             }
-            GossipAction::Noop | GossipAction::AwaitingRemainder => {
+            GossipAction::Noop
+            | GossipAction::AwaitingRemainder
+            | GossipAction::AnnounceFinished => {
                 // Send a response to the sender indicating we already hold the item.
                 let reply = Message::GossipResponse {
                     item_id,
                     is_already_held: true,
                 };
-                effect_builder.send_message(sender, reply).ignore()
+                let mut effects = effect_builder.send_message(sender, reply).ignore();
+
+                if action == GossipAction::AnnounceFinished {
+                    effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
+                }
+
+                effects
             }
         }
     }
@@ -419,6 +440,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 should_gossip.exclude_peers,
             )),
             GossipAction::Noop => (),
+            GossipAction::AnnounceFinished => {
+                effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore())
+            }
             GossipAction::GetRemainder { .. } => {
                 error!("shouldn't try to get remainder as result of receiving a gossip response");
             }
