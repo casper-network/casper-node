@@ -224,10 +224,6 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         // in the entry being removed.
         if peers.is_empty() {
             self.metrics.times_ran_out_of_peers.inc();
-
-            self.table.pause(&item_id);
-            debug!(item=%item_id, "paused gossiping since no more peers to gossip to");
-            return Effects::new();
         }
 
         // We didn't gossip to as many peers as was requested.  Reduce the table entry's in-flight
@@ -457,9 +453,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// Handles the `Err` case for a `Result` of attempting to get the item from the component
     /// responsible for holding it.
     fn failed_to_get_from_holder(&mut self, item_id: T::Id, error: String) -> Effects<Event<T>> {
-        self.table.pause(&item_id);
+        self.table.finish(&item_id);
         error!(
-            "paused gossiping {} since failed to get from store: {}",
+            "finished gossiping {} since failed to get from store: {}",
             item_id, error
         );
         Effects::new()
@@ -473,9 +469,6 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         self.metrics
             .table_items_finished
             .set(self.table.items_finished() as i64);
-        self.metrics
-            .table_items_paused
-            .set(self.table.items_paused() as i64);
     }
 }
 
