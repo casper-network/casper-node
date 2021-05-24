@@ -64,8 +64,7 @@ pub extern "C" fn call() {
     if refund_purse_flag != 0 {
         let refund_purse = {
             let stored_purse_key = runtime::get_key(&purse_name).unwrap_or_revert();
-            let stored_purse = stored_purse_key.into_uref().unwrap_or_revert();
-            stored_purse
+            stored_purse_key.into_uref().unwrap_or_revert()
         };
         set_refund_purse(contract_hash, refund_purse);
     }
