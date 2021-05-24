@@ -10,11 +10,15 @@ source "$NCTL/sh/utils/main.sh"
 _LAUNCHER_URL=http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com/casper-node-launcher/casper-node-launcher
 
 # Set of protocol versions.
-_PROTOCOL_VERSIONS=(
+if [ ! -z "$1" ]; then
+    _PROTOCOL_VERSIONS=(${1})
+else
+    _PROTOCOL_VERSIONS=(
     "1.0.0"
     "1.0.1"
     "1.1.1"
-)
+    )
+fi
 
 #######################################
 # Prepares assets for staging from remotes.
