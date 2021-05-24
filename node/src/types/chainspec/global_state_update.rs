@@ -60,7 +60,7 @@ impl ToBytes for GlobalStateUpdate {
 
 #[cfg(test)]
 impl GlobalStateUpdate {
-    fn random(rng: &mut TestRng) -> Self {
+    pub fn random(rng: &mut TestRng) -> Self {
         let entries = rng.gen_range(0..10);
         let mut map = BTreeMap::new();
         for _ in 0..entries {

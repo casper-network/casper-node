@@ -7,7 +7,7 @@ set -e
 
 #######################################
 # Runs an integration test that tries to simulate
-# and verify validator ejection.
+# and verify validator ejection and rejoining.
 #
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing.
@@ -29,6 +29,16 @@ function main() {
     do_await_era_change '4'
     # 5. Validate eviction occured
     assert_eviction '5'
+    # 6. Re-bid & restart node 5
+    do_submit_auction_bids "5"
+    do_read_lfb_hash "1"
+    do_start_node "5" "$LFB_HASH"
+    # 7. wait auction_delay + 1
+    do_await_era_change "4"
+    # 8. Assert that restarted validator is producing blocks.
+    assert_node_proposed "5" "180"
+    # 9. Check for equivocators
+    assert_no_equivocators_logs
     log "------------------------------------------------------------"
     log "Scenario itst13 complete"
     log "------------------------------------------------------------"

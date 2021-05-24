@@ -39,6 +39,8 @@ function main() {
     check_network_sync
     do_await_era_change
     check_network_sync
+    # 9. Check for Equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Scenario itst01 complete"

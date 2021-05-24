@@ -82,6 +82,24 @@ impl Bid {
         }
     }
 
+    /// Creates a new inactive instance of a bid with 0 staked amount.
+    pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
+        let vesting_schedule = None;
+        let delegators = BTreeMap::new();
+        let inactive = true;
+        let staked_amount = 0.into();
+        let delegation_rate = Default::default();
+        Self {
+            validator_public_key,
+            bonding_purse,
+            staked_amount,
+            delegation_rate,
+            vesting_schedule,
+            delegators,
+            inactive,
+        }
+    }
+
     /// Gets the validator public key of the provided bid
     pub fn validator_public_key(&self) -> &PublicKey {
         &self.validator_public_key
@@ -146,7 +164,7 @@ impl Bid {
             .ok_or(Error::UnbondTooLarge)?;
 
         let vesting_schedule = match self.vesting_schedule.as_ref() {
-            Some(vesting_sechdule) => vesting_sechdule,
+            Some(vesting_schedule) => vesting_schedule,
             None => {
                 self.staked_amount = updated_staked_amount;
                 return Ok(updated_staked_amount);
@@ -315,7 +333,7 @@ mod tests {
     fn serialization_roundtrip() {
         let founding_validator = Bid {
             validator_public_key: PublicKey::from(
-                SecretKey::ed25519_from_bytes([0u8; SecretKey::ED25519_LENGTH]).unwrap(),
+                &SecretKey::ed25519_from_bytes([0u8; SecretKey::ED25519_LENGTH]).unwrap(),
             ),
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
@@ -333,10 +351,10 @@ mod tests {
 
         const TIMESTAMP_MILLIS: u64 = WEEK_MILLIS as u64;
 
-        let validator_pk: PublicKey = SecretKey::ed25519_from_bytes([42; 32]).unwrap().into();
+        let validator_pk: PublicKey = (&SecretKey::ed25519_from_bytes([42; 32]).unwrap()).into();
 
-        let delegator_1_pk: PublicKey = SecretKey::ed25519_from_bytes([43; 32]).unwrap().into();
-        let delegator_2_pk: PublicKey = SecretKey::ed25519_from_bytes([44; 32]).unwrap().into();
+        let delegator_1_pk: PublicKey = (&SecretKey::ed25519_from_bytes([43; 32]).unwrap()).into();
+        let delegator_2_pk: PublicKey = (&SecretKey::ed25519_from_bytes([44; 32]).unwrap()).into();
 
         let validator_release_timestamp = TIMESTAMP_MILLIS;
         let validator_bonding_purse = URef::new([42; 32], AccessRights::ADD);

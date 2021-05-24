@@ -42,6 +42,24 @@ function get_count_of_nodes()
 }
 
 #######################################
+# Returns count of currently up nodes.
+#######################################
+function get_count_of_up_nodes()
+{
+    local COUNT=0
+    local NODE_ID
+
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        if [ "$(get_node_is_up "$NODE_ID")" == true ]; then
+            COUNT=$((COUNT + 1))
+        fi
+    done    
+
+    echo $COUNT
+}
+
+#######################################
 # Returns count of test users.
 #######################################
 function get_count_of_users()

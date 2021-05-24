@@ -22,10 +22,11 @@
 
 mod config;
 mod event;
+mod event_indexer;
 mod http_server;
 mod sse_server;
 
-use std::{convert::Infallible, fmt::Debug};
+use std::{convert::Infallible, fmt::Debug, path::PathBuf};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -39,12 +40,24 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
+    types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
 pub use config::Config;
 pub(crate) use event::Event;
+use event_indexer::{EventIndex, EventIndexer};
 pub use sse_server::SseData;
+
+/// This is used to define the number of events to buffer in the tokio broadcast channel to help
+/// slower clients to try to avoid missing events (See
+/// https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging for further details).  The
+/// resulting broadcast channel size is `ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE` percent
+/// greater than `config.event_stream_buffer_length`.
+///
+/// We always want the broadcast channel size to be greater than the event stream buffer length so
+/// that a new client can retrieve the entire set of buffered events if desired.
+const ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE: u32 = 20;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
 /// work with.
@@ -57,12 +70,14 @@ pub(crate) struct EventStreamServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
     #[data_size(skip)]
-    sse_data_sender: UnboundedSender<SseData>,
+    sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
+    event_indexer: EventIndexer,
 }
 
 impl EventStreamServer {
     pub(crate) fn new(
         config: Config,
+        storage_path: PathBuf,
         api_version: ProtocolVersion,
     ) -> Result<Self, ListeningError> {
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
@@ -74,11 +89,14 @@ impl EventStreamServer {
             ListeningError::ResolveAddress(error)
         })?;
 
+        let event_indexer = EventIndexer::new(storage_path);
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         // Event stream channels and filter.
+        let broadcast_channel_size = config.event_stream_buffer_length / 100
+            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE);
         let (broadcaster, new_subscriber_info_receiver, sse_filter) =
-            sse_server::create_channels_and_filter(config.broadcast_channel_size);
+            sse_server::create_channels_and_filter(broadcast_channel_size as usize);
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
@@ -102,12 +120,16 @@ impl EventStreamServer {
             new_subscriber_info_receiver,
         ));
 
-        Ok(EventStreamServer { sse_data_sender })
+        Ok(EventStreamServer {
+            sse_data_sender,
+            event_indexer,
+        })
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
     fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        let _ = self.sse_data_sender.send(sse_data);
+        let event_index = self.event_indexer.next_index();
+        let _ = self.sse_data_sender.send((event_index, sse_data));
         Effects::new()
     }
 }
@@ -128,7 +150,7 @@ where
         match event {
             Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                 block_hash: *block.hash(),
-                block: Box::new(*block),
+                block: Box::new(JsonBlock::new(*block, None)),
             }),
             Event::DeployProcessed {
                 deploy_hash,
@@ -154,6 +176,10 @@ where
                 timestamp,
             }),
             Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
+            Event::Step { era_id, effect } => self.broadcast(SseData::Step {
+                era_id,
+                execution_effect: effect,
+            }),
         }
     }
 }

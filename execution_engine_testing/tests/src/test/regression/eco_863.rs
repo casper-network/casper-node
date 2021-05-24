@@ -24,14 +24,12 @@ const ARG_AMOUNT: &str = "amount";
 const FAUCET_REQUEST_AMOUNT: u64 = 333_333_333;
 
 static FAUCET: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ALICE: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 
 static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));

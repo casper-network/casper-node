@@ -700,7 +700,7 @@ extern "C" {
         out_ptr: *mut u8,
         out_size: usize,
     ) -> i32;
-    /// Prints data directly to stanadard output on the host.
+    /// Prints data directly to standard output on the host.
     ///
     /// # Arguments
     ///

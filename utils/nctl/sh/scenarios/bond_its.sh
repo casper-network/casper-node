@@ -38,27 +38,6 @@ function main() {
 
 }
 
-function do_submit_auction_bids()
-{
-    local NODE_ID=${1}
-    log_step "submitting POS auction bids:"
-    log "----- ----- ----- ----- ----- -----"
-    BID_AMOUNT="1000000000000000000000000000000"
-    BID_DELEGATION_RATE=6
-
-    source "$NCTL"/sh/contracts-auction/do_bid.sh \
-            node="$NODE_ID" \
-            amount="$BID_AMOUNT" \
-            rate="$BID_DELEGATION_RATE" \
-            quiet="TRUE"
-
-    log "node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
-
-    log_step "awaiting 10 seconds for auction bid deploys to finalise"
-    sleep 10.0
-}
-
-
 function assert_new_bonded_validator() {
     local NODE_ID=${1}
     local HEX=$(get_node_public_key_hex "$NODE_ID")

@@ -139,7 +139,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
                     Err(error) => return Ok(response_builder.error(error)?),
                 };
 
-            let json_block = JsonBlock::new(block, signatures);
+            let json_block = JsonBlock::new(block, Some(signatures));
 
             // Return the result.
             let result = Self::ResponseResult {

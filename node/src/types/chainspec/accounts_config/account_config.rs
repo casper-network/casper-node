@@ -71,9 +71,8 @@ impl AccountConfig {
 #[cfg(test)]
 impl Distribution<AccountConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountConfig {
-        let public_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>())
-            .unwrap()
-            .into();
+        let secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();
+        let public_key = PublicKey::from(&secret_key);
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());

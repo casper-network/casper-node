@@ -25,15 +25,13 @@ const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
 const ACCOUNT_2_BALANCE: u64 = 2_000_000_000;
 
 static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
 static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PUBLIC_KEY));
 
@@ -147,7 +145,7 @@ fn should_track_total_token_supply_in_mint() {
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-    let genesis_tiemstamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
     let ee_config = ExecConfig::new(
         accounts.clone(),
         wasm_config,
@@ -157,7 +155,7 @@ fn should_track_total_token_supply_in_mint() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
-        genesis_tiemstamp,
+        genesis_timestamp,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);

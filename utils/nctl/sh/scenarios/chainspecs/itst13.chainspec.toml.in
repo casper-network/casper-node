@@ -72,6 +72,8 @@ max_ttl = '1day'
 max_dependencies = 10
 # Maximum block size in bytes including deploys contained by the block.  0 means unlimited.
 max_block_size = 10_485_760
+# Maximum deploy size in bytes.  Size is of the deploy when serialized via ToBytes.
+max_deploy_size = 1_048_576
 # The maximum number of non-transfer deploys permitted in a single block.
 block_max_deploy_count = 100
 # The maximum number of wasm-less transfer deploys permitted in a single block.
@@ -175,6 +177,7 @@ transfer_to_account = { cost = 24_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
 update_associated_key = { cost = 4_200, arguments = [0, 0, 0] }
 write = { cost = 14_000, arguments = [0, 0, 0, 980] }
 write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
+delete = { cost = 14_000, arguments = [0, 0] }
 
 [system_costs]
 wasmless_transfer_cost = 10_000

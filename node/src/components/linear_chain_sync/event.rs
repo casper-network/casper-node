@@ -68,7 +68,7 @@ where
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
-            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiatied"),
+            Event::InitUpgradeShutdown => write!(f, "shutdown for upgrade initiated"),
             Event::Shutdown(upgrade) => write!(
                 f,
                 "linear chain sync is ready for shutdown. upgrade: {}",

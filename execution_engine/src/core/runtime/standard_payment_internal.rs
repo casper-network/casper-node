@@ -18,7 +18,7 @@ impl From<execution::Error> for Option<ApiError> {
     fn from(exec_error: execution::Error) -> Self {
         match exec_error {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure
-            // [`StanadrdPayment`] contract running natively supports propagating gas limit
+            // [`StandardPayment`] contract running natively supports propagating gas limit
             // errors without a panic.
             execution::Error::GasLimit => Some(mint::Error::GasLimit.into()),
             // There are possibly other exec errors happening but such translation would be lossy.

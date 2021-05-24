@@ -39,19 +39,16 @@ const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ARG_AMOUNT: &str = "amount";
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
