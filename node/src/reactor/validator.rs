@@ -907,8 +907,8 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let deploy_type = match deploy.deploy_type() {
-                    Ok(deploy_type) => deploy_type,
+                let deploy_info = match deploy.deploy_info() {
+                    Ok(deploy_info) => deploy_info,
                     Err(error) => {
                         tracing::error!("Invalid deploy: {:?}", error);
                         return Effects::new();
@@ -916,8 +916,8 @@ impl reactor::Reactor for Reactor {
                 };
 
                 let event = block_proposer::Event::BufferDeploy {
-                    hash: *deploy.id(),
-                    deploy_type: Box::new(deploy_type),
+                    hash: deploy.deploy_or_transfer_hash(),
+                    deploy_info: Box::new(deploy_info),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
@@ -1038,9 +1038,14 @@ impl reactor::Reactor for Reactor {
                     Box::new(block.header().clone()),
                 ));
                 let reactor_event_es =
-                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block));
+                    Event::EventStreamServer(event_stream_server::Event::BlockAdded(block.clone()));
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event_es);
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    small_network::Event::from(LinearChainAnnouncement::BlockAdded(block)).into(),
+                ));
                 effects
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {

@@ -22,12 +22,14 @@ use super::{
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
 };
 use crate::{
+    components::rpc_server::rpcs::RpcWithOptionalParams,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::{
+        chain::BlockIdentifier,
         common::{self, MERKLE_PROOF},
-        RpcWithoutParams, RpcWithoutParamsExt,
+        RpcWithOptionalParamsExt,
     },
     types::{
         json_compatibility::{AuctionState, StoredValue},
@@ -54,6 +56,9 @@ static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResul
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.clone(),
+});
+static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuctionInfoParams {
+    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -283,6 +288,20 @@ impl RpcWithParamsExt for GetBalance {
     }
 }
 
+/// Params for "state_get_auction_info" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetAuctionInfoParams {
+    /// The block identifier.
+    pub block_identifier: BlockIdentifier,
+}
+
+impl DocExample for GetAuctionInfoParams {
+    fn doc_example() -> &'static Self {
+        &*GET_AUCTION_INFO_PARAMS
+    }
+}
+
 /// Result for "state_get_auction_info" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -303,23 +322,26 @@ impl DocExample for GetAuctionInfoResult {
 /// "state_get_auction_info" RPC.
 pub struct GetAuctionInfo {}
 
-impl RpcWithoutParams for GetAuctionInfo {
+impl RpcWithOptionalParams for GetAuctionInfo {
     const METHOD: &'static str = "state_get_auction_info";
+    type OptionalRequestParams = GetAuctionInfoParams;
     type ResponseResult = GetAuctionInfoResult;
 }
 
-impl RpcWithoutParamsExt for GetAuctionInfo {
+impl RpcWithOptionalParamsExt for GetAuctionInfo {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
+        maybe_params: Option<Self::OptionalRequestParams>,
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            let maybe_id = maybe_params.map(|params| params.block_identifier);
             let block: Block = {
                 let maybe_block = effect_builder
                     .make_request(
                         |responder| RpcRequest::GetBlock {
-                            maybe_id: None,
+                            maybe_id,
                             responder,
                         },
                         QueueKind::Api,
@@ -328,8 +350,11 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
 
                 match maybe_block {
                     None => {
-                        let error_msg =
-                            "get-auction-info failed to get last added block".to_string();
+                        let error_msg = if maybe_id.is_none() {
+                            "get-auction-info failed to get last added block".to_string()
+                        } else {
+                            "get-auction-info failed to get specified block".to_string()
+                        };
                         info!("{}", error_msg);
                         return Ok(response_builder.error(warp_json_rpc::Error::custom(
                             ErrorCode::NoSuchBlock as i64,
@@ -362,7 +387,6 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             } else {
                 None
             };
-
             let era_validators_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryEraValidators {

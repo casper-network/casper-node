@@ -121,6 +121,9 @@ initial_gossip_delay = '5s'
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
 
+# The maximum amount of upstream bandwidth in bytes per second allocated to non-validating peers.
+# A value of `0` means unlimited.
+max_non_validating_peer_bps = 0
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server

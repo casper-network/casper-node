@@ -237,6 +237,39 @@ steps:
     event:
       - pull_request
 
+- name: nctl-upgrade-assets-stage-rc
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/nctl_upgrade_stage.sh"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+  when:
+    branch:
+      - "release-*"
+    event:
+      - push
+
+- name: nctl-bucket-upload-rc
+  image: plugins/s3-sync:latest
+  settings:
+    bucket: 'nctl.casperlabs.io'
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: '../../tmp/nctl_upgrade_stage/'
+    target: "/${DRONE_BRANCH}/"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+  when:
+    branch:
+      - "release-*"
+    event:
+      - push
+
 depends_on:
   - pre-checks
 
@@ -251,6 +284,10 @@ trigger:
   event:
     exclude:
       - tag
+
+volumes:
+- name: nctl-temp-dir
+  temp: {}
 
 ---
 # Run on success of cargo-test and package pipelines.
@@ -494,9 +531,37 @@ steps:
     access:
     - "public"
 
+- name: nctl-upgrade-assets-stage
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/nctl_upgrade_stage.sh"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+
+- name: nctl-bucket-upload
+  image: plugins/s3-sync:latest
+  settings:
+    bucket: 'nctl.casperlabs.io'
+    access_key:
+      from_secret: put-drone-aws-ak
+    secret_key:
+      from_secret: put-drone-aws-sk
+    region: us-east-2
+    source: '../../tmp/nctl_upgrade_stage/'
+    target: "/${DRONE_TAG}/"
+  volumes:
+  - name: nctl-temp-dir
+    path: /tmp/nctl_upgrade_stage
+
+volumes:
+- name: nctl-temp-dir
+  temp: {}
+
 trigger:
   ref:
   - refs/tags/v*
+
 ---
 kind: pipeline
 type: docker
