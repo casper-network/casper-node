@@ -22,7 +22,7 @@ mod parsing;
 mod rpc;
 mod validation;
 
-use std::{convert::TryInto, fs::File};
+use std::{convert::TryInto, fs, io::Cursor};
 
 use jsonrpc_lite::JsonRpc;
 use serde::Serialize;
@@ -52,25 +52,25 @@ pub use validation::ValidateResponseError;
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
-/// * `deploy` contains deploy-related options for this `Deploy`. See
+/// * `deploy_params` contains deploy-related options for this `Deploy`. See
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
-/// * `session` contains session-related options for this `Deploy`. See
+/// * `session_params` contains session-related options for this `Deploy`. See
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
-/// * `payment` contains payment-related options for this `Deploy`. See
+/// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
 pub fn put_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
-    deploy: DeployStrParams<'_>,
-    session: SessionStrParams<'_>,
-    payment: PaymentStrParams<'_>,
+    deploy_params: DeployStrParams<'_>,
+    session_params: SessionStrParams<'_>,
+    payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
     let deploy = Deploy::with_payment_and_session(
-        deploy.try_into()?,
-        payment.try_into()?,
-        session.try_into()?,
-    );
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
+        session_params.try_into()?,
+    )?;
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).put_deploy(deploy)
 }
 
@@ -80,24 +80,19 @@ pub fn put_deploy(
 /// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
-/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
-///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
-/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
-///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
 ///   file already exists, it will be overwritten.
-/// * `deploy` contains deploy-related options for this `Deploy`. See
+/// * `deploy_params` contains deploy-related options for this `Deploy`. See
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
-/// * `session` contains session-related options for this `Deploy`. See
+/// * `session_params` contains session-related options for this `Deploy`. See
 ///   [`SessionStrParams`](struct.SessionStrParams.html) for more details.
-/// * `payment` contains payment-related options for this `Deploy`. See
+/// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
 pub fn make_deploy(
     maybe_output_path: &str,
-    deploy: DeployStrParams<'_>,
-    session: SessionStrParams<'_>,
-    payment: PaymentStrParams<'_>,
+    deploy_params: DeployStrParams<'_>,
+    session_params: SessionStrParams<'_>,
+    payment_params: PaymentStrParams<'_>,
 ) -> Result<()> {
     let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
         Error::IoError {
@@ -109,8 +104,12 @@ pub fn make_deploy(
         }
     })?;
 
-    Deploy::with_payment_and_session(deploy.try_into()?, payment.try_into()?, session.try_into()?)
-        .write_deploy(output)
+    Deploy::with_payment_and_session(
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
+        session_params.try_into()?,
+    )?
+    .write_deploy(output)
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
@@ -122,7 +121,12 @@ pub fn make_deploy(
 ///   file already exists, it will be overwritten.
 pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &str) -> Result<()> {
     let secret_key = parsing::secret_key(secret_key)?;
-    let maybe_output_path = parsing::output(maybe_output_path);
+    let maybe_output_path = none_if_empty(maybe_output_path);
+
+    let input = fs::read(input_path).map_err(|error| Error::IoError {
+        context: format!("unable to read deploy file at '{}'", input_path),
+        error,
+    })?;
 
     let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
         context: format!(
@@ -132,12 +136,7 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
         error,
     })?;
 
-    let input = File::open(&input_path).map_err(|error| Error::IoError {
-        context: format!("unable to read deploy file at '{}'", input_path),
-        error,
-    })?;
-
-    Deploy::sign_and_write_deploy(input, secret_key, output)
+    Deploy::sign_and_write_deploy(Cursor::new(input), secret_key, output)
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
@@ -174,21 +173,14 @@ pub fn send_deploy_file(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
-/// * `amount` specifies the amount to be transferred.
-/// * `maybe_source_purse` is the purse `URef` from which the funds will be transferred, formatted
-///   as e.g. `uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007`. If it is
-///   an empty string, the network will use the main purse from the sender's account.
-/// * `maybe_target_purse` is the purse `URef` into which the funds will be transferred, formatted
-///   as e.g. `uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007`. If it is
-///   an empty string, `maybe_target_account` must be specified instead. These options are
-///   incompatible: exactly one must be empty and the other valid.
-/// * `maybe_target_account` is the account `PublicKey` into which the funds will be transferred,
-///   formatted as a hex-encoded string. The account's main purse will receive the funds. If it is
-///   an empty string, `maybe_target_purse` must be specified instead. These options are
-///   incompatible: exactly one must be empty and the other valid.
-/// * `deploy` contains deploy-related options for this `Deploy`. See
+/// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
+/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
+///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
+///   will be permanently associated with the transfer.
+/// * `deploy_params` contains deploy-related options for this `Deploy`. See
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
-/// * `payment` contains payment-related options for this `Deploy`. See
+/// * `payment_params` contains payment-related options for this `Deploy`. See
 ///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
 #[allow(clippy::too_many_arguments)]
 pub fn transfer(
@@ -196,28 +188,77 @@ pub fn transfer(
     node_address: &str,
     verbosity_level: u64,
     amount: &str,
-    maybe_target_account: &str,
-    maybe_id: &str,
+    target_account: &str,
+    transfer_id: &str,
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let target = parsing::get_transfer_target(maybe_target_account)?;
-
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
-
     let source_purse = None;
-
-    let maybe_id = parsing::transfer_id(maybe_id)?;
+    let target = parsing::get_transfer_target(target_account)?;
+    let transfer_id = parsing::transfer_id(transfer_id)?;
 
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level).transfer(
         amount,
         source_purse,
         target,
-        maybe_id,
+        transfer_id,
         deploy_params.try_into()?,
         payment_params.try_into()?,
     )
+}
+
+/// Creates a transfer `Deploy` and outputs it to a file or stdout.
+///
+/// As a file, the transfer `Deploy` can subsequently be signed by other parties using
+/// [`sign_deploy_file()`](fn.sign_deploy_file.html) and then sent to the network for execution
+/// using [`send_deploy_file()`](fn.send_deploy_file.html).
+///
+/// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
+///   file already exists, it will be overwritten.
+/// * `amount` is a string to be parsed as a `U512` specifying the amount to be transferred.
+/// * `target_account` is the account `PublicKey` into which the funds will be transferred,
+///   formatted as a hex-encoded string. The account's main purse will receive the funds.
+/// * `transfer_id` is a string to be parsed as a `u64` representing a user-defined identifier which
+///   will be permanently associated with the transfer.
+/// * `deploy_params` contains deploy-related options for this `Deploy`. See
+///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
+/// * `payment_params` contains payment-related options for this `Deploy`. See
+///   [`PaymentStrParams`](struct.PaymentStrParams.html) for more details.
+pub fn make_transfer(
+    maybe_output_path: &str,
+    amount: &str,
+    target_account: &str,
+    transfer_id: &str,
+    deploy_params: DeployStrParams<'_>,
+    payment_params: PaymentStrParams<'_>,
+) -> Result<()> {
+    let amount = U512::from_dec_str(amount)
+        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
+    let source_purse = None;
+    let target = parsing::get_transfer_target(target_account)?;
+    let transfer_id = parsing::transfer_id(transfer_id)?;
+
+    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
+        Error::IoError {
+            context: format!(
+                "unable to get file or stdout, provided '{:?}'",
+                maybe_output_path
+            ),
+            error,
+        }
+    })?;
+
+    Deploy::new_transfer(
+        amount,
+        source_purse,
+        target,
+        transfer_id,
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
+    )?
+    .write_deploy(output)
 }
 
 /// Retrieves a `Deploy` from the network.
@@ -411,12 +452,16 @@ pub fn get_era_info_by_switch_block(
 ///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
+///   `Block` height or empty. If empty, era information from the latest block will be returned if
+///   available.
 pub fn get_auction_info(
     maybe_rpc_id: &str,
     node_address: &str,
     verbosity_level: u64,
+    maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info()
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info(maybe_block_id)
 }
 
 /// Retrieves information and examples for all currently supported RPCs.

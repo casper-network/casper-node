@@ -51,8 +51,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock,
-        TimeDiff, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, DeployHash, DeployOrTransferHash,
+        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -68,6 +68,7 @@ type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
     BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
+    &HashSet<PublicKey>,                          // inactive validators that can't be leaders
     &ProtocolConfig,                              // the network's chainspec
     &Config,                                      // The consensus part of the node config.
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
@@ -151,8 +152,7 @@ where
         }
         let unit_hashes_folder = config.with_dir(config.value().highway.unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
-        let secret_signing_key = Arc::new(config.secret_key_path.clone().load(root)?);
-        let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
@@ -289,6 +289,7 @@ where
         validators: BTreeMap<PublicKey, U512>,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
+        inactive: HashSet<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -325,7 +326,7 @@ where
             info!(era = era_id.value(), %our_id, "start voting");
             true
         };
-        if era_id > self.current_era {
+        if era_id >= self.current_era {
             self.current_era = era_id;
             self.metrics.current_era.set(era_id.value() as i64);
         }
@@ -338,6 +339,7 @@ where
             instance_id,
             validators.clone(),
             &slashed,
+            &inactive,
             &self.protocol_config,
             &self.config,
             prev_era.map(|era| &*era.consensus),
@@ -498,7 +500,7 @@ where
             }
 
             let slashed = self
-                .iter_past(era_id, self.bonded_eras())
+                .iter_past(era_id, self.banning_period())
                 .filter_map(|old_id| key_blocks.get(&old_id).and_then(|bhdr| bhdr.era_end()))
                 .flat_map(|era_end| era_end.equivocators.clone())
                 .collect();
@@ -509,6 +511,13 @@ where
                 validators,
                 newly_slashed,
                 slashed,
+                key_blocks
+                    .get(&era_id)
+                    .and_then(|bhdr| bhdr.era_end())
+                    .into_iter()
+                    .flat_map(|era_end| &era_end.inactive_validators)
+                    .cloned()
+                    .collect(),
                 seed,
                 era_start_time,
                 start_height,
@@ -534,6 +543,14 @@ where
     /// receive blocks that refer to `bonded_eras` before that.
     fn bonded_eras(&self) -> u64 {
         bonded_eras(&self.protocol_config)
+    }
+
+    /// The number of past eras we have to check for faulty validators that will be banned in the
+    /// next era.
+    // TODO: This should just be `auction_delay`, but we need to guarantee we have enough
+    // eras.
+    fn banning_period(&self) -> u64 {
+        self.bonded_eras().min(self.protocol_config.auction_delay)
     }
 
     /// Returns the path to the era's unit hash file.
@@ -858,7 +875,7 @@ where
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let slashed = self
             .era_supervisor
-            .iter_past_other(era_id, self.era_supervisor.bonded_eras())
+            .iter_past_other(era_id, self.era_supervisor.banning_period())
             .flat_map(|e_id| &self.era_supervisor.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
@@ -869,6 +886,7 @@ where
             Timestamp::now(), // TODO: This should be passed in.
             next_era_validators_weights.clone(),
             newly_slashed,
+            era_end.inactive_validators.iter().cloned().collect(),
             slashed,
             seed,
             switch_block_header.timestamp(),
@@ -993,12 +1011,6 @@ where
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
-                let past_deploys = block_context
-                    .ancestor_values()
-                    .iter()
-                    .flat_map(|block_payload| block_payload.deploys_and_transfers_iter())
-                    .cloned()
-                    .collect();
                 let accusations = self
                     .era_supervisor
                     .iter_past(era_id, self.era_supervisor.bonded_eras())
@@ -1009,8 +1021,7 @@ where
                     .collect();
                 self.effect_builder
                     .request_block_payload(
-                        block_context.timestamp(),
-                        past_deploys,
+                        block_context.clone(),
                         self.era_supervisor.next_block_height,
                         accusations,
                         self.rng.gen(),
@@ -1053,13 +1064,14 @@ where
                         .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
-                    value,
+                    Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone()),
                     era_end,
                     timestamp,
                     era_id,
                     era.start_height + relative_height,
                     proposer,
                 );
+                info!(?finalized_block, "finalized block");
                 self.era_supervisor
                     .metrics
                     .finalized_block(&finalized_block);
@@ -1275,7 +1287,7 @@ where
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
         let block_header = match effect_builder
-            .get_block_header_for_deploy_from_storage(*deploy_hash)
+            .get_block_header_for_deploy_from_storage(deploy_hash.into())
             .await
         {
             None => continue,
@@ -1314,13 +1326,14 @@ where
 impl ProposedBlock<ClContext> {
     /// If this block contains a deploy that's also present in an ancestor, this returns the deploy
     /// hash, otherwise `None`.
-    fn contains_replay(&self) -> Option<&DeployHash> {
-        let block_deploys_set: BTreeSet<DeployHash> =
-            self.value().deploys_and_transfers_iter().cloned().collect();
+    fn contains_replay(&self) -> Option<DeployHash> {
+        let block_deploys_set: BTreeSet<DeployOrTransferHash> =
+            self.value().deploys_and_transfers_iter().collect();
         self.context()
             .ancestor_values()
             .iter()
             .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
             .find(|deploy| block_deploys_set.contains(deploy))
+            .map(DeployOrTransferHash::into)
     }
 }

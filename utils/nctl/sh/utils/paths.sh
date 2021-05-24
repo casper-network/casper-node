@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 
 #######################################
+# Returns path to primary assets folder.
+# Globals:
+#   NCTL - path to nctl home directory.
+#######################################
+function get_path_to_assets()
+{
+    echo "$NCTL/assets"
+}
+
+#######################################
 # Returns path to a binary file.
 # Arguments:
 #   Binary file name.
@@ -115,13 +125,29 @@ function get_path_to_node_bin()
 }
 
 #######################################
-# Returns path to a node's config file.
+# Returns path to a node's config folder.
 # Arguments:
 #   Node ordinal identifier.
 #######################################
 function get_path_to_node_config()
 {
     echo "$(get_path_to_node "$1")"/config
+}
+
+#######################################
+# Returns path to a node's active config file.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_config_file()
+{
+    local NODE_ID=${1:-1}
+    local NODE_PROTOCOL_VERSION
+    local PATH_TO_NODE
+
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+
+    echo "$(get_path_to_node "$NODE_ID")/config/$NODE_PROTOCOL_VERSION/config.toml"
 }
 
 #######################################
@@ -167,6 +193,14 @@ function get_path_to_node_secret_key()
 }
 
 #######################################
+# Returns path to folder containing download remotes.
+#######################################
+function get_path_to_remotes()
+{
+    echo "$NCTL/remotes"
+}
+
+#######################################
 # Returns path to a secret key.
 # Globals:
 #   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
@@ -188,6 +222,38 @@ function get_path_to_secret_key()
     elif [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_USER" ]; then
         echo "$(get_path_to_user "$ACCOUNT_IDX")"/secret_key.pem
     fi
+}
+
+#######################################
+# Returns path to a stage folder.
+# Arguments:
+#   Stage ordinal identifier.
+#######################################
+function get_path_to_stage()
+{
+    local STAGE_ID=${1} 
+
+    echo "$(get_path_to_stages)/stage-$STAGE_ID"
+}
+
+#######################################
+# Returns path to a stage settings file.
+# Arguments:
+#   Stage ordinal identifier.
+#######################################
+function get_path_to_stage_settings()
+{
+    local STAGE_ID=${1} 
+
+    echo "$(get_path_to_stage "$STAGE_ID")/settings.sh"
+}
+
+#######################################
+# Returns path to folder hosting set of stages.
+#######################################
+function get_path_to_stages()
+{
+    echo "$NCTL/stages"
 }
 
 #######################################

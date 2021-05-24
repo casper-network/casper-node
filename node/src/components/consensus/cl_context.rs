@@ -45,7 +45,7 @@ impl ValidatorSecret for Keypair {
     }
 }
 
-impl ConsensusValueT for BlockPayload {
+impl ConsensusValueT for Arc<BlockPayload> {
     fn needs_validation(&self) -> bool {
         !self.transfer_hashes().is_empty() || !self.deploy_hashes().is_empty()
     }
@@ -56,7 +56,7 @@ impl ConsensusValueT for BlockPayload {
 pub struct ClContext;
 
 impl Context for ClContext {
-    type ConsensusValue = BlockPayload;
+    type ConsensusValue = Arc<BlockPayload>;
     type ValidatorId = PublicKey;
     type ValidatorSecret = Keypair;
     type Signature = Signature;

@@ -325,7 +325,7 @@ where
                         upgrade_config,
                         responder,
                     } => {
-                        trace!(?upgrade_config, "upgrade");
+                        debug!(?upgrade_config, "upgrade");
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         async move {
@@ -336,7 +336,7 @@ where
                             metrics
                                 .commit_upgrade
                                 .observe(start.elapsed().as_secs_f64());
-                            trace!(?result, "upgrade result");
+                            debug!(?result, "upgrade result");
                             responder.respond(result).await
                         }
                         .ignore()
@@ -605,20 +605,25 @@ where
                         parent_summary,
                     )
                 }
-
                 ContractRuntimeResult::RunStepResult { mut state, result } => {
                     trace!(?result, "run step result");
                     match result {
                         Ok(StepResult::Success {
                             post_state_hash,
                             next_era_validators,
+                            execution_effect,
                         }) => {
                             state.state_root_hash = post_state_hash.into();
-                            self.finalize_block_execution(
+                            let era_id = state.finalized_block.era_id();
+                            let mut effects = effect_builder
+                                .announce_step_success(era_id, execution_effect)
+                                .ignore();
+                            effects.extend(self.finalize_block_execution(
                                 effect_builder,
                                 state,
                                 Some(next_era_validators),
-                            )
+                            ));
+                            effects
                         }
                         _ => {
                             // When step fails, the auction process is broken and we should panic.
@@ -734,16 +739,19 @@ impl ContractRuntime {
     /// When transitioning from `joiner` to `validator` states we need
     /// to carry over the last finalized block so that the next blocks in the linear chain
     /// have the state to build on.
-    pub(crate) fn set_parent_map_from_block(&mut self, lfb: Option<Block>) {
-        let parent_map = lfb
+    pub(crate) fn set_parent_map_from_block(
+        &mut self,
+        maybe_last_finalized_block_header: Option<BlockHeader>,
+    ) {
+        let parent_map = maybe_last_finalized_block_header
             .into_iter()
-            .map(|block| {
+            .map(|block_header| {
                 (
-                    block.height(),
+                    block_header.height(),
                     ExecutedBlockSummary {
-                        hash: *block.hash(),
-                        state_root_hash: *block.state_root_hash(),
-                        accumulated_seed: block.header().accumulated_seed(),
+                        hash: block_header.hash(),
+                        state_root_hash: *block_header.state_root_hash(),
+                        accumulated_seed: block_header.accumulated_seed(),
                     },
                 )
             })
@@ -759,7 +767,7 @@ impl ContractRuntime {
     ) -> Effects<Event> {
         let deploy_hashes = finalized_block
             .deploys_and_transfers_iter()
-            .copied()
+            .map(DeployHash::from)
             .collect::<SmallVec<_>>();
         if deploy_hashes.is_empty() {
             let result_event = move |_| {

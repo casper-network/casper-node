@@ -214,14 +214,26 @@ impl ChainspecLoader {
         P: AsRef<Path>,
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
     {
-        chainspec.validate_config();
         let root_dir = chainspec_dir
             .as_ref()
             .parent()
+            .map(|path| path.to_path_buf())
             .unwrap_or_else(|| {
-                panic!("chainspec dir must have a parent");
-            })
-            .to_path_buf();
+                error!("chainspec dir must have a parent");
+                PathBuf::new()
+            });
+
+        if !chainspec.is_valid() || root_dir.as_os_str().is_empty() {
+            let chainspec_loader = ChainspecLoader {
+                chainspec,
+                root_dir,
+                reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
+                initial_state_root_hash: Digest::default(),
+                next_upgrade: None,
+                initial_block: None,
+            };
+            return (chainspec_loader, Effects::new());
+        }
 
         let next_upgrade = next_upgrade(root_dir.clone(), chainspec.protocol_config.version);
 

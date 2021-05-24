@@ -11,15 +11,18 @@ function do_node_start()
     local NODE_ID=${1}
     local TRUSTED_HASH=${2}
 
+    local NODE_PROTOCOL_VERSION
     local PATH_TO_NODE_CONFIG
     local PROCESS_NAME
+
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+    PATH_TO_NODE_CONFIG="$(get_path_to_node_config "$NODE_ID")/$NODE_PROTOCOL_VERSION/config.toml"
 
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
         _do_supervisord_start
     fi
 
     if [ -n "$TRUSTED_HASH" ]; then
-        PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/1_0_0/config.toml
         _update_node_config_on_start "$PATH_TO_NODE_CONFIG" "$TRUSTED_HASH"
     fi
 
@@ -119,25 +122,6 @@ function _do_supervisord_start()
         log "... starting supervisord"
         supervisord -c "$(get_path_net_supervisord_cfg)"
         sleep 2.0
-    fi
-}
-
-#######################################
-# Sets entry in node's config file.
-# Arguments:
-#   Node ordinal identifier.
-#   A trused block hash from which to build chain state.
-#######################################
-function _get_node_pid()
-{
-    local NODE_ID=${1}
-    local NODE_PROCESS_NAME
-    
-    if [ -e "$(get_path_net_supervisord_sock)" ]; then
-        NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-        echo $(supervisorctl -c "$(get_path_net_supervisord_cfg)" pid "$NODE_PROCESS_NAME")
-    else
-        echo "0"
     fi
 }
 

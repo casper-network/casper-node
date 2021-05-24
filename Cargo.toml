@@ -11,7 +11,8 @@ members = [
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
     "types",
-    "validation",
+    "utils/validation",
+    "utils/global-state-update-gen",
 ]
 
 default-members = [
@@ -24,7 +25,8 @@ default-members = [
     "node",
     "smart_contracts/contract",
     "types",
-    "validation",
+    "utils/validation",
+    "utils/global-state-update-gen",
 ]
 
 exclude = ["casper-node-macros"]

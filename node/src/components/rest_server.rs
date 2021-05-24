@@ -47,7 +47,7 @@ use crate::{
     NodeRng,
 };
 
-use crate::effect::requests::RestRequest;
+use crate::{components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, effect::requests::RestRequest};
 pub use config::Config;
 pub(crate) use event::Event;
 
@@ -146,6 +146,10 @@ where
                     text,
                     main_responder: responder,
                 }),
+            Event::RestRequest(RestRequest::GetRpcSchema { responder }) => {
+                let schema = OPEN_RPC_SCHEMA.clone();
+                responder.respond(schema).ignore()
+            }
             Event::GetMetricsResult {
                 text,
                 main_responder,

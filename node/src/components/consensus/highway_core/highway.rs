@@ -105,8 +105,8 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 ///
 /// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
 /// or inconsistent state otherwise.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
-pub(crate) struct ValidVertex<C>(pub(super) Vertex<C>)
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct ValidVertex<C>(pub(crate) Vertex<C>)
 where
     C: Context;
 
@@ -174,7 +174,8 @@ impl<C: Context> Highway<C> {
         info!(%validators, instance=%instance_id, "creating Highway instance");
         let weights = validators.iter().map(Validator::weight);
         let banned = validators.iter_banned_idx();
-        let state = State::new(weights, params, banned);
+        let cannot_propose = validators.iter_cannot_propose_idx();
+        let state = State::new(weights, params, banned, cannot_propose);
         Highway {
             instance_id,
             validators,
@@ -247,7 +248,7 @@ impl<C: Context> Highway<C> {
     /// Returns the next missing dependency, or `None` if all dependencies of `pvv` are satisfied.
     ///
     /// If this returns `None`, `validate_vertex` can be called.
-    pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
+    pub(super) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
             Vertex::Evidence(_) | Vertex::Ping(_) => None,
             Vertex::Endorsements(endorsements) => {
@@ -684,7 +685,7 @@ impl<C: Context> Highway<C> {
             state.params().start_timestamp()
         };
         for skipped_r_id in (1..=MAX_SKIPPED_PROPOSAL_LOGS)
-            .map(|i| r_id - state.params().min_round_length() * i)
+            .map(|i| r_id.saturating_sub(state.params().min_round_length() * i))
             .take_while(|skipped_r_id| *skipped_r_id > parent_timestamp)
         {
             let leader_index = state.leader(skipped_r_id);

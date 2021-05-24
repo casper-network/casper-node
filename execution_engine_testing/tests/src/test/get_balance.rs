@@ -15,9 +15,8 @@ const TRANSFER_ARG_AMOUNT: &str = "amount";
 const TRANSFER_ARG_ID: &str = "id";
 
 static ALICE_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH])
-        .unwrap()
-        .into()
+    let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
 });
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE_KEY));
 

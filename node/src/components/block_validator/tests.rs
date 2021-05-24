@@ -91,7 +91,7 @@ fn new_proposed_block(
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
     let block_payload = BlockPayload::new(deploy_hashes, transfer_hashes, vec![], true);
-    ProposedBlock::new(block_payload, block_context)
+    ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
 fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {

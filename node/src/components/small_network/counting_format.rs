@@ -51,7 +51,7 @@ impl Display for TraceId {
 /// a message is sent or received.
 #[pin_project]
 #[derive(Debug)]
-pub(super) struct CountingFormat<F> {
+pub struct CountingFormat<F> {
     /// The actual serializer performing the work.
     #[pin]
     inner: F,
@@ -276,6 +276,12 @@ impl ConnectionId {
             TryFrom::try_from(&full_hash.to_array()[0..8]).expect("buffer size mismatch");
 
         TraceId(truncated)
+    }
+
+    #[inline]
+    /// Returns a reference to the raw bytes of the connection ID.
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 
     /// Creates a new connection ID from an existing SSL connection.

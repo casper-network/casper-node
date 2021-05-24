@@ -24,6 +24,7 @@ fi
 make build-contract-rs/activate-bid
 make build-contract-rs/add-bid
 make build-contract-rs/delegate
+make build-contract-rs/named-purse-payment
 make build-contract-rs/transfer-to-account-u512
 make build-contract-rs/undelegate
 make build-contract-rs/withdraw-bid

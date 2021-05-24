@@ -4,7 +4,7 @@ use std::{
     ffi::OsStr,
     fs,
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
 };
@@ -198,7 +198,8 @@ impl LmdbWasmTestBuilder {
     ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
-        let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
+        let global_state_dir = Self::global_state_dir(data_dir);
+        Self::create_global_state_dir(&global_state_dir);
         let environment = Arc::new(
             LmdbEnvironment::new(
                 &global_state_dir,
@@ -262,9 +263,21 @@ impl LmdbWasmTestBuilder {
         engine_config: EngineConfig,
         post_state_hash: Blake2bHash,
     ) -> Self {
+        let global_state_path = Self::global_state_dir(data_dir);
+        Self::open_raw(global_state_path, engine_config, post_state_hash)
+    }
+
+    /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
+    /// (e.g. in the Trie and Data stores) rather than creating them.
+    /// Differs from `open` in that it doesn't append `GLOBAL_STATE_DIR` to the supplied path.
+    pub fn open_raw<T: AsRef<Path>>(
+        global_state_dir: T,
+        engine_config: EngineConfig,
+        post_state_hash: Blake2bHash,
+    ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
-        let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
+        Self::create_global_state_dir(&global_state_dir);
         let environment = Arc::new(
             LmdbEnvironment::new(
                 &global_state_dir,
@@ -298,15 +311,19 @@ impl LmdbWasmTestBuilder {
         }
     }
 
-    fn create_and_get_global_state_dir<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> PathBuf {
-        let global_state_path = {
-            let mut path = PathBuf::from(data_dir);
-            path.push(GLOBAL_STATE_DIR);
-            path
-        };
-        fs::create_dir_all(&global_state_path)
-            .unwrap_or_else(|_| panic!("Expected to create {}", global_state_path.display()));
-        global_state_path
+    fn create_global_state_dir<T: AsRef<Path>>(global_state_path: T) {
+        fs::create_dir_all(&global_state_path).unwrap_or_else(|_| {
+            panic!(
+                "Expected to create {}",
+                global_state_path.as_ref().display()
+            )
+        });
+    }
+
+    fn global_state_dir<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> PathBuf {
+        let mut path = PathBuf::from(data_dir);
+        path.push(GLOBAL_STATE_DIR);
+        path
     }
 }
 

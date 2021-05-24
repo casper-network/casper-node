@@ -14,9 +14,8 @@ use anyhow::{self, Context};
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, warn};
 
-use crate::config;
 use casper_node::{
     logging,
     reactor::{initializer, joiner, validator, ReactorExit, Runner},
@@ -311,7 +310,6 @@ impl Cli {
         // Create validator config, including any overridden values.
         let validator_config: validator::Config = config_table.try_into()?;
         logging::init_with_config(&validator_config.logging)?;
-        trace!("{}", config::to_string(&validator_config)?);
 
         Ok(WithDir::new(root, validator_config))
     }

@@ -29,14 +29,14 @@ use crate::{
 
 #[derive(Clone)]
 struct SecretKeyWithStake {
-    secret_key: SecretKey,
+    secret_key: Arc<SecretKey>,
     stake: u64,
 }
 
 impl PartialEq for SecretKeyWithStake {
     fn eq(&self, other: &Self) -> bool {
         self.stake == other.stake
-            && PublicKey::from(&self.secret_key) == PublicKey::from(&other.secret_key)
+            && PublicKey::from(&*self.secret_key) == PublicKey::from(&*other.secret_key)
     }
 }
 
@@ -61,14 +61,14 @@ impl TestChain {
             size
         );
         let first_node_secret_key_with_stake = SecretKeyWithStake {
-            secret_key: SecretKey::random(rng),
+            secret_key: Arc::new(SecretKey::random(rng)),
             stake: rng.gen_range(100..999),
         };
         let other_secret_keys_with_stakes = {
             let mut other_secret_keys_with_stakes = Vec::new();
             for _ in 1..size {
                 let staked_secret_key = SecretKeyWithStake {
-                    secret_key: SecretKey::random(rng),
+                    secret_key: Arc::new(SecretKey::random(rng)),
                     stake: rng.gen_range(100..999),
                 };
                 other_secret_keys_with_stakes.push(staked_secret_key)
@@ -99,7 +99,7 @@ impl TestChain {
         let genesis_accounts = std::iter::once(&first_node_secret_key_with_stake)
             .chain(other_secret_keys_with_stakes.iter())
             .map(|staked_secret_key| {
-                let public_key = PublicKey::from(&staked_secret_key.secret_key);
+                let public_key = PublicKey::from(&*staked_secret_key.secret_key);
                 let validator_config = ValidatorConfig::new(
                     Motes::new(U512::from(staked_secret_key.stake)),
                     DelegationRate::zero(),
@@ -156,7 +156,7 @@ impl TestChain {
     async fn add_node(
         &mut self,
         first_node: bool,
-        secret_key: SecretKey,
+        secret_key: Arc<SecretKey>,
         trusted_hash: Option<BlockHash>,
         rng: &mut NodeRng,
     ) -> NodeId {
@@ -244,13 +244,16 @@ async fn run_equivocator_network() {
     let mut rng: NodeRng = crate::new_rng();
 
     let first_node_secret_key_with_stake = SecretKeyWithStake {
-        secret_key: SecretKey::random(&mut rng),
+        secret_key: Arc::new(SecretKey::random(&mut rng)),
         stake: 100,
     };
     let alice_sk = SecretKeyWithStake {
-        secret_key: SecretKey::random(&mut rng),
+        secret_key: Arc::new(
+            SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap(),
+        ),
         stake: 1,
     };
+
     let other_secret_keys_with_stakes = vec![alice_sk.clone(), alice_sk];
 
     let mut chain = TestChain::new_with_keys(
@@ -333,7 +336,7 @@ async fn test_joiner() {
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", first_switch_block_hash);
-    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
         .add_node(
             false,
@@ -380,7 +383,7 @@ async fn test_joiner_network() {
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", first_switch_block_hash);
-    let joiner_node_secret_key = SecretKey::random(&mut rng);
+    let joiner_node_secret_key = Arc::new(SecretKey::random(&mut rng));
     chain
         .add_node(
             false,

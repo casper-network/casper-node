@@ -5,7 +5,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    env,
     fmt::{self, Debug, Display, Formatter},
     time::{Duration, Instant},
 };
@@ -24,13 +23,14 @@ use super::{
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        network::ENABLE_LIBP2P_NET_ENV_VAR,
         small_network::SmallNetworkIdentity,
         Component,
     },
     effect::{
         announcements::{ControlAnnouncement, GossiperAnnouncement, NetworkAnnouncement},
-        requests::{NetworkRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     protocol,
@@ -98,6 +98,18 @@ impl From<StorageRequest> for Event {
     }
 }
 
+impl From<ChainspecLoaderRequest> for Event {
+    fn from(_request: ChainspecLoaderRequest) -> Self {
+        unreachable!()
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(_request: ContractRuntimeRequest) -> Self {
+        unreachable!()
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
@@ -149,10 +161,10 @@ impl Reactor for TestReactor {
         let (net, effects) = SmallNetwork::new(
             event_queue,
             cfg,
+            None,
             registry,
             small_network_identity,
             ChainInfo::create_for_testing(),
-            false,
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =
@@ -241,43 +253,34 @@ impl Finalize for TestReactor {
     }
 }
 
-/// Checks whether or not a given network with a unhealthy node is completely connected.
+/// Checks whether or not a given network with potentially blocked nodes is completely connected.
 fn network_is_complete(
     blocklist: &HashSet<NodeId>,
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
 ) -> bool {
-    // We need at least one node.
-    if nodes.is_empty() {
-        return false;
-    }
-
-    if nodes.len() == 1 {
-        let nodes = &nodes.values().collect::<Vec<_>>();
-        let net = &nodes[0].reactor().inner().net;
-        if net.is_not_connected_to_any_known_address() {
-            return true;
-        }
-    }
+    // Collect expected nodes.
+    let expected: HashSet<_> = nodes
+        .keys()
+        .filter(|&node_id| !blocklist.contains(node_id))
+        .copied()
+        .collect();
 
     for (node_id, node) in nodes {
         let net = &node.reactor().inner().net;
-        if blocklist.contains(node_id) {
-            // ignore blocklisted node
-            continue;
-        }
-        let outgoing = net.outgoing.keys().collect::<HashSet<_>>();
-        let incoming = net.incoming.keys().collect::<HashSet<_>>();
-        let difference = incoming
-            .symmetric_difference(&outgoing)
-            .collect::<HashSet<_>>();
+        // TODO: Ensure the connections are symmetrical.
+        let peers: HashSet<_> = net.peers().into_iter().map(|(k, _)| k).collect();
 
-        // All nodes should be connected to every other node, except itself, so we add it to the
-        // set of nodes and pretend we have a loopback connection.
-        if !difference.is_empty() {
-            return false;
+        let mut missing = expected.difference(&peers);
+
+        if let Some(first_missing) = missing.next() {
+            // We only allow loopbacks to be missing.
+            if first_missing != node_id {
+                return false;
+            }
         }
 
-        if outgoing.is_empty() && incoming.is_empty() {
+        if missing.next().is_some() {
+            // We have at least two missing, which cannot be.
             return false;
         }
     }
@@ -297,11 +300,6 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without running the test.
-    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-        return;
-    }
-
     let mut rng = crate::new_rng();
 
     // The networking port used by the tests for the root node.
@@ -363,11 +361,6 @@ async fn run_two_node_network_five_times() {
 /// Very unlikely to ever fail on a real machine.
 #[tokio::test]
 async fn bind_to_real_network_interface() {
-    // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without running the test.
-    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-        return;
-    }
-
     init_logging();
 
     let mut rng = crate::new_rng();
@@ -408,11 +401,6 @@ async fn bind_to_real_network_interface() {
 /// Check that a network of varying sizes will connect all nodes properly.
 #[tokio::test]
 async fn check_varying_size_network_connects() {
-    // If the env var "CASPER_ENABLE_LIBP2P_NET" is defined, exit without running the test.
-    if env::var(ENABLE_LIBP2P_NET_ENV_VAR).is_ok() {
-        return;
-    }
-
     init_logging();
 
     let mut rng = crate::new_rng();

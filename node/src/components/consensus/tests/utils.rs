@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use num::Zero;
 use once_cell::sync::Lazy;
 
@@ -12,9 +14,9 @@ use crate::{
     utils::Loadable,
 };
 
-pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap());
-pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY));
+pub static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> =
+    Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap()));
+pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**ALICE_SECRET_KEY));
 
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());

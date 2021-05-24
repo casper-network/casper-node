@@ -85,6 +85,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         era_validators::GetEraValidatorsError,
+        execution_effect::ExecutionEffect,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
         upgrade::{UpgradeConfig, UpgradeResult},
@@ -103,6 +104,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        consensus::{BlockContext, ClContext},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -695,6 +697,22 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Announce a committed Step success.
+    pub(crate) async fn announce_step_success(
+        self,
+        era_id: EraId,
+        execution_effect: ExecutionEffect,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ContractRuntimeAnnouncement::step_success(era_id, (&execution_effect).into()),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Announce upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
@@ -1120,20 +1138,18 @@ impl<REv> EffectBuilder<REv> {
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     pub(crate) async fn request_block_payload(
         self,
-        current_instant: Timestamp,
-        past_deploys: HashSet<DeployHash>,
+        context: BlockContext<ClContext>,
         next_finalized: u64,
         accusations: Vec<PublicKey>,
         random_bit: bool,
-    ) -> BlockPayload
+    ) -> Arc<BlockPayload>
     where
         REv: From<BlockProposerRequest>,
     {
         self.make_request(
             |responder| {
                 BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                    current_instant,
-                    past_deploys,
+                    context,
                     next_finalized,
                     responder,
                     accusations,
@@ -1586,9 +1602,27 @@ impl<REv> EffectBuilder<REv> {
                 .and_then(|era_validators| era_validators.get(&era_id).cloned())
         } else {
             // in other eras, we just use the validators from the key block
-            self.get_key_block_header_for_era_id_from_storage(era_id)
+            let key_block_result = self
+                .get_key_block_header_for_era_id_from_storage(era_id)
                 .await
-                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned())
+                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned());
+            if key_block_result.is_some() {
+                // if the key block read was successful, just return it
+                key_block_result
+            } else {
+                // if there was no key block, we might be looking at a future era - in such a case,
+                // read the state root hash from the highest block and check with the contract
+                // runtime
+                let highest_block = self.get_highest_block_from_storage().await?;
+                let req = EraValidatorsRequest::new(
+                    (*highest_block.header().state_root_hash()).into(),
+                    protocol_version,
+                );
+                self.get_era_validators_from_contract_runtime(req)
+                    .await
+                    .ok()
+                    .and_then(|era_validators| era_validators.get(&era_id).cloned())
+            }
         }
     }
 

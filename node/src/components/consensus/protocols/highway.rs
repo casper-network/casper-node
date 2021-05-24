@@ -1,7 +1,6 @@
 pub(crate) mod config;
 mod participation;
 mod round_success_meter;
-mod synchronizer;
 #[cfg(test)]
 mod tests;
 
@@ -36,6 +35,7 @@ use crate::{
             },
             state,
             state::{Observation, Panorama},
+            synchronizer::Synchronizer,
             validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
@@ -45,7 +45,7 @@ use crate::{
 };
 
 pub use self::config::Config as HighwayConfig;
-use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
+use self::round_success_meter::RoundSuccessMeter;
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
@@ -63,11 +63,11 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(4);
 /// The timer for logging synchronizer queue size.
 const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
-/// The timer for sending the latest panorama request.
-const TIMER_ID_PANORAMA_REQUEST: TimerId = TimerId(6);
+/// The timer to check for initial progress.
+const TIMER_ID_PROGRESS_ALERT: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
-const ACTION_ID_VERTEX: ActionId = ActionId(0);
+pub(crate) const ACTION_ID_VERTEX: ActionId = ActionId(0);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
@@ -76,7 +76,7 @@ where
     C: Context,
 {
     /// Incoming blocks we can't add yet because we are waiting for validation.
-    pending_values: HashMap<ProposedBlock<C>, Vec<ValidVertex<C>>>,
+    pending_values: HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
@@ -92,6 +92,8 @@ where
     standstill_timeout: TimeDiff,
     /// Log inactive or faulty validators periodically, with this interval.
     log_participation_interval: TimeDiff,
+    /// Whether to log the size of every incoming and outgoing serialized unit.
+    log_unit_sizes: bool,
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
@@ -101,6 +103,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
+        inactive: &HashSet<C::ValidatorId>,
         protocol_config: &ProtocolConfig,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
@@ -126,6 +129,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         for vid in slashed {
             validators.ban(vid);
         }
+        for vid in inactive {
+            validators.set_cannot_propose(vid);
+        }
+
+        assert!(
+            validators.ensure_nonzero_proposing_stake(),
+            "cannot start era with total weight 0"
+        );
 
         let highway_config = &protocol_config.highway_config;
 
@@ -193,17 +204,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway,
             round_success_meter,
-            synchronizer: Synchronizer::new(
-                config.highway.pending_vertex_timeout,
-                config.highway.request_latest_state_timeout,
-                validators_count,
-                instance_id,
-            ),
+            synchronizer: Synchronizer::new(config.highway.clone(), validators_count, instance_id),
             pvv_cache: Default::default(),
             evidence_only: false,
             last_panorama,
             standstill_timeout: config.highway.standstill_timeout,
             log_participation_interval: config.highway.log_participation_interval,
+            log_unit_sizes: config.highway.log_unit_sizes,
         });
 
         (hw_proto, outcomes)
@@ -225,7 +232,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             ),
             ProtocolOutcome::ScheduleTimer(
                 now.max(era_start_time) + highway_config.standstill_timeout,
-                TIMER_ID_STANDSTILL_ALERT,
+                TIMER_ID_PROGRESS_ALERT,
             ),
             ProtocolOutcome::ScheduleTimer(now + TimeDiff::from(5_000), TIMER_ID_SYNCHRONIZER_LOG),
         ]
@@ -244,6 +251,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn process_av_effect(&mut self, effect: AvEffect<C>, now: Timestamp) -> ProtocolOutcomes<I, C> {
         match effect {
             AvEffect::NewVertex(vv) => {
+                self.log_unit_size(vv.inner(), "sending new unit");
                 self.calculate_round_exponent(&vv, now);
                 self.process_new_vertex(vv)
             }
@@ -298,8 +306,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// dependencies or validation. Recursively schedules events to add everything that is
     /// unblocked now.
     fn add_vertex(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
-        let (maybe_pending_vertex, mut outcomes) =
-            self.synchronizer.pop_vertex_to_add(&self.highway);
+        let (maybe_pending_vertex, mut outcomes) = self
+            .synchronizer
+            .pop_vertex_to_add(&self.highway, &self.pending_values);
         let pending_vertex = match maybe_pending_vertex {
             None => return outcomes,
             Some(pending_vertex) => pending_vertex,
@@ -342,14 +351,17 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 let ancestor_values = self.ancestors(fork_choice).cloned().collect();
                 let block_context = BlockContext::new(timestamp, ancestor_values);
                 let proposed_block = ProposedBlock::new(value.clone(), block_context);
-                self.pending_values
+                if self
+                    .pending_values
                     .entry(proposed_block.clone())
                     .or_default()
-                    .push(vv);
-                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
-                    sender,
-                    proposed_block,
-                });
+                    .insert((vv, sender.clone()))
+                {
+                    outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                        sender,
+                        proposed_block,
+                    });
+                }
                 return outcomes;
             } else {
                 self.log_proposal(vertex, "proposal does not need validation");
@@ -392,6 +404,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             error!(vertex = ?vv.inner(), "unexpected vertex in evidence-only mode");
             return vec![];
         }
+        if self.highway.has_vertex(vv.inner()) {
+            return vec![];
+        }
+        self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
         // Check whether we should change the round exponent.
@@ -432,12 +448,49 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         info!(?participation, %instance_id, "validator participation");
     }
 
+    /// If the `log_unit_sizes` flag is set and the vertex is a unit, logs its serialized size.
+    fn log_unit_size(&self, vertex: &Vertex<C>, log_msg: &str) {
+        if self.log_unit_sizes {
+            if let Some(hash) = vertex.unit_hash() {
+                let size = HighwayMessage::NewVertex(vertex.clone()).serialize().len();
+                info!(size, %hash, "{}", log_msg);
+            }
+        }
+    }
+
     /// Returns whether the switch block has already been finalized.
     fn finalized_switch_block(&self) -> bool {
         let is_switch = |block_hash: &C::Hash| self.highway.state().is_terminal_block(block_hash);
         self.finality_detector
             .last_finalized()
             .map_or(false, is_switch)
+    }
+
+    // Check if we've made any progress since joining.
+    // If we haven't, we might have been left alone in the era and we should request the state from
+    // peers.
+    fn handle_progress_alert_timer(&mut self, now: Timestamp) -> ProtocolOutcomes<I, C> {
+        if self.evidence_only || self.finalized_switch_block() {
+            return vec![]; // Era has ended. No further progress is expected.
+        }
+        if self.last_panorama == *self.highway.state().panorama() {
+            // We haven't made any progress. Request latest panorama from peers and schedule
+            // standstill alert. If we still won't progress by the time
+            // `TIMER_ID_STANDSTILL_ALERT` is handled, it means we're stuck.
+            let mut outcomes = self.latest_panorama_request();
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now + self.standstill_timeout,
+                TIMER_ID_STANDSTILL_ALERT,
+            ));
+            return outcomes;
+        }
+
+        // Record the current panorama and schedule the next standstill check.
+        self.last_panorama = self.highway.state().panorama().clone();
+        vec![ProtocolOutcome::ScheduleTimer(
+            now + self.standstill_timeout,
+            TIMER_ID_STANDSTILL_ALERT,
+        )]
     }
 
     /// Returns a `StandstillAlert` if no progress was made; otherwise schedules the next check.
@@ -509,14 +562,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-enum HighwayMessage<C: Context> {
+pub(crate) enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
     LatestStateRequest(Panorama<C>),
 }
 
 impl<C: Context> HighwayMessage<C> {
-    fn serialize(&self) -> Vec<u8> {
+    pub(crate) fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).expect("should serialize message")
     }
 }
@@ -707,6 +760,7 @@ where
                     vec![]
                 }
             }
+            TIMER_ID_PROGRESS_ALERT => self.handle_progress_alert_timer(now),
             TIMER_ID_STANDSTILL_ALERT => self.handle_standstill_alert_timer(now),
             TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
@@ -717,29 +771,13 @@ where
                     vec![]
                 }
             }
-            TIMER_ID_PANORAMA_REQUEST => {
-                if !self.finalized_switch_block() {
-                    let mut outcomes = self.latest_panorama_request();
-                    let next_timer =
-                        Timestamp::now() + self.synchronizer.request_latest_state_timeout();
-                    outcomes.push(ProtocolOutcome::ScheduleTimer(next_timer, timer_id));
-                    outcomes
-                } else {
-                    vec![]
-                }
-            }
             _ => unreachable!("unexpected timer ID"),
         }
     }
 
     fn handle_is_current(&self) -> ProtocolOutcomes<I, C> {
         // Request latest protocol state of the current era.
-        let mut outcomes = self.latest_panorama_request();
-        outcomes.push(ProtocolOutcome::ScheduleTimer(
-            Timestamp::now() + self.synchronizer.request_latest_state_timeout(),
-            TIMER_ID_PANORAMA_REQUEST,
-        ));
-        outcomes
+        self.latest_panorama_request()
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C> {
@@ -771,7 +809,7 @@ where
                 .remove(&proposed_block)
                 .into_iter()
                 .flatten()
-                .flat_map(|vv| self.add_valid_vertex(vv, now))
+                .flat_map(|(vv, _)| self.add_valid_vertex(vv, now))
                 .collect_vec();
             outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
             outcomes.extend(self.detect_finality());
@@ -784,7 +822,7 @@ where
             let dropped_vertex_ids = dropped_vertices
                 .into_iter()
                 .flatten()
-                .map(|vv| {
+                .map(|(vv, _)| {
                     self.log_proposal(vv.inner(), "dropping invalid proposal");
                     vv.inner().id()
                 })

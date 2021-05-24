@@ -46,7 +46,7 @@ use crate::{
         AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash, JsonBlock},
+    types::{Deploy, DeployHash, DeployOrTransferHash, JsonBlock},
     utils::DisplayIter,
 };
 
@@ -163,6 +163,8 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     JsonBlock::new(block, Some(block_signature))
 });
 
+const HASH_V2_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 3, 0);
+
 /// Error returned from constructing or validating a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -232,10 +234,19 @@ impl BlockPayload {
     }
 
     /// Returns an iterator over all deploys and transfers.
-    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploys_and_transfers_iter(
+        &self,
+    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
         self.deploy_hashes()
             .iter()
-            .chain(self.transfer_hashes().iter())
+            .copied()
+            .map(DeployOrTransferHash::Deploy)
+            .chain(
+                self.transfer_hashes()
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Transfer),
+            )
     }
 }
 
@@ -365,8 +376,19 @@ impl FinalizedBlock {
     }
 
     /// Returns an iterator over all deploy and transfer hashes.
-    pub(crate) fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes.iter().chain(&self.transfer_hashes)
+    pub(crate) fn deploys_and_transfers_iter(
+        &self,
+    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
+        self.deploy_hashes
+            .iter()
+            .copied()
+            .map(DeployOrTransferHash::Deploy)
+            .chain(
+                self.transfer_hashes
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Transfer),
+            )
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -574,6 +596,18 @@ impl EraEnd {
         }
     }
 
+    pub fn hash(&self) -> Digest {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let EraEnd {
+            next_era_validator_weights,
+            era_report,
+        } = self;
+        let hashed_next_era_validator_weights = hash::hash_btree_map(next_era_validator_weights)
+            .expect("Could not hash next era validator weights");
+        let hashed_era_report: Digest = era_report.hash();
+        hash::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
+    }
+
     pub fn era_report(&self) -> &EraReport {
         &self.era_report
     }
@@ -713,9 +747,67 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn hash(&self) -> BlockHash {
+        if self.protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            self.hash_v2()
+        } else {
+            self.hash_v1()
+        }
+    }
+
+    fn hash_v1(&self) -> BlockHash {
         let serialized_header = Self::serialize(&self)
             .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
         BlockHash::new(hash::hash(&serialized_header))
+    }
+
+    fn hash_v2(&self) -> BlockHash {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let BlockHeader {
+            parent_hash,
+            era_id,
+            body_hash,
+            state_root_hash,
+            era_end,
+            height,
+            timestamp,
+            protocol_version,
+            random_bit,
+            accumulated_seed,
+        } = self;
+
+        let hashed_era_end = match era_end {
+            None => hash::SENTINEL0,
+            Some(era_end) => era_end.hash(),
+        };
+
+        let hashed_era_id = hash::hash(era_id.to_bytes().expect("Could not serialize era_id"));
+        let hashed_height = hash::hash(height.to_bytes().expect("Could not serialize height"));
+        let hashed_timestamp =
+            hash::hash(timestamp.to_bytes().expect("Could not serialize timestamp"));
+        let hashed_protocol_version = hash::hash(
+            protocol_version
+                .to_bytes()
+                .expect("Could not serialize protocol version"),
+        );
+        let hashed_random_bit = hash::hash(
+            random_bit
+                .to_bytes()
+                .expect("Could not serialize protocol version"),
+        );
+
+        hash::hash_slice_rfold(&[
+            parent_hash.0,
+            hashed_era_id,
+            *body_hash,
+            *state_root_hash,
+            hashed_era_end,
+            hashed_height,
+            hashed_timestamp,
+            hashed_protocol_version,
+            hashed_random_bit,
+            *accumulated_seed,
+        ])
+        .into()
     }
 
     /// Returns true if block is Genesis' child.
@@ -857,12 +949,52 @@ impl BlockBody {
         &self.transfer_hashes
     }
 
-    /// Computes the body hash
-    pub(crate) fn hash(&self) -> Digest {
+    /// Computes the body hash.
+    pub(crate) fn hash(&self, protocol_version: ProtocolVersion) -> Digest {
+        if protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            self.hash_v2()
+        } else {
+            self.hash_v1()
+        }
+    }
+
+    /// Computes the body hash by hashing the serialized bytes.
+    fn hash_v1(&self) -> Digest {
         let serialized_body = self
             .to_bytes()
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
         hash::hash(&serialized_body)
+    }
+
+    /// Computes the body hash by hashing a Merkle tree of the form:
+    ///
+    /// ```text
+    ///                   body_hash
+    ///                   /      \__________________
+    /// hash(deploy_hashes)      /                  \_____________
+    ///                   hash(transfer_hashes)     /             \
+    ///                                         hash(proposer)   SENTINEL
+    /// ```
+    fn hash_v2(&self) -> Digest {
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let BlockBody {
+            deploy_hashes,
+            transfer_hashes,
+            proposer,
+        } = self;
+
+        let hashed_deploy_hashes =
+            hash::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Into::into).collect());
+        let hashed_transfer_hashes =
+            hash::hash_vec_merkle_tree(transfer_hashes.iter().cloned().map(Into::into).collect());
+        let hashed_proposer =
+            hash::hash(&proposer.to_bytes().expect("Could not serialize proposer"));
+
+        hash::hash_slice_rfold(&[
+            hashed_deploy_hashes,
+            hashed_transfer_hashes,
+            hashed_proposer,
+        ])
     }
 }
 
@@ -1020,7 +1152,12 @@ impl Block {
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
-        let body_hash = body.hash();
+
+        let body_hash = if protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            body.hash_v2()
+        } else {
+            body.hash_v1()
+        };
 
         let era_end = match finalized_block.era_report {
             Some(era_report) => Some(EraEnd::new(era_report, next_era_validator_weights.unwrap())),
@@ -1116,7 +1253,11 @@ impl Block {
 
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_body_hash = self.body.hash();
+        let actual_body_hash = if self.header.protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            self.body.hash_v2()
+        } else {
+            self.body.hash_v1()
+        };
         if self.header.body_hash != actual_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 expected_by_block_header: self.header.body_hash,
@@ -1700,7 +1841,11 @@ mod tests {
         let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_hash;
 
-        let actual_body_hash = block.body.hash();
+        let actual_body_hash = if block.header.protocol_version >= HASH_V2_PROTOCOL_VERSION {
+            block.body.hash_v2()
+        } else {
+            block.body.hash_v1()
+        };
 
         // No Eq trait for BlockValidationError, so pattern match
         match block.verify() {

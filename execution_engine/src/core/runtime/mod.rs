@@ -3503,7 +3503,7 @@ mod tests {
         let mut map = BTreeMap::new();
         map.insert(
             PublicKey::from(
-                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
+                &SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
             ),
             uref,
         );
@@ -3518,7 +3518,7 @@ mod tests {
         let mut map = BTreeMap::new();
         map.insert(
             PublicKey::from(
-                SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
+                &SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
             ),
             key,
         );

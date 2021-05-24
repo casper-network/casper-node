@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+
+#######################################
+# Prepares assets for network start.
+# Arguments:
+#   Network ordinal identifier.
+#   Network nodeset count.
+#   Delay in seconds pripr to which genesis window will expire.
+#   Path to custom accounts.toml.
+#   Path to custom chainspec.toml.
+#######################################
+
 #
 # Sets assets required to run an N node network.
 # Arguments:
@@ -7,289 +18,39 @@
 #   Delay in seconds to apply to genesis timestamp (default=30).
 #   Path to custom chain spec template file.
 
-#######################################
-# Imports
-#######################################
-
 source "$NCTL"/sh/utils/main.sh
+source "$NCTL/sh/assets/setup_shared.sh"
 
-#######################################
-# Sets network accounts.toml.
-#######################################
-function _set_accounts()
-{
-    log "... setting accounts.toml"
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
 
-    local PATH_TO_NET
-    local PATH_TO_ACCOUNTS
-    local IDX
+unset PATH_TO_ACCOUNTS
+unset GENESIS_DELAY_SECONDS
+unset NET_ID
+unset NODE_COUNT
+unset PATH_TO_CHAINSPEC
 
-    # Set accounts.toml.
-    PATH_TO_NET=$(get_path_to_net)
-    PATH_TO_ACCOUNTS="$PATH_TO_NET"/chainspec/accounts.toml
-    touch "$PATH_TO_ACCOUNTS"
+for ARGUMENT in "$@"
+do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        delay) GENESIS_DELAY_SECONDS=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        nodes) NODE_COUNT=${VALUE} ;;
+        chainspec_path) PATH_TO_CHAINSPEC=${VALUE} ;;
+        accounts_path) PATH_TO_ACCOUNTS=${VALUE} ;;
+        *)
+    esac
+done
 
-    # Set faucet account entry.
-    cat >> "$PATH_TO_ACCOUNTS" <<- EOM
-# FAUCET.
-[[accounts]]
-public_key = "$(cat "$PATH_TO_NET/faucet/public_key_hex")"
-balance = "$NCTL_INITIAL_BALANCE_FAUCET"
-EOM
+export NET_ID=${NET_ID:-1}
+GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
+NODE_COUNT=${NODE_COUNT:-5}
+PATH_TO_CHAINSPEC=${PATH_TO_CHAINSPEC:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
+PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-""}
 
-    # Set validator account entries.
-    for IDX in $(seq 1 "$(get_count_of_nodes)")
-    do
-        cat >> "$PATH_TO_ACCOUNTS" <<- EOM
-
-# VALIDATOR $IDX.
-[[accounts]]
-public_key = "$(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex")"
-balance = "$NCTL_INITIAL_BALANCE_VALIDATOR"
-EOM
-        if [ "$IDX" -le "$(get_count_of_genesis_nodes)" ]; then
-        cat >> "$PATH_TO_ACCOUNTS" <<- EOM
-
-[accounts.validator]
-bonded_amount = "$(_get_node_pos_stake_weight "$IDX")"
-delegation_rate = $IDX
-EOM
-        fi
-    done
-
-    # Set user account entries.
-    for IDX in $(seq 1 "$(get_count_of_users)")
-    do
-        if [ "$IDX" -le "$(get_count_of_genesis_nodes)" ]; then
-        cat >> "$PATH_TO_ACCOUNTS" <<- EOM
-
-# USER $IDX.
-[[delegators]]
-validator_public_key = "$(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex")"
-delegator_public_key = "$(cat "$PATH_TO_NET/users/user-$IDX/public_key_hex")"
-balance = "$NCTL_INITIAL_BALANCE_USER"
-delegated_amount = "$((NCTL_INITIAL_DELEGATION_AMOUNT + IDX))"
-EOM
-        else
-        cat >> "$PATH_TO_ACCOUNTS" <<- EOM
-
-# USER $IDX.
-[[accounts]]
-public_key = "$(cat "$PATH_TO_NET/users/user-$IDX/public_key_hex")"
-balance = "$NCTL_INITIAL_BALANCE_USER"
-EOM
-        fi
-    done
-}
-
-#######################################
-# Sets network accounts.toml from an existing template.
-#######################################
-function _set_accounts_from_template()
-{
-    log "... setting accounts.toml (from template)"    
-
-    local ACCOUNT_KEY
-    local PATH_TO_ACCOUNTS
-    local PATH_TO_TEMPLATE=${1}
-    local PBK_KEY
-    local IDX
-
-    # Copy across template.    
-    PATH_TO_ACCOUNTS="$(get_path_to_net)"/chainspec/accounts.toml
-    cp "$PATH_TO_TEMPLATE" "$PATH_TO_ACCOUNTS"
-
-    # Set faucet.
-    PBK_KEY="PBK_FAUCET"
-    ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")"    
-    sed -i "s/""$PBK_KEY""/""$ACCOUNT_KEY""/" "$PATH_TO_ACCOUNTS"
-
-    # Set validators.
-    for IDX in $(seq "$(get_count_of_nodes)" -1 1 )
-    do
-        PBK_KEY=PBK_V"$IDX"
-        ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$IDX")"
-        sed -i "s/""$PBK_KEY""/""$ACCOUNT_KEY""/" "$PATH_TO_ACCOUNTS"
-    done
-    
-    # Set users.
-    for IDX in $(seq "$(get_count_of_users)" -1 1)
-    do
-        PBK_KEY=PBK_U"$IDX"
-        ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$IDX")"
-        sed -i "s/""$PBK_KEY""/""$ACCOUNT_KEY""/" "$PATH_TO_ACCOUNTS"
-    done
-}
-
-#######################################
-# Sets network binaries.
-#######################################
-function _set_binaries()
-{
-    log "... setting binaries"
-
-    local PATH_TO_NET
-    local PATH_TO_NODE_BIN
-    local PATH_TO_NODE_BIN_SEMVAR
-    local PATH_TO_CONTRACT
-    local CONTRACT
-    local IDX
-
-    PATH_TO_NET="$(get_path_to_net)"
-
-    # Set node binaries.
-    for IDX in $(seq 1 "$(get_count_of_nodes)")
-    do
-        PATH_TO_NODE_BIN=$(get_path_to_node_bin "$IDX")
-        PATH_TO_NODE_BIN_SEMVAR="$PATH_TO_NODE_BIN"/1_0_0
-
-        if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-            cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" "$PATH_TO_NODE_BIN"
-            cp "$NCTL_CASPER_HOME"/target/debug/casper-node "$PATH_TO_NODE_BIN_SEMVAR"
-        else
-            cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" "$PATH_TO_NODE_BIN"
-            cp "$NCTL_CASPER_HOME"/target/release/casper-node "$PATH_TO_NODE_BIN_SEMVAR"
-        fi
-    done
-
-    # Set client binary.
-    if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        cp "$NCTL_CASPER_HOME"/target/debug/casper-client "$PATH_TO_NET"/bin
-    else
-        cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_NET"/bin
-    fi
-
-    # Set client contracts.
-	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_AUCTION[@]}"
-	do
-        PATH_TO_CONTRACT="$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT"
-        if [ -f "$PATH_TO_CONTRACT" ]; then
-            cp "$PATH_TO_CONTRACT" "$PATH_TO_NET"/bin/auction
-        fi
-	done  
-	for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
-	do
-        PATH_TO_CONTRACT="$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT"
-        cp "$PATH_TO_CONTRACT" "$PATH_TO_NET"/bin/transfers
-	done  
-}
-
-#######################################
-# Sets network chainspec.
-# Arguments:
-#   Delay in seconds to apply to genesis timestamp.
-#   Path to chainspec template file.
-#######################################
-function _set_chainspec()
-{
-    log "... setting chainspec.toml"
-
-    local GENESIS_DELAY=${1}
-    local PATH_TO_CHAINSPEC_TEMPLATE=${2}
-    local PATH_TO_CHAINSPEC_FILE
-    local PATH_TO_NET
-    local SCRIPT
-
-    # Set file.
-    PATH_TO_NET=$(get_path_to_net)
-    PATH_TO_CHAINSPEC_FILE=$PATH_TO_NET/chainspec/chainspec.toml
-    cp "$PATH_TO_CHAINSPEC_TEMPLATE" "$PATH_TO_CHAINSPEC_FILE"
-
-    # Write contents.
-    local SCRIPT=(
-        "import toml;"
-        "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
-        "cfg['protocol']['activation_point']='$(get_genesis_timestamp "$GENESIS_DELAY")';"
-        "cfg['network']['name']='$(get_chain_name)';"
-        "cfg['core']['validator_slots']=$(($(get_count_of_nodes) * 2));"
-        "toml.dump(cfg, open('$PATH_TO_CHAINSPEC_FILE', 'w'));"
-    )
-    python3 -c "${SCRIPT[*]}"   
-}
-
-#######################################
-# Sets network daemon configuration.
-# Globals:
-#   NCTL - path to nctl home directory.
-#   NCTL_DAEMON_TYPE - type of daemon service manager.
-#######################################
-function _set_daemon()
-{
-    log "... setting daemon config"
-
-    if [ "$NCTL_DAEMON_TYPE" = "supervisord" ]; then
-        source "$NCTL"/sh/assets/setup_supervisord.sh
-    fi
-}
-
-#######################################
-# Sets network directories.
-# Arguments:
-#   Count of nodes to setup (default=5).
-#   Count of users to setup (default=5).
-#######################################
-function _set_directories()
-{
-    log "... setting directories"
-
-    local COUNT_NODES=${1}
-    local COUNT_USERS=${2}
-    local PATH_TO_NET
-    local PATH_TO_NODE
-    local IDX
-
-    PATH_TO_NET="$(get_path_to_net)"
-
-    mkdir "$PATH_TO_NET"/bin 
-    mkdir "$PATH_TO_NET"/bin/auction
-    mkdir "$PATH_TO_NET"/bin/eco
-    mkdir "$PATH_TO_NET"/bin/transfers
-    mkdir "$PATH_TO_NET"/chainspec
-    mkdir "$PATH_TO_NET"/daemon
-    mkdir "$PATH_TO_NET"/daemon/config
-    mkdir "$PATH_TO_NET"/daemon/logs
-    mkdir "$PATH_TO_NET"/daemon/socket
-    mkdir "$PATH_TO_NET"/faucet 
-    mkdir "$PATH_TO_NET"/nodes 
-    mkdir "$PATH_TO_NET"/users
-
-    for IDX in $(seq 1 "$COUNT_NODES")
-    do
-        PATH_TO_NODE="$PATH_TO_NET"/nodes/node-"$IDX"
-        mkdir "$PATH_TO_NODE"
-        mkdir "$PATH_TO_NODE"/bin
-        mkdir "$PATH_TO_NODE"/bin/1_0_0
-        mkdir "$PATH_TO_NODE"/config
-        mkdir "$PATH_TO_NODE"/config/1_0_0
-        mkdir "$PATH_TO_NODE"/keys
-        mkdir "$PATH_TO_NODE"/logs
-        mkdir "$PATH_TO_NODE"/storage
-        mkdir "$PATH_TO_NODE"/storage-consensus
-    done
-     
-    for IDX in $(seq 1 "$COUNT_USERS")
-    do
-        mkdir "$PATH_TO_NET"/users/user-"$IDX"
-    done
-}
-
-#######################################
-# Sets network keys.
-#######################################
-function _set_keys()
-{
-    log "... setting cryptographic keys"
-
-    "$(get_path_to_client)" keygen -f "$(get_path_to_net)"/faucet > /dev/null 2>&1
-    for IDX in $(seq 1 "$(get_count_of_nodes)")
-    do
-        "$(get_path_to_client)" keygen -f "$(get_path_to_net)"/nodes/node-"$IDX"/keys > /dev/null 2>&1
-    done
-    for IDX in $(seq 1 "$(get_count_of_users)")
-    do
-        "$(get_path_to_client)" keygen -f "$(get_path_to_net)"/users/user-"$IDX" > /dev/null 2>&1
-    done
-}
 
 #######################################
 # Sets network nodes.
@@ -300,7 +61,6 @@ function _set_nodes()
     
     local IDX
     local PATH_TO_FILE
-    local PATH_TO_NODE
 
     for IDX in $(seq 1 "$(get_count_of_nodes)")
     do
@@ -329,28 +89,6 @@ function _set_nodes()
 }
 
 #######################################
-# Gets a node's default POS weight.
-# Arguments:
-#   Node ordinal identifier.
-#######################################
-function _get_node_pos_stake_weight()
-{
-    local NODE_ID=${1}
-    local POS_WEIGHT
-
-    if [ "$NODE_ID" -le "$(get_count_of_genesis_nodes)" ]; then
-        POS_WEIGHT=$(get_node_staking_weight "$NODE_ID")
-    else
-        POS_WEIGHT="0"
-    fi
-    if [ "x$POS_WEIGHT" = 'x' ]; then
-        POS_WEIGHT="0"
-    fi
-
-    echo $POS_WEIGHT
-}
-
-#######################################
 # Main
 # Globals:
 #   NET_ID - ordinal identifier of network being setup.
@@ -362,68 +100,65 @@ function _get_node_pos_stake_weight()
 #######################################
 function _main()
 {
-    local COUNT_NODES=$((${1} * 2))
+    local COUNT_NODES_AT_GENESIS=${1}
+    local COUNT_NODES=$((COUNT_NODES_AT_GENESIS * 2))
     local GENESIS_DELAY=${2}
-    local CHAINSPEC_PATH=${3}
-    local ACCOUNTS_PATH=${4}
+    local PATH_TO_CHAINSPEC=${3}
+    local PATH_TO_ACCOUNTS=${4}
     local COUNT_USERS="$COUNT_NODES"
     local PATH_TO_NET
 
-    # Tear down previous.
     PATH_TO_NET=$(get_path_to_net)
+
+    # Tear down previous.
     if [ -d "$PATH_TO_NET" ]; then
-        source "$NCTL"/sh/assets/teardown.sh net="$NET_ID"
+        source "$NCTL/sh/assets/teardown.sh" net="$NET_ID"
     fi
     mkdir -p "$PATH_TO_NET"
 
-    # Setup new.
     log "asset setup begins ... please wait"
-    _set_directories "$COUNT_NODES" "$COUNT_USERS"
-    _set_binaries
-    _set_keys
-    _set_daemon
-    _set_chainspec "$GENESIS_DELAY" "$CHAINSPEC_PATH"
-    if [ "$ACCOUNTS_PATH" = "" ]; then
-        _set_accounts
+
+    # Setup new.
+    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "1_0_0"
+
+    if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+        setup_asset_binaries "1_0_0" \
+                             "$(get_count_of_nodes)" \
+                             "$NCTL_CASPER_HOME/target/debug/casper-client" \
+                             "$NCTL_CASPER_HOME/target/debug/casper-node" \
+                             "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
+                             "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     else
-        _set_accounts_from_template "$ACCOUNTS_PATH"
+        setup_asset_binaries "1_0_0" \
+                             "$(get_count_of_nodes)" \
+                             "$NCTL_CASPER_HOME/target/release/casper-client" \
+                             "$NCTL_CASPER_HOME/target/release/casper-node" \
+                             "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
+                             "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
+    fi    
+
+    setup_asset_keys "$COUNT_NODES" "$COUNT_USERS"
+
+    setup_asset_daemon
+    
+    setup_asset_chainspec "$COUNT_NODES" \
+                          "1.0.0" \
+                          $(get_genesis_timestamp "$GENESIS_DELAY") \
+                          "$PATH_TO_CHAINSPEC" \
+                          true
+
+    if [ "$PATH_TO_ACCOUNTS" = "" ]; then
+        setup_asset_accounts "$COUNT_NODES" "$COUNT_NODES_AT_GENESIS" "$COUNT_USERS"
+    else
+        setup_asset_accounts_from_template "$COUNT_NODES" "$COUNT_USERS" "$PATH_TO_ACCOUNTS"
     fi
-    _set_nodes
+
+    setup_asset_node_configs "$COUNT_NODES" \
+                             "1_0_0" \
+                             "$NCTL_CASPER_HOME/resources/local/config.toml" \
+                             true
+
     log "asset setup complete"
 }
 
-# ----------------------------------------------------------------
-# ENTRY POINT
-# ----------------------------------------------------------------
-
-unset ACCOUNTS_PATH
-unset GENESIS_DELAY_SECONDS
-unset NET_ID
-unset NODE_COUNT
-unset CHAINSPEC_PATH
-
-for ARGUMENT in "$@"
-do
-    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
-    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
-    case "$KEY" in
-        delay) GENESIS_DELAY_SECONDS=${VALUE} ;;
-        net) NET_ID=${VALUE} ;;
-        nodes) NODE_COUNT=${VALUE} ;;
-        chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
-        accounts_path) ACCOUNTS_PATH=${VALUE} ;;
-        *)
-    esac
-done
-
-export NET_ID=${NET_ID:-1}
-GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
-NODE_COUNT=${NODE_COUNT:-5}
-CHAINSPEC_PATH=${CHAINSPEC_PATH:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
-ACCOUNTS_PATH=${ACCOUNTS_PATH:-""}
-
-if [ 3 -gt "$NODE_COUNT" ]; then
-    log_error "Invalid input: |nodes| MUST BE >= 3"
-else
-    _main "$NODE_COUNT" "$GENESIS_DELAY_SECONDS" "$CHAINSPEC_PATH" "$ACCOUNTS_PATH"
-fi
+_main "$NODE_COUNT" "$GENESIS_DELAY_SECONDS" "$PATH_TO_CHAINSPEC" "$PATH_TO_ACCOUNTS"

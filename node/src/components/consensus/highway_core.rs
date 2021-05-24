@@ -36,6 +36,7 @@ pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
 pub(crate) mod state;
+pub(super) mod synchronizer;
 pub(crate) mod validators;
 
 mod endorsement;
