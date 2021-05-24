@@ -51,6 +51,12 @@ impl EraId {
         EraId(value)
     }
 
+    /// Returns an iterator over era IDs of `num_eras` future eras starting from current.
+    pub fn iter(&self, num_eras: u64) -> impl Iterator<Item = EraId> {
+        let current_era_id = self.0;
+        (current_era_id..current_era_id + num_eras).map(EraId)
+    }
+
     /// Returns an iterator over era IDs of `num_eras` future eras starting from current, plus the
     /// provided one.
     pub fn iter_inclusive(&self, num_eras: u64) -> impl Iterator<Item = EraId> {
@@ -97,11 +103,6 @@ impl EraId {
     /// Returns little endian bytes.
     pub fn to_le_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
-    }
-
-    /// Creates new [`EraId`] instance from little endian bytes.
-    pub(crate) fn from_le_bytes(bytes: [u8; 8]) -> EraId {
-        EraId::from(u64::from_le_bytes(bytes))
     }
 
     /// Returns a raw value held by this [`EraId`] instance.
@@ -188,7 +189,7 @@ impl CLTyped for EraId {
 
 impl Distribution<EraId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EraId {
-        EraId(rng.gen())
+        EraId(rng.gen_range(0..1_000_000))
     }
 }
 

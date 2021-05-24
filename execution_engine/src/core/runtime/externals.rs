@@ -968,16 +968,6 @@ where
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
-
-            FunctionIndex::Delete => {
-                // args(0) = pointer to key in Wasm memory
-                // args(1) = size of key
-                let (key_ptr, key_size) = Args::parse(args)?;
-                self.charge_host_function_call(&host_function_costs.delete, [key_ptr, key_size])?;
-                let key: Key = self.t_from_mem(key_ptr, key_size)?;
-                self.delete(&key)?;
-                Ok(None)
-            }
         }
     }
 }

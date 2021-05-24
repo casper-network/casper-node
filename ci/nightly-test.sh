@@ -54,6 +54,8 @@ function start_run_teardown() {
 
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
+start_run_teardown "itst06.sh"
+start_run_teardown "itst07.sh"
 start_run_teardown "itst11.sh"
 start_run_teardown "itst13.sh" "itst13.chainspec.toml.in"
 start_run_teardown "itst14.sh" "itst14.chainspec.toml.in" "itst14.accounts.toml"

@@ -10,7 +10,6 @@ pub enum Op {
     Write,
     Add,
     NoOp,
-    Delete,
 }
 
 impl Add for Op {
@@ -22,7 +21,6 @@ impl Add for Op {
             (Op::NoOp, b) => b,
             (Op::Read, Op::Read) => Op::Read,
             (Op::Add, Op::Add) => Op::Add,
-            (_, Op::Delete) | (Op::Delete, Op::Add) | (Op::Delete, Op::Read) => Op::Delete,
             _ => Op::Write,
         }
     }
@@ -53,7 +51,6 @@ impl From<&Op> for casper_types::OpKind {
             Op::Write => casper_types::OpKind::Write,
             Op::Add => casper_types::OpKind::Add,
             Op::NoOp => casper_types::OpKind::NoOp,
-            Op::Delete => casper_types::OpKind::Delete,
         }
     }
 }

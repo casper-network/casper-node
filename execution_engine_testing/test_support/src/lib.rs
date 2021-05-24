@@ -23,13 +23,15 @@
 //! use casper_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
 //! use casper_types::{U512, RuntimeArgs, runtime_args, PublicKey, account::AccountHash, SecretKey};
 //!
+//!
 //! const MY_ACCOUNT: [u8; 32] = [7u8; 32];
 //! const MY_ADDR: [u8; 32] = [8u8; 32];
 //! const KEY: &str = "special_value";
 //! const VALUE: &str = "hello world";
 //! const ARG_MESSAGE: &str = "message";
 //!
-//! let public_key: PublicKey = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap().into();
+//! let secret_key = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap();
+//! let public_key = PublicKey::from(&secret_key);
 //! let account_addr = AccountHash::new(MY_ADDR);
 //!
 //! let mut context = TestContextBuilder::new()

@@ -50,6 +50,8 @@ function main() {
     # 11. Wait until it's synchronized
     #     and verify that its last finalized block matches other nodes'.
     do_await_full_synchronization "$NEW_NODE_ID"
+    # 12. Check for equivocators
+    assert_no_equivocators_logs
 
     log "------------------------------------------------------------"
     log "Syncing node complete"
@@ -241,7 +243,9 @@ done
 
 NEW_NODE_ID=${NEW_NODE_ID:-"6"}
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
-ACTIVATE_ERA=${ACTIVATE_ERA:-"3"}
+ACTIVATE_ERA=${ACTIVATE_ERA:-"5"}
+# The default protocol version should be at least 1.3.0 because of this test being used to test the
+# compatibility of the new block hashing scheme with upgrades.
 PROTOCOL_VERSION=${PROTOCOL_VERSION:-"2_0_0"}
 
 main

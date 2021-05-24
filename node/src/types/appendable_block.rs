@@ -7,7 +7,7 @@ use num_traits::Zero;
 use thiserror::Error;
 
 use crate::{
-    components::block_proposer::DeployType,
+    components::block_proposer::DeployInfo,
     types::{chainspec::DeployConfig, BlockPayload, DeployHash, Timestamp},
 };
 
@@ -61,49 +61,71 @@ impl AppendableBlock {
         self.total_size
     }
 
-    /// Attempts to add a deploy to the block; returns an error if that would violate a validity
+    /// Attempts to add a transfer to the block; returns an error if that would violate a validity
     /// condition.
-    pub(crate) fn add(
+    ///
+    /// This _must_ be called with a transfer - the function cannot check whether the argument is
+    /// actually a transfer.
+    pub(crate) fn add_transfer(
         &mut self,
         hash: DeployHash,
-        deploy_type: &DeployType,
+        deploy_info: &DeployInfo,
     ) -> Result<(), AddError> {
         if self.deploy_and_transfer_set.contains(&hash) {
             return Err(AddError::Duplicate);
         }
-        if !deploy_type
-            .header()
+        if !deploy_info
+            .header
             .is_valid(&self.deploy_config, self.timestamp)
         {
             return Err(AddError::InvalidDeploy);
         }
-        if deploy_type.is_transfer() {
-            if self.has_max_transfer_count() {
-                return Err(AddError::TransferCount);
-            }
-            self.transfer_hashes.push(hash);
-        } else {
-            if self.has_max_deploy_count() {
-                return Err(AddError::DeployCount);
-            }
-            // Only deploys count towards the size and gas limits.
-            let new_total_size = self
-                .total_size
-                .checked_add(deploy_type.size())
-                .filter(|size| *size <= self.deploy_config.max_block_size as usize)
-                .ok_or(AddError::BlockSize)?;
-            let payment_amount = deploy_type.payment_amount();
-            let gas_price = deploy_type.header().gas_price();
-            let gas =
-                Gas::from_motes(payment_amount, gas_price).ok_or(AddError::InvalidGasAmount)?;
-            let new_total_gas = self.total_gas.checked_add(gas).ok_or(AddError::GasLimit)?;
-            if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
-                return Err(AddError::GasLimit);
-            }
-            self.deploy_hashes.push(hash);
-            self.total_gas = new_total_gas;
-            self.total_size = new_total_size;
+        if self.has_max_transfer_count() {
+            return Err(AddError::TransferCount);
         }
+        self.transfer_hashes.push(hash);
+        self.deploy_and_transfer_set.insert(hash);
+        Ok(())
+    }
+
+    /// Attempts to add a deploy to the block; returns an error if that would violate a validity
+    /// condition.
+    ///
+    /// This _must not_ be called with a transfer - the function cannot check whether the argument
+    /// is actually not a transfer.
+    pub(crate) fn add_deploy(
+        &mut self,
+        hash: DeployHash,
+        deploy_info: &DeployInfo,
+    ) -> Result<(), AddError> {
+        if self.deploy_and_transfer_set.contains(&hash) {
+            return Err(AddError::Duplicate);
+        }
+        if !deploy_info
+            .header
+            .is_valid(&self.deploy_config, self.timestamp)
+        {
+            return Err(AddError::InvalidDeploy);
+        }
+        if self.has_max_deploy_count() {
+            return Err(AddError::DeployCount);
+        }
+        // Only deploys count towards the size and gas limits.
+        let new_total_size = self
+            .total_size
+            .checked_add(deploy_info.size)
+            .filter(|size| *size <= self.deploy_config.max_block_size as usize)
+            .ok_or(AddError::BlockSize)?;
+        let payment_amount = deploy_info.payment_amount;
+        let gas_price = deploy_info.header.gas_price();
+        let gas = Gas::from_motes(payment_amount, gas_price).ok_or(AddError::InvalidGasAmount)?;
+        let new_total_gas = self.total_gas.checked_add(gas).ok_or(AddError::GasLimit)?;
+        if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
+            return Err(AddError::GasLimit);
+        }
+        self.deploy_hashes.push(hash);
+        self.total_gas = new_total_gas;
+        self.total_size = new_total_size;
         self.deploy_and_transfer_set.insert(hash);
         Ok(())
     }

@@ -26,7 +26,7 @@ impl Blake2bHash {
         Blake2bHash(ret)
     }
 
-    /// Returns the underlying BLKAE2b hash bytes
+    /// Returns the underlying BLAKE2b hash bytes
     pub fn value(&self) -> [u8; Blake2bHash::LENGTH] {
         self.0
     }

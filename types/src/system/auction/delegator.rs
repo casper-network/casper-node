@@ -93,7 +93,7 @@ impl Delegator {
             .ok_or(Error::InvalidAmount)?;
 
         let vesting_schedule = match self.vesting_schedule.as_ref() {
-            Some(vesting_sechdule) => vesting_sechdule,
+            Some(vesting_schedule) => vesting_schedule,
             None => {
                 self.staked_amount = updated_staked_amount;
                 return Ok(updated_staked_amount);
@@ -197,14 +197,13 @@ mod tests {
     fn serialization_roundtrip() {
         let staked_amount = U512::one();
         let bonding_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-        let delegator_public_key: PublicKey =
-            SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
-                .unwrap()
-                .into();
-        let validator_public_key: PublicKey =
-            SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH])
-                .unwrap()
-                .into();
+        let delegator_public_key: PublicKey = PublicKey::from(
+            &SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
+        );
+
+        let validator_public_key: PublicKey = PublicKey::from(
+            &SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap(),
+        );
         let unlocked_delegator = Delegator::unlocked(
             delegator_public_key.clone(),
             staked_amount,

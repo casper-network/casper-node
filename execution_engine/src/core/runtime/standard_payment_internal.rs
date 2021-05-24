@@ -12,11 +12,13 @@ use crate::{
     storage::global_state::StateReader,
 };
 
+pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
+
 impl From<execution::Error> for Option<ApiError> {
     fn from(exec_error: execution::Error) -> Self {
         match exec_error {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure
-            // [`StanadrdPayment`] contract running natively supports propagating gas limit
+            // [`StandardPayment`] contract running natively supports propagating gas limit
             // errors without a panic.
             execution::Error::GasLimit => Some(mint::Error::GasLimit.into()),
             // There are possibly other exec errors happening but such translation would be lossy.
@@ -71,7 +73,7 @@ where
         let cl_value = self
             .call_contract(
                 handle_payment_contract_hash,
-                handle_payment::METHOD_GET_PAYMENT_PURSE,
+                METHOD_GET_PAYMENT_PURSE,
                 RuntimeArgs::new(),
             )
             .map_err(|exec_error| {

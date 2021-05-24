@@ -78,7 +78,10 @@ pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use tagged::Tagged;
-pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH};
+pub use transfer::{
+    DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
+    TRANSFER_ADDR_LENGTH,
+};
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
 

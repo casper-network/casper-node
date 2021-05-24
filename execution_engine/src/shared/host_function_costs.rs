@@ -74,8 +74,6 @@ const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500;
 const DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
 
-const DEFAULT_DELETE_COST: u32 = 14_000;
-
 /// Representation of a host function cost
 ///
 /// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
@@ -229,7 +227,6 @@ pub struct HostFunctionCosts {
     pub remove_contract_user_group_urefs: HostFunction<[Cost; 6]>,
     pub print: HostFunction<[Cost; 2]>,
     pub blake2b: HostFunction<[Cost; 4]>,
-    pub delete: HostFunction<[Cost; 2]>,
 }
 
 impl Default for HostFunctionCosts {
@@ -347,7 +344,6 @@ impl Default for HostFunctionCosts {
                 [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
             ),
             blake2b: HostFunction::default(),
-            delete: HostFunction::new(DEFAULT_DELETE_COST, [NOT_USED, NOT_USED]),
         }
     }
 }
@@ -397,7 +393,6 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.remove_contract_user_group_urefs.to_bytes()?);
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.blake2b.to_bytes()?);
-        ret.append(&mut self.delete.to_bytes()?);
         Ok(ret)
     }
 
@@ -444,7 +439,6 @@ impl ToBytes for HostFunctionCosts {
             + self.remove_contract_user_group_urefs.serialized_length()
             + self.print.serialized_length()
             + self.blake2b.serialized_length()
-            + self.delete.serialized_length()
     }
 }
 
@@ -492,7 +486,6 @@ impl FromBytes for HostFunctionCosts {
         let (remove_contract_user_group_urefs, rem) = FromBytes::from_bytes(rem)?;
         let (print, rem) = FromBytes::from_bytes(rem)?;
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
-        let (delete, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -537,7 +530,6 @@ impl FromBytes for HostFunctionCosts {
                 remove_contract_user_group_urefs,
                 print,
                 blake2b,
-                delete,
             },
             rem,
         ))
@@ -589,7 +581,6 @@ impl Distribution<HostFunctionCosts> for Standard {
             remove_contract_user_group_urefs: rng.gen(),
             print: rng.gen(),
             blake2b: rng.gen(),
-            delete: rng.gen(),
         }
     }
 }
@@ -648,7 +639,6 @@ pub mod gens {
             remove_contract_user_group_urefs in host_function_cost_arb(),
             print in host_function_cost_arb(),
             blake2b in host_function_cost_arb(),
-            delete in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -693,7 +683,6 @@ pub mod gens {
                 remove_contract_user_group_urefs,
                 print,
                 blake2b,
-                delete,
             }
         }
     }
