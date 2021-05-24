@@ -537,7 +537,7 @@ mod tests {
         // Finish the gossip by reporting three infections, then check same partial data causes
         // `Noop` to be returned and holders cleared.
         let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
-        let limit = 4 + EXPECTED_DEFAULT_INFECTION_TARGET;
+        let limit = 3 + EXPECTED_DEFAULT_INFECTION_TARGET;
         for node_id in &node_ids[3..limit] {
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
@@ -616,7 +616,7 @@ mod tests {
 
         // Finish the gossip by reporting enough non-infections, then check same complete data
         // causes `Noop` to be returned and holders cleared.
-        let limit = 4 + EXPECTED_DEFAULT_INFECTION_TARGET;
+        let limit = 3 + EXPECTED_DEFAULT_INFECTION_TARGET;
         for node_id in &node_ids[3..limit] {
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
