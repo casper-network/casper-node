@@ -44,7 +44,7 @@ fn should_use_passed_argument() {
         ARG_VALUE0 => ARG0_VALUE,
         ARG_VALUE1 => U512::from(ARG1_VALUE),
     };
-    call_get_arg(args).expect("Should successfuly call get_arg with 2 valid args");
+    call_get_arg(args).expect("Should successfully call get_arg with 2 valid args");
 }
 
 #[ignore]

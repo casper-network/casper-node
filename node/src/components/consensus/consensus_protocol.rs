@@ -1,4 +1,9 @@
-use std::{any::Any, collections::BTreeMap, fmt::Debug, path::PathBuf};
+use std::{
+    any::Any,
+    collections::BTreeMap,
+    fmt::{self, Debug, Display, Formatter},
+    path::PathBuf,
+};
 
 use anyhow::Error;
 use datasize::DataSize;
@@ -6,12 +11,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
+    crypto::{hash, hash::Digest},
     types::{TimeDiff, Timestamp},
 };
+use casper_types::bytesrepr::ToBytes;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
-pub(crate) struct BlockContext<C>
+pub struct BlockContext<C>
 where
     C: Context,
 {
@@ -34,7 +41,6 @@ impl<C: Context> BlockContext<C> {
     }
 
     /// The block's relative height, i.e. the number of ancestors in the current era.
-    #[cfg(test)]
     pub(crate) fn height(&self) -> u64 {
         self.ancestor_values.len() as u64
     }
@@ -47,7 +53,7 @@ impl<C: Context> BlockContext<C> {
 
 /// A proposed block, with context.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
-pub(crate) struct ProposedBlock<C>
+pub struct ProposedBlock<C>
 where
     C: Context,
 {
@@ -73,6 +79,20 @@ impl<C: Context> ProposedBlock<C> {
     }
 }
 
+impl<C: Context> Display for ProposedBlock<C>
+where
+    C::ConsensusValue: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "proposed block at {}: {}",
+            self.context.timestamp(),
+            self.value
+        )
+    }
+}
+
 /// Equivocation and reward information to be included in the terminal finalized block.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound(
@@ -89,6 +109,44 @@ pub struct EraReport<VID> {
     pub(crate) rewards: BTreeMap<VID, u64>,
     /// Validators that haven't produced any unit during the era.
     pub(crate) inactive_validators: Vec<VID>,
+}
+
+impl<VID> EraReport<VID> {
+    pub fn hash(&self) -> Digest
+    where
+        VID: ToBytes,
+    {
+        // Helper function to hash slice of validators
+        fn hash_slice_of_validators<VID>(slice_of_validators: &[VID]) -> Digest
+        where
+            VID: ToBytes,
+        {
+            let hashes = slice_of_validators
+                .iter()
+                .map(|validator| {
+                    hash::hash(validator.to_bytes().expect("Could not serialize validator"))
+                })
+                .collect();
+            hash::hash_vec_merkle_tree(hashes)
+        }
+
+        // Pattern match here leverages compiler to ensure every field is accounted for
+        let EraReport {
+            equivocators,
+            inactive_validators,
+            rewards,
+        } = self;
+
+        let hashed_equivocators = hash_slice_of_validators(equivocators);
+        let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
+        let hashed_rewards = hash::hash_btree_map(rewards).expect("Could not hash rewards");
+
+        hash::hash_slice_rfold(&[
+            hashed_equivocators,
+            hashed_rewards,
+            hashed_inactive_validators,
+        ])
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -235,6 +293,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
 
-    // TODO: Make this lees Highway-specific.
+    // TODO: Make this less Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }

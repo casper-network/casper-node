@@ -2031,7 +2031,7 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                effects.transforms,
+                effects.transforms.clone(),
             )
             .map_err(Into::into)?;
 
@@ -2070,6 +2070,7 @@ where
         Ok(StepResult::Success {
             post_state_hash,
             next_era_validators,
+            execution_effect: effects,
         })
     }
 

@@ -4,36 +4,37 @@ use std::{
     io,
     net::SocketAddr,
     result,
-    time::SystemTimeError,
+    sync::Arc,
 };
 
+use casper_types::SecretKey;
+use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::field;
 
-use crate::{tls::ValidationError, utils::ResolveAddressError};
+use crate::{
+    crypto,
+    tls::ValidationError,
+    utils::{LoadError, Loadable, ResolveAddressError},
+};
 
 pub(super) type Result<T> = result::Result<T, Error>;
 
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
-    /// Server failed to present certificate.
-    #[error("no server certificate presented")]
-    NoServerCertificate,
-    /// Client failed to present certificate.
-    #[error("no client certificate presented")]
-    NoClientCertificate,
-    /// Peer ID presented does not match the expected one.
-    #[error("remote node has wrong ID")]
-    WrongId,
-    /// The config must have both or neither of certificate and secret key, and must have at least
-    /// one known address.
-    #[error(
-        "need both or none of cert, secret_key in network config, and at least one known address"
-    )]
-    InvalidConfig,
+    /// We do not have any known hosts.
+    #[error("could not resolve at least one known host (or none provided)")]
+    EmptyKnownHosts,
+    /// Consensus signing during handshake was provided, but keys could not be loaded.
+    #[error("consensus keys provided, but could not be loaded")]
+    LoadConsensusKeys(
+        #[serde(skip_serializing)]
+        #[source]
+        LoadError<<Arc<SecretKey> as Loadable>::Error>,
+    ),
     /// Our own certificate is not valid.
     #[error("own certificate invalid")]
     OwnCertificateInvalid(#[source] ValidationError),
@@ -73,64 +74,6 @@ pub enum Error {
         #[source]
         ResolveAddressError,
     ),
-    /// Failed to send message.
-    #[error("failed to send message")]
-    MessageNotSent(
-        #[serde(skip_serializing)]
-        #[source]
-        io::Error,
-    ),
-    /// Failed to create TLS acceptor.
-    #[error("failed to create acceptor")]
-    AcceptorCreation(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
-    /// Failed to create configuration for TLS connector.
-    #[error("failed to configure connector")]
-    ConnectorConfiguration(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
-    /// Failed to generate node TLS certificate.
-    #[error("failed to generate cert")]
-    CertificateGeneration(
-        #[serde(skip_serializing)]
-        #[source]
-        ErrorStack,
-    ),
-    /// Handshaking error.
-    #[error("handshake error: {0}")]
-    Handshake(
-        #[serde(skip_serializing)]
-        #[from]
-        ssl::Error,
-    ),
-    /// TLS validation error.
-    #[error("TLS validation error: {0}")]
-    TlsValidation(#[from] ValidationError),
-    /// System time error.
-    #[error("system time error: {0}")]
-    SystemTime(
-        #[serde(skip_serializing)]
-        #[from]
-        SystemTimeError,
-    ),
-    /// Systemd notification error
-    #[error("could not interact with systemd: {0}")]
-    SystemD(#[serde(skip_serializing)] io::Error),
-    /// Other error.
-    #[error(transparent)]
-    Anyhow(
-        #[serde(skip_serializing)]
-        #[from]
-        anyhow::Error,
-    ),
-    /// Server has stopped.
-    #[error("failed to create outgoing connection as server has stopped")]
-    ServerStopped,
 
     /// Instantiating metrics failed.
     #[error(transparent)]
@@ -139,6 +82,28 @@ pub enum Error {
         #[from]
         prometheus::Error,
     ),
+}
+
+// Manual implementation for `DataSize` - the type contains too many FFI variants that are hard to
+// size, so we give up on estimating it altogether.
+impl DataSize for Error {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
+}
+
+impl DataSize for ConnectionError {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
 }
 
 /// An error formatter.
@@ -163,6 +128,82 @@ where
 
         Ok(())
     }
+}
+
+/// An error related to an incoming or outgoing connection.
+#[derive(Debug, Error, Serialize)]
+pub enum ConnectionError {
+    /// Failed to create TLS acceptor.
+    #[error("failed to create TLS acceptor/connector")]
+    TlsInitialization(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
+    /// TCP connection failed.
+    #[error("TCP connection failed")]
+    TcpConnection(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// Handshaking error.
+    #[error("TLS handshake error")]
+    TlsHandshake(
+        #[serde(skip_serializing)]
+        #[source]
+        ssl::Error,
+    ),
+    /// Remote failed to present a client/server certificate.
+    #[error("no client certificate presented")]
+    NoPeerCertificate,
+    /// TLS validation error.
+    #[error("TLS validation error of peer certificate")]
+    PeerCertificateInvalid(#[source] ValidationError),
+    /// Failed to send handshake.
+    #[error("handshake send failed")]
+    HandshakeSend(
+        #[serde(skip_serializing)]
+        #[source]
+        IoError<io::Error>,
+    ),
+    /// Failed to receive handshake.
+    #[error("handshake receive failed")]
+    HandshakeRecv(
+        #[serde(skip_serializing)]
+        #[source]
+        IoError<io::Error>,
+    ),
+    /// Peer reported a network name that does not match ours.
+    #[error("peer is on different network: {0}")]
+    WrongNetwork(String),
+    /// Peer sent a non-handshake message as its first message.
+    #[error("peer did not send handshake")]
+    DidNotSendHandshake,
+    /// The peer sent a consensus certificate, but it was invalid.
+    #[error("invalid consensus certificate")]
+    InvalidConsensusCertificate(
+        #[serde(skip_serializing)]
+        #[source]
+        crypto::Error,
+    ),
+}
+
+/// IO operation that can time out or close.
+#[derive(Debug, Error)]
+pub enum IoError<E>
+where
+    E: error::Error + 'static,
+{
+    /// IO operation timed out.
+    #[error("io timeout")]
+    Timeout,
+    /// Non-timeout IO error.
+    #[error(transparent)]
+    Error(#[from] E),
+    /// Unexpected close/end-of-file.
+    #[error("closed unexpectedly")]
+    UnexpectedEof,
 }
 
 /// Wraps an error to ensure it gets properly captured by tracing.

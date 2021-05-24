@@ -1,10 +1,15 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
+    sync::Arc,
 };
 
-use casper_types::ProtocolVersion;
-use serde::{Deserialize, Serialize};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+use crate::crypto;
+
+use super::counting_format::ConnectionId;
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -18,12 +23,77 @@ pub enum Message<P> {
         /// Network we are connected to.
         network_name: String,
         /// The public address of the node connecting.
-        public_address: SocketAddr,
+        public_addr: SocketAddr,
         /// Protocol version the node is speaking.
         #[serde(default = "default_protocol_version")]
         protocol_version: ProtocolVersion,
+        /// A self-signed certificate indicating validator status.
+        #[serde(default)]
+        consensus_certificate: Option<ConsensusCertificate>,
     },
     Payload(P),
+}
+
+impl<P: Payload> Message<P> {
+    /// Classifies a message based on its payload.
+    #[inline]
+    pub(super) fn classify(&self) -> MessageKind {
+        match self {
+            Message::Handshake { .. } => MessageKind::Protocol,
+            Message::Payload(payload) => payload.classify(),
+        }
+    }
+}
+
+/// A pair of secret keys used by consensus.
+pub(super) struct ConsensusKeyPair {
+    secret_key: Arc<SecretKey>,
+    public_key: PublicKey,
+}
+
+impl ConsensusKeyPair {
+    /// Creates a new key pair for consensus signing.
+    pub(super) fn new(secret_key: Arc<SecretKey>, public_key: PublicKey) -> Self {
+        Self {
+            secret_key,
+            public_key,
+        }
+    }
+
+    /// Sign a value using this keypair.
+    fn sign<T: AsRef<[u8]>>(&self, value: T) -> Signature {
+        crypto::sign(value, &self.secret_key, &self.public_key)
+    }
+}
+
+/// Certificate used to indicate that the peer is a validator using the specified public key.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConsensusCertificate {
+    public_key: PublicKey,
+    signature: Signature,
+}
+
+impl ConsensusCertificate {
+    /// Creates a new consensus certificate from a connection ID and key pair.
+    pub(super) fn create(connection_id: ConnectionId, key_pair: &ConsensusKeyPair) -> Self {
+        let signature = key_pair.sign(connection_id.as_bytes());
+        ConsensusCertificate {
+            public_key: key_pair.public_key.clone(),
+            signature,
+        }
+    }
+
+    /// Validates a certificate, returning a `PublicKey` if valid.
+    pub(super) fn validate(self, connection_id: ConnectionId) -> Result<PublicKey, crypto::Error> {
+        crypto::verify(connection_id.as_bytes(), &self.signature, &self.public_key)?;
+        Ok(self.public_key)
+    }
+}
+
+impl Display for ConsensusCertificate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "key:{}", self.public_key)
+    }
 }
 
 impl<P: Display> Display for Message<P> {
@@ -31,16 +101,67 @@ impl<P: Display> Display for Message<P> {
         match self {
             Message::Handshake {
                 network_name,
-                public_address,
+                public_addr,
                 protocol_version,
-            } => write!(
-                f,
-                "handshake: {}, public addr: {}, protocol_version: {}",
-                network_name, public_address, protocol_version,
-            ),
+                consensus_certificate,
+            } => {
+                write!(
+                    f,
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: ",
+                    network_name, public_addr, protocol_version
+                )?;
+
+                if let Some(cert) = consensus_certificate {
+                    write!(f, "{}", cert)
+                } else {
+                    f.write_str("-")
+                }
+            }
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
+}
+
+/// A classification system for networking messages.
+#[derive(Copy, Clone, Debug)]
+pub enum MessageKind {
+    /// Non-payload messages, like handshakes.
+    Protocol,
+    /// Messages directly related to consensus.
+    Consensus,
+    /// Deploys being gossiped.
+    DeployGossip,
+    /// Addresses being gossiped.
+    AddressGossip,
+    /// Deploys being transferred directly (via requests).
+    DeployTransfer,
+    /// Blocks for finality signatures being transferred directly (via requests and other means).
+    BlockTransfer,
+    /// Any other kind of payload (or missing classification).
+    Other,
+}
+
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageKind::Protocol => f.write_str("protocol"),
+            MessageKind::Consensus => f.write_str("consensus"),
+            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::AddressGossip => f.write_str("address_gossip"),
+            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::Other => f.write_str("other"),
+        }
+    }
+}
+
+/// Network message payload.
+///
+/// Payloads are what is transferred across the network outside of control messages from the
+/// networking component itself.
+pub trait Payload: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static {
+    /// Classifies the payload based on its contents.
+    fn classify(&self) -> MessageKind;
 }
 
 #[cfg(test)]
@@ -156,8 +277,10 @@ mod tests {
     fn v1_0_0_can_decode_current_handshake() {
         let modern_handshake = Message::<protocol::Message>::Handshake {
             network_name: "example-handshake".to_string(),
-            public_address: ([12, 34, 56, 78], 12346).into(),
+            public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
+            // TODO: Test _with_ handshake instead.
+            consensus_certificate: None,
         };
 
         let legacy_handshake: V1_0_0_Message = roundtrip_message(&modern_handshake);
@@ -188,12 +311,14 @@ mod tests {
         match modern_handshake {
             Message::Handshake {
                 network_name,
-                public_address,
+                public_addr,
                 protocol_version,
+                consensus_certificate,
             } => {
                 assert_eq!(network_name, "example-handshake");
-                assert_eq!(public_address, ([12, 34, 56, 78], 12346).into());
+                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
+                assert!(consensus_certificate.is_none());
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")
@@ -208,12 +333,14 @@ mod tests {
         match modern_handshake {
             Message::Handshake {
                 network_name,
-                public_address,
+                public_addr,
                 protocol_version,
+                consensus_certificate,
             } => {
                 assert_eq!(network_name, "serialization-test");
-                assert_eq!(public_address, ([12, 34, 56, 78], 12346).into());
+                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
+                assert!(consensus_certificate.is_none());
             }
             Message::Payload(_) => {
                 panic!("did not expect modern handshake to deserialize to payload")

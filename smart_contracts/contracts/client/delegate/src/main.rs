@@ -23,7 +23,7 @@ fn delegate(delegator: PublicKey, validator: PublicKey, amount: U512) {
 
 // Delegate contract.
 //
-// Accepts a delegator's public key, validator's public key, amount and a delgation rate.
+// Accepts a delegator's public key, validator's public key, amount and a delegation rate.
 // Issues an delegation request to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {

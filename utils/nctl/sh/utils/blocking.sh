@@ -74,7 +74,7 @@ function await_until_era_n()
 {
     local ERA=${1}
 
-    while [ "$ERA" -lt "$(get_chain_era)" ];
+    while [ "$(get_chain_era)" -lt "$ERA" ];
     do
         sleep 10.0
     done

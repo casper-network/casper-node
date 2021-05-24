@@ -267,3 +267,52 @@ pub mod execution_engine_testing_cargo_casper {
         )]
     });
 }
+
+pub mod chainspec_protocol_version {
+    use super::*;
+
+    pub static REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"(?m)(^version = )'([^']+)"#).unwrap());
+
+    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+        vec![
+            DependentFile::new(
+                "resources/production/chainspec.toml",
+                REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "node/src/components/rpc_server/rpcs/docs.rs",
+                Regex::new(r#"(?m)(DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =\s*ProtocolVersion::from_parts)\((\d+,\s*\d+,\s*\d+)\)"#).unwrap(),
+                rpcs_docs_rs_replacement,
+            ),
+        ]
+    });
+
+    fn chainspec_toml_replacement(updated_version: &str) -> String {
+        format!(r#"$1'{}"#, updated_version)
+    }
+
+    fn rpcs_docs_rs_replacement(updated_version: &str) -> String {
+        format!(r#"$1({})"#, updated_version.replace('.', ", "))
+    }
+}
+
+pub mod chainspec_activation_point {
+    use super::*;
+
+    pub static REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"(?m)(^activation_point =) (.+)"#).unwrap());
+
+    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+        vec![DependentFile::new(
+            "resources/production/chainspec.toml",
+            REGEX.clone(),
+            chainspec_toml_replacement,
+        )]
+    });
+
+    fn chainspec_toml_replacement(updated_activation_point: &str) -> String {
+        format!(r#"$1 {}"#, updated_activation_point)
+    }
+}

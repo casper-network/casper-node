@@ -8,7 +8,10 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus, gossiper, small_network::GossipedAddress},
+    components::{
+        consensus, gossiper,
+        small_network::{GossipedAddress, MessageKind, Payload},
+    },
     types::{Deploy, FinalitySignature, Item, Tag},
 };
 
@@ -41,6 +44,29 @@ pub enum Message {
     /// Finality signature.
     #[from]
     FinalitySignature(Box<FinalitySignature>),
+}
+
+impl Payload for Message {
+    #[inline]
+    fn classify(&self) -> MessageKind {
+        match self {
+            Message::Consensus(_) => MessageKind::Consensus,
+            Message::DeployGossiper(_) => MessageKind::DeployGossip,
+            Message::AddressGossiper(_) => MessageKind::AddressGossip,
+            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
+                match tag {
+                    Tag::Deploy => MessageKind::DeployTransfer,
+                    Tag::Block => MessageKind::BlockTransfer,
+                    // This is a weird message, which we should not encounter here?
+                    Tag::GossipedAddress => MessageKind::Other,
+                    Tag::BlockByHeight => MessageKind::BlockTransfer,
+                    Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
+                    Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
+                }
+            }
+            Message::FinalitySignature(_) => MessageKind::Consensus,
+        }
+    }
 }
 
 impl Message {

@@ -3,12 +3,12 @@ use num::rational::Ratio;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(test)]
 use crate::testing::TestRng;
-#[cfg(not(feature = "fast-sync"))]
 use crate::types::TimeDiff;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -26,43 +26,39 @@ pub(crate) struct HighwayConfig {
 }
 
 impl HighwayConfig {
-    /// Checks whether the values set in the config make sense panics if they don't.
-    pub fn validate_config(&self) {
+    /// Checks whether the values set in the config make sense and returns `false` if they don't.
+    pub(super) fn is_valid(&self) -> bool {
         if self.minimum_round_exponent > self.maximum_round_exponent {
-            panic!(
-                "Minimum round exponent is greater than the maximum round exponent.\n\
-                 Minimum round exponent: {min},\n\
-                 Maximum round exponent: {max}",
-                min = self.minimum_round_exponent,
-                max = self.maximum_round_exponent
+            error!(
+                min = %self.minimum_round_exponent,
+                max = %self.maximum_round_exponent,
+                "minimum round exponent is greater than the maximum round exponent",
             );
+            return false;
         }
 
         if self.finality_threshold_fraction <= Ratio::new(0, 1)
             || self.finality_threshold_fraction >= Ratio::new(1, 1)
         {
-            panic!(
-                "Finality threshold fraction is not in the range (0, 1)! Finality threshold: {ftt}",
-                ftt = self.finality_threshold_fraction
+            error!(
+                ftf = %self.finality_threshold_fraction,
+                "finality threshold fraction is not in the range (0, 1)",
             );
+            return false;
         }
 
         if self.reduced_reward_multiplier > Ratio::new(1, 1) {
-            panic!(
-                "Reduced reward multiplier is not in the range [0, 1]! Multiplier: {rrm}",
-                rrm = self.reduced_reward_multiplier
+            error!(
+                rrm = %self.reduced_reward_multiplier,
+                "reduced reward multiplier is not in the range [0, 1]",
             );
+            return false;
         }
-    }
 
-    /// Returns the length of the longest allowed round.
-    #[cfg(not(feature = "fast-sync"))]
-    pub fn max_round_length(&self) -> TimeDiff {
-        TimeDiff::from(1 << self.maximum_round_exponent)
+        true
     }
 
     /// Returns the length of the shortest allowed round.
-    #[cfg(not(feature = "fast-sync"))]
     pub fn min_round_length(&self) -> TimeDiff {
         TimeDiff::from(1 << self.minimum_round_exponent)
     }
@@ -138,5 +134,61 @@ mod tests {
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
+    }
+
+    #[test]
+    fn should_validate_round_exponents() {
+        let mut rng = crate::new_rng();
+        let mut highway_config = HighwayConfig::random(&mut rng);
+
+        // Should be valid for round exponents where min <= max.
+        highway_config.minimum_round_exponent = highway_config.maximum_round_exponent - 1;
+        assert!(highway_config.is_valid());
+        highway_config.minimum_round_exponent = highway_config.maximum_round_exponent;
+        assert!(highway_config.is_valid());
+
+        // Should be invalid for round exponents where min > max.
+        highway_config.minimum_round_exponent = highway_config.maximum_round_exponent + 1;
+        assert!(!highway_config.is_valid());
+    }
+
+    #[test]
+    fn should_validate_for_finality_threshold() {
+        let mut rng = crate::new_rng();
+        let mut highway_config = HighwayConfig::random(&mut rng);
+
+        // Should be valid for FTT > 0 and < 1.
+        highway_config.finality_threshold_fraction = Ratio::new(1, u64::MAX);
+        assert!(highway_config.is_valid());
+        highway_config.finality_threshold_fraction = Ratio::new(u64::MAX - 1, u64::MAX);
+        assert!(highway_config.is_valid());
+
+        // Should be invalid for FTT == 0 or >= 1.
+        highway_config.finality_threshold_fraction = Ratio::new(0, 1);
+        assert!(!highway_config.is_valid());
+        highway_config.finality_threshold_fraction = Ratio::new(1, 1);
+        assert!(!highway_config.is_valid());
+        highway_config.finality_threshold_fraction = Ratio::new(u64::MAX, u64::MAX);
+        assert!(!highway_config.is_valid());
+        highway_config.finality_threshold_fraction = Ratio::new(u64::MAX, u64::MAX - 1);
+        assert!(!highway_config.is_valid());
+    }
+
+    #[test]
+    fn should_validate_for_reduced_reward_multiplier() {
+        let mut rng = crate::new_rng();
+        let mut highway_config = HighwayConfig::random(&mut rng);
+
+        // Should be valid for 0 <= RRM <= 1.
+        highway_config.reduced_reward_multiplier = Ratio::new(0, 1);
+        assert!(highway_config.is_valid());
+        highway_config.reduced_reward_multiplier = Ratio::new(1, 1);
+        assert!(highway_config.is_valid());
+        highway_config.reduced_reward_multiplier = Ratio::new(u64::MAX, u64::MAX);
+        assert!(highway_config.is_valid());
+
+        // Should be invalid for RRM > 1.
+        highway_config.reduced_reward_multiplier = Ratio::new(u64::MAX, u64::MAX - 1);
+        assert!(!highway_config.is_valid());
     }
 }

@@ -9,7 +9,6 @@ mod list_named_keys;
 mod main_purse;
 mod mint_purse;
 mod revert;
-mod storage;
 mod subcall;
 mod transfer;
 mod transfer_purse_to_account;

@@ -34,7 +34,7 @@ pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
         name: "CasperLabs".to_string(),
         url: "https://casperlabs.io".to_string(),
@@ -83,8 +83,8 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
         "returns an EraInfo from the network",
     );
-    schema.push_without_params::<GetAuctionInfo>(
-        "returns the bids and validators as of the most recently added Block",
+    schema.push_with_optional_params::<GetAuctionInfo>(
+        "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block",
     );
 
     schema
@@ -101,9 +101,10 @@ pub trait DocExample {
     fn doc_example() -> &'static Self;
 }
 
-/// The main schema for the casper node's RPC server, compliant with https://spec.open-rpc.org.
+/// The main schema for the casper node's RPC server, compliant with
+/// [the OpenRPC Specification](https://spec.open-rpc.org).
 #[derive(Clone, Serialize, Deserialize, Debug)]
-struct OpenRpcSchema {
+pub struct OpenRpcSchema {
     openrpc: String,
     info: OpenRpcInfoField,
     servers: Vec<OpenRpcServerEntry>,

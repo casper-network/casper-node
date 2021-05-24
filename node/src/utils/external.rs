@@ -6,6 +6,7 @@
 use std::{
     fmt::{Debug, Display},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -185,11 +186,11 @@ impl Loadable for PKey<Private> {
     }
 }
 
-impl Loadable for SecretKey {
+impl Loadable for Arc<SecretKey> {
     type Error = crypto::Error;
 
     fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        AsymmetricKeyExt::from_file(path)
+        Ok(Arc::new(AsymmetricKeyExt::from_file(path)?))
     }
 }
 
