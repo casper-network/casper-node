@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractPackageHash,
-    ContractVersionKey, Key, URef,
+    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, URef,
 };
 
 use crate::{
@@ -94,6 +94,16 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     #[error("A locked contract cannot be upgraded")]
     LockedContract(ContractPackageHash),
+    #[error("Invalid contract package: {}", _0)]
+    InvalidContractPackage(ContractPackageHash),
+    #[error("Invalid contract: {}", _0)]
+    InvalidContract(ContractHash),
+    #[error("Invalid contract WASM: {}", _0)]
+    InvalidContractWasm(ContractWasmHash),
+    #[error("Unused arguments found in function call: Required {required} but found {unused} unused arguments")]
+    UnusedArgumentsFound { required: usize, unused: usize },
+    #[error("Missing argument: {name}")]
+    MissingArgument { name: String },
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

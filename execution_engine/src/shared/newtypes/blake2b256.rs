@@ -115,3 +115,11 @@ impl FromBytes for Blake2bHash {
         FromBytes::from_bytes(bytes).map(|(arr, rem)| (Blake2bHash(arr), rem))
     }
 }
+
+impl hex::FromHex for Blake2bHash {
+    type Error = hex::FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        Ok(Blake2bHash(hex::FromHex::from_hex(hex)?))
+    }
+}

@@ -1,0 +1,97 @@
+use std::{
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+use casper_engine_test_support::internal::LmdbWasmTestBuilder;
+use fs_extra::dir;
+use serde::{Deserialize, Serialize};
+
+use casper_execution_engine::{
+    core::engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig},
+    shared::newtypes::Blake2bHash,
+};
+use tempfile::TempDir;
+
+pub const RELEASE_1_2_0: &str = "release_1_2_0";
+const STATE_JSON_FILE: &str = "state.json";
+const FIXTURES_DIRECTORY: &str = "fixtures";
+
+fn path_to_lmdb_fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIRECTORY)
+}
+
+/// Contains serialized genesis config.
+#[derive(Serialize, Deserialize)]
+pub struct LmdbFixtureState {
+    pub genesis_request: RunGenesisRequest,
+    #[serde(
+        serialize_with = "hex::serialize",
+        deserialize_with = "hex::deserialize"
+    )]
+    pub post_state_hash: Blake2bHash,
+}
+
+/// Creates a [`LmdbWasmTestBuilder`] from a named fixture directory.
+///
+/// As part of this process a new temporary directory will be created to store LMDB files from given
+/// fixture, and a builder will be created using it.
+///
+/// This function returns a triple of the builder, a [`LmdbFixtureState`] which contains serialized
+/// genesis request for given fixture, and a temporary directory which has to be kept in scope.
+pub fn builder_from_global_state_fixture(
+    fixture_name: &str,
+) -> (LmdbWasmTestBuilder, LmdbFixtureState, TempDir) {
+    let source = path_to_lmdb_fixtures().join(fixture_name);
+    let to = tempfile::tempdir().expect("should create temp dir");
+    fs_extra::copy_items(&[source], &to, &dir::CopyOptions::default())
+        .expect("should copy global state fixture");
+
+    let path_to_state = to.path().join(fixture_name).join(STATE_JSON_FILE);
+    let lmdb_fixture_state: LmdbFixtureState =
+        serde_json::from_reader(File::open(&path_to_state).unwrap()).unwrap();
+    let path_to_gs = to.path().join(fixture_name);
+    (
+        LmdbWasmTestBuilder::open(
+            &path_to_gs,
+            EngineConfig::default(),
+            lmdb_fixture_state.post_state_hash,
+        ),
+        lmdb_fixture_state,
+        to,
+    )
+}
+
+/// Creates a new fixture with a name.
+///
+/// This process is currently manual. The process to do this is to check out a release branch, call
+/// this function to generate (i.e. `generate_fixture("release_1_3_0")`) and persist it in version
+/// control.
+pub fn generate_fixture(
+    name: &str,
+    genesis_request: RunGenesisRequest,
+    post_genesis_setup: impl FnOnce(&mut LmdbWasmTestBuilder),
+) -> Result<(), Box<dyn std::error::Error>> {
+    let lmdb_fixtures_root = path_to_lmdb_fixtures();
+    let fixture_root = lmdb_fixtures_root.join(name);
+
+    let engine_config = EngineConfig::default();
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
+
+    builder.run_genesis(&genesis_request);
+
+    // You can customize the fixture post genesis with a callable.
+    post_genesis_setup(&mut builder);
+
+    let post_state_hash = builder.get_post_state_hash();
+
+    let state = LmdbFixtureState {
+        genesis_request,
+        post_state_hash,
+    };
+    let serialized_state = serde_json::to_string_pretty(&state)?;
+    let mut f = File::create(&fixture_root.join(STATE_JSON_FILE))?;
+    f.write_all(serialized_state.as_bytes())?;
+    Ok(())
+}
