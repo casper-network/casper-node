@@ -7,7 +7,6 @@ mod metrics;
 mod tests;
 
 use datasize::DataSize;
-use futures::FutureExt;
 use prometheus::Registry;
 use smallvec::smallvec;
 use std::{
@@ -236,21 +235,25 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
         // We didn't gossip to as many peers as was requested.  Reduce the table entry's in-flight
         // count.
-        if peers.len() < requested_count {
-            self.table
-                .reduce_in_flight_count(&item_id, requested_count - peers.len());
+        let mut effects = Effects::new();
+        if peers.len() < requested_count
+            && self
+                .table
+                .reduce_in_flight_count(&item_id, requested_count - peers.len())
+        {
+            effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
         }
 
         // Set timeouts to check later that the specified peers all responded.
-        peers
-            .into_iter()
-            .map(|peer| {
+        for peer in peers {
+            effects.extend(
                 effect_builder
                     .set_timeout(self.gossip_timeout)
-                    .map(move |_| smallvec![Event::CheckGossipTimeout { item_id, peer }])
-                    .boxed()
-            })
-            .collect()
+                    .event(move |_| Event::CheckGossipTimeout { item_id, peer }),
+            )
+        }
+
+        effects
     }
 
     /// Checks that the given peer has responded to a previous gossip request we sent it.
@@ -476,12 +479,21 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
     /// Handles the `Err` case for a `Result` of attempting to get the item from the component
     /// responsible for holding it.
-    fn failed_to_get_from_holder(&mut self, item_id: T::Id, error: String) -> Effects<Event<T>> {
-        self.table.finish(&item_id);
+    fn failed_to_get_from_holder(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        item_id: T::Id,
+        error: String,
+    ) -> Effects<Event<T>> {
         error!(
             "finished gossiping {} since failed to get from store: {}",
             item_id, error
         );
+
+        if self.table.force_finish(&item_id) {
+            return effect_builder.announce_finished_gossiping(item_id).ignore();
+        }
+
         Effects::new()
     }
 
@@ -538,7 +550,7 @@ where
                 result,
             } => match *result {
                 Ok(item) => self.got_from_holder(effect_builder, item, requester),
-                Err(error) => self.failed_to_get_from_holder(item_id, error),
+                Err(error) => self.failed_to_get_from_holder(effect_builder, item_id, error),
             },
         };
         self.update_gossip_table_metrics();

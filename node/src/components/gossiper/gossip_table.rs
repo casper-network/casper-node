@@ -335,10 +335,12 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// Directly reduces the in-flight count of gossip requests for the given item by the given
     /// amount.
     ///
+    /// Returns `true` if there was a current entry for this data and it is now finished.
+    ///
     /// This should be called if, after trying to gossip to a given number of peers, we find that
     /// we've not been able to select enough peers.  Without this reduction, the given gossip item
     /// would never move from `current` to `finished`, and hence would never be purged.
-    pub(crate) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) {
+    pub(crate) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) -> bool {
         let should_finish = if let Some(state) = self.current.get_mut(data_id) {
             state.in_flight_count = state.in_flight_count.saturating_sub(reduce_by);
             debug!(
@@ -353,8 +355,10 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
 
         if should_finish {
             debug!(item=%data_id, "finished gossiping since no more peers to gossip to");
-            self.finish(data_id);
+            return self.force_finish(data_id);
         }
+
+        false
     }
 
     /// Checks if gossip request we sent timed out.
@@ -418,10 +422,14 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
 
     /// We have deemed the data not suitable for gossiping further.  The entry will be marked as
     /// `finished` and eventually be purged.
-    pub(crate) fn finish(&mut self, data_id: &T) {
+    ///
+    /// Returns `true` if there was a current entry for this data.
+    pub(crate) fn force_finish(&mut self, data_id: &T) -> bool {
         if self.current.remove(data_id).is_some() {
             self.insert_to_finished(data_id);
+            return true;
         }
+        false
     }
 
     /// Updates the entry under `data_id` in `self.current` and returns the action we should now
@@ -727,6 +735,31 @@ mod tests {
     }
 
     #[test]
+    fn should_terminate_via_reducing_in_flight_count() {
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+        let data_id: u64 = rng.gen();
+
+        let mut gossip_table = GossipTable::new(Config::default());
+
+        // Take the item close to the termination condition of in-flight count reaching 0.  It
+        // should remain unfinished.
+        let _ = gossip_table.new_complete_data(&data_id, None);
+        let limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
+        assert!(!gossip_table.reduce_in_flight_count(&data_id, limit));
+        assert!(!gossip_table.finished.contains(&data_id));
+
+        // Reduce the in-flight count to 0, which should cause the item to be moved to the
+        // `finished` collection.
+        assert!(gossip_table.reduce_in_flight_count(&data_id, 1));
+        assert!(gossip_table.finished.contains(&data_id));
+
+        // Check that calling this again has no effect and continues to return `false`.
+        assert!(!gossip_table.reduce_in_flight_count(&data_id, 1));
+        assert!(gossip_table.finished.contains(&data_id));
+    }
+
+    #[test]
     fn should_terminate_via_saturation() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
@@ -889,7 +922,7 @@ mod tests {
     }
 
     #[test]
-    fn should_manually_finish() {
+    fn should_force_finish() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
@@ -897,10 +930,13 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from node 0, then manually finish gossiping.
+        // Add new partial data from node 0, then forcibly finish gossiping.
         let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
-        gossip_table.finish(&data_id);
+        assert!(gossip_table.force_finish(&data_id));
         assert!(gossip_table.finished.contains(&data_id));
+
+        // Ensure forcibly finishing the same data returns `false`.
+        assert!(!gossip_table.force_finish(&data_id));
     }
 
     #[test]
@@ -924,9 +960,9 @@ mod tests {
         gossip_table.purge_finished();
         assert!(!gossip_table.finished.contains(&data_id));
 
-        // Add new complete data and manually finish.
+        // Add new complete data and forcibly finish.
         let _ = gossip_table.new_complete_data(&data_id, None);
-        gossip_table.finish(&data_id);
+        assert!(gossip_table.force_finish(&data_id));
         assert!(gossip_table.finished.contains(&data_id));
 
         // Time the finished data out and check it has been purged.
