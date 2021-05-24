@@ -102,6 +102,8 @@ pub enum Error {
     InvalidContractWasm(ContractWasmHash),
     #[error("Invalid arguments length. Expected length {expected} but actual length is {actual}")]
     InvalidArgumentsLength { expected: usize, actual: usize },
+    #[error("Invalid argument received. Expected {expected} but actual argument is {actual}")]
+    InvalidArgument { expected: String, actual: String },
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {
