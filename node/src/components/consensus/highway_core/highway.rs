@@ -248,7 +248,7 @@ impl<C: Context> Highway<C> {
     /// Returns the next missing dependency, or `None` if all dependencies of `pvv` are satisfied.
     ///
     /// If this returns `None`, `validate_vertex` can be called.
-    pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
+    pub(super) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
             Vertex::Evidence(_) | Vertex::Ping(_) => None,
             Vertex::Endorsements(endorsements) => {
