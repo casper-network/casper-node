@@ -74,13 +74,10 @@ mod internal {
         runtime_provider: &mut R,
         purse: URef,
     ) -> Result<(), Error> {
-        // let payment_purse = get_payment_purse(runtime_provider)?;
-
         if let Phase::Payment = runtime_provider.get_phase() {
             runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
             return Ok(());
         }
-
         Err(Error::SetRefundPurseCalledOutsidePayment)
     }
 
