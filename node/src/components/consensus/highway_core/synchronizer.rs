@@ -10,17 +10,17 @@ use tracing::{debug, info};
 
 use crate::{
     components::consensus::{
-        consensus_protocol::{ProposedBlock, ProtocolOutcome},
-        highway_core::{
-            highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
-            validators::ValidatorMap,
-        },
+        consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
+        protocols::highway::{HighwayConfig, HighwayMessage, ACTION_ID_VERTEX},
         traits::{Context, NodeIdT},
     },
     types::{TimeDiff, Timestamp},
 };
 
-use super::{HighwayConfig, HighwayMessage, ProtocolOutcomes, ACTION_ID_VERTEX};
+use super::{
+    highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
+    validators::ValidatorMap,
+};
 
 #[cfg(test)]
 mod tests;
