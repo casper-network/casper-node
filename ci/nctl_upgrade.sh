@@ -5,8 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 LAUNCHER_DIR="$ROOT_DIR/../"
 
 # NCTL compile requires casper-node-launcher
-pushd $LAUNCHER_DIR
-git clone https://github.com/CasperLabs/casper-node-launcher.git
+if [ ! -d "$LAUNCHER_DIR" ]; then
+    pushd $LAUNCHER_DIR
+    git clone https://github.com/CasperLabs/casper-node-launcher.git
+fi
 
 # Activate Environment
 pushd "$ROOT_DIR"
