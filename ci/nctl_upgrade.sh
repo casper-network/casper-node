@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+# Activate Environment
+pushd "$ROOT_DIR"
+source $(pwd)/utils/nctl/activate
+# Build, Setup, and Start NCTL
+nctl-compile
+
 function main() {
-    # Ensure were at the root of the project
-    ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
-    pushd "$ROOT_DIR"
-
-    # Activate nctl aliases
-    source "$ROOT_DIR"/utils/nctl/activate
-
     # Stage
     get_remotes
     stage_remotes "$1"
