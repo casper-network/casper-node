@@ -225,11 +225,16 @@ impl Reactor for TestReactor {
                 // We do not care about the announcement of new peers in this test.
                 Effects::new()
             }
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event =
                     Event::SmallNet(SmallNetworkEvent::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We do not care about the announcement of gossiping finished in this test.
+                Effects::new()
             }
         }
     }

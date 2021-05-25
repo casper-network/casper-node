@@ -452,7 +452,6 @@ impl reactor::Reactor for Reactor {
                 .map(|block_header| block_header.height() + 1)
                 .unwrap_or(0),
             chainspec_loader.chainspec().as_ref(),
-            config.block_proposer,
         )?;
 
         let initial_era = maybe_latest_block_header.as_ref().map_or_else(
@@ -907,30 +906,12 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let deploy_info = match deploy.deploy_info() {
-                    Ok(deploy_info) => deploy_info,
-                    Err(error) => {
-                        tracing::error!("Invalid deploy: {:?}", error);
-                        return Effects::new();
-                    }
-                };
-
-                let event = block_proposer::Event::BufferDeploy {
-                    hash: deploy.deploy_or_transfer_hash(),
-                    deploy_info: Box::new(deploy_info),
-                };
-                let mut effects =
-                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
-
                 let event = gossiper::Event::ItemReceived {
                     item_id: *deploy.id(),
                     source: source.clone(),
                 };
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    Event::DeployGossiper(event),
-                ));
+                let mut effects =
+                    self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event));
 
                 let event = fetcher::Event::GotRemotely {
                     item: deploy,
@@ -1023,15 +1004,30 @@ impl reactor::Reactor for Reactor {
                 });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::DeployGossiperAnnouncement(_ann) => {
-                unreachable!("the deploy gossiper should never make an announcement")
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
             }
-            Event::AddressGossiperAnnouncement(ann) => {
-                let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                gossiped_deploy_id,
+            )) => {
+                let reactor_event =
+                    Event::BlockProposer(block_proposer::Event::BufferDeploy(gossiped_deploy_id));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_address,
+            )) => {
                 let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
                     gossiped_address,
                 ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
+                // We don't care about completion of gossiping an address.
+                Effects::new()
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
                 let reactor_event_consensus = Event::Consensus(consensus::Event::BlockAdded(

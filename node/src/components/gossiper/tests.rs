@@ -354,7 +354,8 @@ impl reactor::Reactor for Reactor {
                 source: _,
             }) => Effects::new(),
             Event::DeployGossiperAnnouncement(_ann) => {
-                unreachable!("the deploy gossiper should never make an announcement")
+                // We do not care about deploy gossiper announcements in the gossiper test.
+                Effects::new()
             }
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,

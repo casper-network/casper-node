@@ -7,7 +7,6 @@ mod metrics;
 mod tests;
 
 use datasize::DataSize;
-use futures::FutureExt;
 use prometheus::Registry;
 use smallvec::smallvec;
 use std::{
@@ -180,16 +179,24 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         source: Source<NodeId>,
     ) -> Effects<Event<T>> {
         debug!(item=%item_id, %source, "received new gossip item");
-        if let Some(should_gossip) = self.table.new_complete_data(&item_id, source.node_id()) {
-            self.metrics.items_received.inc();
-            self.gossip(
-                effect_builder,
-                item_id,
-                should_gossip.count,
-                should_gossip.exclude_peers,
-            )
-        } else {
-            Effects::new()
+        match self.table.new_complete_data(&item_id, source.node_id()) {
+            GossipAction::ShouldGossip(should_gossip) => {
+                self.metrics.items_received.inc();
+                self.gossip(
+                    effect_builder,
+                    item_id,
+                    should_gossip.count,
+                    should_gossip.exclude_peers,
+                )
+            }
+            GossipAction::Noop => Effects::new(),
+            GossipAction::AnnounceFinished => {
+                effect_builder.announce_finished_gossiping(item_id).ignore()
+            }
+            GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
+                error!("can't be waiting for remainder since we hold the complete data");
+                Effects::new()
+            }
         }
     }
 
@@ -228,21 +235,25 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
         // We didn't gossip to as many peers as was requested.  Reduce the table entry's in-flight
         // count.
-        if peers.len() < requested_count {
-            self.table
-                .reduce_in_flight_count(&item_id, requested_count - peers.len());
+        let mut effects = Effects::new();
+        if peers.len() < requested_count
+            && self
+                .table
+                .reduce_in_flight_count(&item_id, requested_count - peers.len())
+        {
+            effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
         }
 
         // Set timeouts to check later that the specified peers all responded.
-        peers
-            .into_iter()
-            .map(|peer| {
+        for peer in peers {
+            effects.extend(
                 effect_builder
                     .set_timeout(self.gossip_timeout)
-                    .map(move |_| smallvec![Event::CheckGossipTimeout { item_id, peer }])
-                    .boxed()
-            })
-            .collect()
+                    .event(move |_| Event::CheckGossipTimeout { item_id, peer }),
+            )
+        }
+
+        effects
     }
 
     /// Checks that the given peer has responded to a previous gossip request we sent it.
@@ -260,6 +271,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 should_gossip.exclude_peers,
             ),
             GossipAction::Noop => Effects::new(),
+            GossipAction::AnnounceFinished => {
+                effect_builder.announce_finished_gossiping(item_id).ignore()
+            }
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
                 warn!(
                     "can't have gossiped if we don't hold the complete data - likely the timeout \
@@ -311,6 +325,10 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 effects
             }
 
+            GossipAction::AnnounceFinished => {
+                effect_builder.announce_finished_gossiping(item_id).ignore()
+            }
+
             GossipAction::Noop | GossipAction::AwaitingRemainder => Effects::new(),
         }
     }
@@ -323,9 +341,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         sender: NodeId,
     ) -> Effects<Event<T>> {
         let action = if T::ID_IS_COMPLETE_ITEM {
-            self.table
-                .new_complete_data(&item_id, Some(sender))
-                .map_or_else(|| GossipAction::Noop, GossipAction::ShouldGossip)
+            self.table.new_complete_data(&item_id, Some(sender))
         } else {
             self.table.new_partial_data(&item_id, sender)
         };
@@ -380,13 +396,21 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 );
                 effects
             }
-            GossipAction::Noop | GossipAction::AwaitingRemainder => {
+            GossipAction::Noop
+            | GossipAction::AwaitingRemainder
+            | GossipAction::AnnounceFinished => {
                 // Send a response to the sender indicating we already hold the item.
                 let reply = Message::GossipResponse {
                     item_id,
                     is_already_held: true,
                 };
-                effect_builder.send_message(sender, reply).ignore()
+                let mut effects = effect_builder.send_message(sender, reply).ignore();
+
+                if action == GossipAction::AnnounceFinished {
+                    effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
+                }
+
+                effects
             }
         }
     }
@@ -419,6 +443,9 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 should_gossip.exclude_peers,
             )),
             GossipAction::Noop => (),
+            GossipAction::AnnounceFinished => {
+                effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore())
+            }
             GossipAction::GetRemainder { .. } => {
                 error!("shouldn't try to get remainder as result of receiving a gossip response");
             }
@@ -452,12 +479,26 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
     /// Handles the `Err` case for a `Result` of attempting to get the item from the component
     /// responsible for holding it.
-    fn failed_to_get_from_holder(&mut self, item_id: T::Id, error: String) -> Effects<Event<T>> {
-        self.table.finish(&item_id);
+    fn failed_to_get_from_holder(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        item_id: T::Id,
+        error: String,
+    ) -> Effects<Event<T>> {
         error!(
             "finished gossiping {} since failed to get from store: {}",
             item_id, error
         );
+
+        if self.table.force_finish(&item_id) {
+            // Currently the only consumer of the `FinishedGossiping` announcement is the
+            // `BlockProposer`, and it's not a problem to it if the deploy is unavailable in storage
+            // as it should fail to retrieve the deploy too and hence not propose it.  If we need to
+            // differentiate between successful termination of gossiping and this forced termination
+            // in the future, we can emit a new announcement variant here.
+            return effect_builder.announce_finished_gossiping(item_id).ignore();
+        }
+
         Effects::new()
     }
 
@@ -514,7 +555,7 @@ where
                 result,
             } => match *result {
                 Ok(item) => self.got_from_holder(effect_builder, item, requester),
-                Err(error) => self.failed_to_get_from_holder(item_id, error),
+                Err(error) => self.failed_to_get_from_holder(effect_builder, item_id, error),
             },
         };
         self.update_gossip_table_metrics();
