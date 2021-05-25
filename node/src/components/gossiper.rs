@@ -491,6 +491,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         );
 
         if self.table.force_finish(&item_id) {
+            // Currently the only consumer of the `FinishedGossiping` announcement is the
+            // `BlockProposer`, and it's not a problem to it if the deploy is unavailable in storage
+            // as it should fail to retrieve the deploy too and hence not propose it.  If we need to
+            // differentiate between successful termination of gossiping and this forced termination
+            // in the future, we can emit a new announcement variant here.
             return effect_builder.announce_finished_gossiping(item_id).ignore();
         }
 
