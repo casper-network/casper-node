@@ -278,6 +278,8 @@ steps:
     AWS_SECRET_ACCESS_KEY:
       from_secret: put-drone-aws-sk
   commands:
+    - "python3 -m pip install supervisor toml"
+    - "apt update && apt install lsof -y"
     - "bash -i ./ci/nctl_upgrade.sh"
   when:
     branch:
