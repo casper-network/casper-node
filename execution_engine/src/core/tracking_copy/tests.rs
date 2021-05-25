@@ -17,6 +17,7 @@ use super::{
 use crate::{
     core::{
         engine_state::{op::Op, EngineConfig},
+        runtime_context::local_key,
         ValidationError,
     },
     shared::{
@@ -314,7 +315,10 @@ proptest! {
     #[test]
     fn query_empty_path(k in key_arb(), missing_key in key_arb(), v in stored_value_arb()) {
         let correlation_id = CorrelationId::new();
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, v.to_owned())]).unwrap();
+
+        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+
+        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, value.to_owned())]).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
@@ -351,9 +355,11 @@ proptest! {
         ));
         let contract_key = Key::Hash(hash);
 
+        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
-            &[(k, v.to_owned()), (contract_key, contract)]
+            &[(k, value.to_owned()), (contract_key, contract)]
         ).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -369,7 +375,6 @@ proptest! {
             assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
         }
     }
-
 
     #[test]
     fn query_account_state(
@@ -393,9 +398,11 @@ proptest! {
         );
         let account_key = Key::Account(address);
 
+        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
-            &[(k, v.to_owned()), (account_key, StoredValue::Account(account))],
+            &[(k, value.to_owned()), (account_key, StoredValue::Account(account))],
         ).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -450,8 +457,10 @@ proptest! {
         );
         let account_key = Key::Account(address);
 
+        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[
-            (k, v.to_owned()),
+            (k, value.to_owned()),
             (contract_key, contract),
             (account_key, StoredValue::Account(account)),
         ]).unwrap();

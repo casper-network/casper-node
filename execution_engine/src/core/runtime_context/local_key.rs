@@ -82,3 +82,18 @@ pub fn monkey_patch(key: Key, stored_value: StoredValue) -> Result<StoredValue, 
         (_, stored_value) => Ok(stored_value),
     }
 }
+
+/// Wraps a [`StoredValue`] into [`LocalKeyValue`] only if it contains a [`CLValue`] variant.
+///
+/// Used only for testing purposes.
+#[cfg(test)]
+pub fn monkey_patch_into(key: Key, stored_value: StoredValue) -> Result<StoredValue, CLValueError> {
+    match (key, stored_value) {
+        (Key::Local(_), StoredValue::CLValue(cl_value)) => {
+            let wrapped_local_key = LocalKeyValue::new(cl_value, vec![0; 32], vec![255; 32]);
+            let wrapped_cl_value = CLValue::from_t(wrapped_local_key)?;
+            Ok(StoredValue::CLValue(wrapped_cl_value))
+        }
+        (_, stored_value) => Ok(stored_value),
+    }
+}
