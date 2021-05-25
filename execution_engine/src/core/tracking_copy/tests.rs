@@ -318,7 +318,7 @@ proptest! {
 
         let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
 
-        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, value.to_owned())]).unwrap();
+        let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, value)]).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
@@ -359,7 +359,7 @@ proptest! {
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
-            &[(k, value.to_owned()), (contract_key, contract)]
+            &[(k, value), (contract_key, contract)]
         ).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -402,7 +402,7 @@ proptest! {
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
-            &[(k, value.to_owned()), (account_key, StoredValue::Account(account))],
+            &[(k, value), (account_key, StoredValue::Account(account))],
         ).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -460,7 +460,7 @@ proptest! {
         let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[
-            (k, value.to_owned()),
+            (k, value),
             (contract_key, contract),
             (account_key, StoredValue::Account(account)),
         ]).unwrap();
