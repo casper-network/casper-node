@@ -2,10 +2,17 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+LAUNCHER_DIR="$ROOT_DIR/../"
+
+# NCTL compile requires casper-node-launcher
+pushd $LAUNCHER_DIR
+git clone https://github.com/CasperLabs/casper-node-launcher.git
+
 # Activate Environment
 pushd "$ROOT_DIR"
 source $(pwd)/utils/nctl/activate
-# Build, Setup, and Start NCTL
+
+# NCTL Build
 nctl-compile
 
 function main() {
