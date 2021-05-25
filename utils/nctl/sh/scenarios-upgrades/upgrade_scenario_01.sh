@@ -176,7 +176,7 @@ function _step_07()
     await_n_blocks 1
 
     log "... starting nodes"
-    TRUSTED_HASH="$(get_chain_first_block_hash)"
+    TRUSTED_HASH="$(get_chain_latest_block_hash)"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
