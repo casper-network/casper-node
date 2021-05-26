@@ -243,7 +243,8 @@ function _step_08()
         NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
         if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
-            log "ERROR :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
+            log "ERROR :: BLOCK HASH = $N1_BLOCK_HASH"
+            log "ERROR :: $NODE_ID  :: ROOT HASH = $NX_STATE_ROOT_HASH :: N1 ROOT HASH = $N1_STATE_ROOT_HASH"
             exit 1
         else
             log "HASH MATCH :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
