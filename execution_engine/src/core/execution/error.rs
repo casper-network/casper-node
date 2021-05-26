@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, URef,
+    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractPackageHash,
+    ContractVersionKey, Key, URef,
 };
 
 use crate::{
@@ -94,16 +94,6 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     #[error("A locked contract cannot be upgraded")]
     LockedContract(ContractPackageHash),
-    #[error("Invalid contract package: {}", _0)]
-    InvalidContractPackage(ContractPackageHash),
-    #[error("Invalid contract: {}", _0)]
-    InvalidContract(ContractHash),
-    #[error("Invalid contract WASM: {}", _0)]
-    InvalidContractWasm(ContractWasmHash),
-    #[error("Invalid arguments length. Expected length {expected} but actual length is {actual}")]
-    InvalidArgumentsLength { expected: usize, actual: usize },
-    #[error("Invalid argument received. Expected {expected} but actual argument is {actual}")]
-    InvalidArgument { expected: String, actual: String },
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

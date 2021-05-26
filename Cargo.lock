@@ -733,8 +733,6 @@ dependencies = [
  "criterion",
  "crossbeam-channel 0.5.1",
  "env_logger",
- "gh-1470-regression",
- "gh-1470-regression-call",
  "log 0.4.14",
  "num-rational 0.4.0",
  "num-traits",
@@ -2283,23 +2281,6 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "wasi 0.10.2+wasi-snapshot-preview1",
-]
-
-[[package]]
-name = "gh-1470-regression"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "gh-1470-regression-call"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "gh-1470-regression",
 ]
 
 [[package]]

@@ -1,10 +1,9 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
 extern crate alloc;
 
-use alloc::string::{String, ToString};
+use alloc::{string::ToString, vec::Vec};
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
@@ -13,14 +12,13 @@ use core::convert::TryInto;
 
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, CLTyped, ContractPackageHash, Key, Parameter, URef,
+    CLType, ContractPackageHash, Key, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_PACKAGE_HASH_KEY_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_ACCESS_KEY_NAME: &str = "do_nothing_access";
 const CONTRACT_VERSION: &str = "contract_version";
-const ARG_PURSE_NAME: &str = "purse_name";
 
 #[no_mangle]
 pub extern "C" fn delegate() {
@@ -35,7 +33,7 @@ pub extern "C" fn call() {
 
         let delegate = EntryPoint::new(
             ENTRY_FUNCTION_NAME.to_string(),
-            vec![Parameter::new(ARG_PURSE_NAME, String::cl_type())],
+            Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Session,

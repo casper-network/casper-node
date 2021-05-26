@@ -57,6 +57,7 @@ export function call(): void {
         new Pair(ARG_AMOUNT, CLValue.fromU512(amount)),
         new Pair(ARG_DELEGATOR, CLValue.fromPublicKey(delegator)),
         new Pair(ARG_VALIDATOR, CLValue.fromPublicKey(validator)),
+        new Pair(ARG_AMOUNT, CLValue.fromU512(amount)),
     ]);
     CL.callContract(auction, METHOD_UNDELEGATE, runtimeArgs);
 }

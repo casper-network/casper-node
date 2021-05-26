@@ -18,11 +18,7 @@ export function delegate(): void {
 
 export function call(): void {
   let entryPoints = new CL.EntryPoints();
-
-  let entryPointArgs = new Array<Pair<String, CLType>>();
-  entryPointArgs.push(new Pair<String, CLType>("purse_name", new CLType(CLTypeTag.String)));
-
-  let entryPoint = new CL.EntryPoint("delegate", entryPointArgs, new CLType(CLTypeTag.Unit), new CL.PublicAccess(), CL.EntryPointType.Contract);
+  let entryPoint = new CL.EntryPoint("delegate", new Array<Pair<String, CLType>>(), new CLType(CLTypeTag.Unit), new CL.PublicAccess(), CL.EntryPointType.Contract);
   entryPoints.addEntryPoint(entryPoint);
 
   const result = CL.newContract(
