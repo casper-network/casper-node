@@ -11,7 +11,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::types::NodeId;
 
@@ -267,7 +267,7 @@ async fn worker(
                     // reserved bandwidth. In this case, do not limit at all.
                     if !logged_uninitialized {
                         logged_uninitialized = true;
-                        warn!("empty set of validators, not limiting bandwidth at all");
+                        info!("empty set of validators, not limiting bandwidth at all");
                         continue;
                     }
                 }
