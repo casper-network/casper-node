@@ -1,4 +1,6 @@
-use super::*;
+use std::collections::BTreeSet;
+
+use derive_more::Display;
 
 use crate::components::consensus::{
     highway_core::{
@@ -6,11 +8,13 @@ use crate::components::consensus::{
         highway_testing::TEST_INSTANCE_ID,
         state::{tests::*, State},
     },
-    protocols::highway::tests::NodeId,
     BlockContext,
 };
 
-use std::collections::BTreeSet;
+use super::*;
+
+#[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
+pub(crate) struct NodeId(pub u8);
 
 #[test]
 fn purge_vertices() {

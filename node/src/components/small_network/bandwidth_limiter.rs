@@ -11,7 +11,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
 };
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::types::NodeId;
 
@@ -240,6 +240,9 @@ async fn worker(
     let mut bytes_available: i64 = 0;
     let mut last_refill: Instant = Instant::now();
 
+    // Whether or not we emitted a warning that the limiter is currently implicitly disabled.
+    let mut logged_uninitialized = false;
+
     while let Some(msg) = receiver.recv().await {
         match msg {
             ClassBasedCommand::UpdateValidators {
@@ -248,12 +251,27 @@ async fn worker(
             } => {
                 active_validators = new_active_validators;
                 upcoming_validators = new_upcoming_validators;
+                debug!(
+                    ?active_validators,
+                    ?upcoming_validators,
+                    "bandwidth classes updated"
+                );
             }
             ClassBasedCommand::RequestBandwidth {
                 num_bytes,
                 id,
                 responder,
             } => {
+                if active_validators.is_empty() && upcoming_validators.is_empty() {
+                    // It is likely that we have not been initialized, thus no node is getting the
+                    // reserved bandwidth. In this case, do not limit at all.
+                    if !logged_uninitialized {
+                        logged_uninitialized = true;
+                        info!("empty set of validators, not limiting bandwidth at all");
+                    }
+                    continue;
+                }
+
                 let bandwidth_class = if let Some(ref validator_id) = id.validator_id {
                     if active_validators.contains(validator_id) {
                         BandwidthClass::ActiveValidator
@@ -318,7 +336,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::{BandwidthLimiter, ClassBasedLimiter, NodeId, PublicKey, Unlimited};
-    use crate::crypto::AsymmetricKeyExt;
+    use crate::{crypto::AsymmetricKeyExt, testing::init_logging};
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
@@ -369,7 +387,11 @@ mod tests {
         let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
 
-        limiter.update_validators(HashSet::new(), HashSet::new());
+        // We insert one unrelated active validator to avoid triggering the automatic disabling of
+        // the limiter in case there are no active validators.
+        let mut active_validators = HashSet::new();
+        active_validators.insert(PublicKey::random(&mut rng));
+        limiter.update_validators(active_validators, HashSet::new());
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
@@ -404,6 +426,12 @@ mod tests {
 
         let start = Instant::now();
 
+        // We insert one unrelated active validator to avoid triggering the automatic disabling of
+        // the limiter in case there are no active validators.
+        let mut active_validators = HashSet::new();
+        active_validators.insert(PublicKey::random(&mut rng));
+        limiter.update_validators(active_validators, HashSet::new());
+
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
@@ -425,5 +453,39 @@ mod tests {
         let diff = end - start;
         assert!(diff >= Duration::from_secs(5));
         assert!(diff <= Duration::from_secs(6));
+    }
+
+    #[tokio::test]
+    async fn inactive_validators_unlimited_when_no_validators_known() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+
+        let validator_id = PublicKey::random(&mut rng);
+        let limiter = ClassBasedLimiter::new(1_000);
+
+        limiter.update_validators(HashSet::new(), HashSet::new());
+
+        // Try with non-validators or unknown nodes.
+        let handles = vec![
+            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id)),
+            limiter.create_handle(NodeId::random(&mut rng), None),
+        ];
+
+        for handle in handles {
+            let start = Instant::now();
+
+            // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
+            handle.request_allowance(1000).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(2000).await;
+            handle.request_allowance(4000).await;
+            handle.request_allowance(1).await;
+            let end = Instant::now();
+
+            let diff = end - start;
+            assert!(diff <= SHORT_TIME);
+        }
     }
 }

@@ -1,7 +1,6 @@
 pub(crate) mod config;
 mod participation;
 mod round_success_meter;
-mod synchronizer;
 #[cfg(test)]
 mod tests;
 
@@ -36,6 +35,7 @@ use crate::{
             },
             state,
             state::{Observation, Panorama},
+            synchronizer::Synchronizer,
             validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
@@ -45,7 +45,7 @@ use crate::{
 };
 
 pub use self::config::Config as HighwayConfig;
-use self::{round_success_meter::RoundSuccessMeter, synchronizer::Synchronizer};
+use self::round_success_meter::RoundSuccessMeter;
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
@@ -67,7 +67,7 @@ const TIMER_ID_SYNCHRONIZER_LOG: TimerId = TimerId(5);
 const TIMER_ID_PROGRESS_ALERT: TimerId = TimerId(6);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
-const ACTION_ID_VERTEX: ActionId = ActionId(0);
+pub(crate) const ACTION_ID_VERTEX: ActionId = ActionId(0);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
@@ -562,14 +562,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-enum HighwayMessage<C: Context> {
+pub(crate) enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
     LatestStateRequest(Panorama<C>),
 }
 
 impl<C: Context> HighwayMessage<C> {
-    fn serialize(&self) -> Vec<u8> {
+    pub(crate) fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).expect("should serialize message")
     }
 }
