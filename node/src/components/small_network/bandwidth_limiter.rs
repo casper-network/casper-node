@@ -336,7 +336,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::{BandwidthLimiter, ClassBasedLimiter, NodeId, PublicKey, Unlimited};
-    use crate::crypto::AsymmetricKeyExt;
+    use crate::{crypto::AsymmetricKeyExt, testing::init_logging};
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
@@ -387,7 +387,11 @@ mod tests {
         let validator_id = PublicKey::random(&mut rng);
         let limiter = ClassBasedLimiter::new(1_000);
 
-        limiter.update_validators(HashSet::new(), HashSet::new());
+        // We insert one unrelated active validator to avoid triggering the automatic disabling of
+        // the limiter in case there are no active validators.
+        let mut active_validators = HashSet::new();
+        active_validators.insert(PublicKey::random(&mut rng));
+        limiter.update_validators(active_validators, HashSet::new());
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
@@ -422,6 +426,12 @@ mod tests {
 
         let start = Instant::now();
 
+        // We insert one unrelated active validator to avoid triggering the automatic disabling of
+        // the limiter in case there are no active validators.
+        let mut active_validators = HashSet::new();
+        active_validators.insert(PublicKey::random(&mut rng));
+        limiter.update_validators(active_validators, HashSet::new());
+
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
@@ -443,5 +453,39 @@ mod tests {
         let diff = end - start;
         assert!(diff >= Duration::from_secs(5));
         assert!(diff <= Duration::from_secs(6));
+    }
+
+    #[tokio::test]
+    async fn inactive_validators_unlimited_when_no_validators_known() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+
+        let validator_id = PublicKey::random(&mut rng);
+        let limiter = ClassBasedLimiter::new(1_000);
+
+        limiter.update_validators(HashSet::new(), HashSet::new());
+
+        // Try with non-validators or unknown nodes.
+        let handles = vec![
+            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id)),
+            limiter.create_handle(NodeId::random(&mut rng), None),
+        ];
+
+        for handle in handles {
+            let start = Instant::now();
+
+            // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
+            handle.request_allowance(1000).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(1000).await;
+            handle.request_allowance(2000).await;
+            handle.request_allowance(4000).await;
+            handle.request_allowance(1).await;
+            let end = Instant::now();
+
+            let diff = end - start;
+            assert!(diff <= SHORT_TIME);
+        }
     }
 }
