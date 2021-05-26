@@ -414,14 +414,6 @@ impl reactor::Reactor for Reactor {
             network_identity,
             chainspec_loader.chainspec(),
         )?;
-        let (small_network, small_network_effects) = SmallNetwork::new(
-            event_queue,
-            config.network,
-            Some(WithDir::new(&root, &config.consensus)),
-            registry,
-            small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
-        )?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -459,6 +451,17 @@ impl reactor::Reactor for Reactor {
             || chainspec_loader.initial_era(),
             |block_header| block_header.next_block_era_id(),
         );
+
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network,
+            Some(WithDir::new(&root, &config.consensus)),
+            registry,
+            small_network_identity,
+            chainspec_loader.chainspec().as_ref(),
+            Some(initial_era),
+        )?;
+
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
 
         let maybe_next_activation_point = chainspec_loader

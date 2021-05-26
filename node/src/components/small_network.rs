@@ -101,7 +101,7 @@ use crate::{
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
-    types::{Block, NodeId},
+    types::NodeId,
     utils::{self, WithDir},
     NodeRng,
 };
@@ -208,6 +208,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
+        initial_era: Option<EraId>,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -320,7 +321,13 @@ where
             .into_iter()
             .filter_map(|addr| component.outgoing_manager.learn_addr(addr, true, now))
             .collect();
-        let mut effects = component.process_dial_requests(dial_requests);
+
+        // Initialize the known validator set with the active era, if given.
+        let mut effects = initial_era
+            .map(|era_id| component.handle_active_era_change(effect_builder, era_id))
+            .unwrap_or_default();
+
+        effects.extend(component.process_dial_requests(dial_requests));
 
         // Start broadcasting our public listening address.
         effects.extend(
@@ -741,7 +748,7 @@ where
     fn handle_active_era_change(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: Box<Block>,
+        era_id: EraId,
     ) -> Effects<Event<P>>
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
@@ -752,16 +759,6 @@ where
         // `next`: Era that will begin shortly.
         // `upcoming`: Era after `next`.
 
-        let era_id = block.header().era_id();
-        let next: HashSet<PublicKey> = block
-            .header()
-            .next_era_validator_weights()
-            .map(|validators| validators.keys().map(Clone::clone).collect())
-            .unwrap_or_else(|| {
-                error!("did not expect switch block to not contain validators");
-                Default::default()
-            });
-
         async move {
             let current: HashSet<PublicKey> = effect_builder
                 .get_era_validators(era_id)
@@ -769,6 +766,14 @@ where
                 .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
                 .unwrap_or_else(|| {
                     warn!("could not determine current era validators");
+                    Default::default()
+                });
+            let next: HashSet<PublicKey> = effect_builder
+                .get_era_validators(era_id.successor())
+                .await
+                .map(|validators| validators.into_iter().map(|(k, _)| k).collect())
+                .unwrap_or_else(|| {
+                    warn!("could not determine next era validators");
                     Default::default()
                 });
             let upcoming_validators: HashSet<PublicKey> = effect_builder
@@ -1002,7 +1007,7 @@ where
 
                     if era_id > self.highest_era_seen {
                         self.highest_era_seen = era_id;
-                        self.handle_active_era_change(effect_builder, block)
+                        self.handle_active_era_change(effect_builder, era_id)
                     } else {
                         debug!(highest_era_seen=%self.highest_era_seen, %era_id,
                                "ignoring era, as it is not the highest seen");
