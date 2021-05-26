@@ -268,8 +268,8 @@ async fn worker(
                     if !logged_uninitialized {
                         logged_uninitialized = true;
                         info!("empty set of validators, not limiting bandwidth at all");
-                        continue;
                     }
+                    continue;
                 }
 
                 let bandwidth_class = if let Some(ref validator_id) = id.validator_id {
