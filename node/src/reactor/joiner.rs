@@ -395,6 +395,7 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec_loader.chainspec().as_ref(),
+            None,
         )?;
 
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, &registry)?;
