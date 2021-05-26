@@ -35,9 +35,9 @@ use casper_types::{
         },
         mint::{
             self, ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE,
-            ARG_TARGET, ARG_TO, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT,
-            METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER,
-            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+            ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
+            METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY,
+            TOTAL_SUPPLY_KEY,
         },
         standard_payment::METHOD_PAY,
     },
@@ -1331,7 +1331,6 @@ where
         let entry_point = EntryPoint::new(
             METHOD_TRANSFER,
             vec![
-                Parameter::new(ARG_TO, CLType::Option(Box::new(CLType::ByteArray(32)))),
                 Parameter::new(ARG_SOURCE, CLType::URef),
                 Parameter::new(ARG_TARGET, CLType::URef),
                 Parameter::new(ARG_AMOUNT, CLType::U512),
@@ -1418,7 +1417,7 @@ where
         let entry_point = EntryPoint::new(
             METHOD_ADD_BID,
             vec![
-                Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type()),
+                Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
                 Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
             ],
@@ -1431,7 +1430,7 @@ where
         let entry_point = EntryPoint::new(
             METHOD_WITHDRAW_BID,
             vec![
-                Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type()),
+                Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
             ],
             U512::cl_type(),
@@ -1456,8 +1455,8 @@ where
         let entry_point = EntryPoint::new(
             METHOD_UNDELEGATE,
             vec![
-                Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
-                Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
+                Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
+                Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
             ],
             U512::cl_type(),

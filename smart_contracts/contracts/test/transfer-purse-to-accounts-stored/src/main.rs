@@ -3,14 +3,14 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::ToString, vec};
+use alloc::{string::ToString, vec};
 
+use alloc::boxed::Box;
 use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
-    account::AccountHash,
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    CLType, CLTyped, U512,
+    CLType,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "transfer";
@@ -39,7 +39,10 @@ pub extern "C" fn call() {
                 Parameter::new(ARG_SOURCE, CLType::URef),
                 Parameter::new(
                     ARG_TARGETS,
-                    <BTreeMap<AccountHash, (U512, Option<u64>)>>::cl_type(),
+                    CLType::Map {
+                        key: Box::new(CLType::ByteArray(32)),
+                        value: Box::new(CLType::U512),
+                    },
                 ),
             ],
             CLType::Unit,

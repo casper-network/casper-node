@@ -1341,11 +1341,6 @@ impl Parameter {
     pub fn cl_type(&self) -> &CLType {
         &self.cl_type
     }
-
-    /// Get a reference to the parameter's name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
 }
 
 impl From<Parameter> for (String, CLType) {
