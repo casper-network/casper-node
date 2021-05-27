@@ -13,7 +13,7 @@ type Committee = Vec<ValidatorIndex>;
 /// A list containing the earliest level-n messages of each member of some committee, for some n.
 ///
 /// A summit is a sequence of committees of validators, where each member of the level-n committee
-/// has produced a unit that can see level-(n-1) units by a quorum of the level-n committe.
+/// has produced a unit that can see level-(n-1) units by a quorum of the level-n committee.
 ///
 /// The level-n horizon maps each validator of a level-n committee to their earliest level-n unit.
 /// From a level-n horizon, the level-(n+1) committee and horizon can be computed.

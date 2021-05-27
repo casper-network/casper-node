@@ -828,11 +828,10 @@ fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    let block_timestamp = block.header().timestamp();
     effect_builder
-        .validate_block(peer.clone(), block, block_timestamp)
-        .event(move |(found, block)| {
-            if found {
+        .validate_block(peer.clone(), block.clone())
+        .event(move |valid| {
+            if valid {
                 Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))
             } else {
                 Event::GetDeploysResult(DeploysResult::NotFound(Box::new(block), peer))

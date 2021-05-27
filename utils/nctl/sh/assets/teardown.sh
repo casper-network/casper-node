@@ -24,13 +24,18 @@ export NET_ID=${NET_ID:-1}
 
 log "net-$NET_ID: asset tear-down begins ... please wait"
 
-log "... stopping nodes"
+# Stop network (if running).
 source "$NCTL"/sh/node/stop.sh node=all
 
-if [ "$NCTL_DAEMON_TYPE" = "supervisord" ]; then
-    log "... stopping supervisord"
-    do_supervisord_kill
+# Delete assets.
+if [ -d "$(get_path_to_net)" ]; then
+    log "... deleting files"
+    rm -rf "$(get_path_to_net)"
+    rm -rf "$NCTL"/dumps
 fi
+
+# Allow machine to chill.
+sleep 2.0
 
 log "... deleting files"
 rm -rf "$(get_path_to_net)"

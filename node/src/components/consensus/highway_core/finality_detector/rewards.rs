@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use super::Horizon;
 use crate::{
     components::consensus::{
@@ -76,9 +78,9 @@ fn compute_rewards_for<C: Context>(
 
     // Collect the block rewards for each validator who is a member of at least one summit.
     max_quorum
-        .iter()
+        .enumerate()
         .zip(state.weights())
-        .map(|(quorum, weight)| {
+        .map(|((validator_index, quorum), weight)| {
             // If the summit's quorum was not enough to finalize the block, rewards are reduced.
             // A level-1 summit with quorum  q  has FTT  q - 50%, so we need  q - 50% > f.
             let finality_factor = if *quorum > state.total_weight() / 2 + faulty_w {
@@ -86,6 +88,15 @@ fn compute_rewards_for<C: Context>(
             } else {
                 state.params().reduced_block_reward()
             };
+            trace!(
+                validator_index = validator_index.0,
+                finality_factor,
+                quorum = quorum.0,
+                assigned_weight = assigned_weight.0,
+                weight = weight.0,
+                timestamp = %proposal_unit.timestamp,
+                "block reward calculation"
+            );
             // Rewards are proportional to the quorum and to the validator's weight.
             // Since  quorum <= assigned_weight  and  weight <= total_weight,  this won't overflow.
             (u128::from(finality_factor) * u128::from(*quorum) / u128::from(assigned_weight)

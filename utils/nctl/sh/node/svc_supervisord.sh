@@ -137,20 +137,6 @@ function do_supervisord_start()
 # Arguments:
 #   Network ordinal identifier.
 #######################################
-function do_supervisord_kill()
-{
-    if [ -e "$(get_path_net_supervisord_sock)" ]; then
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all &>/dev/null
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown &>/dev/null
-    fi
-}
-
-#######################################
-# Sets entry in node's config file.
-# Arguments:
-#   Node ordinal identifier.
-#   A trused block hash from which to build chain state.
-#######################################
 function _update_node_config_on_start()
 {
     local FILEPATH=${1}

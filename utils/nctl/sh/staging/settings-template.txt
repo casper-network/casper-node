@@ -1,0 +1,22 @@
+# Short name of stage to be used in logging.
+export NCTL_STAGE_SHORT_NAME="YOUR-SHORT-NAME"
+
+# One line description of stage.
+export NCTL_STAGE_DESCRIPTION="YOUR-DESCRIPTION"
+
+# Map: version <-> commit hash.
+export NCTL_STAGE_TARGETS=(
+    "1_0_0:YOUR_COMMIT_HASH_1|local"
+    "1_0_1:YOUR_COMMIT_HASH_2|local"
+    "1_1_0:YOUR_COMMIT_HASH_3|local"
+    "2_0_0:YOUR_COMMIT_HASH_4|local"
+)
+
+# EXAMPLE
+# export NCTL_STAGE_SHORT_NAME="gslade-01"
+# export NCTL_STAGE_DESCRIPTION="Testing upgrade in response to a prickly consensus fault"
+# export NCTL_STAGE_TARGETS=(
+#     "1_0_0:de259adc5"         # will be pulled from a remote commit hash
+#     "1_0_1:874c2db40"         # will be pulled from a remote commit hash
+#     "1_1_0:local"             # will be pulled from local
+# )

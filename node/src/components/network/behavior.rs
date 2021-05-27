@@ -141,7 +141,7 @@ impl Behavior {
     fn custom_poll<T>(
         &mut self,
         _context: &mut Context,
-        _parameterss: &mut impl PollParameters,
+        _parameters: &mut impl PollParameters,
     ) -> Poll<NetworkBehaviourAction<T, SwarmBehaviorEvent>> {
         if let Some(event) = self.events.pop_back() {
             Poll::Ready(NetworkBehaviourAction::GenerateEvent(event))

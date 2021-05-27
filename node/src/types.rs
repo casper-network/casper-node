@@ -21,7 +21,7 @@ pub use block::{
     json_compatibility::JsonBlock, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
     BlockValidationError, FinalitySignature,
 };
-pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
+pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload, FinalizedBlock};
 pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
 pub use deploy::{

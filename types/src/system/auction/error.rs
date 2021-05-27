@@ -146,6 +146,9 @@ pub enum Error {
     /// made.
     #[cfg_attr(feature = "std", error("Delegator's funds are locked"))]
     DelegatorFundsLocked = 38,
+    /// An arithmetic overflow has occurred.
+    #[cfg_attr(feature = "std", error("Arithmetic overflow"))]
+    ArithmeticOverflow = 39,
 
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
@@ -226,6 +229,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::DelegationRateTooLarge as u8 => Ok(Error::DelegationRateTooLarge),
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
+            d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
             _ => Err(TryFromU8ForError(())),
         }
     }

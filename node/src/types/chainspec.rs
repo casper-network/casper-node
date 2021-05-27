@@ -331,6 +331,7 @@ mod tests {
                     Motes::new(U512::from((index as u64 + 1) * 10))
                 );
             }
+            assert!(spec.protocol_config.last_emergency_restart.is_none());
         } else {
             assert_eq!(spec.protocol_config.version, Version::from((1, 0, 0)));
             assert_eq!(spec.protocol_config.activation_point.era_id().0, 1);
@@ -339,6 +340,10 @@ mod tests {
             for value in spec.protocol_config.global_state_update.unwrap().0.values() {
                 assert!(StoredValue::from_bytes(value).is_ok());
             }
+            assert_eq!(
+                spec.protocol_config.last_emergency_restart,
+                Some(EraId::new(99))
+            );
         }
 
         assert_eq!(spec.network_config.name, "test-chain");

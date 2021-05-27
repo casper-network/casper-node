@@ -1,4 +1,9 @@
-use std::{any::Any, collections::BTreeMap, fmt::Debug, path::PathBuf};
+use std::{
+    any::Any,
+    collections::BTreeMap,
+    fmt::{self, Debug, Display, Formatter},
+    path::PathBuf,
+};
 
 use anyhow::Error;
 use datasize::DataSize;
@@ -11,15 +16,21 @@ use crate::{
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
-pub struct BlockContext {
+pub struct BlockContext<C>
+where
+    C: Context,
+{
     timestamp: Timestamp,
-    height: u64,
+    ancestor_values: Vec<C::ConsensusValue>,
 }
 
-impl BlockContext {
+impl<C: Context> BlockContext<C> {
     /// Constructs a new `BlockContext`.
-    pub(crate) fn new(timestamp: Timestamp, height: u64) -> Self {
-        BlockContext { timestamp, height }
+    pub(crate) fn new(timestamp: Timestamp, ancestor_values: Vec<C::ConsensusValue>) -> Self {
+        BlockContext {
+            timestamp,
+            ancestor_values,
+        }
     }
 
     /// The block's timestamp.
@@ -27,9 +38,56 @@ impl BlockContext {
         self.timestamp
     }
 
-    #[cfg(test)]
+    /// The block's relative height, i.e. the number of ancestors in the current era.
     pub(crate) fn height(&self) -> u64 {
-        self.height
+        self.ancestor_values.len() as u64
+    }
+
+    /// The values of the block's ancestors.
+    pub(crate) fn ancestor_values(&self) -> &[C::ConsensusValue] {
+        &self.ancestor_values
+    }
+}
+
+/// A proposed block, with context.
+#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
+pub struct ProposedBlock<C>
+where
+    C: Context,
+{
+    value: C::ConsensusValue,
+    context: BlockContext<C>,
+}
+
+impl<C: Context> ProposedBlock<C> {
+    pub(crate) fn new(value: C::ConsensusValue, context: BlockContext<C>) -> Self {
+        ProposedBlock { value, context }
+    }
+
+    pub(crate) fn value(&self) -> &C::ConsensusValue {
+        &self.value
+    }
+
+    pub(crate) fn context(&self) -> &BlockContext<C> {
+        &self.context
+    }
+
+    pub(crate) fn destructure(self) -> (C::ConsensusValue, BlockContext<C>) {
+        (self.value, self.context)
+    }
+}
+
+impl<C: Context> Display for ProposedBlock<C>
+where
+    C::ConsensusValue: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "proposed block at {}: {}",
+            self.context.timestamp(),
+            self.value
+        )
     }
 }
 
@@ -69,7 +127,7 @@ pub(crate) struct FinalizedBlock<C: Context> {
     /// The timestamp at which this value was proposed.
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
-    pub(crate) height: u64,
+    pub(crate) relative_height: u64,
     /// The validators known to be faulty as seen by this block.
     pub(crate) equivocators: Vec<C::ValidatorId>,
     /// If this is a terminal block, i.e. the last one to be finalized, this contains additional
@@ -90,11 +148,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
-    CreateNewBlock {
-        block_context: BlockContext,
-        past_values: Vec<C::ConsensusValue>,
-        parent_value: Option<C::ConsensusValue>,
-    },
+    CreateNewBlock(BlockContext<C>),
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
     /// Request validation of the consensus value, contained in a message received from the given
@@ -105,8 +159,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue {
         sender: I,
-        consensus_value: C::ConsensusValue,
-        ancestor_values: Vec<C::ConsensusValue>,
+        proposed_block: ProposedBlock<C>,
     },
     /// New direct evidence was added against the given validator.
     NewEvidence(C::ValidatorId),
@@ -145,15 +198,15 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
-        value: C::ConsensusValue,
-        block_context: BlockContext,
+        proposed_block: ProposedBlock<C>,
+        now: Timestamp,
     ) -> ProtocolOutcomes<I, C>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ProtocolOutcome::ValidateConsensusvalue`.
     fn resolve_validity(
         &mut self,
-        value: &C::ConsensusValue,
+        proposed_block: ProposedBlock<C>,
         valid: bool,
     ) -> ProtocolOutcomes<I, C>;
 
@@ -196,10 +249,6 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     /// Returns the instance ID of this instance.
     fn instance_id(&self) -> &C::InstanceId;
 
-    /// Returns the protocol outcomes for all the required timers.
-    /// TODO: Remove this once the Joiner no longer has a consensus component.
-    fn recreate_timers(&self) -> ProtocolOutcomes<I, C>;
-
-    // TODO: Make this lees Highway-specific.
+    // TODO: Make this less Highway-specific.
     fn next_round_length(&self) -> Option<TimeDiff>;
 }

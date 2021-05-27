@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 
 #######################################
+# Returns a timestamp for use in chainspec.toml.
+# Arguments:
+#   Delay in seconds to apply to genesis timestamp.
+#######################################
+function get_activation_point()
+{
+    local DELAY=${1:-0}
+    local SCRIPT=(
+        "from datetime import datetime, timedelta;"
+        "print((datetime.utcnow() + timedelta(seconds=$DELAY)).isoformat('T') + 'Z');"
+     )
+
+    python3 -c "${SCRIPT[*]}"
+}
+
+#######################################
 # Returns a chain era.
 # Arguments:
 #   Network ordinal identifier.
@@ -88,6 +104,18 @@ function get_genesis_timestamp()
      )
 
     python3 -c "${SCRIPT[*]}"
+}
+
+#######################################
+# Returns protocol version formatted for inclusion in chainspec.
+# Arguments:
+#   Version of protocol.
+#######################################
+function get_protocol_version_for_chainspec()
+{
+    local PROTOCOL_VERSION=${1}
+
+    echo "$PROTOCOL_VERSION" | tr "_" "."
 }
 
 #######################################

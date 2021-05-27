@@ -42,7 +42,7 @@ pub(super) struct MemoryMetrics {
     /// Estimated heap memory usage of block executor component.
     mem_block_executor: IntGauge,
     /// Estimated heap memory usage of block validator component.
-    mem_proto_block_validator: IntGauge,
+    mem_block_validator: IntGauge,
     /// Estimated heap memory usage of linear chain component.
     mem_linear_chain: IntGauge,
 
@@ -88,11 +88,9 @@ impl MemoryMetrics {
         )?;
         let mem_block_proposer =
             IntGauge::new("mem_block_proposer", "block_proposer memory usage in bytes")?;
-        let mem_block_executor =
-            IntGauge::new("mem_block_executor", "block_executor memory usage in bytes")?;
-        let mem_proto_block_validator = IntGauge::new(
-            "mem_proto_block_validator",
-            "proto_block_validator memory usage in bytes",
+        let mem_block_validator = IntGauge::new(
+            "mem_block_validator",
+            "block_validator memory usage in bytes",
         )?;
         let mem_linear_chain =
             IntGauge::new("mem_linear_chain", "linear_chain memory usage in bytes")?;
@@ -120,8 +118,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
         registry.register(Box::new(mem_block_proposer.clone()))?;
-        registry.register(Box::new(mem_block_executor.clone()))?;
-        registry.register(Box::new(mem_proto_block_validator.clone()))?;
+        registry.register(Box::new(mem_block_validator.clone()))?;
         registry.register(Box::new(mem_linear_chain.clone()))?;
         registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
 
@@ -140,8 +137,7 @@ impl MemoryMetrics {
             mem_deploy_fetcher,
             mem_deploy_gossiper,
             mem_block_proposer,
-            mem_block_executor,
-            mem_proto_block_validator,
+            mem_block_validator,
             mem_linear_chain,
             mem_estimator_runtime_s,
             registry,
@@ -169,8 +165,7 @@ impl MemoryMetrics {
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
         let block_proposer = reactor.block_proposer.estimate_heap_size() as i64;
-        let block_executor = reactor.block_executor.estimate_heap_size() as i64;
-        let proto_block_validator = reactor.proto_block_validator.estimate_heap_size() as i64;
+        let block_validator = reactor.block_validator.estimate_heap_size() as i64;
 
         let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
 
@@ -187,8 +182,7 @@ impl MemoryMetrics {
             + deploy_fetcher
             + deploy_gossiper
             + block_proposer
-            + block_executor
-            + proto_block_validator
+            + block_validator
             + linear_chain;
 
         self.mem_total.set(total);
@@ -205,8 +199,7 @@ impl MemoryMetrics {
         self.mem_deploy_fetcher.set(deploy_fetcher);
         self.mem_deploy_gossiper.set(deploy_gossiper);
         self.mem_block_proposer.set(block_proposer);
-        self.mem_block_executor.set(block_executor);
-        self.mem_proto_block_validator.set(proto_block_validator);
+        self.mem_block_validator.set(block_validator);
         self.mem_linear_chain.set(linear_chain);
 
         // Stop the timer explicitly, don't count logging.
@@ -227,8 +220,7 @@ impl MemoryMetrics {
                %deploy_fetcher,
                %deploy_gossiper,
                %block_proposer,
-               %block_executor,
-               %proto_block_validator,
+               %block_validator,
                %linear_chain,
                "Collected new set of memory metrics.");
     }
@@ -250,8 +242,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_deploy_fetcher);
         unregister_metric!(self.registry, self.mem_deploy_gossiper);
         unregister_metric!(self.registry, self.mem_block_proposer);
-        unregister_metric!(self.registry, self.mem_block_executor);
-        unregister_metric!(self.registry, self.mem_proto_block_validator);
+        unregister_metric!(self.registry, self.mem_block_validator);
         unregister_metric!(self.registry, self.mem_linear_chain);
         unregister_metric!(self.registry, self.mem_estimator_runtime_s);
     }

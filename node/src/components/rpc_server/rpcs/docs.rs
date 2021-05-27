@@ -27,13 +27,13 @@ use super::{
 };
 use crate::{effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock};
 
-pub(crate) static DOCS_EXAMPLE_PROTOCOL_VERSION: Lazy<Version> =
-    Lazy::new(|| Version::new(1, 1, 2));
+pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
+    ProtocolVersion::from_parts(1, 2, 0);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
         name: "CasperLabs".to_string(),
         url: "https://casperlabs.io".to_string(),
@@ -102,7 +102,7 @@ pub trait DocExample {
 
 /// The main schema for the casper node's RPC server, compliant with https://spec.open-rpc.org.
 #[derive(Clone, Serialize, Deserialize, Debug)]
-struct OpenRpcSchema {
+pub struct OpenRpcSchema {
     openrpc: String,
     info: OpenRpcInfoField,
     servers: Vec<OpenRpcServerEntry>,

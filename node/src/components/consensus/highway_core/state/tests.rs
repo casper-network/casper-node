@@ -60,20 +60,6 @@ impl ConsensusValueT for u32 {
     fn needs_validation(&self) -> bool {
         false
     }
-
-    type Hash = u32;
-
-    fn hash(&self) -> Self::Hash {
-        *self
-    }
-
-    fn timestamp(&self) -> Timestamp {
-        0.into() // Not relevant for highway_core tests.
-    }
-
-    fn parent(&self) -> Option<&Self::Hash> {
-        None // Not relevant for highway_core tests.
-    }
 }
 
 impl Context for TestContext {
@@ -571,7 +557,7 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 
 #[test]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
-    // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
+    // a0 cites a descendant b1 of an equivocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
     //
     // Alice                  a0<----+

@@ -54,9 +54,8 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraId, EraValidators, UnbondingPurses, ValidatorWeights,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION,
+            Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
     },
@@ -74,7 +73,7 @@ use crate::internal::{
 /// This default value should give 50MiB initial map size by default.
 const DEFAULT_LMDB_PAGES: usize = 128_000;
 
-/// LDMB max readers
+/// LMDB max readers
 ///
 /// The default value is chosen to be the same as the node itself.
 const DEFAULT_MAX_READERS: u32 = 512;
@@ -728,6 +727,15 @@ where
         self.engine_state
             .get_purse_balance(correlation_id, state_root_hash, purse)
             .expect("should get purse balance")
+    }
+
+    pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash: Blake2bHash =
+            self.post_state_hash.expect("should have post_state_hash");
+        self.engine_state
+            .get_balance(correlation_id, state_root_hash, public_key)
+            .expect("should get purse balance using public key")
     }
 
     pub fn get_proposer_purse_balance(&self) -> U512 {

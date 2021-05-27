@@ -293,19 +293,7 @@ where
 }
 
 impl<C: Context> Endorsements<C> {
-    pub fn new<I: IntoIterator<Item = SignedEndorsement<C>>>(endorsements: I) -> Self {
-        let mut iter = endorsements.into_iter().peekable();
-        let unit = *iter.peek().expect("non-empty iter").unit();
-        let endorsers = iter
-            .map(|e| {
-                assert_eq!(e.unit(), &unit, "endorsements for different units.");
-                (e.validator_idx(), *e.signature())
-            })
-            .collect();
-        Endorsements { unit, endorsers }
-    }
-
-    /// Returns hash of the endorsed vode.
+    /// Returns hash of the endorsed vote.
     pub fn unit(&self) -> &C::Hash {
         &self.unit
     }

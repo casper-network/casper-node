@@ -68,7 +68,10 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
-    types::{Block, BlockByHeight, Deploy, ExitCode, NodeId, ProtoBlock, Tag, Timestamp},
+    types::{
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId, Tag,
+        Timestamp,
+    },
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -133,7 +136,7 @@ pub enum Event {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<Block, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
 
     /// Linear chain event.
     #[from]
@@ -174,7 +177,7 @@ pub enum Event {
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<Block, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
 
     /// Block executor request.
     #[from]
@@ -183,12 +186,6 @@ pub enum Event {
     /// Block proposer request.
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
-
-    /// Proto block validator request.
-    #[from]
-    ProtoBlockValidatorRequest(
-        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
-    ),
 
     /// Request for state storage.
     #[from]
@@ -323,9 +320,6 @@ impl Display for Event {
             Event::BlockExecutorAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
-            Event::Consensus(event) => write!(f, "consensus event: {}", event),
-            Event::ConsensusAnnouncement(ann) => write!(f, "consensus announcement: {}", ann),
-            Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             Event::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
@@ -360,7 +354,7 @@ pub struct Reactor {
     contract_runtime: ContractRuntime,
     linear_chain_fetcher: Fetcher<Block>,
     linear_chain_sync: LinearChainSync<NodeId>,
-    block_validator: BlockValidator<Block, NodeId>,
+    block_validator: BlockValidator<NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
     block_executor: BlockExecutor,
     linear_chain: linear_chain::LinearChain<NodeId>,
@@ -799,6 +793,24 @@ impl reactor::Reactor for Reactor {
 
                 effects
             }
+            Event::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::BlockAlreadyExecuted(block),
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::LinearChainSync(linear_chain_sync::Event::BlockHandled(Box::new(*block))),
+            ),
+            Event::ContractRuntimeAnnouncement(ContractRuntimeAnnouncement::StepSuccess {
+                era_id,
+                execution_effect,
+            }) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::EventStreamServer(event_stream_server::Event::Step {
+                    era_id,
+                    effect: execution_effect,
+                }),
+            ),
             Event::LinearChain(event) => reactor::wrap_effects(
                 Event::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
@@ -848,12 +860,6 @@ impl reactor::Reactor for Reactor {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
                 error!("ignoring block proposer request {}", request);
-                Effects::new()
-            }
-            Event::ProtoBlockValidatorRequest(request) => {
-                // During joining phase, consensus component should not be requesting
-                // validation of the proto block.
-                error!("ignoring proto block validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(

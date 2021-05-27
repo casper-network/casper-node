@@ -47,6 +47,18 @@ use crate::{
 pub struct ContractRuntime {
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
+
+    protocol_version: ProtocolVersion,
+
+    /// A mapping from block height to executed block's ID and post-state hash, to allow
+    /// identification of a parent block's details once a finalized block has been executed.
+    ///
+    /// The key is a tuple of block's height (it's a linear chain so it's monotonically
+    /// increasing), and the `ExecutedBlockSummary` is derived from the executed block.
+    parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
+
+    /// Finalized blocks waiting for their pre-state hash to start executing.
+    exec_queue: HashMap<BlockHeight, (FinalizedBlock, VecDeque<Deploy>)>,
 }
 
 impl Debug for ContractRuntime {
@@ -207,226 +219,200 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(ContractRuntimeRequest::GetProtocolData {
-                protocol_version,
-                responder,
-            }) => {
-                let result = self
-                    .engine_state
-                    .get_protocol_data(protocol_version)
-                    .map(|inner| inner.map(Box::new));
+            Event::Request(request) => {
+                match *request {
+                    ContractRuntimeRequest::GetProtocolData {
+                        protocol_version,
+                        responder,
+                    } => {
+                        let result = self
+                            .engine_state
+                            .get_protocol_data(protocol_version)
+                            .map(|inner| inner.map(Box::new));
 
-                responder.respond(result).ignore()
-            }
-            Event::Request(ContractRuntimeRequest::CommitGenesis {
-                chainspec,
-                responder,
-            }) => {
-                let result = self.commit_genesis(chainspec);
-                responder.respond(result).ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Execute {
-                execute_request,
-                responder,
-            }) => {
-                trace!(?execute_request, "execute");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let execution_result =
-                            engine_state.run_execute(correlation_id, *execute_request);
-                        metrics.run_execute.observe(start.elapsed().as_secs_f64());
-                        execution_result
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "execute result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Commit {
-                state_root_hash,
-                effects,
-                responder,
-            }) => {
-                trace!(?state_root_hash, ?effects, "commit");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let apply_result = engine_state.apply_effect(
-                            correlation_id,
-                            state_root_hash.into(),
-                            effects,
-                        );
-                        metrics.apply_effect.observe(start.elapsed().as_secs_f64());
-                        apply_result
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "commit result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Upgrade {
-                upgrade_config,
-                responder,
-            }) => {
-                trace!(?upgrade_config, "upgrade");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let result = engine_state.commit_upgrade(correlation_id, *upgrade_config);
-                        metrics
-                            .commit_upgrade
-                            .observe(start.elapsed().as_secs_f64());
-                        result
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "upgrade result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::Query {
-                query_request,
-                responder,
-            }) => {
-                trace!(?query_request, "query");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let result = engine_state.run_query(correlation_id, query_request);
-                        metrics.run_query.observe(start.elapsed().as_secs_f64());
-                        result
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "query result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::GetBalance {
-                balance_request,
-                responder,
-            }) => {
-                trace!(?balance_request, "balance");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let result = engine_state.get_purse_balance(
-                            correlation_id,
-                            balance_request.state_hash(),
-                            balance_request.purse_uref(),
-                        );
-                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
-                        result
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "balance result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::IsBonded {
-                state_root_hash,
-                era_id,
-                protocol_version,
-                public_key: validator_key,
-                responder,
-            }) => {
-                trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                let request =
-                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let era_validators =
-                            engine_state.get_era_validators(correlation_id, request);
-                        metrics
-                            .get_validator_weights
-                            .observe(start.elapsed().as_secs_f64());
-                        era_validators
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "is validator bonded result");
-                    let is_bonded =
-                        result.and_then(|validator_map| match validator_map.get(&era_id.0) {
-                            None => Err(GetEraValidatorsError::EraValidatorsMissing),
-                            Some(era_validators) => Ok(era_validators.contains_key(&validator_key)),
-                        });
-                    responder.respond(is_bonded).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::GetEraValidators { request, responder }) => {
-                trace!(?request, "get era validators request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                // Increment the counter to track the amount of times GetEraValidators was
-                // requested.
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let era_validators =
-                            engine_state.get_era_validators(correlation_id, request.into());
-                        metrics
-                            .get_era_validators
-                            .observe(start.elapsed().as_secs_f64());
-                        era_validators
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "get era validators response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::GetValidatorWeightsByEraId {
-                request,
-                responder,
-            }) => {
-                trace!(?request, "get validator weights by era id request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                // Increment the counter to track the amount of times GetEraValidatorsByEraId was
-                // requested.
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let era_id = request.era_id().into();
-                        let era_validators =
-                            engine_state.get_era_validators(correlation_id, request.into());
-                        let ret: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
-                            match era_validators {
-                                Ok(era_validators) => {
-                                    let validator_weights = era_validators.get(&era_id).cloned();
-                                    Ok(validator_weights)
+                        responder.respond(result).ignore()
+                    }
+                    ContractRuntimeRequest::CommitGenesis {
+                        chainspec,
+                        responder,
+                    } => {
+                        let result = self.commit_genesis(chainspec);
+                        responder.respond(result).ignore()
+                    }
+                    ContractRuntimeRequest::Upgrade {
+                        upgrade_config,
+                        responder,
+                    } => {
+                        debug!(?upgrade_config, "upgrade");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result =
+                                engine_state.commit_upgrade(correlation_id, *upgrade_config);
+                            metrics
+                                .commit_upgrade
+                                .observe(start.elapsed().as_secs_f64());
+                            debug!(?result, "upgrade result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::Query {
+                        query_request,
+                        responder,
+                    } => {
+                        trace!(?query_request, "query");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.run_query(correlation_id, query_request);
+                            metrics.run_query.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "query result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::GetBalance {
+                        balance_request,
+                        responder,
+                    } => {
+                        trace!(?balance_request, "balance");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.get_purse_balance(
+                                correlation_id,
+                                balance_request.state_hash(),
+                                balance_request.purse_uref(),
+                            );
+                            metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "balance result");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::IsBonded {
+                        state_root_hash,
+                        era_id,
+                        protocol_version,
+                        public_key: validator_key,
+                        responder,
+                    } => {
+                        trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        let request =
+                            GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let era_validators =
+                                engine_state.get_era_validators(correlation_id, request);
+                            metrics
+                                .get_validator_weights
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?era_validators, "is validator bonded result");
+                            let is_bonded = era_validators.and_then(|validator_map| {
+                                match validator_map.get(&era_id) {
+                                    None => Err(GetEraValidatorsError::EraValidatorsMissing),
+                                    Some(era_validators) => {
+                                        Ok(era_validators.contains_key(&validator_key))
+                                    }
+                                }
+                            });
+                            responder.respond(is_bonded).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::GetEraValidators { request, responder } => {
+                        trace!(?request, "get era validators request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        // Increment the counter to track the amount of times GetEraValidators was
+                        // requested.
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let era_validators =
+                                engine_state.get_era_validators(correlation_id, request.into());
+                            metrics
+                                .get_era_validators
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?era_validators, "get era validators response");
+                            responder.respond(era_validators).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder } => {
+                        trace!(?request, "get validator weights by era id request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        // Increment the counter to track the amount of times
+                        // GetEraValidatorsByEraId was requested.
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let era_id = request.era_id();
+                            let era_validators =
+                                engine_state.get_era_validators(correlation_id, request.into());
+                            let result: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
+                                match era_validators {
+                                    Ok(era_validators) => {
+                                        let validator_weights =
+                                            era_validators.get(&era_id).cloned();
+                                        Ok(validator_weights)
+                                    }
+                                    Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
+                                    Err(error) => Err(error),
+                                };
+                            metrics
+                                .get_era_validator_weights_by_era_id
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "get validator weights by era id response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::Step {
+                        step_request,
+                        responder,
+                    } => {
+                        trace!(?step_request, "step request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.commit_step(correlation_id, step_request);
+                            metrics.commit_step.observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "step response");
+                            responder.respond(result).await
+                        }
+                        .ignore()
+                    }
+                    ContractRuntimeRequest::ReadTrie {
+                        trie_key,
+                        responder,
+                    } => {
+                        trace!(?trie_key, "read_trie request");
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        async move {
+                            let correlation_id = CorrelationId::new();
+                            let start = Instant::now();
+                            let result = engine_state.read_trie(correlation_id, trie_key);
+                            metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                            let result = match result {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    error!(?error, "read_trie_request");
+                                    None
                                 }
                                 Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
                                 Err(error) => Err(error),
@@ -514,25 +500,32 @@ where
                     trace!(?result, "read_trie response");
                     responder.respond(result).await
                 }
-                .ignore()
-            }
-            Event::Request(ContractRuntimeRequest::PutTrie { trie, responder }) => {
-                trace!(?trie, "put_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let result = task::spawn_blocking(move || {
-                        let start = Instant::now();
-                        let result = engine_state
-                            .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        result
-                    })
-                    .await
-                    .expect("should run");
-                    trace!(?result, "put_trie response");
-                    responder.respond(result).await
+                ContractRuntimeResult::RunStepResult { mut state, result } => {
+                    trace!(?result, "run step result");
+                    match result {
+                        Ok(StepResult::Success {
+                            post_state_hash,
+                            next_era_validators,
+                            execution_effect,
+                        }) => {
+                            state.state_root_hash = post_state_hash.into();
+                            let era_id = state.finalized_block.era_id();
+                            let mut effects = effect_builder
+                                .announce_step_success(era_id, execution_effect)
+                                .ignore();
+                            effects.extend(self.finalize_block_execution(
+                                effect_builder,
+                                state,
+                                Some(next_era_validators),
+                            ));
+                            effects
+                        }
+                        _ => {
+                            // When step fails, the auction process is broken and we should panic.
+                            error!(?result, "run step failed - internal contract runtime error");
+                            panic!("unable to run step");
+                        }
+                    }
                 }
                 .ignore()
             }

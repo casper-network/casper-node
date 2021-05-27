@@ -433,7 +433,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     mut shutdown_receiver: watch::Receiver<()>,
     mut swarm: Swarm<Behavior>,
     known_addresses_mut: Arc<Mutex<HashMap<Multiaddr, ConnectionState>>>,
-    is_bootsrap_node: bool,
+    is_bootstrap_node: bool,
     queued_messages: IntGauge,
 ) {
     //let our_id = our
@@ -446,7 +446,14 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
                     trace!("{}: {:?}", our_id(&swarm), swarm_event);
-                    handle_swarm_event(&mut swarm, event_queue, swarm_event, &known_addresses_mut, is_bootsrap_node).await;
+                    handle_swarm_event(
+                        &mut swarm,
+                        event_queue,
+                        swarm_event,
+                        &known_addresses_mut,
+                        is_bootstrap_node
+                    )
+                    .await;
                 }
 
                 // `UnboundedReceiver::recv()` is cancellation safe - see

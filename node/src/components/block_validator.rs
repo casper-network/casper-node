@@ -1,13 +1,15 @@
 //! Block validator
 //!
-//! The block validator checks whether all the deploys included in the proto block exist, either
+//! The block validator checks whether all the deploys included in the block payload exist, either
 //! locally or on the network.
 //!
-//! When multiple requests are made to validate the same proto block, they will eagerly return true
-//! if valid, but only fail if all sources have been exhausted. This is only relevant when calling
-//! for validation of the same protoblock multiple times at the same time.
+//! When multiple requests are made to validate the same block payload, they will eagerly return
+//! true if valid, but only fail if all sources have been exhausted. This is only relevant when
+//! calling for validation of the same protoblock multiple times at the same time.
 
 mod keyed_counter;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
@@ -22,57 +24,139 @@ use smallvec::{smallvec, SmallVec};
 use tracing::info;
 
 use crate::{
-    components::{block_proposer::DeployType, Component},
+    components::{
+        block_proposer::DeployType,
+        consensus::{ClContext, ProposedBlock},
+        Component,
+    },
     effect::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{appendable_block::AppendableBlock, BlockLike, Chainspec, Deploy, DeployHash},
+    types::{appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash, Timestamp},
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
 
 use super::fetcher::FetchResult;
 
+#[derive(DataSize, Debug, Display, Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq)]
+pub enum DeployOrTransferHash {
+    #[display(fmt = "deploy {}", _0)]
+    Deploy(DeployHash),
+    #[display(fmt = "transfer {}", _0)]
+    Transfer(DeployHash),
+}
+
+impl From<DeployOrTransferHash> for DeployHash {
+    fn from(dt_hash: DeployOrTransferHash) -> DeployHash {
+        match dt_hash {
+            DeployOrTransferHash::Deploy(hash) => hash,
+            DeployOrTransferHash::Transfer(hash) => hash,
+        }
+    }
+}
+
+impl DeployOrTransferHash {
+    fn is_transfer(&self) -> bool {
+        matches!(self, DeployOrTransferHash::Transfer(_))
+    }
+}
+
+#[derive(DataSize, Debug, Display, Clone, Hash, Eq, PartialEq)]
+pub enum ValidatingBlock {
+    #[display(fmt = "{}", _0.display())]
+    Block(Box<Block>),
+    #[display(fmt = "{}", _0.display())]
+    ProposedBlock(Box<ProposedBlock<ClContext>>),
+}
+
+impl From<Block> for ValidatingBlock {
+    fn from(block: Block) -> ValidatingBlock {
+        ValidatingBlock::Block(Box::new(block))
+    }
+}
+
+impl From<ProposedBlock<ClContext>> for ValidatingBlock {
+    fn from(proposed_block: ProposedBlock<ClContext>) -> ValidatingBlock {
+        ValidatingBlock::ProposedBlock(Box::new(proposed_block))
+    }
+}
+
+impl ValidatingBlock {
+    fn timestamp(&self) -> Timestamp {
+        match self {
+            ValidatingBlock::Block(block) => block.timestamp(),
+            ValidatingBlock::ProposedBlock(pb) => pb.context().timestamp(),
+        }
+    }
+
+    fn deploy_hashes(&self) -> &[DeployHash] {
+        match self {
+            ValidatingBlock::Block(block) => block.deploy_hashes(),
+            ValidatingBlock::ProposedBlock(pb) => pb.value().deploy_hashes(),
+        }
+    }
+
+    fn transfer_hashes(&self) -> &[DeployHash] {
+        match self {
+            ValidatingBlock::Block(block) => block.transfer_hashes(),
+            ValidatingBlock::ProposedBlock(pb) => pb.value().transfer_hashes(),
+        }
+    }
+
+    fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
+        let deploys = self
+            .deploy_hashes()
+            .iter()
+            .map(|hash| DeployOrTransferHash::Deploy(*hash));
+        let transfers = self
+            .transfer_hashes()
+            .iter()
+            .map(|hash| DeployOrTransferHash::Transfer(*hash));
+        deploys.chain(transfers)
+    }
+}
+
 /// Block validator component event.
 #[derive(Debug, From, Display)]
-pub enum Event<T, I> {
+pub enum Event<I> {
     /// A request made of the block validator component.
     #[from]
-    Request(BlockValidationRequest<T, I>),
+    Request(BlockValidationRequest<I>),
 
     /// A deploy has been successfully found.
-    #[display(fmt = "deploy {} found", deploy_hash)]
+    #[display(fmt = "{} found", dt_hash)]
     DeployFound {
-        deploy_hash: DeployHash,
+        dt_hash: DeployOrTransferHash,
         deploy_type: Box<DeployType>,
     },
 
     /// A request to find a specific deploy, potentially from a peer, failed.
-    #[display(fmt = "deploy {} missing", _0)]
-    DeployMissing(DeployHash),
+    #[display(fmt = "{} missing", _0)]
+    DeployMissing(DeployOrTransferHash),
 
     /// Deploy was invalid. Unable to convert to a deploy type.
-    #[display(fmt = "deploy {} invalid", _0)]
-    CannotConvertDeploy(DeployHash),
+    #[display(fmt = "{} invalid", _0)]
+    CannotConvertDeploy(DeployOrTransferHash),
 }
 
 /// State of the current process of block validation.
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidationState<T, I> {
+pub(crate) struct BlockValidationState<I> {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
-    missing_deploys: HashSet<DeployHash>,
+    missing_deploys: HashSet<DeployOrTransferHash>,
     /// A list of responders that are awaiting an answer.
-    responders: SmallVec<[Responder<(bool, T)>; 2]>,
+    responders: SmallVec<[Responder<bool>; 2]>,
     /// Peers that should have the data.
     sources: VecDeque<I>,
 }
 
-impl<T, I> BlockValidationState<T, I>
+impl<I> BlockValidationState<I>
 where
     I: PartialEq + Eq + 'static,
 {
@@ -91,23 +175,29 @@ where
     fn source(&mut self) -> Option<I> {
         self.sources.pop_front()
     }
+
+    fn respond<REv>(&mut self, value: bool) -> Effects<REv> {
+        self.responders
+            .drain(..)
+            .flat_map(|responder| responder.respond(value).ignore())
+            .collect()
+    }
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidator<T, I> {
+pub(crate) struct BlockValidator<I> {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     /// State of validation of a specific block.
-    validation_states: HashMap<T, BlockValidationState<T, I>>,
+    validation_states: HashMap<ValidatingBlock, BlockValidationState<I>>,
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
 }
 
-impl<T, I> BlockValidator<T, I>
+impl<I> BlockValidator<I>
 where
-    T: BlockLike + Debug + Send + Clone + 'static,
-    I: Clone + Send + 'static + Send,
+    I: Clone + Debug + Send + 'static + Send,
 {
     /// Creates a new block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
@@ -117,19 +207,36 @@ where
             in_flight: KeyedCounter::default(),
         }
     }
+
+    /// Prints a log message about an invalid block with duplicated deploys.
+    fn log_block_with_replay(&self, sender: I, block: &ValidatingBlock) {
+        let mut deploy_counts = BTreeMap::new();
+        for dt_hash in block.deploys_and_transfers_iter() {
+            *deploy_counts.entry(dt_hash).or_default() += 1;
+        }
+        let duplicates = deploy_counts
+            .into_iter()
+            .filter_map(|(dt_hash, count): (DeployOrTransferHash, usize)| {
+                (count > 1).then(|| format!("{} * {}", count, dt_hash))
+            })
+            .join(", ");
+        info!(
+            ?sender, %duplicates,
+            "received invalid block containing duplicated deploys"
+        );
+    }
 }
 
-impl<T, I, REv> Component<REv> for BlockValidator<T, I>
+impl<I, REv> Component<REv> for BlockValidator<I>
 where
-    T: BlockLike + Debug + Send + Clone + 'static,
     I: Clone + Debug + Send + PartialEq + Eq + 'static,
-    REv: From<Event<T, I>>
-        + From<BlockValidationRequest<T, I>>
+    REv: From<Event<I>>
+        + From<BlockValidationRequest<I>>
         + From<FetcherRequest<I, Deploy>>
         + From<StorageRequest>
         + Send,
 {
-    type Event = Event<T, I>;
+    type Event = Event<I>;
     type ConstructionError = Infallible;
 
     fn handle_event(
@@ -144,36 +251,26 @@ where
                 block,
                 sender,
                 responder,
-                block_timestamp,
             }) => {
-                let block_deploys = block.deploys();
-                let deploy_count = block_deploys.len();
-                // Collect the deploys in a set; this also deduplicates them.
-                let block_deploys: HashSet<_> = block_deploys
-                    .iter()
-                    .map(|deploy_hash| **deploy_hash)
-                    .collect();
-                if block_deploys.len() != deploy_count {
-                    info!(
-                        deploys = ?block.deploys(), ?sender,
-                        "received invalid block containing duplicated deploys"
-                    );
-                    return responder.respond((false, block)).ignore();
-                }
-                if block_deploys.is_empty() {
+                let deploy_count = block.deploy_hashes().len() + block.transfer_hashes().len();
+                if deploy_count == 0 {
                     // If there are no deploys, return early.
-                    return responder.respond((true, block)).ignore();
+                    return responder.respond(true).ignore();
+                }
+                // Collect the deploys in a set. If they are fewer now, then there was a duplicate!
+                let block_deploys: HashSet<_> = block.deploys_and_transfers_iter().collect();
+                if block_deploys.len() != deploy_count {
+                    self.log_block_with_replay(sender, &block);
+                    return responder.respond(false).ignore();
                 }
 
-                // TODO: Clean this up to use `or_insert_with_key` once
-                // https://github.com/rust-lang/rust/issues/71024 is stabilized.
                 match self.validation_states.entry(block) {
                     Entry::Occupied(mut entry) => {
                         // The entry already exists.
                         if entry.get().missing_deploys.is_empty() {
                             // Block has already been validated successfully, early return to
                             // caller.
-                            effects.extend(responder.respond((true, entry.key().clone())).ignore());
+                            effects.extend(responder.respond(true).ignore());
                         } else {
                             // We register ourselves as someone interested in the ultimate
                             // validation result.
@@ -184,25 +281,20 @@ where
                     }
                     Entry::Vacant(entry) => {
                         // Our entry is vacant - create an entry to track the state.
-                        let missing_deploys: HashSet<DeployHash> =
-                            entry.key().deploys().iter().map(|hash| **hash).collect();
-
                         let in_flight = &mut self.in_flight;
-                        let fetch_effects: Effects<Event<T, I>> = block_deploys
-                            .iter()
-                            .flat_map(|deploy_hash| {
+                        effects.extend(entry.key().deploys_and_transfers_iter().flat_map(
+                            |dt_hash| {
                                 // For every request, increase the number of in-flight...
-                                in_flight.inc(deploy_hash);
+                                in_flight.inc(&dt_hash.into());
                                 // ...then request it.
-                                fetch_deploy(effect_builder, *deploy_hash, sender.clone())
-                            })
-                            .collect();
-                        effects.extend(fetch_effects);
-
+                                fetch_deploy(effect_builder, dt_hash, sender.clone())
+                            },
+                        ));
+                        let block_timestamp = entry.key().timestamp();
                         let deploy_config = self.chainspec.deploy_config;
                         entry.insert(BlockValidationState {
                             appendable_block: AppendableBlock::new(deploy_config, block_timestamp),
-                            missing_deploys,
+                            missing_deploys: block_deploys,
                             responders: smallvec![responder],
                             sources: VecDeque::new(), /* This is empty b/c we create the first
                                                        * request using `sender`. */
@@ -211,11 +303,11 @@ where
                 }
             }
             Event::DeployFound {
-                deploy_hash,
+                dt_hash,
                 deploy_type,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
-                self.in_flight.dec(&deploy_hash);
+                self.in_flight.dec(&dt_hash.into());
 
                 // If a deploy is received for a given block that makes that block invalid somehow,
                 // mark it for removal.
@@ -223,38 +315,40 @@ where
 
                 // Our first pass updates all validation states, crossing off the found deploy.
                 for (key, state) in self.validation_states.iter_mut() {
-                    if state.missing_deploys.remove(&deploy_hash) {
-                        if let Err(err) = state.appendable_block.add(deploy_hash, &*deploy_type) {
-                            // Notify everyone still waiting on it that all is lost.
-                            info!(block=?key, %deploy_hash, ?deploy_type, ?err, "block invalid");
+                    if state.missing_deploys.remove(&dt_hash) {
+                        // If the deploy is of the wrong type or would be invalid for this block,
+                        // notify everyone still waiting on it that all is lost.
+                        if deploy_type.is_transfer() != dt_hash.is_transfer() {
+                            info!(block = ?key, %dt_hash, ?deploy_type, "wrong deploy type");
+                            invalid.push(key.clone());
+                        } else if let Err(err) =
+                            state.appendable_block.add(dt_hash.into(), &*deploy_type)
+                        {
+                            info!(block = ?key, %dt_hash, ?deploy_type, ?err, "block invalid");
                             invalid.push(key.clone());
                         }
                     }
                 }
 
-                // Now we remove all states that have finished and notify the requestors.
+                // Now we remove all states that have finished and notify the requesters.
                 self.validation_states.retain(|key, state| {
                     if invalid.contains(key) {
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond((false, key.clone())).ignore());
-                        });
+                        effects.extend(state.respond(false));
                         return false;
                     }
                     if state.missing_deploys.is_empty() {
                         // This one is done and valid.
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond((true, key.clone())).ignore());
-                        });
+                        effects.extend(state.respond(true));
                         return false;
                     }
                     true
                 });
             }
-            Event::DeployMissing(deploy_hash) => {
-                info!(%deploy_hash, "request to download deploy timed out");
+            Event::DeployMissing(dt_hash) => {
+                info!(%dt_hash, "request to download deploy timed out");
                 // A deploy failed to fetch. If there is still hope (i.e. other outstanding
                 // requests), we just ignore this little accident.
-                if self.in_flight.dec(&deploy_hash) != 0 {
+                if self.in_flight.dec(&dt_hash.into()) != 0 {
                     return Effects::new();
                 }
 
@@ -262,33 +356,30 @@ where
                 let mut retried = false;
 
                 self.validation_states.retain(|key, state| {
-                    if !state.missing_deploys.contains(&deploy_hash) {
-                        return true
+                    if !state.missing_deploys.contains(&dt_hash) {
+                        return true;
                     }
                     if retried {
                         // We don't want to retry downloading the same element more than once.
-                        return true
+                        return true;
                     }
                     match state.source() {
                         Some(peer) => {
-                            info!(%deploy_hash, ?peer, "trying the next peer");
+                            info!(%dt_hash, ?peer, "trying the next peer");
                             // There's still hope to download the deploy.
-                            effects.extend(
-                                fetch_deploy(effect_builder,
-                                    deploy_hash,
-                                    peer,
-                                ));
+                            effects.extend(fetch_deploy(effect_builder, dt_hash, peer));
                             retried = true;
                             true
-                        },
+                        }
                         None => {
                             // Notify everyone still waiting on it that all is lost.
-                            info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
+                            info!(
+                                block = ?key, %dt_hash,
+                                "could not validate the deploy. block is invalid"
+                            );
                             // This validation state contains a failed deploy hash, it can never
                             // succeed.
-                            state.responders.drain(..).for_each(|responder| {
-                                effects.extend(responder.respond((false, key.clone())).ignore());
-                            });
+                            effects.extend(state.respond(false));
                             false
                         }
                     }
@@ -296,24 +387,24 @@ where
 
                 if retried {
                     // If we retried, we need to increase this counter.
-                    self.in_flight.inc(&deploy_hash);
+                    self.in_flight.inc(&dt_hash.into());
                 }
             }
-            Event::CannotConvertDeploy(deploy_hash) => {
-                info!(%deploy_hash, "cannot convert deploy to deploy type");
+            Event::CannotConvertDeploy(dt_hash) => {
                 // Deploy is invalid. There's no point waiting for other in-flight requests to
                 // finish.
-                self.in_flight.dec(&deploy_hash);
+                self.in_flight.dec(&dt_hash.into());
 
                 self.validation_states.retain(|key, state| {
-                    if state.missing_deploys.contains(&deploy_hash) {
+                    if state.missing_deploys.contains(&dt_hash) {
                         // Notify everyone still waiting on it that all is lost.
-                        info!(block=?key, %deploy_hash, "could not validate the deploy. block is invalid");
+                        info!(
+                            block = ?key, %dt_hash,
+                            "could not convert deploy to deploy type. block is invalid"
+                        );
                         // This validation state contains a failed deploy hash, it can never
                         // succeed.
-                        state.responders.drain(..).for_each(|responder| {
-                            effects.extend(responder.respond((false, key.clone())).ignore());
-                        });
+                        effects.extend(state.respond(false));
                         false
                     } else {
                         true
@@ -326,32 +417,31 @@ where
 }
 
 /// Returns effects that fetch the deploy and validate it.
-fn fetch_deploy<REv, T, I>(
+fn fetch_deploy<REv, I>(
     effect_builder: EffectBuilder<REv>,
-    deploy_hash: DeployHash,
+    dt_hash: DeployOrTransferHash,
     sender: I,
-) -> Effects<Event<T, I>>
+) -> Effects<Event<I>>
 where
-    REv: From<Event<T, I>>
-        + From<BlockValidationRequest<T, I>>
+    REv: From<Event<I>>
+        + From<BlockValidationRequest<I>>
         + From<StorageRequest>
         + From<FetcherRequest<I, Deploy>>
         + Send,
-    T: BlockLike + Debug + Send + Clone + 'static,
     I: Clone + Send + PartialEq + Eq + 'static,
 {
     let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
         FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => deploy
             .deploy_type()
-            .map_or(Event::CannotConvertDeploy(deploy_hash), |deploy_type| {
+            .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_type| {
                 Event::DeployFound {
-                    deploy_hash,
+                    dt_hash,
                     deploy_type: Box::new(deploy_type),
                 }
             }),
     };
 
     effect_builder
-        .fetch_deploy(deploy_hash, sender)
-        .map_or_else(validate_deploy, move || Event::DeployMissing(deploy_hash))
+        .fetch_deploy(dt_hash.into(), sender)
+        .map_or_else(validate_deploy, move || Event::DeployMissing(dt_hash))
 }

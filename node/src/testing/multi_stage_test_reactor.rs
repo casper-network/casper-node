@@ -459,7 +459,7 @@ impl Reactor for MultiStageTestReactor {
                         validator_event_queue_handle,
                         rng,
                     )
-                    .expect("validator intialization failed");
+                    .expect("validator initialization failed");
 
                     *self = MultiStageTestReactor::Validator {
                         validator_reactor: Box::new(validator_reactor),

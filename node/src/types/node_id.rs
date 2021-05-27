@@ -49,6 +49,16 @@ impl NodeId {
         let peer_id = PeerId::from_multihash(multihash).expect("should construct from multihash");
         NodeId::P2p(peer_id)
     }
+
+    /// Returns the raw bytes of the underlying hash of the ID, if there is any.
+    #[inline]
+    pub fn hash_bytes(&self) -> Option<&[u8]> {
+        if let NodeId::Tls(sha256) = self {
+            Some(sha256.as_ref())
+        } else {
+            None
+        }
+    }
 }
 
 /// Used to serialize and deserialize `NodeID` where the (de)serializer isn't a human-readable type.

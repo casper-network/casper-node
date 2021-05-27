@@ -9,7 +9,7 @@ use casper_types::{
 };
 
 use crate::{
-    core::engine_state::{Error, GetEraValidatorsError},
+    core::engine_state::{execution_effect::ExecutionEffect, Error, GetEraValidatorsError},
     shared::{newtypes::Blake2bHash, TypeMismatch},
 };
 
@@ -125,6 +125,7 @@ pub enum StepResult {
     Success {
         post_state_hash: Blake2bHash,
         next_era_validators: BTreeMap<PublicKey, U512>,
+        execution_effect: ExecutionEffect,
     },
 }
 

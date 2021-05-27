@@ -119,7 +119,7 @@ impl ActivationPoint {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         if rng.gen() {
-            ActivationPoint::EraId(EraId(rng.gen::<u8>() as u64))
+            ActivationPoint::EraId(rng.gen())
         } else {
             ActivationPoint::Genesis(Timestamp::random(rng))
         }

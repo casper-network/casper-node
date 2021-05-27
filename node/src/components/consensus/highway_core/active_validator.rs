@@ -2,6 +2,7 @@ use std::{
     fmt::{self, Debug},
     fs::{self, File},
     io::{self, Read, Write},
+    iter,
     path::{Path, PathBuf},
 };
 
@@ -34,10 +35,7 @@ pub(crate) enum Effect<C: Context> {
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
-    RequestNewBlock {
-        block_context: BlockContext,
-        fork_choice: Option<C::Hash>,
-    },
+    RequestNewBlock(BlockContext<C>),
     /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
@@ -71,8 +69,8 @@ where
     next_round_exp: u8,
     /// The latest timer we scheduled.
     next_timer: Timestamp,
-    /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
-    next_proposal: Option<(Timestamp, Panorama<C>)>,
+    /// Panorama and context for a block we are about to propose when we get a consensus value.
+    next_proposal: Option<(BlockContext<C>, Panorama<C>)>,
     /// The path to the file storing the hash of our latest known unit (if any).
     unit_hash_file: Option<PathBuf>,
     /// The hash of the last known unit created by us.
@@ -140,33 +138,6 @@ impl<C: Context> ActiveValidator<C> {
         Ok(serde_json::from_slice(&bytes)?)
     }
 
-    fn write_last_unit(&mut self, hash: C::Hash) -> io::Result<()> {
-        // If there is no unit_hash_file set, do not write to it
-        let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
-            file
-        } else {
-            return Ok(());
-        };
-
-        // Otherwise, set own_last_unit to the specified hash
-        self.own_last_unit = Some(hash);
-
-        // Create the file (and its parents) as necessary
-        if let Some(parent_directory) = unit_hash_file.parent() {
-            fs::create_dir_all(parent_directory)?;
-        }
-        let mut file = File::create(unit_hash_file)?;
-
-        // Finally, write the data to file we created
-        let bytes = serde_json::to_vec(&hash)?;
-        file.write_all(&bytes)
-    }
-
-    fn can_vote(&self, state: &State<C>) -> bool {
-        self.own_last_unit
-            .map_or(true, |ref hash| state.has_unit(hash))
-    }
-
     /// Sets the next round exponent to the new value.
     pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
         self.next_round_exp = new_round_exp;
@@ -204,19 +175,17 @@ impl<C: Context> ActiveValidator<C> {
                 return effects;
             } else if timestamp == r_id + self.witness_offset(r_len) {
                 let panorama = self.panorama_at(state, timestamp);
-                if panorama.has_correct() {
-                    if let Some(witness_unit) =
-                        self.new_unit(panorama, timestamp, None, state, instance_id)
+                if let Some(witness_unit) =
+                    self.new_unit(panorama, timestamp, None, state, instance_id)
+                {
+                    if self
+                        .latest_unit(state)
+                        .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
                     {
-                        if self
-                            .latest_unit(state)
-                            .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
-                        {
-                            info!(round_id = %r_id, "sending witness in round with no proposal");
-                        }
-                        effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
-                        return effects;
+                        info!(round_id = %r_id, "sending witness in round with no proposal");
                     }
+                    effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))));
+                    return effects;
                 }
             }
         }
@@ -305,44 +274,42 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         timestamp: Timestamp,
     ) -> Option<Effect<C>> {
-        if let Some((prop_time, _)) = self.next_proposal.take() {
-            warn!(
-                ?timestamp,
-                "no proposal received for {}; requesting new one", prop_time
-            );
+        if let Some((prop_context, _)) = self.next_proposal.take() {
+            warn!(?prop_context, "no proposal received; requesting new one");
         }
         let panorama = self.panorama_at(state, timestamp);
         let maybe_parent_hash = state.fork_choice(&panorama);
+        // If the parent is a terminal block, just create a unit without a new block.
         if maybe_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             return self
                 .new_unit(panorama, timestamp, None, state, instance_id)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
-        let maybe_parent = maybe_parent_hash.map(|bh| state.block(bh));
-        let height = maybe_parent.map_or(0, |block| block.height);
-        self.next_proposal = Some((timestamp, panorama));
-        let block_context = BlockContext::new(timestamp, height);
-        Some(Effect::RequestNewBlock {
-            block_context,
-            fork_choice: maybe_parent_hash.cloned(),
-        })
+        // Otherwise we need to request a new consensus value to propose.
+        let ancestor_values = match maybe_parent_hash {
+            None => vec![],
+            Some(parent_hash) => iter::once(parent_hash)
+                .chain(state.ancestor_hashes(parent_hash))
+                .map(|bhash| state.block(bhash).value.clone())
+                .collect(),
+        };
+        let block_context = BlockContext::new(timestamp, ancestor_values);
+        self.next_proposal = Some((block_context.clone(), panorama));
+        Some(Effect::RequestNewBlock(block_context))
     }
 
     /// Proposes a new block with the given consensus value.
     pub(crate) fn propose(
         &mut self,
         value: C::ConsensusValue,
-        block_context: BlockContext,
+        block_context: BlockContext<C>,
         state: &State<C>,
         instance_id: C::InstanceId,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
-        let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
-            if prop_time != timestamp {
-                warn!(
-                    ?timestamp,
-                    "unexpected proposal; expected timestamp {}", prop_time
-                );
+        let panorama = if let Some((expected_context, panorama)) = self.next_proposal.take() {
+            if expected_context != block_context {
+                warn!(?expected_context, ?block_context, "unexpected proposal");
                 return vec![];
             }
             panorama
@@ -419,15 +386,15 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
     ) -> Option<SignedWireUnit<C>> {
+        if value.is_none() && !panorama.has_correct() {
+            return None; // Wait for the first proposal before creating a unit without a value.
+        }
         if !self.can_vote(state) {
             info!(?self.own_last_unit, "not voting - last own unit unknown");
             return None;
         }
-        if let Some((prop_time, _)) = self.next_proposal.take() {
-            warn!(
-                ?timestamp,
-                "canceling proposal for {} due to unit", prop_time
-            );
+        if let Some((prop_context, _)) = self.next_proposal.take() {
+            warn!(?prop_context, "canceling proposal due to unit");
         }
         for hash in panorama.iter_correct_hashes() {
             if timestamp < state.unit(hash).timestamp {
@@ -730,7 +697,7 @@ mod tests {
             &mut self,
             vidx: ValidatorIndex,
             cv: <TestContext as Context>::ConsensusValue,
-            block_context: BlockContext,
+            block_context: BlockContext<TestContext>,
         ) -> (Vec<Effect<TestContext>>, SignedWireUnit<TestContext>) {
             let validator = &mut self.active_validators[vidx];
             let proposal_timestamp = block_context.timestamp();
@@ -847,10 +814,11 @@ mod tests {
         // 416, and the first witness tick 426.
         // Alice wants to propose a block, and also make her witness unit at 426.
         let bctx = match &*test.handle_timer(ALICE, 416.into()) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
-                block_context: bctx,
-                ..
-            }] if *timestamp == 426.into() => bctx.clone(),
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
+                if *timestamp == 426.into() =>
+            {
+                bctx.clone()
+            }
             effects => panic!("unexpected effects {:?}", effects),
         };
         assert_eq!(
@@ -889,5 +857,135 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(Some(&new_unit.hash()), test.next_finalized());
+    }
+
+    #[test]
+    fn ping_on_startup() {
+        let state = State::new_test(&[Weight(3)], 0);
+        let (_alice, init_effects) = ActiveValidator::new(
+            ALICE,
+            TestSecret(ALICE.0),
+            410.into(),
+            410.into(),
+            &state,
+            None,
+            Weight(2),
+            TEST_INSTANCE_ID,
+        );
+
+        match &*init_effects {
+            &[Effect::ScheduleTimer(_), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))] => {}
+            other => panic!(
+                "expected two effects on startup: timer and ping. Got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn waits_until_synchronized() -> Result<(), AddUnitError<TestContext>> {
+        let instance_id = TEST_INSTANCE_ID;
+        let mut state = State::new_test(&[Weight(3)], 0);
+        let a0 = {
+            let a0 = add_unit!(state, ALICE, 0xB0; N)?;
+            state.wire_unit(&a0, instance_id).unwrap()
+        };
+        let a1 = {
+            let a1 = add_unit!(state, ALICE, None; a0.hash())?;
+            state.wire_unit(&a1, instance_id).unwrap()
+        };
+        let a2 = {
+            let a2 = add_unit!(state, ALICE, None; a1.hash())?;
+            state.wire_unit(&a2, instance_id).unwrap()
+        };
+        // Clean state. We want Alice to synchronize first.
+        state.retain_evidence_only();
+
+        let unit_file = {
+            let tmp_dir = tempdir().unwrap();
+            let unit_hashes_folder = tmp_dir.path().to_path_buf();
+            Some(unit_hashes_folder.join(format!("unit_hash_{:?}.dat", instance_id)))
+        };
+
+        // Store `a2` unit as the Alice's last unit.
+        write_last_unit(&unit_file, a2.clone()).expect("storing unit should succeed");
+
+        // Alice's last unit is `a2` but `State` is empty. She must synchronize first.
+        let (mut alice, alice_init_effects) = ActiveValidator::new(
+            ALICE,
+            TestSecret(ALICE.0),
+            410.into(),
+            410.into(),
+            &state,
+            unit_file,
+            Weight(2),
+            TEST_INSTANCE_ID,
+        );
+
+        let mut next_proposal_timer = match &*alice_init_effects {
+            &[Effect::ScheduleTimer(timestamp), Effect::NewVertex(ValidVertex(Vertex::Ping(_)))]
+                if timestamp == 416.into() =>
+            {
+                timestamp
+            }
+            other => panic!("unexpected effects {:?}", other),
+        };
+
+        // Alice has to synchronize up until `a2` (including) before she starts proposing.
+        for unit in vec![a0, a1, a2.clone()] {
+            next_proposal_timer =
+                assert_no_proposal(&mut alice, &state, instance_id, next_proposal_timer);
+            state.add_unit(unit)?;
+        }
+
+        // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a
+        // new block.
+        let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id) {
+            [Eff::ScheduleTimer(_), Eff::RequestNewBlock(bctx)] => bctx.clone(),
+            effects => panic!("unexpected effects {:?}", effects),
+        };
+
+        let proposal_wunit =
+            unwrap_single(&alice.propose(0xC0FFEE, bctx, &state, instance_id)).unwrap_unit();
+        assert_eq!(
+            proposal_wunit.wire_unit().seq_number,
+            a2.wire_unit().seq_number + 1,
+            "new unit should have correct seq_number"
+        );
+        assert_eq!(
+            proposal_wunit.wire_unit().panorama,
+            panorama!(a2.hash()),
+            "new unit should cite the latest unit"
+        );
+
+        Ok(())
+    }
+
+    // Triggers new proposal by `validator` and verifies that it's empty – no block was proposed.
+    // Captures the next witness timer and calls the `validator` with that to return the timer for
+    // the next proposal.
+    fn assert_no_proposal(
+        validator: &mut ActiveValidator<TestContext>,
+        state: &State<TestContext>,
+        instance_id: u64,
+        proposal_timer: Timestamp,
+    ) -> Timestamp {
+        let (witness_timestamp, bctx) =
+            match &*validator.handle_timer(proposal_timer, &state, instance_id) {
+                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock(bctx)] => {
+                    (*witness_timestamp, bctx.clone())
+                }
+                effects => panic!("unexpected effects {:?}", effects),
+            };
+
+        let effects = validator.propose(0xC0FFEE, bctx, state, instance_id);
+        assert!(
+            effects.is_empty(),
+            "should not propose blocks until its dependencies are synchronized: {:?}",
+            effects
+        );
+
+        unwrap_single(&validator.handle_timer(witness_timestamp, &state, instance_id))
+            .unwrap_timer()
     }
 }

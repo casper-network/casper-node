@@ -11,11 +11,11 @@ use casper_node::{
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
-use casper_types::SecretKey;
+use casper_types::{ProtocolVersion, RuntimeArgs, SecretKey, URef, U512};
 
 use crate::{
     error::{Error, Result},
-    rpc::RpcClient,
+    rpc::{RpcClient, TransferTarget},
 };
 
 /// The maximum permissible size in bytes of a Deploy when serialized via `ToBytes`.
@@ -121,6 +121,16 @@ pub(super) trait DeployExt {
         session: ExecutableDeployItem,
     ) -> Result<Deploy>;
 
+    /// Constructs a transfer `Deploy`.
+    fn new_transfer(
+        amount: U512,
+        source_purse: Option<URef>,
+        target: TransferTarget,
+        transfer_id: u64,
+        params: DeployParams,
+        payment: ExecutableDeployItem,
+    ) -> Result<Deploy>;
+
     /// Writes the `Deploy` to `output`.
     fn write_deploy<W>(&self, output: W) -> Result<()>
     where
@@ -165,6 +175,38 @@ impl DeployExt for Deploy {
         );
         deploy.is_valid_size(MAX_SERIALIZED_SIZE)?;
         Ok(deploy)
+    }
+
+    fn new_transfer(
+        amount: U512,
+        source_purse: Option<URef>,
+        target: TransferTarget,
+        transfer_id: u64,
+        params: DeployParams,
+        payment: ExecutableDeployItem,
+    ) -> Result<Deploy> {
+        const TRANSFER_ARG_AMOUNT: &str = "amount";
+        const TRANSFER_ARG_SOURCE: &str = "source";
+        const TRANSFER_ARG_TARGET: &str = "target";
+        const TRANSFER_ARG_ID: &str = "id";
+
+        let mut transfer_args = RuntimeArgs::new();
+        transfer_args.insert(TRANSFER_ARG_AMOUNT, amount)?;
+        if let Some(source_purse) = source_purse {
+            transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse)?;
+        }
+        match target {
+            TransferTarget::Account(target_account) => {
+                let target_account_hash = target_account.to_account_hash().value();
+                transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
+            }
+        }
+        let maybe_transfer_id = Some(transfer_id);
+        transfer_args.insert(TRANSFER_ARG_ID, maybe_transfer_id)?;
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        Deploy::with_payment_and_session(params, payment, session)
     }
 
     fn write_deploy<W>(&self, mut output: W) -> Result<()>

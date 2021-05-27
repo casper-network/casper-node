@@ -310,7 +310,7 @@ impl<'de> Deserialize<'de> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, Copy, DataSize, Eq, PartialEq)]
+#[derive(Clone, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// System public key.
     System,

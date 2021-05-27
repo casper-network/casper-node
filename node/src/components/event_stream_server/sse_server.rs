@@ -15,12 +15,9 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey};
 
-use crate::{
-    components::consensus::EraId,
-    types::{Block, BlockHash, DeployHash, FinalitySignature, TimeDiff, Timestamp},
-};
+use crate::types::{BlockHash, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp};
 
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";
@@ -38,7 +35,7 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<Block>,
+        block: Box<JsonBlock>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
@@ -59,6 +56,11 @@ pub enum SseData {
     },
     /// New finality signature received.
     FinalitySignature(Box<FinalitySignature>),
+    Step {
+        era_id: EraId,
+        #[data_size(skip)]
+        execution_effect: ExecutionEffect,
+    },
 }
 
 /// The components of a single SSE.
@@ -183,9 +185,11 @@ fn stream_to_client(
                         (Some(id), &SseData::BlockAdded { .. })
                         | (Some(id), &SseData::DeployProcessed { .. })
                         | (Some(id), &SseData::FinalitySignature(_))
-                        | (Some(id), &SseData::Fault { .. }) => {
-                            Ok((sse::id(id), sse::json(event.data)).boxed())
-                        }
+                        | (Some(id), &SseData::Fault { .. })
+                        | (Some(id), &SseData::Step { .. }) => Ok(WarpServerSentEvent::default()
+                            .json_data(event.data)
+                            .unwrap_or_default()
+                            .id(id.to_string())),
                         _ => unreachable!("only ApiVersion may have no event ID"),
                     }
                 }

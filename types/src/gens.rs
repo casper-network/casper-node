@@ -77,6 +77,15 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
     ]
 }
 
+pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
+    prop_oneof![
+        u2_slice_32().prop_map(|bytes| Key::Account(AccountHash::new(bytes))),
+        u2_slice_32().prop_map(Key::Hash),
+        u2_slice_32().prop_map(|bytes| Key::URef(URef::new(bytes, AccessRights::NONE))),
+        u2_slice_32().prop_map(|bytes| Key::Transfer(TransferAddr::new(bytes))),
+    ]
+}
+
 pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
 }

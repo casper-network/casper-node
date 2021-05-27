@@ -7,7 +7,6 @@ use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
         config::Config,
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
@@ -23,7 +22,7 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    types::{ProtoBlock, Timestamp},
+    types::{BlockPayload, TimeDiff, Timestamp},
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
@@ -69,9 +68,13 @@ where
     let chainspec = new_test_chainspec(weights.clone());
     let config = Config {
         secret_key_path: Default::default(),
-        unit_hashes_folder: Default::default(),
-        pending_vertex_timeout: "1min".parse().unwrap(),
-        max_execution_delay: 3,
+        highway: HighwayConfig {
+            pending_vertex_timeout: "1min".parse().unwrap(),
+            standstill_timeout: STANDSTILL_TIMEOUT.parse().unwrap(),
+            log_participation_interval: "10sec".parse().unwrap(),
+            max_execution_delay: 3,
+            ..HighwayConfig::default()
+        },
     };
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
@@ -187,11 +190,7 @@ fn send_a_valid_wire_unit() {
         panorama,
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: Some(CandidateBlock::new(
-            ProtoBlock::new(vec![], vec![], timestamp, false),
-            vec![],
-            None,
-        )),
+        value: Some(Arc::new(BlockPayload::new(vec![], vec![], vec![], false))),
         seq_number,
         timestamp,
         round_exp: 14,
@@ -226,9 +225,8 @@ fn detect_doppelganger() {
     let seq_number = panorama.next_seq_num(&state, creator);
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
     let round_exp = 14;
-    let timestamp = 0.into();
-    let proto_block = ProtoBlock::new(vec![], vec![], timestamp, false);
-    let value = CandidateBlock::new(proto_block, vec![], None);
+    let now = Timestamp::zero();
+    let value = Arc::new(BlockPayload::new(vec![], vec![], vec![], false));
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
