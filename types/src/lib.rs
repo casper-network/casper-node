@@ -18,7 +18,9 @@
 )]
 #![warn(missing_docs)]
 
+#[cfg_attr(not(any(feature = "std", test)), macro_use)]
 extern crate alloc;
+
 #[cfg(any(feature = "std", test))]
 #[macro_use]
 extern crate std;
