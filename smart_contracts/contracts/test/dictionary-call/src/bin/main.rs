@@ -3,8 +3,8 @@
 
 extern crate alloc;
 
-use core::str::FromStr;
 use alloc::string::{String, ToString};
+use core::str::FromStr;
 
 use casper_contract::{
     contract_api::{runtime, storage},
