@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # ----------------------------------------------------------------
 # Synopsis.
 # ----------------------------------------------------------------
@@ -200,6 +201,7 @@ function _step_08()
     local N1_STATE_ROOT_HASH
     local NX_PROTOCOL_VERSION
     local NX_STATE_ROOT_HASH
+    local RETRY_COUNT
 
     log_step 8 "asserting joined nodes are running upgrade"
 
@@ -240,10 +242,28 @@ function _step_08()
     N1_STATE_ROOT_HASH=$(get_state_root_hash 1 "$N1_BLOCK_HASH")
     for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
     do
-        NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
+        # Retry command to address: https://github.com/casper-network/casper-node/issues/1499
+        unset NX_STATE_ROOT_HASH
+        unset RETRY_COUNT
+        RETRY_COUNT=1
+        while [ -z "$NX_STATE_ROOT_HASH" ] || [ "$NX_STATE_ROOT_HASH" = 'null' ]; do
+            if [ "$RETRY_COUNT" -gt 10 ]; then
+                log "ERROR :: NODE-$NODE_ID RETRY :: Failed to get state root hash within 10 retries"
+                exit 1
+            else
+                NX_STATE_ROOT_HASH=$(get_state_root_hash "$NODE_ID" "$N1_BLOCK_HASH")
+                sleep 1
+                ((RETRY_COUNT=RETRY_COUNT+1))
+            fi
+        done
+
         if [ "$NX_STATE_ROOT_HASH" != "$N1_STATE_ROOT_HASH" ]; then
             log "ERROR :: protocol upgrade failure - >= nodes are not all at same root hash"
+            log "ERROR :: BLOCK HASH = $N1_BLOCK_HASH"
+            log "ERROR :: $NODE_ID  :: ROOT HASH = $NX_STATE_ROOT_HASH :: N1 ROOT HASH = $N1_STATE_ROOT_HASH"
             exit 1
+        else
+            log "HASH MATCH :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
         fi
     done
 }
