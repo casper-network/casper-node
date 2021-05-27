@@ -14,7 +14,7 @@ import { arrayToTyped } from "./utils";
  */
 export function createLocal(): URef {
     let outputSize = new Uint32Array(1);
-    let ret = externals.create_local(outputSize.dataStart);
+    let ret = externals.casper_new_dictionary(outputSize.dataStart);
     const error = Error.fromResult(ret);
     if (error !== null) {
         error.revert();
@@ -25,17 +25,17 @@ export function createLocal(): URef {
 }
 
 /**
- * Reads the value under `key` in the context-local partition of global state.
+ * Reads the value under `key` in the dictionary partition of global state.
  *
  * @category Storage
- * @returns Returns bytes of serialized value, otherwise a null if given local key does not exists.
+ * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function readLocal(seed_uref: URef, local: Array<u8>): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, local: Array<u8>): Uint8Array | null {
     let seedUrefBytes = seed_uref.toBytes();
     const localBytes = arrayToTyped(local);
 
     let valueSize = new Uint8Array(1);
-    const ret = externals.read_local(seedUrefBytes.dataStart, seedUrefBytes.length, localBytes.dataStart, localBytes.length, valueSize.dataStart);
+    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, localBytes.dataStart, localBytes.length, valueSize.dataStart);
     if (ret == ErrorCode.ValueNotFound){
         return null;
     }
@@ -51,11 +51,11 @@ export function readLocal(seed_uref: URef, local: Array<u8>): Uint8Array | null 
  * Writes `value` under `key` in the context-local partition of global state.
  * @category Storage
  */
-export function writeLocal(uref: URef, local: Array<u8>, value: CLValue): void {
+export function dictionaryPut(uref: URef, local: Array<u8>, value: CLValue): void {
     const localBytes = arrayToTyped(local);
     const urefBytes = uref.toBytes();
     const valueBytes = value.toBytes();
-    externals.write_local(
+    externals.dictionary_put(
         urefBytes.dataStart,
         urefBytes.length,
         localBytes.dataStart,

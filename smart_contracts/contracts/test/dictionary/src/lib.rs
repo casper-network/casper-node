@@ -16,8 +16,8 @@ use casper_types::{
     EntryPointType, EntryPoints, URef,
 };
 
-pub const LOCAL_KEY_NAME: &str = "local";
-pub const WRITE_LOCAL_KEY: [u8; 32] = [66u8; 32];
+pub const DICTIONARY_NAME: &str = "local";
+pub const DICTIONARY_PUT_KEY: [u8; 32] = [66u8; 32];
 pub const HELLO_PREFIX: &str = " Hello, ";
 pub const WORLD_SUFFIX: &str = "world!";
 pub const MODIFY_WRITE_ENTRYPOINT: &str = "modify_write";
@@ -25,52 +25,52 @@ pub const SHARE_RO_ENTRYPOINT: &str = "share_ro";
 pub const SHARE_W_ENTRYPOINT: &str = "share_w";
 pub const CONTRACT_HASH_NAME: &str = "contract_hash";
 const CONTRACT_PACKAGE_HASH_NAME: &str = "package_hash_name";
-pub const DEFAULT_LOCAL_KEY_NAME: &str = "Default Key";
-pub const DEFAULT_LOCAL_KEY_VALUE: &str = "Default Value";
+pub const DEFAULT_DICTIONARY_NAME: &str = "Default Key";
+pub const DEFAULT_DICTIONARY_VALUE: &str = "Default Value";
 
 #[no_mangle]
 fn modify_write() {
     // Preserve for further modifications
-    let local = match runtime::get_key(LOCAL_KEY_NAME) {
+    let local = match runtime::get_key(DICTIONARY_NAME) {
         Some(key) => key.into_uref().unwrap_or_revert(),
         None => runtime::revert(ApiError::GetKey),
     };
 
-    // Appends " Hello, world!" to a [66; 32] local key with spaces trimmed.
+    // Appends " Hello, world!" to a [66; 32] dictionary with spaces trimmed.
     // Two runs should yield value "Hello, world! Hello, world!"
     // read from local state
-    let mut res: String = storage::read_local(local, WRITE_LOCAL_KEY)
+    let mut res: String = storage::dictionary_get(local, DICTIONARY_PUT_KEY)
         .unwrap_or_default()
         .unwrap_or_default();
 
     res.push_str(HELLO_PREFIX);
     // Write "Hello, "
-    storage::write_local(local, WRITE_LOCAL_KEY, res);
+    storage::dictionary_put(local, DICTIONARY_PUT_KEY, res);
 
     // Read (this should exercise cache)
-    let mut res: String = storage::read_local(local, WRITE_LOCAL_KEY)
+    let mut res: String = storage::dictionary_get(local, DICTIONARY_PUT_KEY)
         .unwrap_or_revert()
         .unwrap_or_revert();
     // Append
     res.push_str(WORLD_SUFFIX);
     // Write
-    storage::write_local(local, WRITE_LOCAL_KEY, res.trim().to_string());
+    storage::dictionary_put(local, DICTIONARY_PUT_KEY, res.trim().to_string());
 }
 
-fn get_local_key_uref() -> URef {
-    let key = runtime::get_key(LOCAL_KEY_NAME).unwrap_or_revert();
+fn get_dictionary_uref() -> URef {
+    let key = runtime::get_key(DICTIONARY_NAME).unwrap_or_revert();
     key.into_uref().unwrap_or_revert()
 }
 
 #[no_mangle]
 fn share_ro() {
-    let uref_ro = get_local_key_uref().into_read();
+    let uref_ro = get_dictionary_uref().into_read();
     runtime::ret(CLValue::from_t(uref_ro).unwrap_or_revert())
 }
 
 #[no_mangle]
 fn share_w() {
-    let uref_w = get_local_key_uref().into_write();
+    let uref_w = get_dictionary_uref().into_write();
     runtime::ret(CLValue::from_t(uref_w).unwrap_or_revert())
 }
 
@@ -99,17 +99,21 @@ pub fn delegate() {
     ));
     let named_keys = {
         let uref = {
-            let local_uref = storage::create_local().unwrap_or_revert();
+            let local_uref = storage::new_dictionary(None).unwrap_or_revert();
             assert_eq!(
                 local_uref.access_rights() & AccessRights::READ_ADD_WRITE,
                 AccessRights::READ_ADD_WRITE
             );
 
-            storage::write_local(local_uref, DEFAULT_LOCAL_KEY_NAME, DEFAULT_LOCAL_KEY_VALUE);
+            storage::dictionary_put(
+                local_uref,
+                DEFAULT_DICTIONARY_NAME,
+                DEFAULT_DICTIONARY_VALUE,
+            );
             local_uref
         };
         let mut named_keys = NamedKeys::new();
-        named_keys.insert(LOCAL_KEY_NAME.to_string(), uref.into());
+        named_keys.insert(DICTIONARY_NAME.to_string(), uref.into());
         named_keys
     };
 

@@ -58,9 +58,9 @@ pub enum Error {
     /// Failed to put key.
     #[cfg_attr(feature = "std", error("Failed to put key"))]
     PutKey = 13,
-    /// Failed to write local key.
-    #[cfg_attr(feature = "std", error("Failed to write local key"))]
-    WriteLocal = 14,
+    /// Failed to write to dictionary.
+    #[cfg_attr(feature = "std", error("Failed to write dictionary"))]
+    WriteDictionary = 14,
     /// Failed to create a [`crate::CLValue`].
     #[cfg_attr(feature = "std", error("Failed to create a CLValue"))]
     CLValue = 15,
@@ -139,7 +139,7 @@ impl TryFrom<u8> for Error {
             }
             d if d == Error::NewURef as u8 => Ok(Error::NewURef),
             d if d == Error::PutKey as u8 => Ok(Error::PutKey),
-            d if d == Error::WriteLocal as u8 => Ok(Error::WriteLocal),
+            d if d == Error::WriteDictionary as u8 => Ok(Error::WriteDictionary),
             d if d == Error::CLValue as u8 => Ok(Error::CLValue),
             d if d == Error::Serialize as u8 => Ok(Error::Serialize),
             d if d == Error::EqualSourceAndTarget as u8 => Ok(Error::EqualSourceAndTarget),

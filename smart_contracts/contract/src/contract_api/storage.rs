@@ -337,19 +337,24 @@ pub fn disable_contract_version(
 }
 
 /// Creates new [`URef`] that points to a context-local partition of global state.
-pub fn create_local() -> Result<URef, ApiError> {
+/// Optionally you can pass a [`str`] to automatically put this dictionary under named keys.
+pub fn new_dictionary(key_name: Option<&str>) -> Result<URef, ApiError> {
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
-        let ret = unsafe { ext_ffi::casper_create_local(value_size.as_mut_ptr()) };
+        let ret = unsafe { ext_ffi::casper_new_dictionary(value_size.as_mut_ptr()) };
         api_error::result_from(ret)?;
         unsafe { value_size.assume_init() }
     };
     let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
-    Ok(bytesrepr::deserialize(value_bytes).unwrap_or_revert())
+    let uref: URef = bytesrepr::deserialize(value_bytes).unwrap_or_revert();
+    if let Some(key_name) = key_name {
+        runtime::put_key(key_name, Key::from(uref));
+    }
+    Ok(uref)
 }
 
-/// Creates an [`URef`] that will refer to a the context-local partition of global state.
-pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
+/// Reads data from dictionary pointed at by [`URef`].
+pub fn dictionary_get<K: ToBytes, V: CLTyped + FromBytes>(
     uref: URef,
     key: K,
 ) -> Result<Option<V>, bytesrepr::Error> {
@@ -359,7 +364,7 @@ pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::casper_read_local(
+            ext_ffi::casper_dictionary_get(
                 uref_ptr,
                 uref_size,
                 key_bytes_ptr,
@@ -379,7 +384,7 @@ pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
 }
 
 /// Writes `value` under `key` in the context-local partition of global state.
-pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: V) {
+pub fn dictionary_put<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: V) {
     let (uref_ptr, uref_size, _bytes1) = contract_api::to_ptr(uref);
     let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
 
@@ -387,7 +392,7 @@ pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(uref: URef, key: K, value: 
     let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
 
     unsafe {
-        ext_ffi::casper_write_local(
+        ext_ffi::casper_dictionary_put(
             uref_ptr,
             uref_size,
             key_ptr,

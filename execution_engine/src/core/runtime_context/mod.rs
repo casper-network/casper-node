@@ -24,7 +24,7 @@ use crate::{
     core::{
         engine_state::execution_effect::ExecutionEffect,
         execution::{AddressGenerator, Error},
-        runtime_context::local_key::LocalKeyValue,
+        runtime_context::dictionary::DictionaryValue,
         tracking_copy::{AddResult, TrackingCopy},
         Address,
     },
@@ -32,7 +32,7 @@ use crate::{
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 
-pub(crate) mod local_key;
+pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
 
@@ -262,7 +262,7 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
-            Key::Local(_) => {
+            Key::Dictionary(_) => {
                 self.named_keys.remove(name);
                 Ok(())
             }
@@ -683,8 +683,8 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
-            Key::Local(_) => {
-                // Local key is a special case that will not be readable by default, but the access
+            Key::Dictionary(_) => {
+                // Dictionary is a special case that will not be readable by default, but the access
                 // bits are verified from within API call.
                 false
             }
@@ -702,8 +702,8 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::Local(_) => {
-                // Local key is a special case that will not be readable by default, but the access
+            Key::Dictionary(_) => {
+                // Dictionary is a special case that will not be readable by default, but the access
                 // bits are verified from within API call.
                 false
             }
@@ -721,8 +721,8 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::Local(_) => {
-                // Local key is a special case that will not be readable by default, but the access
+            Key::Dictionary(_) => {
+                // Dictionary is a special case that will not be readable by default, but the access
                 // bits are verified from within API call.
                 false
             }
@@ -1054,7 +1054,7 @@ where
         Ok(contract_package)
     }
 
-    pub(crate) fn read_ls(
+    pub(crate) fn dictionary_get(
         &mut self,
         uref: URef,
         key_bytes: &[u8],
@@ -1062,26 +1062,27 @@ where
         self.validate_readable(&uref.into())?;
         self.validate_key(&uref.into())?;
 
-        let local_key = Key::local(uref, key_bytes);
+        let dictionary_key = Key::dictionary(uref, key_bytes);
 
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &local_key)
+            .read(self.correlation_id, &dictionary_key)
             .map_err(Into::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
             let cl_value_indirect: CLValue =
                 stored_value.try_into().map_err(Error::TypeMismatch)?;
-            let local_key_value: LocalKeyValue = cl_value_indirect.into_t().map_err(Error::from)?;
-            let cl_value = local_key_value.into_cl_value();
+            let dictionary_value: DictionaryValue =
+                cl_value_indirect.into_t().map_err(Error::from)?;
+            let cl_value = dictionary_value.into_cl_value();
             Ok(Some(cl_value))
         } else {
             Ok(None)
         }
     }
 
-    pub fn write_ls(
+    pub fn dictionary_put(
         &mut self,
         uref: URef,
         key_bytes: &[u8],
@@ -1093,11 +1094,11 @@ where
         self.validate_cl_value(&cl_value)?;
 
         let wrapped_cl_value =
-            LocalKeyValue::new(cl_value, key_bytes.to_vec(), uref.addr().to_vec());
+            DictionaryValue::new(cl_value, key_bytes.to_vec(), uref.addr().to_vec());
         let wrapped_cl_value = CLValue::from_t(wrapped_cl_value).map_err(Error::from)?;
 
-        let local_key = Key::local(uref, key_bytes);
-        self.metered_write_gs_unsafe(local_key, wrapped_cl_value)?;
+        let dictionary_key = Key::dictionary(uref, key_bytes);
+        self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
         Ok(())
     }
 }

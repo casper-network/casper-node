@@ -20,7 +20,7 @@ use self::meter::{heap_meter::HeapSize, Meter};
 use crate::{
     core::{
         engine_state::{execution_effect::ExecutionEffect, op::Op},
-        runtime_context::local_key,
+        runtime_context::dictionary,
     },
     shared::{
         additive_map::AdditiveMap,
@@ -452,12 +452,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             let value = stored_value.value().to_owned();
 
             // Following code does a patching on the `StoredValue` that unwraps an inner
-            // `LocalKeyValue` for local keys only.
-            let value = match local_key::monkey_patch(query.current_key, value) {
+            // `DictionaryValue` for dictionaries only.
+            let value = match dictionary::handle_stored_value(query.current_key, value) {
                 Ok(patched_stored_value) => patched_stored_value,
                 Err(error) => {
                     return Ok(query.into_not_found_result(&format!(
-                        "Failed to retrieve local key value: {}",
+                        "Failed to retrieve dictionary value: {}",
                         error
                     )))
                 }

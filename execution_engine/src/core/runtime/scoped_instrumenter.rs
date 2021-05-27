@@ -143,9 +143,9 @@ impl Drop for ScopedInstrumenter {
             FunctionIndex::Blake2b => "host_blake2b",
             FunctionIndex::RecordTransfer => "host_record_transfer",
             FunctionIndex::RecordEraInfo => "host_record_era_info",
-            FunctionIndex::CreateLocalFuncIndex => "host_create_local",
-            FunctionIndex::ReadLocalFuncIndex => "host_read_local",
-            FunctionIndex::WriteLocalFuncIndex => "host_write_local",
+            FunctionIndex::NewDictionaryFuncIndex => "host_new_dictionary",
+            FunctionIndex::DictionaryGetFuncIndex => "host_dictionary_get",
+            FunctionIndex::DictionaryPutFuncIndex => "host_dictionary_put",
         };
 
         let mut properties = mem::take(&mut self.properties);

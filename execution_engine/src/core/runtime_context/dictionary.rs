@@ -5,77 +5,80 @@ use casper_types::{
 
 use crate::shared::stored_value::StoredValue;
 
-/// Wraps a [`CLValue`] and extends it with a seed [`URef`] and original key bytes.
+/// Wraps a [`CLValue`] and extends it with a seed [`casper_types::URef`] and original key bytes.
 #[derive(Clone)]
-pub struct LocalKeyValue {
+pub struct DictionaryValue {
     /// Actual [`CLValue`] written to global state.
     cl_value: CLValue,
+    /// [`URef`] seed bytes.
+    uref_addr: Bytes,
     /// Original key bytes.
     key_bytes: Bytes,
-    /// [`URef`] seed bytes.
-    seed_address: Bytes,
 }
 
-impl LocalKeyValue {
-    pub fn new(cl_value: CLValue, key_bytes: Vec<u8>, seed_address: Vec<u8>) -> Self {
+impl DictionaryValue {
+    pub fn new(cl_value: CLValue, key_bytes: Vec<u8>, uref_addr: Vec<u8>) -> Self {
         Self {
             cl_value,
+            uref_addr: uref_addr.into(),
             key_bytes: key_bytes.into(),
-            seed_address: seed_address.into(),
         }
     }
 
-    /// Get a reference to the local key wrapper's cl value.
+    /// Get a reference to the [`DictionaryValue`]'s wrapper's cl value.
     pub fn into_cl_value(self) -> CLValue {
         self.cl_value
     }
 }
 
-impl CLTyped for LocalKeyValue {
+impl CLTyped for DictionaryValue {
     fn cl_type() -> CLType {
         CLType::Any
     }
 }
 
-impl FromBytes for LocalKeyValue {
+impl FromBytes for DictionaryValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (cl_value, remainder) = FromBytes::from_bytes(bytes)?;
+        let (uref_addr, remainder) = FromBytes::from_bytes(remainder)?;
         let (key_bytes, remainder) = FromBytes::from_bytes(remainder)?;
-        let (seed_address, remainder) = FromBytes::from_bytes(remainder)?;
-        let local_key_value = LocalKeyValue {
+        let dictionary_value = DictionaryValue {
             cl_value,
+            uref_addr,
             key_bytes,
-            seed_address,
         };
-        Ok((local_key_value, remainder))
+        Ok((dictionary_value, remainder))
     }
 }
 
-impl ToBytes for LocalKeyValue {
+impl ToBytes for DictionaryValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.cl_value.to_bytes()?);
+        buffer.extend(self.uref_addr.to_bytes()?);
         buffer.extend(self.key_bytes.to_bytes()?);
-        buffer.extend(self.seed_address.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         self.cl_value.serialized_length()
+            + self.uref_addr.serialized_length()
             + self.key_bytes.serialized_length()
-            + self.seed_address.serialized_length()
     }
 }
 
-/// Inspects `key` argument whether it contains a local variant, and checks if `stored_value`
+/// Inspects `key` argument whether it contains a dictionary variant, and checks if `stored_value`
 /// contains a [`CLValue`], then it will attempt a conversion from the held clvalue into
-/// [`LocalKeyValue`] and returns the real [`CLValue`] held by it.
+/// [`DictionaryValue`] and returns the real [`CLValue`] held by it.
 ///
 /// For any other combination of `key` and `stored_value` it returns its unmodified value.
-pub fn monkey_patch(key: Key, stored_value: StoredValue) -> Result<StoredValue, CLValueError> {
+pub fn handle_stored_value(
+    key: Key,
+    stored_value: StoredValue,
+) -> Result<StoredValue, CLValueError> {
     match (key, stored_value) {
-        (Key::Local(_), StoredValue::CLValue(cl_value)) => {
-            let wrapped_cl_value: LocalKeyValue = cl_value.into_t()?;
+        (Key::Dictionary(_), StoredValue::CLValue(cl_value)) => {
+            let wrapped_cl_value: DictionaryValue = cl_value.into_t()?;
             let cl_value = wrapped_cl_value.into_cl_value();
             Ok(StoredValue::CLValue(cl_value))
         }
@@ -83,15 +86,19 @@ pub fn monkey_patch(key: Key, stored_value: StoredValue) -> Result<StoredValue, 
     }
 }
 
-/// Wraps a [`StoredValue`] into [`LocalKeyValue`] only if it contains a [`CLValue`] variant.
+/// Wraps a [`StoredValue`] into [`DictionaryValue`] only if it contains a [`CLValue`] variant.
 ///
 /// Used only for testing purposes.
 #[cfg(test)]
-pub fn monkey_patch_into(key: Key, stored_value: StoredValue) -> Result<StoredValue, CLValueError> {
+pub fn handle_stored_value_into(
+    key: Key,
+    stored_value: StoredValue,
+) -> Result<StoredValue, CLValueError> {
     match (key, stored_value) {
-        (Key::Local(_), StoredValue::CLValue(cl_value)) => {
-            let wrapped_local_key = LocalKeyValue::new(cl_value, vec![0; 32], vec![255; 32]);
-            let wrapped_cl_value = CLValue::from_t(wrapped_local_key)?;
+        (Key::Dictionary(_), StoredValue::CLValue(cl_value)) => {
+            let wrapped_dictionary_value =
+                DictionaryValue::new(cl_value, vec![0; 32], vec![255; 32]);
+            let wrapped_cl_value = CLValue::from_t(wrapped_dictionary_value)?;
             Ok(StoredValue::CLValue(wrapped_cl_value))
         }
         (_, stored_value) => Ok(stored_value),

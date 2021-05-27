@@ -17,7 +17,7 @@ use super::{
 use crate::{
     core::{
         engine_state::{op::Op, EngineConfig},
-        runtime_context::local_key,
+        runtime_context::dictionary,
         ValidationError,
     },
     shared::{
@@ -316,7 +316,7 @@ proptest! {
     fn query_empty_path(k in key_arb(), missing_key in key_arb(), v in stored_value_arb()) {
         let correlation_id = CorrelationId::new();
 
-        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[(k, value)]).unwrap();
         let view = gs.checkout(root_hash).unwrap().unwrap();
@@ -355,7 +355,7 @@ proptest! {
         ));
         let contract_key = Key::Hash(hash);
 
-        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
@@ -398,7 +398,7 @@ proptest! {
         );
         let account_key = Key::Account(address);
 
-        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
             correlation_id,
@@ -457,7 +457,7 @@ proptest! {
         );
         let account_key = Key::Account(address);
 
-        let value = local_key::monkey_patch_into(k, v.clone()).unwrap();
+        let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[
             (k, value),

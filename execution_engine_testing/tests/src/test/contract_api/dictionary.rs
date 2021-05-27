@@ -7,10 +7,11 @@ use casper_types::{
     bytesrepr::ToBytes, runtime_args, system::mint, AccessRights, CLType, ContractHash, Key,
     RuntimeArgs, U512,
 };
-use local_state_call::{NEW_LOCAL_KEY_NAME, NEW_LOCAL_KEY_VALUE};
 
-const LOCAL_STATE_WASM: &str = "local_state.wasm";
-const LOCAL_STATE_CALL_WASM: &str = "local_state_call.wasm";
+use dictionary_call::{NEW_DICTIONARY_NAME, NEW_DICTIONARY_VALUE};
+
+const DICTIONARY_WASM: &str = "dictionary.wasm";
+const DICTIONARY_CALL_WASM: &str = "dictionary_call.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
@@ -30,7 +31,7 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        LOCAL_STATE_WASM,
+        DICTIONARY_WASM,
         RuntimeArgs::default(),
     )
     .build();
@@ -47,7 +48,7 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
         .expect("should have default account");
     let contract_hash = account
         .named_keys()
-        .get(local_state::CONTRACT_HASH_NAME)
+        .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -64,14 +65,14 @@ fn should_modify_with_owned_access_rights() {
     let modify_write_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
-        local_state::MODIFY_WRITE_ENTRYPOINT,
+        dictionary::MODIFY_WRITE_ENTRYPOINT,
         RuntimeArgs::default(),
     )
     .build();
     let modify_write_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
-        local_state::MODIFY_WRITE_ENTRYPOINT,
+        dictionary::MODIFY_WRITE_ENTRYPOINT,
         RuntimeArgs::default(),
     )
     .build();
@@ -80,14 +81,14 @@ fn should_modify_with_owned_access_rights() {
         .get_contract(contract_hash)
         .expect("should have account");
 
-    let stored_local_key = contract
+    let stored_dictionary_key = contract
         .named_keys()
-        .get(local_state::LOCAL_KEY_NAME)
-        .expect("local key");
-    let local_key_root_uref = stored_local_key.into_uref().expect("should be uref");
+        .get(dictionary::DICTIONARY_NAME)
+        .expect("dictionary");
+    let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
 
-    let key_bytes = local_state::WRITE_LOCAL_KEY.to_bytes().unwrap();
-    let local_key_value = Key::local(local_key_root_uref, &key_bytes);
+    let key_bytes = dictionary::DICTIONARY_PUT_KEY.to_bytes().unwrap();
+    let dictionary_value = Key::dictionary(dictionary_root_uref, &key_bytes);
 
     builder
         .exec(modify_write_request_1)
@@ -95,7 +96,7 @@ fn should_modify_with_owned_access_rights() {
         .expect_success();
 
     let stored_value = builder
-        .query(None, local_key_root_uref.into(), &[])
+        .query(None, dictionary_root_uref.into(), &[])
         .expect("should have value");
     let local_uref_value = stored_value
         .as_cl_value()
@@ -104,11 +105,11 @@ fn should_modify_with_owned_access_rights() {
     assert_eq!(
         local_uref_value.cl_type(),
         &CLType::Unit,
-        "created local key uref should be unit"
+        "created dictionary uref should be unit"
     );
 
     let stored_value = builder
-        .query(None, local_key_value, &[])
+        .query(None, dictionary_value, &[])
         .expect("should have value");
     let local_value = stored_value
         .as_cl_value()
@@ -124,7 +125,7 @@ fn should_modify_with_owned_access_rights() {
         .expect_success();
 
     let stored_value = builder
-        .query(None, local_key_value, &[])
+        .query(None, dictionary_value, &[])
         .expect("should have value");
     let local_value = stored_value
         .as_cl_value()
@@ -142,11 +143,11 @@ fn should_not_write_with_ro_access_rights() {
 
     let call_request = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
-        LOCAL_STATE_CALL_WASM,
+        DICTIONARY_CALL_WASM,
         runtime_args! {
-            local_state_call::ARG_OPERATION => local_state_call::OP_WRITE,
-            local_state_call::ARG_SHARE_UREF_ENTRYPOINT => local_state::SHARE_RO_ENTRYPOINT,
-            local_state_call::ARG_CONTRACT_HASH => contract_hash,
+            dictionary_call::ARG_OPERATION => dictionary_call::OP_WRITE,
+            dictionary_call::ARG_SHARE_UREF_ENTRYPOINT => dictionary::SHARE_RO_ENTRYPOINT,
+            dictionary_call::ARG_CONTRACT_HASH => contract_hash,
         },
     )
     .build();
@@ -178,11 +179,11 @@ fn should_read_with_ro_access_rights() {
 
     let call_request = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
-        LOCAL_STATE_CALL_WASM,
+        DICTIONARY_CALL_WASM,
         runtime_args! {
-            local_state_call::ARG_OPERATION => local_state_call::OP_READ,
-            local_state_call::ARG_SHARE_UREF_ENTRYPOINT => local_state::SHARE_RO_ENTRYPOINT,
-            local_state_call::ARG_CONTRACT_HASH => contract_hash,
+            dictionary_call::ARG_OPERATION => dictionary_call::OP_READ,
+            dictionary_call::ARG_SHARE_UREF_ENTRYPOINT => dictionary::SHARE_RO_ENTRYPOINT,
+            dictionary_call::ARG_CONTRACT_HASH => contract_hash,
         },
     )
     .build();
@@ -197,11 +198,11 @@ fn should_not_read_with_write_access_rights() {
 
     let call_request = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
-        LOCAL_STATE_CALL_WASM,
+        DICTIONARY_CALL_WASM,
         runtime_args! {
-            local_state_call::ARG_OPERATION => local_state_call::OP_READ,
-            local_state_call::ARG_SHARE_UREF_ENTRYPOINT => local_state::SHARE_W_ENTRYPOINT,
-            local_state_call::ARG_CONTRACT_HASH => contract_hash,
+            dictionary_call::ARG_OPERATION => dictionary_call::OP_READ,
+            dictionary_call::ARG_SHARE_UREF_ENTRYPOINT => dictionary::SHARE_W_ENTRYPOINT,
+            dictionary_call::ARG_CONTRACT_HASH => contract_hash,
         },
     )
     .build();
@@ -233,11 +234,11 @@ fn should_write_with_write_access_rights() {
 
     let call_request = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
-        LOCAL_STATE_CALL_WASM,
+        DICTIONARY_CALL_WASM,
         runtime_args! {
-            local_state_call::ARG_OPERATION => local_state_call::OP_WRITE,
-            local_state_call::ARG_SHARE_UREF_ENTRYPOINT => local_state::SHARE_W_ENTRYPOINT,
-            local_state_call::ARG_CONTRACT_HASH => contract_hash,
+            dictionary_call::ARG_OPERATION => dictionary_call::OP_WRITE,
+            dictionary_call::ARG_SHARE_UREF_ENTRYPOINT => dictionary::SHARE_W_ENTRYPOINT,
+            dictionary_call::ARG_CONTRACT_HASH => contract_hash,
         },
     )
     .build();
@@ -248,18 +249,21 @@ fn should_write_with_write_access_rights() {
         .get_contract(contract_hash)
         .expect("should have account");
 
-    let stored_local_key = contract
+    let stored_dictionary_key = contract
         .named_keys()
-        .get(local_state::LOCAL_KEY_NAME)
-        .expect("local key");
-    let local_key_root_uref = stored_local_key.into_uref().expect("should be uref");
+        .get(dictionary::DICTIONARY_NAME)
+        .expect("dictionary");
+    let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
 
-    let local_key = Key::local(local_key_root_uref, &NEW_LOCAL_KEY_NAME.to_bytes().unwrap());
+    let dictionary = Key::dictionary(
+        dictionary_root_uref,
+        &NEW_DICTIONARY_NAME.to_bytes().unwrap(),
+    );
 
-    let result = builder.query(None, local_key, &[]).expect("should query");
+    let result = builder.query(None, dictionary, &[]).expect("should query");
     let cl_value = result.as_cl_value().cloned().expect("should have cl value");
     let written_value: String = cl_value.into_t().expect("should get string");
-    assert_eq!(written_value, NEW_LOCAL_KEY_VALUE);
+    assert_eq!(written_value, NEW_DICTIONARY_VALUE);
 }
 
 #[ignore]
@@ -271,21 +275,21 @@ fn should_not_write_with_forged_uref() {
         .get_contract(contract_hash)
         .expect("should have account");
 
-    let stored_local_key = contract
+    let stored_dictionary_key = contract
         .named_keys()
-        .get(local_state::LOCAL_KEY_NAME)
-        .expect("local key");
-    let local_key_root_uref = stored_local_key.into_uref().expect("should be uref");
+        .get(dictionary::DICTIONARY_NAME)
+        .expect("dictionary");
+    let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
 
     // Do some extra forging on the uref
-    let forged_uref = local_key_root_uref.into_read_add_write();
+    let forged_uref = dictionary_root_uref.into_read_add_write();
 
     let call_request = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
-        LOCAL_STATE_CALL_WASM,
+        DICTIONARY_CALL_WASM,
         runtime_args! {
-            local_state_call::ARG_OPERATION => local_state_call::OP_FORGED_UREF_WRITE,
-            local_state_call::ARG_FORGED_UREF => forged_uref,
+            dictionary_call::ARG_OPERATION => dictionary_call::OP_FORGED_UREF_WRITE,
+            dictionary_call::ARG_FORGED_UREF => forged_uref,
         },
     )
     .build();

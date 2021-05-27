@@ -81,7 +81,7 @@ pub enum KeyTag {
     Balance = 6,
     Bid = 7,
     Withdraw = 8,
-    Local = 9,
+    Dictionary = 9,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -109,7 +109,7 @@ pub enum Key {
     /// A `Key` under which we store unbond information.
     Withdraw(AccountHash),
     /// A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.
-    Local(LocalAddr),
+    Dictionary(LocalAddr),
 }
 
 #[derive(Debug)]
@@ -123,7 +123,7 @@ pub enum FromStrError {
     Balance(String),
     Bid(String),
     Withdraw(String),
-    Local(String),
+    Dictionary(String),
     UnknownPrefix,
 }
 
@@ -160,7 +160,7 @@ impl Display for FromStrError {
             FromStrError::Bid(error) => write!(f, "bid-key from string error: {}", error),
             FromStrError::Withdraw(error) => write!(f, "withdraw-key from string error: {}", error),
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
-            FromStrError::Local(error) => write!(f, "local-key from string error: {}", error),
+            FromStrError::Dictionary(error) => write!(f, "dictionary from string error: {}", error),
         }
     }
 }
@@ -179,7 +179,7 @@ impl Key {
             Key::Balance(_) => String::from("Key::Balance"),
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
-            Key::Local(_) => String::from("Key::Local"),
+            Key::Dictionary(_) => String::from("Key::Dictionary"),
         }
     }
 
@@ -224,7 +224,7 @@ impl Key {
             Key::Withdraw(account_hash) => {
                 format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
             }
-            Key::Local(local_addr) => {
+            Key::Dictionary(local_addr) => {
                 format!("{}{}", LOCAL_PREFIX, base16::encode_lower(&local_addr))
             }
         }
@@ -297,10 +297,10 @@ impl Key {
 
         if let Some(local_addr) = input.strip_prefix(LOCAL_PREFIX) {
             let local_addr_bytes = base16::decode(local_addr)
-                .map_err(|error| FromStrError::Local(error.to_string()))?;
+                .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
             let local_addr = LocalAddr::try_from(local_addr_bytes.as_ref())
-                .map_err(|error| FromStrError::Local(error.to_string()))?;
-            return Ok(Key::Local(local_addr));
+                .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
+            return Ok(Key::Dictionary(local_addr));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -345,7 +345,7 @@ impl Key {
     /// otherwise returns `None`.
     pub fn as_local(&self) -> Option<&LocalAddr> {
         match self {
-            Key::Local(v) => Some(v),
+            Key::Dictionary(v) => Some(v),
             _ => None,
         }
     }
@@ -358,7 +358,7 @@ impl Key {
     }
 
     /// Creates a new [`Key::Local`] variant based on a `uref` and a `key` bytes.
-    pub fn local(uref: URef, key: &[u8]) -> Key {
+    pub fn dictionary(uref: URef, key: &[u8]) -> Key {
         // NOTE: Expect below is safe because the length passed is supported.
         let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
         hasher.update(uref.addr().as_ref());
@@ -366,7 +366,7 @@ impl Key {
         // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
         let mut local_addr = HashAddr::default();
         hasher.finalize_variable(|hash| local_addr.clone_from_slice(hash));
-        Key::Local(local_addr)
+        Key::Dictionary(local_addr)
     }
 }
 
@@ -382,7 +382,7 @@ impl Display for Key {
             Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
-            Key::Local(local_addr) => write!(f, "Key::Local({})", HexFmt(local_addr)),
+            Key::Dictionary(local_addr) => write!(f, "Key::Local({})", HexFmt(local_addr)),
         }
     }
 }
@@ -405,7 +405,7 @@ impl Tagged<KeyTag> for Key {
             Key::Balance(_) => KeyTag::Balance,
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
-            Key::Local(_) => KeyTag::Local,
+            Key::Dictionary(_) => KeyTag::Dictionary,
         }
     }
 }
@@ -485,7 +485,7 @@ impl ToBytes for Key {
             Key::Withdraw(account_hash) => {
                 result.append(&mut account_hash.to_bytes()?);
             }
-            Key::Local(local_addr) => {
+            Key::Dictionary(local_addr) => {
                 result.append(&mut local_addr.to_bytes()?);
             }
         }
@@ -505,7 +505,7 @@ impl ToBytes for Key {
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
-            Key::Local(_) => KEY_LOCAL_SERIALIZED_LENGTH,
+            Key::Dictionary(_) => KEY_LOCAL_SERIALIZED_LENGTH,
         }
     }
 }
@@ -550,9 +550,9 @@ impl FromBytes for Key {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Withdraw(account_hash), rem))
             }
-            tag if tag == KeyTag::Local as u8 => {
+            tag if tag == KeyTag::Dictionary as u8 => {
                 let (local_addr, rem) = LocalAddr::from_bytes(remainder)?;
-                Ok((Key::Local(local_addr), rem))
+                Ok((Key::Dictionary(local_addr), rem))
             }
             _ => Err(Error::Formatting),
         }
@@ -571,7 +571,7 @@ impl Distribution<Key> for Standard {
             6 => Key::Balance(rng.gen()),
             7 => Key::Bid(rng.gen()),
             8 => Key::Withdraw(rng.gen()),
-            9 => Key::Local(rng.gen()),
+            9 => Key::Dictionary(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -607,7 +607,7 @@ mod serde_helpers {
                 Key::Balance(_) => HumanReadable::Balance(formatted_string),
                 Key::Bid(_) => HumanReadable::Bid(formatted_string),
                 Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
-                Key::Local(_) => HumanReadable::Local(formatted_string),
+                Key::Dictionary(_) => HumanReadable::Local(formatted_string),
             }
         }
     }
@@ -661,7 +661,7 @@ mod serde_helpers {
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
-                Key::Local(local_addr) => BinarySerHelper::Local(local_addr),
+                Key::Dictionary(local_addr) => BinarySerHelper::Local(local_addr),
             }
         }
     }
@@ -692,7 +692,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
-                BinaryDeserHelper::Local(local_addr) => Key::Local(local_addr),
+                BinaryDeserHelper::Local(local_addr) => Key::Dictionary(local_addr),
             }
         }
     }

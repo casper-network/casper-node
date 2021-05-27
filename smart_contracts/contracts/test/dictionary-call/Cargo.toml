@@ -1,11 +1,11 @@
 [package]
-name = "local-state"
+name = "dictionary-call"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "local_state"
+name = "dictionary_call"
 path = "src/bin/main.rs"
 bench = false
 doctest = false
@@ -17,3 +17,4 @@ std = ["casper-contract/std", "casper-types/std"]
 [dependencies]
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
+dictionary = { path = "../dictionary" }

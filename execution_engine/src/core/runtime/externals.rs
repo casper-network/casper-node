@@ -968,7 +968,7 @@ where
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
-            FunctionIndex::CreateLocalFuncIndex => {
+            FunctionIndex::NewDictionaryFuncIndex => {
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
                 self.charge_host_function_call(
@@ -978,7 +978,7 @@ where
                 let ret = self.create_local(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
-            FunctionIndex::ReadLocalFuncIndex => {
+            FunctionIndex::DictionaryGetFuncIndex => {
                 // args(0) = pointer to uref in Wasm memory
                 // args(1) = size of uref in Wasm memory
                 // args(2) = pointer to key bytes pointer in Wasm memory
@@ -992,7 +992,7 @@ where
                     _,
                 ) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.read_local,
+                    &host_function_costs.dictionary_get,
                     [
                         uref_ptr,
                         uref_size,
@@ -1002,7 +1002,7 @@ where
                     ],
                 )?;
                 scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
-                let ret = self.read_local(
+                let ret = self.dictionary_get(
                     uref_ptr,
                     uref_size,
                     key_bytes_ptr,
@@ -1011,10 +1011,10 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
-            FunctionIndex::WriteLocalFuncIndex => {
+            FunctionIndex::DictionaryPutFuncIndex => {
                 let (uref_ptr, uref_size, key_bytes_ptr, key_bytes_size, value_ptr, value_ptr_size): (_, u32, _, u32, _, u32) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.write_local,
+                    &host_function_costs.dictionary_put,
                     [
                         uref_ptr,
                         uref_size,
@@ -1026,7 +1026,7 @@ where
                 )?;
                 scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
                 scoped_instrumenter.add_property("value_size", value_ptr_size);
-                self.write_local(
+                self.dictionary_put(
                     uref_ptr,
                     uref_size,
                     key_bytes_ptr,

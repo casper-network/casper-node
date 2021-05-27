@@ -213,17 +213,17 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::PrintIndex.into(),
             ),
-            "casper_read_local" => FuncInstance::alloc_host(
+            "casper_dictionary_get" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
-                FunctionIndex::ReadLocalFuncIndex.into(),
+                FunctionIndex::DictionaryGetFuncIndex.into(),
             ),
-            "casper_write_local" => FuncInstance::alloc_host(
+            "casper_dictionary_put" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 6][..], None),
-                FunctionIndex::WriteLocalFuncIndex.into(),
+                FunctionIndex::DictionaryPutFuncIndex.into(),
             ),
-            "casper_create_local" => FuncInstance::alloc_host(
+            "casper_new_dictionary" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], Some(ValueType::I32)),
-                FunctionIndex::CreateLocalFuncIndex.into(),
+                FunctionIndex::NewDictionaryFuncIndex.into(),
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

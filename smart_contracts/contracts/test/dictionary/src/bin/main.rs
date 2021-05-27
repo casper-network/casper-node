@@ -3,5 +3,5 @@
 
 #[no_mangle]
 pub extern "C" fn call() {
-    local_state::delegate()
+    dictionary::delegate()
 }

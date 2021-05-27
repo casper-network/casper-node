@@ -99,7 +99,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
-        Key::Local(_) => None,
+        Key::Dictionary(_) => None,
     }
 }
 
@@ -3373,7 +3373,7 @@ where
 
     /// Similar to `read`, this function is for reading from the "local cluster" of global state
     /// referenced by the uref.
-    fn read_local(
+    fn dictionary_get(
         &mut self,
         uref_ptr: u32,
         uref_size: u32,
@@ -3389,7 +3389,7 @@ where
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
         let key_bytes = self.bytes_from_mem(key_bytes_ptr, key_bytes_size as usize)?;
 
-        let cl_value = match self.context.read_ls(uref, &key_bytes)? {
+        let cl_value = match self.context.dictionary_get(uref, &key_bytes)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
@@ -3407,9 +3407,8 @@ where
         Ok(Ok(()))
     }
 
-    /// Writes `value` under a key derived from `key` in the "local cluster" of
-    /// GlobalState
-    fn write_local(
+    /// Writes `value` under a key derived from `key` in the dictionary partition of GlobalState
+    fn dictionary_put(
         &mut self,
         uref_ptr: u32,
         uref_size: u32,
@@ -3422,7 +3421,7 @@ where
         let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .write_ls(uref, &key_bytes, cl_value)
+            .dictionary_put(uref, &key_bytes, cl_value)
             .map_err(Into::into)
     }
 }
