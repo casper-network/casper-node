@@ -755,6 +755,14 @@ where
     pub fn into_inner(self) -> R {
         self.reactor
     }
+
+    /// Deconstruct the runner to return both reactor and scheduler queue.
+    ///
+    /// This is usually used to drain the scheduler after shutting down the reactor.
+    #[inline]
+    pub fn into_inners(self) -> (R, &'static Scheduler<R::Event>) {
+        (self.reactor, self.scheduler)
+    }
 }
 
 #[cfg(test)]
