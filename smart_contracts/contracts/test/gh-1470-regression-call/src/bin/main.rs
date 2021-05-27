@@ -5,15 +5,14 @@ extern crate alloc;
 
 use alloc::string::String;
 use core::str::FromStr;
-use gh_1470_regression_call::{ARG_CONTRACT_HASH, ARG_CONTRACT_PACKAGE_HASH, ARG_TEST_METHOD};
+use gh_1470_regression_call::{
+    Arg4Type, ARG4, ARG_CONTRACT_HASH, ARG_CONTRACT_PACKAGE_HASH, ARG_TEST_METHOD,
+};
 
 use casper_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{runtime_args, ContractHash, ContractPackageHash, RuntimeArgs};
 
 use gh_1470_regression_call::TestMethod;
-
-const ARG4: &str = "arg4";
-type Arg4Type = bool;
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -36,6 +35,12 @@ pub extern "C" fn call() {
         gh_1470_regression::ARG1 => gh_1470_regression::Arg3Type::default(),
     };
 
+    let optional_type_mismatch_runtime_args = runtime_args! {
+        gh_1470_regression::ARG1 => gh_1470_regression::Arg1Type::default(),
+        gh_1470_regression::ARG2 => gh_1470_regression::Arg2Type::default(),
+        gh_1470_regression::ARG3 => Arg4Type::default(),
+    };
+
     let correct_without_optional_args = runtime_args! {
         gh_1470_regression::ARG2 => gh_1470_regression::Arg2Type::default(),
         gh_1470_regression::ARG1 => gh_1470_regression::Arg1Type::default(),
@@ -48,7 +53,7 @@ pub extern "C" fn call() {
         ARG4 => Arg4Type::default(),
     };
 
-    assert_ne!(correct_runtime_args, type_mismatch_runtime_args);
+    assert_ne!(correct_runtime_args, optional_type_mismatch_runtime_args);
 
     match test_method {
         TestMethod::CallDoNothing => {
@@ -150,6 +155,26 @@ pub extern "C" fn call() {
                 None,
                 gh_1470_regression::RESTRICTED_DO_NOTHING_ENTRYPOINT,
                 extra_runtime_args,
+            );
+        }
+        TestMethod::CallDoNothingOptionalTypeMismatch => {
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+
+            runtime::call_contract::<()>(
+                contract_hash,
+                gh_1470_regression::RESTRICTED_DO_NOTHING_ENTRYPOINT,
+                optional_type_mismatch_runtime_args,
+            );
+        }
+        TestMethod::CallVersionedDoNothingOptionalTypeMismatch => {
+            let contract_package_hash: ContractPackageHash =
+                runtime::get_named_arg(ARG_CONTRACT_PACKAGE_HASH);
+
+            runtime::call_versioned_contract::<()>(
+                contract_package_hash,
+                None,
+                gh_1470_regression::RESTRICTED_DO_NOTHING_ENTRYPOINT,
+                optional_type_mismatch_runtime_args,
             );
         }
     }

@@ -21,16 +21,28 @@ impl From<Error> for ApiError {
 
 pub const METHOD_CALL_DO_NOTHING: &str = "call_do_nothing";
 pub const METHOD_CALL_VERSIONED_DO_NOTHING: &str = "call_versioned_do_nothing";
+
 pub const METHOD_CALL_DO_NOTHING_NO_ARGS: &str = "call_do_nothing_no_args";
 pub const METHOD_CALL_VERSIONED_DO_NOTHING_NO_ARGS: &str = "call_versioned_do_nothing_no_args";
+
 pub const METHOD_CALL_DO_NOTHING_TYPE_MISMATCH: &str = "call_do_nothing_type_mismatch";
 pub const METHOD_CALL_VERSIONED_DO_NOTHING_TYPE_MISMATCH: &str =
     "call_versioned_do_nothing_type_mismatch";
+
+pub const METHOD_CALL_DO_NOTHING_OPTIONAL_TYPE_MISMATCH: &str =
+    "call_do_nothing_optional_type_mismatch";
+pub const METHOD_CALL_VERSIONED_DO_NOTHING_OPTIONAL_TYPE_MISMATCH: &str =
+    "call_versioned_do_nothing_optional_type_mismatch";
+
 pub const METHOD_CALL_DO_NOTHING_NO_OPTIONALS: &str = "call_do_nothing_no_optionals";
 pub const METHOD_CALL_VERSIONED_DO_NOTHING_NO_OPTIONALS: &str =
     "call_versioned_do_nothing_no_optionals";
+
 pub const METHOD_CALL_DO_NOTHING_EXTRA: &str = "call_do_nothing_extra";
 pub const METHOD_CALL_VERSIONED_DO_NOTHING_EXTRA: &str = "call_versioned_do_nothing_extra";
+
+pub const ARG4: &str = "arg4";
+pub type Arg4Type = Option<bool>;
 
 pub enum TestMethod {
     CallDoNothing,
@@ -39,6 +51,8 @@ pub enum TestMethod {
     CallVersionedDoNothingNoArgs,
     CallDoNothingTypeMismatch,
     CallVersionedDoNothingTypeMismatch,
+    CallDoNothingOptionalTypeMismatch,
+    CallVersionedDoNothingOptionalTypeMismatch,
     CallDoNothingNoOptionals,
     CallVersionedDoNothingNoOptionals,
     CallDoNothingExtra,
@@ -61,6 +75,10 @@ impl FromStr for TestMethod {
             Ok(TestMethod::CallDoNothingTypeMismatch)
         } else if s == METHOD_CALL_VERSIONED_DO_NOTHING_TYPE_MISMATCH {
             Ok(TestMethod::CallVersionedDoNothingTypeMismatch)
+        } else if s == METHOD_CALL_DO_NOTHING_OPTIONAL_TYPE_MISMATCH {
+            Ok(TestMethod::CallDoNothingOptionalTypeMismatch)
+        } else if s == METHOD_CALL_VERSIONED_DO_NOTHING_OPTIONAL_TYPE_MISMATCH {
+            Ok(TestMethod::CallVersionedDoNothingOptionalTypeMismatch)
         } else if s == METHOD_CALL_DO_NOTHING_NO_OPTIONALS {
             Ok(TestMethod::CallDoNothingNoOptionals)
         } else if s == METHOD_CALL_VERSIONED_DO_NOTHING_NO_OPTIONALS {

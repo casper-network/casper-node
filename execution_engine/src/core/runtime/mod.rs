@@ -1941,11 +1941,6 @@ where
             // ensure args type(s) match defined args of entry point
 
             for (param_name, param) in entry_point_args_lookup {
-                if param.cl_type().is_option() {
-                    // Arguments defined as optionals are not considered
-                    continue;
-                }
-
                 if let Some(named_arg) = args_lookup.get(param_name) {
                     if param.cl_type() != named_arg.cl_value().cl_type() {
                         return Err(Error::type_mismatch(
@@ -1953,7 +1948,7 @@ where
                             named_arg.cl_value().cl_type().clone(),
                         ));
                     }
-                } else {
+                } else if !param.cl_type().is_option() {
                     return Err(Error::MissingArgument {
                         name: param.name().to_string(),
                     });

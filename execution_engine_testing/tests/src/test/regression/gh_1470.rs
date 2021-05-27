@@ -558,6 +558,113 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
 #[ignore]
 #[test]
+fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
+    let mut builder = setup();
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        GH_1470_REGRESSION,
+        RuntimeArgs::new(),
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    let account_stored_value = builder
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
+        .unwrap();
+    let account = account_stored_value.as_account().cloned().unwrap();
+
+    let contract_hash_key = account
+        .named_keys()
+        .get(gh_1470_regression::CONTRACT_HASH_NAME)
+        .cloned()
+        .unwrap();
+    let contract_hash = contract_hash_key
+        .into_hash()
+        .map(ContractHash::new)
+        .unwrap();
+    let contract_package_hash_key = account
+        .named_keys()
+        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .cloned()
+        .unwrap();
+    let contract_package_hash = contract_package_hash_key
+        .into_hash()
+        .map(ContractPackageHash::new)
+        .unwrap();
+
+    let call_contract_request = {
+        let args = runtime_args! {
+            gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING_OPTIONAL_TYPE_MISMATCH,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+        };
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
+            .build()
+    };
+
+    builder.exec(call_contract_request).commit();
+
+    let response = builder
+        .get_exec_results()
+        .last()
+        .expect("should have last response");
+    assert_eq!(response.len(), 1);
+    let exec_response = response.last().expect("should have response");
+    let call_contract_error = exec_response
+        .as_error()
+        .cloned()
+        .expect("should have error");
+
+    let call_versioned_contract_request = {
+        let args = runtime_args! {
+            gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_OPTIONAL_TYPE_MISMATCH,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+        };
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
+            .build()
+    };
+
+    builder.exec(call_versioned_contract_request).commit();
+
+    let response = builder
+        .get_exec_results()
+        .last()
+        .expect("should have last response");
+    assert_eq!(response.len(), 1);
+    let exec_response = response.last().expect("should have response");
+    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+
+    let expected = gh_1470_regression::Arg3Type::cl_type();
+    let found = gh_1470_regression_call::Arg4Type::cl_type();
+
+    let expected_type_mismatch =
+        TypeMismatch::new(format!("{:?}", expected), format!("{:?}", found));
+
+    match (&call_contract_error, &call_versioned_contract_error) {
+        (
+            Error::Exec(execution::Error::TypeMismatch(lhs_type_mismatch)),
+            Error::Exec(execution::Error::TypeMismatch(rhs_type_mismatch)),
+        ) if lhs_type_mismatch == &expected_type_mismatch
+            && rhs_type_mismatch == &expected_type_mismatch => {}
+        _ => panic!(
+            "Both variants should raise same error: lhs={:?} rhs={:?}",
+            call_contract_error, call_versioned_contract_error
+        ),
+    }
+
+    assert!(matches!(
+        call_versioned_contract_error,
+        Error::Exec(execution::Error::TypeMismatch(type_mismatch)) if type_mismatch == &expected_type_mismatch
+    ));
+    assert!(matches!(
+        call_contract_error,
+        Error::Exec(execution::Error::TypeMismatch(type_mismatch)) if type_mismatch == expected_type_mismatch
+    ));
+}
+
+#[ignore]
+#[test]
 fn should_transfer_after_major_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
