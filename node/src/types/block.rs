@@ -1168,22 +1168,28 @@ impl Block {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        Block::random_with_specifics(rng, EraId::from(era), height, is_switch)
+        Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+        )
     }
 
-    /// Generates a random instance using a `TestRng`, but using the specified era ID and height.
+    /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
     pub fn random_with_specifics(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
+        protocol_version: ProtocolVersion,
         is_switch: bool,
     ) -> Self {
         let parent_hash = BlockHash::new(Digest::random(rng));
         let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = Digest::random(rng);
-        let protocol_version = ProtocolVersion::V1_0_0;
         let next_era_validator_weights = match finalized_block.era_report {
             Some(_) => Some(BTreeMap::<PublicKey, U512>::default()),
             None => None,
@@ -1211,7 +1217,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, \
-             random bit {}, timestamp {}, era_id {}, height {}",
+             random bit {}, timestamp {}, era_id {}, height {}, protocol version: {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
@@ -1220,6 +1226,7 @@ impl Display for Block {
             self.header.timestamp,
             self.header.era_id.value(),
             self.header.height,
+            self.header.protocol_version
         )?;
         if let Some(ee) = &self.header.era_end {
             write!(formatter, ", era_end: {}", ee)?;
