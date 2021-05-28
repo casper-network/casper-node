@@ -305,6 +305,17 @@ where
         events
     }
 
+    /// Drains all events from all queues.
+    pub async fn drain_queues(&self) -> Vec<I> {
+        let mut events = Vec::new();
+        let keys: Vec<K> = self.queues.keys().cloned().collect();
+
+        for kind in keys {
+            events.extend(self.drain_queue(kind).await);
+        }
+        events
+    }
+
     /// Returns the number of events currently in the queue.
     #[cfg(test)]
     pub(crate) fn item_count(&self) -> usize {

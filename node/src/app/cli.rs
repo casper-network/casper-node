@@ -14,7 +14,7 @@ use anyhow::{self, Context};
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_node::{
     logging,
@@ -228,7 +228,15 @@ impl Cli {
                     ReactorExit::ProcessShouldContinue => info!("finished joining"),
                 }
 
-                let config = joiner_runner.into_inner().into_validator_config().await?;
+                let (joiner_reactor, joiner_queue) = joiner_runner.into_inners();
+                let config = joiner_reactor.into_validator_config().await?;
+
+                // At this point, the joiner is shut down, so we clear the queue to ensure any
+                // connections whose handshake completed but have not been registered are dropped.
+                for event in joiner_queue.drain_queues().await {
+                    debug!(event=%event, "drained event");
+                }
+
                 let mut validator_runner =
                     Runner::<validator::Reactor>::with_metrics(config, &mut rng, &registry).await?;
 
