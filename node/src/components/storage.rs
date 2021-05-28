@@ -243,10 +243,15 @@ where
 
 impl Storage {
     /// Creates a new storage component.
+    ///
+    /// If `should_check_integrity` is true, time-consuming integrity checks will be performed
+    /// during this call to `new()`, potentially blocking for several minutes.  This should normally
+    /// only be required if the node is detected to have restarted after a crash.
     pub(crate) fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
+        should_check_integrity: bool,
     ) -> Result<Self, Error> {
         let config = cfg.value();
 
@@ -308,12 +313,15 @@ impl Storage {
                     continue;
                 }
             }
-            // We use the opportunity for a small integrity check.
-            assert_eq!(
-                raw_key,
-                block.hash().as_ref(),
-                "found corrupt block in database"
-            );
+
+            if should_check_integrity {
+                assert_eq!(
+                    raw_key,
+                    block.hash().as_ref(),
+                    "found corrupt block in database"
+                );
+            }
+
             insert_to_block_header_indices(
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
@@ -324,12 +332,15 @@ impl Storage {
             let block_body: BlockBody = body_txn
                 .get_value(block_body_db, block.body_hash())?
                 .expect("non-existent block body referred to by header");
-            // We use the opportunity for a small integrity check.
-            assert_eq!(
-                *block.body_hash(),
-                block_body.hash(),
-                "found corrupt block body in database"
-            );
+
+            if should_check_integrity {
+                assert_eq!(
+                    *block.body_hash(),
+                    block_body.hash(),
+                    "found corrupt block body in database"
+                );
+            }
+
             insert_to_deploy_index(&mut deploy_hash_index, block.hash(), &block_body)?;
         }
         info!("block store reindexing complete");
@@ -338,8 +349,18 @@ impl Storage {
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
-        initialize_block_body_db(&env, &block_body_db, &deleted_block_hashes_raw)?;
-        initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
+        initialize_block_body_db(
+            &env,
+            &block_body_db,
+            &deleted_block_hashes_raw,
+            should_check_integrity,
+        )?;
+        initialize_block_metadata_db(
+            &env,
+            &block_metadata_db,
+            &deleted_block_hashes_raw,
+            should_check_integrity,
+        )?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_block_hashes)?;
 
         Ok(Storage {
@@ -1285,11 +1306,13 @@ impl Storage {
     }
 }
 
-/// Checks the integrity of the block body database and purges stale entries.
+/// Purges stale entries from the block body database, and checks the integrity of the remainder if
+/// `should_check_integrity` is true.
 fn initialize_block_body_db(
     env: &Environment,
     block_body_db: &Database,
     deleted_block_hashes: &HashSet<&[u8]>,
+    should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing block body database");
     let mut txn = env.begin_rw_txn()?;
@@ -1301,12 +1324,14 @@ fn initialize_block_body_db(
             continue;
         }
 
-        let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
-        assert_eq!(
-            raw_key,
-            body.hash().as_ref(),
-            "found corrupt block body in database"
-        );
+        if should_check_integrity {
+            let body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+            assert_eq!(
+                raw_key,
+                body.hash().as_ref(),
+                "found corrupt block body in database"
+            );
+        }
     }
 
     drop(cursor);
@@ -1316,11 +1341,13 @@ fn initialize_block_body_db(
     Ok(())
 }
 
-/// Checks the integrity of the block metadata database and purges stale entries.
+/// Purges stale entries from the block metadata database, and checks the integrity of the remainder
+/// if `should_check_integrity` is true.
 fn initialize_block_metadata_db(
     env: &Environment,
     block_metadata_db: &Database,
     deleted_block_hashes: &HashSet<&[u8]>,
+    should_check_integrity: bool,
 ) -> Result<(), LmdbExtError> {
     info!("initializing block metadata database");
     let mut txn = env.begin_rw_txn()?;
@@ -1332,20 +1359,22 @@ fn initialize_block_metadata_db(
             continue;
         }
 
-        let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
+        if should_check_integrity {
+            let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
 
-        // Signature verification could be very slow process
-        // It iterates over every signature and verifies them.
-        match signatures.verify() {
-            Ok(_) => assert_eq!(
-                raw_key,
-                signatures.block_hash.as_ref(),
-                "Corruption in block_metadata_db"
-            ),
-            Err(error) => panic!(
-                "Error: {} in signature verification. Corruption in database",
-                error
-            ),
+            // Signature verification could be very slow process
+            // It iterates over every signature and verifies them.
+            match signatures.verify() {
+                Ok(_) => assert_eq!(
+                    raw_key,
+                    signatures.block_hash.as_ref(),
+                    "Corruption in block_metadata_db"
+                ),
+                Err(error) => panic!(
+                    "Error: {} in signature verification. Corruption in database",
+                    error
+                ),
+            }
         }
     }
 
