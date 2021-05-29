@@ -233,6 +233,7 @@ impl Cli {
 
                 // At this point, the joiner is shut down, so we clear the queue to ensure any
                 // connections whose handshake completed but have not been registered are dropped.
+                joiner_queue.seal();
                 for event in joiner_queue.drain_queues().await {
                     debug!(event=%event, "drained event");
                 }
