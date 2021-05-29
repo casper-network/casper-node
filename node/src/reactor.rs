@@ -756,12 +756,14 @@ where
         self.reactor
     }
 
-    /// Deconstruct the runner to return both reactor and scheduler queue.
-    ///
-    /// This is usually used to drain the scheduler after shutting down the reactor.
+    /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     #[inline]
-    pub fn into_inners(self) -> (R, &'static Scheduler<R::Event>) {
-        (self.reactor, self.scheduler)
+    pub async fn drain_into_inner(self) -> R {
+        self.scheduler.seal();
+        for event in self.scheduler.drain_queues().await {
+            debug!(event=%event, "drained event");
+        }
+        self.reactor
     }
 }
 
