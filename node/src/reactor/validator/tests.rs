@@ -145,13 +145,17 @@ impl TestChain {
             }
 
             // Now we can construct the actual node.
-            let initializer = initializer_runner.into_inner();
+            let initializer = initializer_runner.drain_into_inner().await;
             let mut joiner_runner =
                 Runner::<joiner::Reactor>::new(WithDir::new(root.clone(), initializer), rng)
                     .await?;
             let _ = joiner_runner.run(rng).await;
 
-            let config = joiner_runner.into_inner().into_validator_config().await?;
+            let config = joiner_runner
+                .drain_into_inner()
+                .await
+                .into_validator_config()
+                .await?;
 
             network
                 .add_node_with_config(config, rng)

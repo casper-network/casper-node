@@ -321,7 +321,7 @@ where
 impl<R> Finalize for Network<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
-    R::Event: Serialize,
+    R::Event: Serialize + Send + Sync,
     R::NodeId: Send,
     R::Error: From<prometheus::Error>,
 {
@@ -331,7 +331,7 @@ where
         async move {
             // Shutdown the sender of every reactor node to ensure the port is open again.
             for (_, node) in self.nodes.into_iter() {
-                node.into_inner().finalize().await;
+                node.drain_into_inner().await.finalize().await;
             }
 
             debug!("network finalized");

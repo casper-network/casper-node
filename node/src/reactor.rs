@@ -750,12 +750,6 @@ where
         &mut self.reactor
     }
 
-    /// Deconstructs the runner to return the reactor.
-    #[inline]
-    pub fn into_inner(self) -> R {
-        self.reactor
-    }
-
     /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     #[inline]
     pub async fn drain_into_inner(self) -> R {
