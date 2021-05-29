@@ -161,7 +161,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
 
     let payment_amount_converted: U512 = PAYMENT_AMOUNT.into();
 
-    for n in 0..repetitions {
+    for _ in 0..repetitions {
         //println!("Repetition {}", n);
 
         let seed: u64 = rng.gen();
