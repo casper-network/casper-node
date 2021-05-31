@@ -50,7 +50,7 @@ impl Store<ProtocolVersion, ProtocolData> for LmdbProtocolDataStore {
         self.db
     }
 
-    fn deserialize_hook(
+    fn deserialize_value(
         &self,
         protocol_version: &ProtocolVersion,
         bytes: Vec<u8>,

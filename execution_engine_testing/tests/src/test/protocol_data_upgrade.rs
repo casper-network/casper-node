@@ -1,25 +1,14 @@
-use casper_engine_test_support::internal::UpgradeRequestBuilder;
+use casper_engine_test_support::internal::{
+    LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
+};
+use casper_execution_engine::legacy::protocol_data::LEGACY_PROTOCOL_DATA_VERSION;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::lmdb_fixture;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-#[ignore]
-#[test]
-fn should_migrate_protocol_data_after_major_version_bump_from_1_2_0() {
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
-
-    let current_protocol_version = serde_json::from_value(
-        lmdb_fixture_state
-            .genesis_request
-            .get("protocol_version")
-            .cloned()
-            .unwrap(),
-    )
-    .unwrap();
-
+fn test(builder: &mut LmdbWasmTestBuilder, current_protocol_version: ProtocolVersion) {
     let legacy_protocol_data = builder
         .get_engine_state()
         .get_protocol_data(current_protocol_version)
@@ -84,4 +73,29 @@ fn should_migrate_protocol_data_after_major_version_bump_from_1_2_0() {
     // protocol data should use new upgraded fields.
     assert_eq!(legacy_protocol_data, protocol_data_v1_3_0);
     assert_eq!(legacy_protocol_data, protocol_data_v1_4_0);
+}
+
+#[ignore]
+#[test]
+fn should_migrate_protocol_data_after_major_version_bump_from_1_2_0() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_2_0);
+
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    test(&mut builder, current_protocol_version);
+}
+
+#[ignore]
+#[test]
+fn should_migrate_protocol_data_from_1_0_0_genesis() {
+    let genesis_request = DEFAULT_RUN_GENESIS_REQUEST.clone();
+
+    let current_protocol_version = genesis_request.protocol_version();
+    assert!(current_protocol_version <= LEGACY_PROTOCOL_DATA_VERSION);
+
+    let data_dir = tempfile::tempdir().expect("should create temp dir");
+    let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
+    builder.run_genesis(&genesis_request);
+
+    test(&mut builder, current_protocol_version);
 }

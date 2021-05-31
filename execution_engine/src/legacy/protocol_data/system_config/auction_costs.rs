@@ -2,11 +2,40 @@ use casper_types::bytesrepr::{self, FromBytes};
 
 use crate::shared::system_config::auction_costs::AuctionCosts;
 
-pub struct LegacyAuctionCosts(AuctionCosts);
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LegacyAuctionCosts {
+    get_era_validators: u32,
+    read_seigniorage_recipients: u32,
+    add_bid: u32,
+    withdraw_bid: u32,
+    delegate: u32,
+    undelegate: u32,
+    run_auction: u32,
+    slash: u32,
+    distribute: u32,
+    withdraw_delegator_reward: u32,
+    withdraw_validator_reward: u32,
+    read_era_id: u32,
+    activate_bid: u32,
+}
 
 impl From<LegacyAuctionCosts> for AuctionCosts {
     fn from(legacy_auction_costs: LegacyAuctionCosts) -> Self {
-        legacy_auction_costs.0
+        AuctionCosts {
+            get_era_validators: legacy_auction_costs.get_era_validators,
+            read_seigniorage_recipients: legacy_auction_costs.read_seigniorage_recipients,
+            add_bid: legacy_auction_costs.add_bid,
+            withdraw_bid: legacy_auction_costs.withdraw_bid,
+            delegate: legacy_auction_costs.delegate,
+            undelegate: legacy_auction_costs.undelegate,
+            run_auction: legacy_auction_costs.run_auction,
+            slash: legacy_auction_costs.slash,
+            distribute: legacy_auction_costs.distribute,
+            withdraw_delegator_reward: legacy_auction_costs.withdraw_delegator_reward,
+            withdraw_validator_reward: legacy_auction_costs.withdraw_validator_reward,
+            read_era_id: legacy_auction_costs.read_era_id,
+            activate_bid: legacy_auction_costs.activate_bid,
+        }
     }
 }
 
@@ -26,7 +55,7 @@ impl FromBytes for LegacyAuctionCosts {
         let (read_era_id, rem) = FromBytes::from_bytes(rem)?;
         let (activate_bid, rem) = FromBytes::from_bytes(rem)?;
 
-        let auction_costs = AuctionCosts {
+        let legacy_auction_costs = LegacyAuctionCosts {
             get_era_validators,
             read_seigniorage_recipients,
             add_bid,
@@ -42,6 +71,6 @@ impl FromBytes for LegacyAuctionCosts {
             activate_bid,
         };
 
-        Ok((LegacyAuctionCosts(auction_costs), rem))
+        Ok((legacy_auction_costs, rem))
     }
 }
