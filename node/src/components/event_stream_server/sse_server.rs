@@ -1,7 +1,7 @@
 //! Types and functions used by the http server to manage the event-stream.
 
 use datasize::DataSize;
-use futures::{Stream, StreamExt};
+use futures::{future, Stream, StreamExt};
 use http::status::StatusCode;
 use hyper::Body;
 #[cfg(test)]
@@ -381,6 +381,7 @@ fn stream_to_client(
                 }
             }
         })
+        .take_while(|result| future::ready(!matches!(result, Err(RecvError::Closed))))
 }
 
 #[cfg(test)]
