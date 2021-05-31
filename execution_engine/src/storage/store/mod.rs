@@ -14,6 +14,13 @@ pub trait Store<K, V> {
 
     fn handle(&self) -> Self::Handle;
 
+    fn deserialize_hook(&self, _key: &K, bytes: Vec<u8>) -> Result<V, bytesrepr::Error>
+    where
+        V: FromBytes,
+    {
+        bytesrepr::deserialize(bytes)
+    }
+
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
@@ -25,7 +32,7 @@ pub trait Store<K, V> {
         match txn.read(handle, &key.to_bytes()?)? {
             None => Ok(None),
             Some(value_bytes) => {
-                let value = bytesrepr::deserialize(value_bytes.into())?;
+                let value = self.deserialize_hook(key, value_bytes.into())?;
                 Ok(Some(value))
             }
         }

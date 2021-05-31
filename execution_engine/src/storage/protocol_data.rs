@@ -1,11 +1,15 @@
+mod legacy;
+
 use std::collections::BTreeMap;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ContractHash, HashAddr,
+    ContractHash, HashAddr, ProtocolVersion,
 };
 
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+
+use self::legacy::{LegacyProtocolData, LEGACY_PROTOCOL_DATA_VERSION};
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
@@ -191,6 +195,22 @@ impl FromBytes for ProtocolData {
             },
             rem,
         ))
+    }
+}
+
+/// Deserializes [`ProtocolData`] with respect to different data formats present across protocol
+/// versions.
+pub(crate) fn get_versioned_protocol_data(
+    protocol_version: &ProtocolVersion,
+    bytes: Vec<u8>,
+) -> Result<ProtocolData, bytesrepr::Error> {
+    if protocol_version <= &LEGACY_PROTOCOL_DATA_VERSION {
+        // Old, legacy data format
+        let legacy_protocol_data: LegacyProtocolData = bytesrepr::deserialize(bytes)?;
+        Ok(ProtocolData::from(legacy_protocol_data))
+    } else {
+        // Future-proof data format
+        bytesrepr::deserialize(bytes)
     }
 }
 
