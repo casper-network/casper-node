@@ -497,12 +497,12 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<Message<P>>,
+    mut queue: UnboundedReceiver<Arc<Message<P>>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
     limiter: Box<dyn BandwidthLimiterHandle>,
     counter: IntGauge,
 ) where
-    P: Serialize + Send + Payload,
+    P: Payload,
 {
     while let Some(message) = queue.recv().await {
         counter.dec();
@@ -516,7 +516,8 @@ pub(super) async fn message_sender<P>(
         limiter.request_allowance(estimated_wire_size).await;
 
         // We simply error-out if the sink fails, it means that our connection broke.
-        if let Err(ref err) = sink.send(message).await {
+        let msg = (*message).clone();
+        if let Err(ref err) = sink.send(msg).await {
             info!(
                 err = display_error(err),
                 "message send failed, closing outgoing connection"
