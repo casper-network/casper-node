@@ -328,7 +328,7 @@ where
         connection_id,
     );
 
-    io_timeout(HANDSHAKE_TIMEOUT, transport.send(handshake))
+    io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
         .await
         .map_err(ConnectionError::HandshakeSend)?;
 
@@ -498,7 +498,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Arc<Message<P>>>,
-    mut sink: SplitSink<FramedTransport<P>, Message<P>>,
+    mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn BandwidthLimiterHandle>,
     counter: IntGauge,
 ) where
@@ -516,8 +516,7 @@ pub(super) async fn message_sender<P>(
         limiter.request_allowance(estimated_wire_size).await;
 
         // We simply error-out if the sink fails, it means that our connection broke.
-        let msg = (*message).clone();
-        if let Err(ref err) = sink.send(msg).await {
+        if let Err(ref err) = sink.send(message).await {
             info!(
                 err = display_error(err),
                 "message send failed, closing outgoing connection"

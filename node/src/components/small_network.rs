@@ -67,8 +67,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_serde::SymmetricallyFramed;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
@@ -1085,9 +1084,10 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub type FramedTransport<P> = SymmetricallyFramed<
-    Framed<Transport, LengthDelimitedCodec>,
+pub type FramedTransport<P> = tokio_serde::Framed<
+    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
     Message<P>,
+    Arc<Message<P>>,
     CountingFormat<MessagePackFormat>,
 >;
 
@@ -1103,14 +1103,14 @@ where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = Framed::new(
+    let length_delimited = tokio_util::codec::Framed::new(
         stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
     );
 
-    SymmetricallyFramed::new(
+    tokio_serde::Framed::new(
         length_delimited,
         CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
