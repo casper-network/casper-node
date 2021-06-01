@@ -338,7 +338,7 @@ pub fn disable_contract_version(
 
 /// Creates new [`URef`] that points to a context-local partition of global state.
 /// Optionally you can pass a [`str`] to automatically put this dictionary under named keys.
-pub fn new_dictionary(key_name: Option<&str>) -> Result<URef, ApiError> {
+pub fn new_dictionary(key_name: &str) -> Result<URef, ApiError> {
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
         let ret = unsafe { ext_ffi::casper_new_dictionary(value_size.as_mut_ptr()) };
@@ -347,9 +347,7 @@ pub fn new_dictionary(key_name: Option<&str>) -> Result<URef, ApiError> {
     };
     let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
     let uref: URef = bytesrepr::deserialize(value_bytes).unwrap_or_revert();
-    if let Some(key_name) = key_name {
-        runtime::put_key(key_name, Key::from(uref));
-    }
+    runtime::put_key(key_name, Key::from(uref));
     Ok(uref)
 }
 

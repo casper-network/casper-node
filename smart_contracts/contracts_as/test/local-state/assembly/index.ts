@@ -8,7 +8,7 @@ import {CLValue, CLType, CLTypeTag} from "../../../../contract_as/assembly/clval
 import { Key } from "../../../../contract_as/assembly/key";
 import { AccessRights, URef } from "../../../../contract_as/assembly/uref";
 import { Pair } from "../../../../contract_as/assembly/pair";
-import { createLocal, dictionaryGet, dictionaryPut } from "../../../../contract_as/assembly/local";
+import { newDictionary, dictionaryGet, dictionaryPut } from "../../../../contract_as/assembly/local";
 import { fromBytesString, toBytesString } from "../../../../contract_as/assembly/bytesrepr";
 import { revert } from "../../../../contract_as/assembly/externals";
 
@@ -24,6 +24,7 @@ const CONTRACT_PACKAGE_HASH_NAME = "package_hash_name";
 const DEFAULT_DICTIONARY_NAME = "Default Key";
 const DEFAULT_DICTIONARY_VALUE = "Default Value";
 const ACCESS_KEY_NAME = "access_key";
+const DICTIONARY_REF = "new_dictionary";
 
 function getDictionaryURef(): URef {
   let key = CL.getKey(DICTIONARY_NAME);
@@ -93,7 +94,7 @@ export function call(): void {
 
   let namedKeys = new Array<Pair<String, Key>>();
 
-  let dictionaryURef = createLocal();
+  let dictionaryURef = newDictionary(DICTIONARY_REF);
   dictionaryPut(dictionaryURef, toBytesString(DEFAULT_DICTIONARY_NAME), CLValue.fromString(DEFAULT_DICTIONARY_VALUE));
 
   namedKeys.push(new Pair(DICTIONARY_NAME, Key.fromURef(dictionaryURef)))

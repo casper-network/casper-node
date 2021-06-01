@@ -27,6 +27,7 @@ pub const CONTRACT_HASH_NAME: &str = "contract_hash";
 const CONTRACT_PACKAGE_HASH_NAME: &str = "package_hash_name";
 pub const DEFAULT_DICTIONARY_NAME: &str = "Default Key";
 pub const DEFAULT_DICTIONARY_VALUE: &str = "Default Value";
+pub const DICTIONARY_REF: &str = "new_dictionary";
 
 #[no_mangle]
 fn modify_write() {
@@ -99,7 +100,7 @@ pub fn delegate() {
     ));
     let named_keys = {
         let uref = {
-            let local_uref = storage::new_dictionary(None).unwrap_or_revert();
+            let local_uref = storage::new_dictionary(DICTIONARY_REF).unwrap_or_revert();
             assert_eq!(
                 local_uref.access_rights() & AccessRights::READ_ADD_WRITE,
                 AccessRights::READ_ADD_WRITE

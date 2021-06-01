@@ -5,14 +5,16 @@ import {CLValue} from "./clvalue";
 import {readHostBuffer} from "./index";
 import { URef } from "./uref";
 import { arrayToTyped } from "./utils";
+import { Key } from "./key";
+import * as CL from "./";
 
 /**
- * Creates new seed for context-local partition of the global state.
+ * Creates new seed for a dictionary partition of the global state.
  * 
  * @category Storage
  * @returns Returns newly provisioned [[URef]]
  */
-export function createLocal(): URef {
+export function newDictionary(key_name: String): URef {
     let outputSize = new Uint32Array(1);
     let ret = externals.casper_new_dictionary(outputSize.dataStart);
     const error = Error.fromResult(ret);
@@ -21,7 +23,10 @@ export function createLocal(): URef {
         return <URef>unreachable();
     }
     let urefBytes = readHostBuffer(outputSize[0]);
-    return URef.fromBytes(urefBytes).unwrap();
+    const uref = URef.fromBytes(urefBytes).unwrap();
+    const key = Key.fromURef(uref);
+    CL.putKey(key_name, key);
+    return uref;
 }
 
 /**
